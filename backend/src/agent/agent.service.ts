@@ -1,0 +1,108 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import OpenAI from 'openai';
+import { buildSystemPrompt } from './constants/agent-prompts';
+
+export interface StreamCallbacks {
+  onChunk: (text: string) => void;
+  onDone: (fullText: string) => void;
+  onError: (error: Error) => void;
+}
+
+@Injectable()
+export class AgentService {
+  private readonly logger = new Logger(AgentService.name);
+  private openaiClient: OpenAI | null = null;
+  private deepseekClient: OpenAI | null = null;
+
+  constructor(private readonly configService: ConfigService) {}
+
+  private getClient(): { client: OpenAI; model: string } {
+    const provider = this.configService.get<string>('AI_PROVIDER', 'deepseek');
+
+    if (provider === 'openai') {
+      if (!this.openaiClient) {
+        this.openaiClient = new OpenAI({
+          apiKey: this.configService.get<string>('OPENAI_API_KEY'),
+        });
+      }
+      return { client: this.openaiClient, model: 'gpt-4o' };
+    }
+
+    if (!this.deepseekClient) {
+      this.deepseekClient = new OpenAI({
+        apiKey: this.configService.get<string>('DEEPSEEK_API_KEY'),
+        baseURL: this.configService.get<string>('DEEPSEEK_BASE_URL', 'https://api.deepseek.com'),
+      });
+    }
+    return { client: this.deepseekClient, model: 'deepseek-chat' };
+  }
+
+  async processMessageStream(
+    propertyName: string,
+    knowledgeBase: string,
+    userMessage: string,
+    chatHistory: { role: 'user' | 'assistant'; content: string }[],
+    callbacks: StreamCallbacks,
+  ): Promise<void> {
+    const { client, model } = this.getClient();
+    const systemPrompt = buildSystemPrompt(propertyName, knowledgeBase);
+
+    const messages: OpenAI.ChatCompletionMessageParam[] = [
+      { role: 'system', content: systemPrompt },
+      ...chatHistory.slice(-20),
+      { role: 'user', content: userMessage },
+    ];
+
+    try {
+      const stream = await client.chat.completions.create({
+        model,
+        messages,
+        stream: true,
+        max_tokens: 2048,
+        temperature: 0.7,
+      });
+
+      let fullText = '';
+
+      for await (const chunk of stream) {
+        const delta = chunk.choices[0]?.delta?.content;
+        if (delta) {
+          fullText += delta;
+          callbacks.onChunk(delta);
+        }
+      }
+
+      callbacks.onDone(fullText);
+      this.logger.log(`Agent response complete, ${fullText.length} chars`);
+    } catch (error) {
+      this.logger.error(`Agent error: ${(error as Error).message}`);
+      callbacks.onError(error as Error);
+    }
+  }
+
+  async processMessage(
+    propertyName: string,
+    knowledgeBase: string,
+    userMessage: string,
+    chatHistory: { role: 'user' | 'assistant'; content: string }[],
+  ): Promise<string> {
+    const { client, model } = this.getClient();
+    const systemPrompt = buildSystemPrompt(propertyName, knowledgeBase);
+
+    const messages: OpenAI.ChatCompletionMessageParam[] = [
+      { role: 'system', content: systemPrompt },
+      ...chatHistory.slice(-20),
+      { role: 'user', content: userMessage },
+    ];
+
+    const response = await client.chat.completions.create({
+      model,
+      messages,
+      max_tokens: 2048,
+      temperature: 0.7,
+    });
+
+    return response.choices[0]?.message?.content ?? '';
+  }
+}

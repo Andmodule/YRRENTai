@@ -1,0 +1,25 @@
+{
+  "name": "rentai",
+  "version": "0.1.0",
+  "private": true,
+  "description": "RentAI — AI-powered SaaS platform for short-term rental property managers",
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@9.15.4",
+  "scripts": {
+    "dev:backend": "pnpm --filter backend dev",
+    "dev:frontend": "pnpm --filter frontend-user dev",
+    "dev:admin": "pnpm --filter admin dev",
+    "dev:landing": "pnpm --filter landing dev",
+    "build:shared": "pnpm --filter @rentai/shared build",
+    "build:backend": "pnpm --filter backend build",
+    "build:frontend": "pnpm --filter frontend-user build",
+    "build:admin": "pnpm --filter admin build",
+    "build:landing": "pnpm --filter landing build",
+    "lint": "pnpm -r lint",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md}\""
+  }
+}

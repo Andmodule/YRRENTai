@@ -1,0 +1,565 @@
+# RentAI — Cursor Rules
+
+## Project Overview
+RentAI is a professional SaaS platform for short-term rental property managers.
+It provides an AI-powered assistant (text + voice), a knowledge base per property,
+chat history, guest communication, and a full management dashboard.
+
+## Monorepo Structure & Tooling
+
+```
+/
+├── backend/          # NestJS API (port 3000)
+├── frontend-user/    # Next.js — manager/owner app (port 3012)
+├── admin/            # Next.js — superadmin panel (port 3001)
+├── landing/          # Next.js or Vite — marketing site (tech TBD)
+└── packages/
+    └── shared/       # Shared Zod schemas, TS types, utils
+```
+
+- **Package manager:** pnpm (strictly use `pnpm` for all commands; never `npm` or `yarn`)
+- **Workspaces:** pnpm workspaces (`pnpm-workspace.yaml` at root)
+- **Turborepo:** add when needed for build orchestration; not required initially
+- **`packages/shared`:** imported via `workspace:*` as raw TypeScript; no build step during development. Add `tsup` only when explicit `dist/` or package publication is needed.
+- Honor root `package.json` `"engines"` and `.nvmrc` if present. Do not introduce features requiring a newer Node than specified.
+
+---
+
+## Tech Stack
+
+### Backend (NestJS)
+- Node.js + TypeScript (strict mode)
+- NestJS ^10.x (modular architecture)
+- PostgreSQL + TypeORM ^0.3.x
+- Socket.IO ^4.x (real-time chat, agent streaming)
+- JWT + Passport (auth)
+- Zod ^3.x (runtime validation via `nestjs-zod`)
+- `@nestjs/config` (env management)
+- Bull + Redis (background jobs, voice queue, caching)
+- bcrypt (password hashing)
+- date-fns (date/time manipulation)
+
+### Frontend (frontend-user & admin)
+- Next.js 16+ (App Router) + React 19+ + TypeScript
+- Tailwind CSS v4
+- next-intl ^4.x (i18n: ru, en, pl, es, de)
+- SWR ^2.x (data fetching and caching)
+- react-hook-form ^7.x + Zod (forms)
+- Radix UI primitives
+- Zustand ^5.x (client UI state only — NOT for auth)
+- Framer Motion ^12.x (animations)
+- socket.io-client ^4.x (real-time)
+- Lucide React (icons)
+- axios (HTTP client)
+- date-fns (date/time formatting and manipulation)
+
+### AI / Voice
+- Default LLM: DeepSeek (via OpenAI-compatible API)
+- Fallback LLM: OpenAI GPT-4o
+- Provider controlled via env: `AI_PROVIDER=deepseek|openai`
+- Always abstracted behind `AgentService` — never call provider SDK directly
+- STT/TTS: switchable via `VOICE_PROVIDER` env (google|yandex|openai)
+- Stream responses (SSE or WebSocket) whenever possible
+
+### Deploy
+- Docker containers
+- Environment managed via `.env` files; never hardcode secrets
+- `docker-compose.yml` structure for local dev (PostgreSQL, Redis, etc.) — define when infrastructure setup begins; AI assistant should ask for guidance at that point
+
+---
+
+## General Coding Principles
+
+### TypeScript
+- Always use strict TypeScript (`strict: true` in tsconfig)
+- Never use `any` — use `unknown` + type guard, or define an interface
+- Export types/interfaces from dedicated `*.types.ts` or `*.interface.ts` files
+- Derive TypeScript types from Zod schemas with `z.infer<>`
+
+### Naming Conventions
+- Files: `kebab-case` everywhere
+- Classes: `PascalCase`
+- Variables/functions: `camelCase`
+- Constants: `UPPER_SNAKE_CASE`
+- NestJS modules: one folder per domain (e.g. `src/property/`, `src/booking/`)
+- DB entities: suffix `Entity` (e.g. `PropertyEntity`)
+- DTOs: suffix `Dto` (e.g. `CreatePropertyDto`)
+- Interfaces: prefix `I` only when it conflicts with a class name
+
+### Functions & Components
+- Single responsibility: one function/component does one thing
+- Max function length ~60 lines — extract helpers if longer
+- Prefer `async/await` over raw Promises
+- Never swallow errors silently — always log or rethrow with context
+- Avoid deep nesting (max 3 levels) — use early returns
+
+---
+
+## Backend Rules (NestJS)
+
+### Module Structure
+Every domain module follows this layout:
+```
+src/<domain>/
+├── <domain>.module.ts
+├── <domain>.controller.ts
+├── <domain>.service.ts
+├── <domain>.repository.ts          # optional, for complex queries
+├── dto/
+│   ├── create-<domain>.dto.ts
+│   └── update-<domain>.dto.ts
+├── entities/
+│   └── <domain>.entity.ts
+├── interfaces/
+│   └── <domain>.interface.ts
+└── constants/
+    └── <domain>.constants.ts       # prompts, enums, config keys
+```
+
+### Key Domains
+- `auth/` — JWT, roles (OWNER, MANAGER, GUEST, SUPERADMIN)
+- `user/` — user profiles
+- `property/` — rental objects, knowledge base, timezone per property
+- `booking/` — reservations, calendar, state machine (see Booking States below)
+- `agent/` — AI agent service (text + voice, provider-agnostic)
+- `chat/` — message history, WebSocket gateway
+- `knowledge-base/` — per-property KB entries, embeddings
+- `voice/` — STT/TTS pipeline
+- `notification/` — push, email, SMS
+- `file/` — file upload, StorageService
+- `billing/` — token usage tracking per property
+
+### Config & Environment
+- Use `@nestjs/config` with `ConfigModule.forRoot()` registered globally.
+- Validate the full env schema with Zod at application startup — fail fast on missing/invalid variables.
+- Access env variables ONLY through `ConfigService` — never use `process.env` directly in modules.
+- Every new env variable must be documented in `.env.example` with a short comment.
+- No secrets, API keys, or JWT material in source code or commits.
+- Separate credentials per environment (dev/staging/prod); principle of least privilege for DB users in production.
+- Split clearly: `NEXT_PUBLIC_*` (browser-safe) vs server-only variables (LLM keys, DB, JWT).
+
+### Validation & DTOs
+- **Use `nestjs-zod` for all DTO validation. Do NOT use `class-validator` or `class-transformer`.**
+- Import Zod schemas from `packages/shared` and wrap them with `createZodDto()` to create NestJS-compatible DTOs with automatic Swagger generation.
+- Register global `ZodValidationPipe` instead of NestJS default `ValidationPipe`.
+- Reject unknown fields via Zod `.strict()` where appropriate.
+
+### API Conventions
+- All endpoints under `/api/v1/` prefix
+- Swagger enabled; DTOs auto-documented via `nestjs-zod`
+- Consistent response shape: `{ data, meta?, error? }`
+- Rate limiting via `@nestjs/throttler` on auth and AI endpoints
+- Pagination with max page size on all list endpoints; no unbounded queries
+- Health check endpoint: `GET /api/v1/health` (for Docker readiness probes)
+
+### Auth & Roles
+- Use `@Roles()` decorator + `RolesGuard` on every endpoint
+- Roles: `SUPERADMIN | OWNER | MANAGER | GUEST`
+- JWT access tokens short-lived (~15 min); refresh token flow for session continuity
+- Tokens set as `httpOnly` cookies for frontend consumption. Do not return raw JWTs in JSON body unless specifically for mobile/external API clients.
+- Passwords: bcrypt or argon2 only; never plaintext
+- Rate-limit auth endpoints (login, password reset) per IP and per identifier
+
+### Multi-tenancy & Access Control
+- Every query/mutation on tenant data must be scoped by property (and/or organization). Never trust client-sent IDs without verifying ownership in the service layer.
+- Prevent IDOR: never return or mutate resources by ID alone without verifying access.
+- `SUPERADMIN` bypasses tenant scope ONLY in explicit admin modules; default is deny.
+- Prefer UUIDs in public APIs; never expose sequential internal IDs.
+
+### Database
+- TypeORM with migrations — **never** `synchronize: true` in production
+- UUID primary keys everywhere
+- Soft deletes (`DeleteDateColumn`) only where product requires audit trail; document per entity
+- All timestamps: `createdAt`, `updatedAt` via `@CreateDateColumn` / `@UpdateDateColumn`
+- Migration naming: `<timestamp>-<kebab-case-description>.ts` (e.g. `1711700000000-add-property-timezone.ts`). Generate via `typeorm migration:generate`.
+- Seed data: maintain seed scripts in `src/database/seeds/` for development environments. Each seed file exports an async function; runner in `src/database/seed.ts`. Never run seeds in production automatically.
+
+### Dates & Timezones
+- **Store all timestamps in UTC** in the database (`timestamp with time zone` / `timestamptz` column type in PostgreSQL).
+- Every `PropertyEntity` has a `timezone` field (IANA format, e.g. `Europe/Warsaw`, `America/New_York`).
+- Backend always operates in UTC internally. Convert to property timezone only when producing user-facing output (API responses, notifications).
+- Use `date-fns` + `date-fns-tz` for all date manipulation and timezone conversion. Never use `moment` or native `Date` arithmetic.
+- Booking check-in/check-out times: store as UTC, but interpret in context of property timezone.
+- Frontend receives UTC, converts to display timezone via property's `timezone` field.
+
+### Money & Currency
+- **Store all monetary values as integers in minor units** (e.g. cents: $19.99 → `1999`). Never use `float` or `decimal` for money in application code.
+- Database column type: `integer` (or `bigint` for large sums).
+- Currency stored as ISO 4217 code (e.g. `USD`, `EUR`, `PLN`) alongside amount.
+- Format for display only on the frontend using `Intl.NumberFormat`.
+- Multi-currency support deferred; initial implementation assumes single currency per property.
+
+### Logging
+- Use NestJS built-in `Logger` — never `console.log` in production code.
+- **Correlation ID:** generate a unique `requestId` (UUID) per HTTP request via middleware; attach to every log entry, error response, and downstream service call (including AI).
+- Log format: structured JSON in production (`{ timestamp, level, requestId, userId?, propertyId?, message, ...context }`).
+- Log levels: `error` for failures requiring action, `warn` for recoverable issues, `log` for business events, `debug` for development detail, `verbose` for deep tracing.
+- Never log: passwords, JWT tokens, full API keys, credit card data, raw audio, full LLM prompts in production.
+- Always log: requestId, userId, propertyId, operation name, duration for slow operations (>500ms).
+
+### Error Handling
+- Global `ExceptionFilter` catches all unhandled errors and returns consistent shape: `{ statusCode, message, error, requestId, timestamp, path }`
+- Zod validation errors → 400 with field-level details
+- TypeORM unique constraint violations → 409 Conflict
+- Unauthorized → 401; Forbidden → 403; Not Found → 404
+- Never leak internal stack traces or DB details in production responses
+
+### Caching
+- Use Redis (same instance as Bull) for application-level caching.
+- Cache strategy per use case:
+  - **KB embeddings / search results:** cache with TTL, invalidate on KB update
+  - **Property metadata:** short TTL (5 min), read-heavy
+  - **User session data:** via auth cookies, not Redis cache
+- Use NestJS `CacheModule` with Redis store, or a thin wrapper service.
+- Cache keys follow pattern: `<domain>:<entityId>:<qualifier>` (e.g. `property:uuid:metadata`, `kb:uuid:embeddings`).
+- Always provide cache invalidation alongside cache writes.
+
+### AI / Agent
+- All LLM calls go through `AgentService` — NEVER call OpenAI/DeepSeek SDK in controllers or other services.
+- Provider selected at runtime from `AI_PROVIDER` env via factory/strategy pattern.
+- Always set `max_tokens`, `temperature`, and `timeout` explicitly per use case.
+- Prompts live in `constants/<domain>-prompt.ts` as typed template functions, not raw strings.
+- Treat user/guest content as untrusted: separate system instructions from user messages (prompt-injection defense).
+- Model output shown in UI must be sanitized via safe markdown renderer; never `dangerouslySetInnerHTML`.
+- **Token billing:** every AI request MUST save token usage to `TokenUsageEntity` tied to `propertyId` and `userId` for tenant billing and quota enforcement. Console logging alone is insufficient.
+- Per-user and per-property rate limiting on agent/chat endpoints.
+- Do not log full prompts or PII in production; use structured logs (requestId, userId, propertyId, tokenCount).
+
+### Voice
+- **Flow 1 (Voice Messages):** client records audio via MediaRecorder API → uploads via HTTP Multipart → backend STT → same agent pipeline as text → optional TTS response.
+- **Flow 2 (Real-time Calls):** deferred to later phase. When implemented: audio chunks streamed via WebSocket binary for low latency; never HTTP uploads for real-time voice.
+- Validate audio MIME type, duration, and max upload size on the server.
+
+### File Storage
+- Abstract behind `StorageService` interface (`FileStoragePort`) with methods: `put`, `getUrl`, `delete`, `exists`.
+- Initial implementation: local filesystem (`STORAGE_PROVIDER=local`).
+- Interface designed so S3-compatible backend (AWS S3, MinIO) can replace local without changing consumers.
+- Server-side validation: MIME type whitelist + max file size per upload type.
+- Define retention and deletion policy; store audio only if product requires it.
+
+### Background Jobs (Bull)
+- Use `@nestjs/bull` for all asynchronous/heavy processing: STT/TTS, email sending, KB embedding generation, scheduled notifications.
+- Queue naming: `<domain>-<action>` in kebab-case (e.g. `voice-transcription`, `kb-embedding`, `notification-email`).
+- Each queue has a dedicated processor class: `<Domain><Action>Processor` (e.g. `VoiceTranscriptionProcessor`).
+- Retry strategy: max 3 attempts with exponential backoff. Failed jobs after all retries go to failed state for manual inspection.
+- Use Bull Board (`@bull-board/nestjs`) in development for queue monitoring (disabled or auth-protected in production).
+- Never put long-running tasks (>5s) in the HTTP request cycle — always enqueue.
+
+### Booking States
+Bookings follow a strict state machine. Only allowed transitions:
+```
+PENDING → CONFIRMED → CHECKED_IN → CHECKED_OUT
+PENDING → CANCELLED
+PENDING → DECLINED
+CONFIRMED → CANCELLED
+CONFIRMED → NO_SHOW
+```
+- State stored as enum column on `BookingEntity`.
+- Transitions enforced in `BookingService` — controller never sets state directly.
+- Each transition emits a domain event (e.g. `BookingConfirmedEvent`) for side effects (notifications, calendar sync).
+- `cancelledBy` field tracks who cancelled (guest, manager, system).
+- `CHECKED_OUT` and `CANCELLED`/`DECLINED`/`NO_SHOW` are terminal states.
+
+### WebSocket / Real-time (Socket.IO)
+- Authenticate WebSocket connections via JWT from `httpOnly` cookie or handshake auth header.
+- Namespace per domain: `/chat`, `/notifications` (future: `/voice`).
+- Room naming: `property:{propertyId}`, `chat:{chatId}`.
+- Event naming: `camelCase` — `message:send`, `message:received`, `agent:streamChunk`, `agent:streamEnd`.
+- Always emit error events on failure instead of silently dropping.
+
+### Domain Events
+- Use NestJS `EventEmitter2` for internal cross-module communication (e.g. booking confirmed → notification, agent call → token usage persist).
+- Event classes in `src/common/events/` with suffix `Event` (e.g. `BookingConfirmedEvent`).
+
+### Feature Flags
+- Use environment-based feature flags for gradual rollout of major features (voice, new AI models, experimental UI).
+- Feature flags accessed via `ConfigService` with prefix `FF_` (e.g. `FF_VOICE_ENABLED=true`).
+- Check flags in service layer, not in controllers or UI components directly.
+- When a feature is fully rolled out, remove the flag and dead code in the next release cycle.
+
+---
+
+## Frontend Rules (Next.js App Router)
+
+### File & Folder Structure
+```
+src/
+├── app/
+│   ├── [locale]/          # i18n routing (next-intl)
+│   └── api/               # route handlers if needed
+├── components/
+│   ├── ui/                # shared primitives (Button, Input, Modal...)
+│   ├── layout/            # AppShell, Sidebar, Header, Footer
+│   ├── property/          # property-specific components
+│   ├── chat/              # chat UI components
+│   ├── agent/             # agent widget components
+│   └── forms/             # reusable form components
+├── hooks/                 # custom React hooks
+├── lib/
+│   ├── api/               # API client (axios instance, interceptors)
+│   ├── socket/            # socket.io client setup
+│   └── utils/             # helpers, formatters, date utils
+├── stores/                # Zustand stores (UI state only)
+├── types/                 # frontend-only types (prefer packages/shared)
+└── messages/              # i18n (ru.json, en.json, pl.json, es.json, de.json)
+```
+
+### Component Rules
+- Prefer Server Components by default; use `'use client'` only when necessary (events, state, browser API)
+- Extract reusable UI to `components/ui/` — never duplicate primitives
+- Props interfaces defined inline or in collocated `*.types.ts`
+- Never fetch data directly inside components — use SWR hooks or server-side data functions
+- Use `next/image` for all images, `next/link` for all internal navigation
+
+### Responsive Design
+- **Mobile-first approach.** Write base styles for mobile, then layer on `sm:`, `md:`, `lg:`, `xl:` breakpoints.
+- Use Tailwind CSS default breakpoints: `sm` (640px), `md` (768px), `lg` (1024px), `xl` (1280px), `2xl` (1536px).
+- Dashboard layout: collapsible sidebar on `lg+`, bottom navigation or hamburger menu on mobile.
+- All pages and components must be usable on 375px width (iPhone SE minimum).
+- Touch targets: minimum 44x44px for interactive elements on mobile.
+- Use responsive Tailwind utilities instead of CSS media queries. Avoid `hidden`/`block` toggling for large component trees — prefer conditional rendering or responsive layout shifts.
+- Test on real device widths, not just resized browser.
+
+### UI Patterns: Loading, Error, Empty States
+- **Loading:** use skeleton components (`components/ui/skeleton.tsx`) that mirror the shape of the content. Never show a blank page or a lone spinner for full-page loads.
+- **Error:** use `ErrorBoundary` wrapper for client components. Display a user-friendly message with a retry action. Show `requestId` for support reference.
+- **Empty state:** every list/table/feed must have a designed empty state component with an icon, message, and primary action (e.g. "No properties yet — add your first property").
+- Standard components: `<Skeleton />`, `<ErrorState />`, `<EmptyState />` in `components/ui/`.
+- API error responses display via toast notifications (e.g. `sonner` or Radix Toast); do not use `alert()`.
+
+### Accessibility
+- Use Radix UI primitives for all interactive components — they provide ARIA attributes, keyboard navigation, and focus management out of the box.
+- All images must have descriptive `alt` text (or `alt=""` for decorative).
+- Color contrast: meet WCAG AA (4.5:1 for normal text, 3:1 for large text). Verify with Tailwind's color palette.
+- Focusable elements must have visible focus indicators (Tailwind `focus-visible:ring-*`).
+- Forms: every input must have an associated `<label>`. Use `aria-describedby` for error messages.
+- Avoid conveying information by color alone — supplement with icons or text.
+
+### Auth & Route Protection
+- JWT tokens stored in `httpOnly` cookies (set by backend).
+- Route protection via Next.js `middleware.ts` — read cookie, verify, redirect unauthenticated users.
+- Server Components extract auth from cookies to pre-fetch user data.
+- **Zustand is NOT the source of truth for auth.** It only holds hydrated client-side UI state.
+
+### State Management
+- **Zustand:** client UI state only (theme, sidebar toggle, active property context, chat draft)
+- **SWR:** all server data fetching with cache invalidation
+- **URL search params:** filter/pagination state (use `nuqs` if needed)
+
+### Data Fetching
+- SWR for all client-side data fetching. Do not mix in TanStack Query.
+- Define SWR hooks in `hooks/use-<domain>.ts` (e.g. `useProperties`, `useBookings`).
+- Axios instance in `lib/api/client.ts` with base URL, interceptors, and error transform.
+
+### Forms
+- All forms: `react-hook-form` + Zod resolver
+- Zod schemas imported from `packages/shared` or defined in `lib/validation/<domain>.schema.ts`
+- Share validation between frontend and backend via `packages/shared`
+
+### i18n
+- All user-facing strings go through `next-intl` — no hardcoded text
+- Message keys follow `feature.element.state` pattern (e.g. `property.form.namePlaceholder`)
+- All 5 locales (ru, en, pl, es, de) must have complete message files
+- Default locale: `ru`
+
+### Chat & Agent UI
+- Chat messages rendered with `react-markdown` (sanitized)
+- Streaming agent responses displayed token-by-token via WebSocket or SSE
+- Voice input: browser MediaRecorder → upload → STT → agent response
+- Voice output: TTS audio URL or stream → HTML5 Audio
+- Never block UI during AI processing — always show loading/streaming state
+
+---
+
+## Admin Panel (Next.js)
+- Same tech stack and conventions as `frontend-user`
+- May share UI primitives via `packages/shared` or future `packages/ui`
+- Restricted to `SUPERADMIN` role
+- Features: user management, property overview, system config, token usage analytics, audit logs
+
+---
+
+## packages/shared
+
+- Contains: Zod schemas, inferred TS types, shared constants, utility functions
+- Imported via `workspace:*` — raw TypeScript, no build step during development
+- Add `tsup` build only when explicit `dist/` or publication is needed
+- One Zod major version across entire monorepo (currently Zod ^3.x)
+- Structure:
+```
+packages/shared/
+├── src/
+│   ├── schemas/       # Zod schemas per domain
+│   ├── types/         # Inferred types (z.infer<>)
+│   ├── constants/     # Shared enums, config keys, booking states
+│   └── utils/         # Pure utility functions
+├── package.json
+└── tsconfig.json
+```
+
+---
+
+## Security
+
+### Transport
+- Production: HTTPS only; enforce HSTS where host supports it
+- CORS: explicit allowlist of origins; never wildcard `*` with credentials
+- Helmet middleware on all NestJS apps
+- Global request body size limit (e.g. 1 MB for JSON, separate higher limit for file uploads). Reject oversized payloads early.
+
+### Cookies & CSRF
+- Auth cookies MUST have all security attributes: `httpOnly`, `Secure` (HTTPS only), `SameSite=Lax`, scoped `Path=/api`.
+- CSRF defense: `SameSite=Lax` as baseline + server-side `Origin`/`Referer` header validation on state-changing requests (POST/PUT/PATCH/DELETE).
+- Refresh tokens: on password change, logout, or suspicious activity — invalidate ALL refresh tokens for that user. Store refresh token hashes in DB or Redis for revocation capability.
+
+### WebSocket Security
+- Authenticate connections via JWT from `httpOnly` cookie or handshake auth.
+- Rate-limit WebSocket events per connection (e.g. max 30 events/min for chat messages).
+- Set `maxHttpBufferSize` in Socket.IO config (e.g. 1 MB) to prevent oversized payloads.
+- Validate `Origin` header on WS handshake; reject unknown origins.
+
+### File Upload Security
+- Never use user-provided filenames for storage paths — generate UUID-based names on the server to prevent path traversal.
+- Store uploads outside the web-servable directory; serve via signed URLs or a dedicated endpoint with access checks.
+- Validate file content (magic bytes), not just MIME header or extension.
+
+### AI-specific
+- LLM API keys never in browser; all calls server-side
+- Separate system instructions from user messages (prompt-injection defense)
+- Sanitize model output before rendering; never `dangerouslySetInnerHTML`
+- Enforce timeouts, max tokens, per-user and per-property quotas
+
+### Data & Privacy
+- Minimize PII collection; define retention and deletion for guest/manager data
+- Logs: no passwords, tokens, credit card data, unnecessary PII; use structured logging with correlation IDs
+
+### Security Audit Events
+- Log security-relevant events to a dedicated audit trail (DB table or structured log stream):
+  - Failed login attempts (with IP, user identifier)
+  - Password changes, role changes
+  - Property creation/deletion, data exports
+  - Superadmin actions (who, what, when, which resource)
+- Include `requestId`, `userId`, `ip`, `userAgent` in each audit entry.
+
+### Dependencies
+- Keep dependencies patched; run `pnpm audit` in CI
+- Swagger/debug endpoints disabled or protected in production
+
+### Incident Readiness
+- Document how to rotate LLM, JWT, and third-party keys without redeploying unrelated secrets
+- Default to server-side tokens and scoped credentials for new integrations
+
+---
+
+## Testing
+
+### Backend (Jest)
+- Unit tests for all services (mock repos and external services)
+- E2E tests for controller endpoints (`@nestjs/testing` + Supertest)
+- Test files: `*.spec.ts` (unit), `*.e2e-spec.ts` (e2e)
+- Coverage target: >= 70% for core modules (auth, agent, property, booking)
+- Test edge cases: missing fields, unauthorized access, AI provider errors, tenant isolation
+
+### Frontend (Vitest + React Testing Library)
+- Unit tests for hooks, utils, Zustand stores
+- Component tests for critical UI (chat, forms)
+- Playwright for E2E flows (login, property CRUD, agent chat)
+
+---
+
+## Environment Variables
+
+```env
+# AI
+AI_PROVIDER=deepseek                    # deepseek | openai
+DEEPSEEK_API_KEY=
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+OPENAI_API_KEY=
+
+# Voice
+VOICE_PROVIDER=google                   # google | yandex | openai
+GOOGLE_TTS_KEY=
+
+# Database
+DATABASE_URL=postgresql://user:pass@localhost:5432/rentai
+
+# Auth
+JWT_SECRET=
+JWT_ACCESS_EXPIRES_IN=15m
+JWT_REFRESH_EXPIRES_IN=7d
+
+# Storage
+STORAGE_PROVIDER=local                  # local | s3
+STORAGE_LOCAL_PATH=./uploads
+# S3_BUCKET=
+# S3_REGION=
+# S3_ACCESS_KEY=
+# S3_SECRET_KEY=
+
+# Redis
+REDIS_URL=redis://localhost:6379
+
+# Feature Flags
+FF_VOICE_ENABLED=false
+FF_REALTIME_CALLS_ENABLED=false
+
+# App
+NODE_ENV=development
+API_URL=http://localhost:3010
+NEXT_PUBLIC_API_URL=http://localhost:3010
+NEXT_PUBLIC_WS_URL=ws://localhost:3010
+```
+
+- Never commit `.env` files; document every variable in `.env.example`
+- Validate all required env variables at startup via Zod schema in ConfigModule
+
+---
+
+## Code Style
+- Prettier + ESLint enforced (no `// eslint-disable` unless documented reason)
+- No commented-out dead code
+- No `console.log` in production — use NestJS `Logger` (backend) or structured logging
+- Imports: `@/` alias (frontend), `src/` paths via tsconfig (backend)
+- Commit messages: `type(scope): description` (e.g. `feat(property): add knowledge base CRUD`)
+
+### Git Conventions
+- Main branch: `main` (production-ready)
+- Development branch: `develop` (integration)
+- Feature branches: `feature/<domain>-<short-description>`
+- Fix branches: `fix/<issue-or-description>`
+- PR-based workflow; no direct pushes to `main` or `develop`
+
+---
+
+## What AI Assistant Should Always Do
+- Read existing code before writing new code in the same domain
+- Reuse components from `components/ui/` instead of creating duplicates
+- Follow the module/folder structure strictly
+- Ask for clarification if a task touches multiple modules or is ambiguous
+- After edits, check for linter errors and fix them
+- Prefer modularization over copy-paste duplication
+- Suggest performance improvements when obvious (re-renders, N+1 queries, missing indexes)
+- Point out security issues and suggest fixes
+- Use `pnpm` for all package operations
+- Use `date-fns` for all date/time operations; never `moment` or raw `Date` arithmetic
+- Store money as integers (minor units); never use floats for monetary values
+- Include `requestId` in all log entries and error responses
+
+## What AI Assistant Should Never Do
+- Install new packages without explicit user request
+- Hardcode secrets, tokens, or API keys
+- Use `any` TypeScript type
+- Call LLM provider SDK directly outside of `AgentService`
+- Add comments that just describe what the code does — only explain *why* if non-obvious
+- Create files outside the defined structure without justification
+- Use placeholders like `// ... existing code ...` or `// implement here` — always write out the complete implementation of the modified function or block
+- Run `npm install` or `yarn` — always use `pnpm`
+- Use `process.env` directly in modules — always use `ConfigService`
+- Use `class-validator` or `class-transformer` — always use `nestjs-zod`
+- Use `float` or `number` for monetary values — always integer minor units
+- Use `moment.js` — always `date-fns`
+
+---
+
+## Optional Product Docs
+- If `docs/ARCHITECTURE.md` or `docs/PRODUCT.md` exists, follow them for domain boundaries and defer to them when `.cursorrules` and docs conflict (then flag the conflict to the user).

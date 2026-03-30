@@ -1,0 +1,6 @@
+packages:
+  - "backend"
+  - "frontend-user"
+  - "admin"
+  - "landing"
+  - "packages/*"

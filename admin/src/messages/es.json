@@ -1,0 +1,27 @@
+{
+  "home": {
+    "title": "RentAI Admin",
+    "subtitle": "Panel de gestión del sistema"
+  },
+  "common": {
+    "loading": "Cargando...",
+    "error": "Se produjo un error",
+    "retry": "Reintentar",
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "delete": "Eliminar",
+    "edit": "Editar",
+    "create": "Crear",
+    "search": "Buscar",
+    "noResults": "No se encontraron resultados",
+    "back": "Volver"
+  },
+  "nav": {
+    "dashboard": "Panel",
+    "users": "Usuarios",
+    "properties": "Propiedades",
+    "billing": "Facturación",
+    "settings": "Configuración",
+    "auditLog": "Registro de auditoría"
+  }
+}
