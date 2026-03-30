@@ -496,9 +496,6 @@ STORAGE_LOCAL_PATH=./uploads
 # S3_ACCESS_KEY=
 # S3_SECRET_KEY=
 
-# Redis
-REDIS_URL=redis://localhost:6379
-
 # Feature Flags
 FF_VOICE_ENABLED=false
 FF_REALTIME_CALLS_ENABLED=false

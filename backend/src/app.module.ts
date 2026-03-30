@@ -4,7 +4,6 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { EventEmitterModule } from '@nestjs/event-emitter';
-import { BullModule } from '@nestjs/bull';
 import { APP_PIPE } from '@nestjs/core';
 import { ZodValidationPipe } from 'nestjs-zod';
 import { envSchema } from './config/env.schema';
@@ -51,12 +50,6 @@ import { HealthModule } from './health/health.module';
       },
     ]),
     EventEmitterModule.forRoot(),
-    BullModule.forRootAsync({
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        url: config.get<string>('REDIS_URL'),
-      }),
-    }),
     DatabaseInitModule,
     EmbeddingModule,
     AuthModule,
