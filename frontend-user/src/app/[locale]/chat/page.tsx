@@ -28,9 +28,8 @@ import {
 import { formatGuestAndProperty } from '@/lib/format/conversation-meta';
 import { ConversationStatusDot } from '@/components/inbox/conversation-status-dot';
 
-const showGuestSimulator =
-  process.env.NODE_ENV === 'development' ||
-  process.env.NEXT_PUBLIC_ENABLE_GUEST_SIMULATOR === 'true';
+/** Временно всегда true — тест на проде; вернуть gate через NODE_ENV / NEXT_PUBLIC_ENABLE_GUEST_SIMULATOR когда не нужен. */
+const showGuestSimulator = true;
 
 export default function ChatPage() {
   const t = useTranslations('inbox');
