@@ -9,6 +9,7 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import type { LoginDto as LoginDtoType, RegisterDto as RegisterDtoType } from '@rentai/shared';
 import type { Response } from 'express';
+import type { JwtPayload } from '../common/decorators/current-user.decorator';
 import { UserService } from '../user/user.service';
 import { UserEntity } from '../user/entities/user.entity';
 import {
@@ -110,6 +111,23 @@ export class AuthService {
   logout(res: Response) {
     this.clearAuthCookies(res);
     return { data: { ok: true as const } };
+  }
+
+  /**
+   * Short-lived JWT for Socket.IO handshake when the client connects to the API host
+   * (e.g. Render) while session cookies are scoped to the Next.js origin (e.g. Vercel).
+   */
+  async createWsHandshakeToken(user: JwtPayload): Promise<string> {
+    const secret = this.configService.get<string>('JWT_SECRET');
+    const payload: AccessTokenPayload = {
+      sub: user.sub,
+      email: user.email,
+      role: user.role,
+    };
+    return this.jwtService.signAsync(payload, {
+      secret,
+      expiresIn: '5m',
+    });
   }
 
   private getCookieBaseOptions() {
