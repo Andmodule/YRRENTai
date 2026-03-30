@@ -54,6 +54,16 @@
   "properties": {
     "title": "Properties",
     "subtitle": "Manage your rental properties",
+    "list": {
+      "searchPlaceholder": "Search by name, country, city, address…",
+      "colIndex": "#",
+      "colName": "Name",
+      "colAddress": "Location",
+      "colCurrency": "Currency",
+      "colTimezone": "Timezone",
+      "colGuests": "Guests",
+      "noSearchResults": "No matches"
+    },
     "addProperty": "Add property",
     "emptyTitle": "No properties yet",
     "emptyDescription": "Add your first property to start using RentAI",
@@ -78,8 +88,13 @@
     "form": {
       "name": "Name",
       "namePlaceholder": "Beach House",
+      "country": "Country",
+      "countryPlaceholder": "Russia",
+      "city": "City",
+      "cityPlaceholder": "Moscow",
       "address": "Address",
-      "addressPlaceholder": "123 Main Street, City",
+      "addressFull": "Full address",
+      "addressPlaceholder": "123 Main Street, building, apt.",
       "description": "Description",
       "descriptionPlaceholder": "A short description of the property for guests",
       "timezone": "Timezone",
@@ -91,6 +106,8 @@
     },
     "detail": {
       "settings": "Settings",
+      "country": "Country",
+      "city": "City",
       "address": "Address",
       "timezone": "Timezone",
       "currency": "Currency",

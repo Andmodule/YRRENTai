@@ -4,7 +4,19 @@ import { use, useLayoutEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { useRouter } from '@/i18n/navigation';
 import { toast } from 'sonner';
-import { Building2, MapPin, Clock, Users, DollarSign, ArrowLeft, BookOpen, Settings, Pencil, Trash2 } from 'lucide-react';
+import {
+  Building2,
+  MapPin,
+  Clock,
+  Users,
+  DollarSign,
+  ArrowLeft,
+  BookOpen,
+  Settings,
+  Pencil,
+  Trash2,
+  Globe,
+} from 'lucide-react';
 import { useProperty, useProperties } from '@/hooks/use-properties';
 import { useKnowledgeBase } from '@/hooks/use-knowledge-base';
 import { PropertyForm, DeletePropertyDialog } from '@/components/property';
@@ -82,7 +94,11 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
     { id: 'knowledge-base', icon: BookOpen, label: tKb('title') },
   ];
 
+  const loc = (v: string) => (v && v !== '-' ? v : t('detail.notSpecified'));
+
   const details = [
+    { icon: Globe, label: t('detail.country'), value: loc(property.country) },
+    { icon: Building2, label: t('detail.city'), value: loc(property.city) },
     { icon: MapPin, label: t('detail.address'), value: property.address },
     { icon: Clock, label: t('detail.timezone'), value: property.timezone },
     { icon: DollarSign, label: t('detail.currency'), value: property.currency },

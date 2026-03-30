@@ -37,6 +37,8 @@ export type UpdatePropertyDto = z.infer<typeof updatePropertySchema>;
 export interface Property {
   id: string;
   name: string;
+  country: string;
+  city: string;
   address: string;
   description?: string;
   timezone: string;

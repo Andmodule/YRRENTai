@@ -33,6 +33,8 @@ export function PropertyForm({ defaultValues, onSubmit, onCancel, submitLabel }:
     resolver: zodResolver(createPropertySchema),
     defaultValues: {
       name: defaultValues?.name ?? '',
+      country: defaultValues?.country ?? '',
+      city: defaultValues?.city ?? '',
       address: defaultValues?.address ?? '',
       description: defaultValues?.description ?? '',
       timezone: defaultValues?.timezone ?? 'UTC',
@@ -42,9 +44,11 @@ export function PropertyForm({ defaultValues, onSubmit, onCancel, submitLabel }:
   });
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-3">
       <div className="space-y-1.5">
-        <Label htmlFor="name">{t('name')} *</Label>
+        <Label htmlFor="name" className="text-xs">
+          {t('name')} *
+        </Label>
         <Input
           id="name"
           placeholder={t('namePlaceholder')}
@@ -57,8 +61,39 @@ export function PropertyForm({ defaultValues, onSubmit, onCancel, submitLabel }:
         )}
       </div>
 
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="space-y-1.5">
+          <Label htmlFor="country" className="text-xs">
+            {t('country')} *
+          </Label>
+          <Input
+            id="country"
+            placeholder={t('countryPlaceholder')}
+            aria-invalid={!!errors.country}
+            {...register('country')}
+          />
+          {errors.country && (
+            <p className="text-xs text-destructive">{errors.country.message}</p>
+          )}
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="city" className="text-xs">
+            {t('city')} *
+          </Label>
+          <Input
+            id="city"
+            placeholder={t('cityPlaceholder')}
+            aria-invalid={!!errors.city}
+            {...register('city')}
+          />
+          {errors.city && <p className="text-xs text-destructive">{errors.city.message}</p>}
+        </div>
+      </div>
+
       <div className="space-y-1.5">
-        <Label htmlFor="address">{t('address')} *</Label>
+        <Label htmlFor="address" className="text-xs">
+          {t('addressFull')} *
+        </Label>
         <Input
           id="address"
           placeholder={t('addressPlaceholder')}
@@ -72,7 +107,9 @@ export function PropertyForm({ defaultValues, onSubmit, onCancel, submitLabel }:
       </div>
 
       <div className="space-y-1.5">
-        <Label htmlFor="description">{t('description')}</Label>
+        <Label htmlFor="description" className="text-xs">
+          {t('description')}
+        </Label>
         <Textarea
           id="description"
           placeholder={t('descriptionPlaceholder')}
@@ -81,9 +118,11 @@ export function PropertyForm({ defaultValues, onSubmit, onCancel, submitLabel }:
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="space-y-1.5">
-          <Label htmlFor="timezone">{t('timezone')} *</Label>
+          <Label htmlFor="timezone" className="text-xs">
+            {t('timezone')} *
+          </Label>
           <Select id="timezone" {...register('timezone')}>
             {TIMEZONES.map((tz) => (
               <option key={tz} value={tz}>{tz}</option>
@@ -92,7 +131,9 @@ export function PropertyForm({ defaultValues, onSubmit, onCancel, submitLabel }:
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="currency">{t('currency')} *</Label>
+          <Label htmlFor="currency" className="text-xs">
+            {t('currency')} *
+          </Label>
           <Select id="currency" {...register('currency')}>
             {CURRENCIES.map(({ code, label }) => (
               <option key={code} value={code}>{label}</option>
@@ -101,14 +142,17 @@ export function PropertyForm({ defaultValues, onSubmit, onCancel, submitLabel }:
         </div>
       </div>
 
-      <div className="space-y-1.5">
-        <Label htmlFor="maxGuests">{t('maxGuests')}</Label>
+      <div className="max-w-[8rem] space-y-1.5">
+        <Label htmlFor="maxGuests" className="text-xs">
+          {t('maxGuests')}
+        </Label>
         <Input
           id="maxGuests"
           type="number"
           min={1}
           max={100}
           placeholder={t('maxGuestsPlaceholder')}
+          className="tabular-nums"
           {...register('maxGuests', {
             setValueAs: (v: string) => (v === '' || v === undefined ? undefined : Number(v)),
           })}

@@ -54,6 +54,16 @@
   "properties": {
     "title": "Obiekty",
     "subtitle": "Zarządzaj swoimi obiektami wynajmu",
+    "list": {
+      "searchPlaceholder": "Szukaj po nazwie, kraju, mieście, adresie…",
+      "colIndex": "Nr",
+      "colName": "Nazwa",
+      "colAddress": "Lokalizacja",
+      "colCurrency": "Waluta",
+      "colTimezone": "Strefa czasowa",
+      "colGuests": "Goście",
+      "noSearchResults": "Brak wyników"
+    },
     "addProperty": "Dodaj obiekt",
     "emptyTitle": "Brak obiektów",
     "emptyDescription": "Dodaj pierwszy obiekt, aby rozpocząć korzystanie z RentAI",
@@ -78,8 +88,13 @@
     "form": {
       "name": "Nazwa",
       "namePlaceholder": "Apartament nad morzem",
+      "country": "Kraj",
+      "countryPlaceholder": "Polska",
+      "city": "Miasto",
+      "cityPlaceholder": "Warszawa",
       "address": "Adres",
-      "addressPlaceholder": "ul. Główna 1, Miasto",
+      "addressFull": "Pełny adres",
+      "addressPlaceholder": "ulica, numer, mieszkanie",
       "description": "Opis",
       "descriptionPlaceholder": "Krótki opis obiektu dla gości",
       "timezone": "Strefa czasowa",
@@ -91,7 +106,9 @@
     },
     "detail": {
       "settings": "Ustawienia",
-      "address": "Adres",
+      "country": "Kraj",
+      "city": "Miasto",
+      "address": "Pełny adres",
       "timezone": "Strefa czasowa",
       "currency": "Waluta",
       "maxGuests": "Maks. gości",

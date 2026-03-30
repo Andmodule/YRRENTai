@@ -54,6 +54,16 @@
   "properties": {
     "title": "Propiedades",
     "subtitle": "Gestiona tus propiedades de alquiler",
+    "list": {
+      "searchPlaceholder": "Buscar por nombre, país, ciudad, dirección…",
+      "colIndex": "#",
+      "colName": "Nombre",
+      "colAddress": "Ubicación",
+      "colCurrency": "Moneda",
+      "colTimezone": "Zona horaria",
+      "colGuests": "Huéspedes",
+      "noSearchResults": "Sin resultados"
+    },
     "addProperty": "Agregar propiedad",
     "emptyTitle": "Sin propiedades",
     "emptyDescription": "Agrega tu primera propiedad para comenzar a usar RentAI",
@@ -78,8 +88,13 @@
     "form": {
       "name": "Nombre",
       "namePlaceholder": "Casa de playa",
+      "country": "País",
+      "countryPlaceholder": "España",
+      "city": "Ciudad",
+      "cityPlaceholder": "Madrid",
       "address": "Dirección",
-      "addressPlaceholder": "Calle Principal 1, Ciudad",
+      "addressFull": "Dirección completa",
+      "addressPlaceholder": "Calle, número, piso",
       "description": "Descripción",
       "descriptionPlaceholder": "Descripción breve de la propiedad para los huéspedes",
       "timezone": "Zona horaria",
@@ -91,7 +106,9 @@
     },
     "detail": {
       "settings": "Configuración",
-      "address": "Dirección",
+      "country": "País",
+      "city": "Ciudad",
+      "address": "Dirección completa",
       "timezone": "Zona horaria",
       "currency": "Moneda",
       "maxGuests": "Máx. huéspedes",

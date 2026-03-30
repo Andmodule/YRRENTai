@@ -3,6 +3,7 @@
 import { Building2, MapPin, Users, Clock } from 'lucide-react';
 import { Link } from '@/i18n/navigation';
 import type { Property } from '@/types';
+import { formatPropertyLocation } from '@/lib/format/property-location';
 
 interface PropertyCardProps {
   property: Property;
@@ -24,7 +25,7 @@ export function PropertyCard({ property }: PropertyCardProps) {
           </h3>
           <div className="mt-1 flex items-center gap-1 text-sm text-muted-foreground">
             <MapPin className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">{property.address}</span>
+            <span className="truncate">{formatPropertyLocation(property)}</span>
           </div>
         </div>
         <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-xs font-medium">

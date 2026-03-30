@@ -5,7 +5,7 @@ import { useTranslations } from 'next-intl';
 import { Building2, Plus } from 'lucide-react';
 import { useRouter } from '@/i18n/navigation';
 import { useProperties } from '@/hooks/use-properties';
-import { PropertyCard, PropertyCardSkeleton, PropertyDraftCard } from '@/components/property';
+import { PropertyListTable, PropertyTableSkeleton, PropertyDraftCard } from '@/components/property';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
 import { Button } from '@/components/ui/button';
@@ -28,7 +28,7 @@ export default function PropertiesPage() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="mx-auto max-w-6xl space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
@@ -50,11 +50,7 @@ export default function PropertiesPage() {
       )}
 
       {isLoading ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <PropertyCardSkeleton key={i} />
-          ))}
-        </div>
+        <PropertyTableSkeleton />
       ) : properties.length === 0 && !draftOpen ? (
         <EmptyState
           icon={<Building2 className="h-12 w-12" />}
@@ -68,11 +64,7 @@ export default function PropertiesPage() {
           }
         />
       ) : properties.length > 0 ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {properties.map((property) => (
-            <PropertyCard key={property.id} property={property} />
-          ))}
-        </div>
+        <PropertyListTable properties={properties} />
       ) : null}
     </div>
   );

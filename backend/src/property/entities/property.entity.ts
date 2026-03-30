@@ -17,6 +17,12 @@ export class PropertyEntity {
   @Column()
   name!: string;
 
+  @Column({ length: 100, default: '-' })
+  country!: string;
+
+  @Column({ length: 100, default: '-' })
+  city!: string;
+
   @Column()
   address!: string;
 

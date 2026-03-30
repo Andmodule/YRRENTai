@@ -54,6 +54,16 @@
   "properties": {
     "title": "Objekte",
     "subtitle": "Verwalten Sie Ihre Mietobjekte",
+    "list": {
+      "searchPlaceholder": "Suche nach Name, Land, Stadt, Adresse…",
+      "colIndex": "#",
+      "colName": "Name",
+      "colAddress": "Standort",
+      "colCurrency": "Währung",
+      "colTimezone": "Zeitzone",
+      "colGuests": "Gäste",
+      "noSearchResults": "Keine Treffer"
+    },
     "addProperty": "Objekt hinzufügen",
     "emptyTitle": "Keine Objekte vorhanden",
     "emptyDescription": "Fügen Sie Ihr erstes Objekt hinzu, um RentAI zu nutzen",
@@ -78,8 +88,13 @@
     "form": {
       "name": "Name",
       "namePlaceholder": "Strandhaus",
+      "country": "Land",
+      "countryPlaceholder": "Deutschland",
+      "city": "Stadt",
+      "cityPlaceholder": "Berlin",
       "address": "Adresse",
-      "addressPlaceholder": "Hauptstraße 1, Stadt",
+      "addressFull": "Vollständige Adresse",
+      "addressPlaceholder": "Straße, Hausnummer, Etage",
       "description": "Beschreibung",
       "descriptionPlaceholder": "Kurze Beschreibung des Objekts für Gäste",
       "timezone": "Zeitzone",
@@ -91,7 +106,9 @@
     },
     "detail": {
       "settings": "Einstellungen",
-      "address": "Adresse",
+      "country": "Land",
+      "city": "Stadt",
+      "address": "Vollständige Adresse",
       "timezone": "Zeitzone",
       "currency": "Währung",
       "maxGuests": "Max. Gäste",

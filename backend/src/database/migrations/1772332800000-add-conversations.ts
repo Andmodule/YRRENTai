@@ -5,7 +5,7 @@ export class AddConversations1772332800000 implements MigrationInterface {
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
-      CREATE TABLE "conversations" (
+      CREATE TABLE IF NOT EXISTS "conversations" (
         "id"                  uuid DEFAULT gen_random_uuid() PRIMARY KEY,
         "propertyId"          uuid NOT NULL REFERENCES "properties"("id") ON DELETE CASCADE,
         "channel"             varchar(30) NOT NULL DEFAULT 'web_app',
@@ -19,17 +19,17 @@ export class AddConversations1772332800000 implements MigrationInterface {
     `);
 
     await queryRunner.query(
-      `CREATE INDEX "IDX_conv_property_status" ON "conversations" ("propertyId", "status")`,
+      `CREATE INDEX IF NOT EXISTS "IDX_conv_property_status" ON "conversations" ("propertyId", "status")`,
     );
     await queryRunner.query(
-      `CREATE INDEX "IDX_conv_lastActivity" ON "conversations" ("lastActivityAt")`,
+      `CREATE INDEX IF NOT EXISTS "IDX_conv_lastActivity" ON "conversations" ("lastActivityAt")`,
     );
 
     await queryRunner.query(
-      `ALTER TABLE "chat_messages" ADD COLUMN "conversationId" uuid REFERENCES "conversations"("id") ON DELETE SET NULL`,
+      `ALTER TABLE "chat_messages" ADD COLUMN IF NOT EXISTS "conversationId" uuid REFERENCES "conversations"("id") ON DELETE SET NULL`,
     );
     await queryRunner.query(
-      `CREATE INDEX "IDX_msg_conversation" ON "chat_messages" ("conversationId")`,
+      `CREATE INDEX IF NOT EXISTS "IDX_msg_conversation" ON "chat_messages" ("conversationId")`,
     );
 
     await queryRunner.query(
@@ -39,13 +39,22 @@ export class AddConversations1772332800000 implements MigrationInterface {
     await queryRunner.query(`
       INSERT INTO "conversations" ("propertyId", "channel", "status", "lastActivityAt", "createdAt")
       SELECT
-        m."propertyId",
+        sub."propertyId",
         'web_app',
         'ai_handling',
-        MAX(m."createdAt"),
-        MIN(m."createdAt")
-      FROM "chat_messages" m
-      GROUP BY m."propertyId"
+        sub."lastActivityAt",
+        sub."createdAt"
+      FROM (
+        SELECT
+          m."propertyId",
+          MAX(m."createdAt") AS "lastActivityAt",
+          MIN(m."createdAt") AS "createdAt"
+        FROM "chat_messages" m
+        GROUP BY m."propertyId"
+      ) sub
+      WHERE NOT EXISTS (
+        SELECT 1 FROM "conversations" c WHERE c."propertyId" = sub."propertyId"
+      )
     `);
 
     await queryRunner.query(`

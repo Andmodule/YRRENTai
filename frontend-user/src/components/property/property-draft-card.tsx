@@ -32,6 +32,8 @@ export function PropertyDraftCard({ onCreate, onDiscard }: PropertyDraftCardProp
     resolver: zodResolver(createPropertySchema),
     defaultValues: {
       name: '',
+      country: '',
+      city: '',
       address: '',
       timezone: 'UTC',
       currency: 'USD',
@@ -72,9 +74,38 @@ export function PropertyDraftCard({ onCreate, onDiscard }: PropertyDraftCardProp
           )}
         </div>
 
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="space-y-1">
+            <Label htmlFor="draft-country" className="text-xs">
+              {tf('country')} *
+            </Label>
+            <Input
+              id="draft-country"
+              placeholder={tf('countryPlaceholder')}
+              aria-invalid={!!errors.country}
+              {...register('country')}
+            />
+            {errors.country && (
+              <p className="text-xs text-destructive">{errors.country.message}</p>
+            )}
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="draft-city" className="text-xs">
+              {tf('city')} *
+            </Label>
+            <Input
+              id="draft-city"
+              placeholder={tf('cityPlaceholder')}
+              aria-invalid={!!errors.city}
+              {...register('city')}
+            />
+            {errors.city && <p className="text-xs text-destructive">{errors.city.message}</p>}
+          </div>
+        </div>
+
         <div className="space-y-1">
           <Label htmlFor="draft-address" className="text-xs">
-            {tf('address')} *
+            {tf('addressFull')} *
           </Label>
           <Input
             id="draft-address"
@@ -114,7 +145,7 @@ export function PropertyDraftCard({ onCreate, onDiscard }: PropertyDraftCardProp
           </div>
         </div>
 
-        <div className="space-y-1">
+        <div className="max-w-[8rem] space-y-1">
           <Label htmlFor="draft-guests" className="text-xs">
             {tf('maxGuests')}
           </Label>
@@ -123,6 +154,7 @@ export function PropertyDraftCard({ onCreate, onDiscard }: PropertyDraftCardProp
             type="number"
             min={1}
             max={100}
+            className="tabular-nums"
             placeholder={tf('maxGuestsPlaceholder')}
             {...register('maxGuests', {
               setValueAs: (v: string) => (v === '' || v === undefined ? undefined : Number(v)),

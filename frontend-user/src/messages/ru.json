@@ -54,6 +54,16 @@
   "properties": {
     "title": "Объекты",
     "subtitle": "Управляйте своими арендными объектами",
+    "list": {
+      "searchPlaceholder": "Поиск по названию, стране, городу, адресу…",
+      "colIndex": "№",
+      "colName": "Название",
+      "colAddress": "Локация",
+      "colCurrency": "Валюта",
+      "colTimezone": "Часовой пояс",
+      "colGuests": "Гости",
+      "noSearchResults": "Ничего не найдено"
+    },
     "addProperty": "Добавить объект",
     "emptyTitle": "Нет объектов",
     "emptyDescription": "Добавьте первый объект, чтобы начать работу с RentAI",
@@ -78,8 +88,13 @@
     "form": {
       "name": "Название",
       "namePlaceholder": "Апартаменты на Арбате",
+      "country": "Страна",
+      "countryPlaceholder": "Россия",
+      "city": "Город",
+      "cityPlaceholder": "Москва",
       "address": "Адрес",
-      "addressPlaceholder": "ул. Тверская, 1, Москва",
+      "addressFull": "Адрес (полный)",
+      "addressPlaceholder": "ул. Тверская, 1, подъезд, кв.",
       "description": "Описание",
       "descriptionPlaceholder": "Краткое описание объекта для гостей",
       "timezone": "Часовой пояс",
@@ -91,7 +106,9 @@
     },
     "detail": {
       "settings": "Настройки",
-      "address": "Адрес",
+      "country": "Страна",
+      "city": "Город",
+      "address": "Адрес (полный)",
       "timezone": "Часовой пояс",
       "currency": "Валюта",
       "maxGuests": "Макс. гостей",
