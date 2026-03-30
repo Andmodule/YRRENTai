@@ -39,17 +39,16 @@
     "viewAll": "Alle anzeigen",
     "analytics": {
       "title": "Antwort-Analytik",
-      "subtitle": "Assistentenantworten an Gäste (KI vs manuell) im Zeitraum",
-      "periodLabel": "Zeitraum",
-      "periodLast30": "Letzte 30 Tage",
-      "periodYearStart": "Seit Jahresbeginn",
-      "periodCustom": "Eigener Zeitraum",
+      "subtitle": "Assistentenantworten an Gäste (KI vs. manuell) im gewählten Zeitraum",
+      "period30d": "30d",
+      "periodChoose": "Wählen",
+      "ariaPeriod": "Zeitraum für die Analytik",
       "customFrom": "Von",
       "customTo": "Bis",
+      "invalidRange": "Startdatum liegt nach dem Enddatum",
       "aiReplies": "KI-Antworten",
       "manualReplies": "Manuelle Antworten",
-      "aiShare": "KI-Anteil",
-      "invalidRange": "Startdatum liegt nach dem Enddatum"
+      "aiShare": "KI-Anteil"
     }
   },
   "properties": {
@@ -256,6 +255,7 @@
     "guestInputPlaceholder": "Gastfrage eingeben…",
     "guestAsUserHint": "Nachrichten gehen in diese Konversation wie eine Gastfrage.",
     "staffReply": "Antwort Manager",
+    "operatorReplyBadge": "Antwort vom Operator",
     "dev": {
       "panelSummary": "Dev: Gast-Test",
       "newGuestThread": "Neuer Gast-Thread",

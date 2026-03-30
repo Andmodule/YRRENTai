@@ -21,27 +21,30 @@ export function InboxCard({ conversation, isActive, onClick }: InboxCardProps) {
       type="button"
       onClick={onClick}
       className={cn(
-        'w-full text-left rounded-lg border border-[#dbeafe] p-3 transition-colors dark:border-indigo-900/45',
-        isActive && 'bg-primary/5 ring-1 ring-[#dbeafe] dark:ring-indigo-900/45',
-        !isActive && 'hover:bg-accent/50',
-        isUrgent && !isActive && 'bg-amber-50/50 dark:bg-amber-950/20',
+        'w-full text-left rounded-lg border p-3 transition-colors',
+        isActive
+          ? 'bg-primary/15 border-primary/30 ring-1 ring-primary/20'
+          : 'border-slate-200 hover:bg-slate-50 hover:border-slate-300 dark:border-slate-700/80 dark:hover:bg-slate-800/80 dark:hover:border-slate-600',
+        isUrgent &&
+          !isActive &&
+          'border-amber-400/60 bg-amber-50/80 hover:bg-amber-100/80 dark:border-amber-500/30 dark:bg-amber-950/20 dark:hover:bg-amber-900/30',
       )}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="min-w-0 flex-1 truncate text-sm font-normal text-foreground">
+            <span className="min-w-0 flex-1 truncate text-sm font-normal text-foreground dark:text-slate-200">
               {formatGuestAndProperty(conversation.externalGuestKey, conversation.propertyName)}
             </span>
             <ConversationStatusDot status={conversation.status} />
           </div>
           {conversation.lastMessagePreview && (
-            <p className="mt-1 truncate text-xs text-muted-foreground">
+            <p className="mt-1 truncate text-xs text-muted-foreground dark:text-slate-500">
               {conversation.lastMessagePreview}
             </p>
           )}
         </div>
-        <span className="shrink-0 pt-0.5 text-[11px] tabular-nums text-muted-foreground">
+        <span className="shrink-0 pt-0.5 text-[11px] tabular-nums text-muted-foreground dark:text-slate-500">
           {formatTelegramStyleTime(conversation.lastActivityAt, locale)}
         </span>
       </div>

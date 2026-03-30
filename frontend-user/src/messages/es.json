@@ -39,17 +39,16 @@
     "viewAll": "Ver todas",
     "analytics": {
       "title": "Análisis de respuestas",
-      "subtitle": "Respuestas del asistente a huéspedes (IA vs manual) en el rango",
-      "periodLabel": "Período",
-      "periodLast30": "Últimos 30 días",
-      "periodYearStart": "Desde inicio de año",
-      "periodCustom": "Rango personalizado",
+      "subtitle": "Respuestas del asistente a huéspedes (IA vs manual) en el rango elegido",
+      "period30d": "30d",
+      "periodChoose": "Elegir",
+      "ariaPeriod": "Rango de tiempo del análisis",
       "customFrom": "Desde",
       "customTo": "Hasta",
+      "invalidRange": "La fecha inicial es posterior a la final",
       "aiReplies": "Respuestas IA",
       "manualReplies": "Respuestas manuales",
-      "aiShare": "Cuota IA",
-      "invalidRange": "La fecha inicial es posterior a la final"
+      "aiShare": "Cuota IA"
     }
   },
   "properties": {
@@ -256,6 +255,7 @@
     "guestInputPlaceholder": "Pregunta del huésped…",
     "guestAsUserHint": "Los mensajes van a esta conversación como pregunta del huésped.",
     "staffReply": "Respuesta del gestor",
+    "operatorReplyBadge": "Respondió el operador",
     "dev": {
       "panelSummary": "Dev: prueba de huésped",
       "newGuestThread": "Nuevo hilo de huésped",

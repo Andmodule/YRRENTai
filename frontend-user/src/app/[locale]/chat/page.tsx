@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Building2, Inbox } from 'lucide-react';
 import { useRouter } from '@/i18n/navigation';
@@ -19,7 +19,12 @@ import { Link } from '@/i18n/navigation';
 import { CHAT_FRAME } from '@/components/inbox/inbox-ui-tokens';
 import { cn } from '@/lib/utils';
 import { connectChatSocket, disconnectChatSocket } from '@/lib/socket/client';
-import type { ConversationDto } from '@/hooks/use-conversations';
+import type { ConversationStatus } from '@rentai/shared/constants';
+import {
+  useConversations,
+  sortConversationsByActivity,
+  type ConversationDto,
+} from '@/hooks/use-conversations';
 import { formatGuestAndProperty } from '@/lib/format/conversation-meta';
 import { ConversationStatusDot } from '@/components/inbox/conversation-status-dot';
 
@@ -32,7 +37,52 @@ export default function ChatPage() {
   const tChat = useTranslations('chat');
   const router = useRouter();
   const { properties, isLoading, isError: propertiesError } = useProperties();
-  const [activeConversation, setActiveConversation] = useState<ConversationDto | null>(null);
+  const { conversations, isLoading: inboxLoading, mutate: mutateConversations } = useConversations({
+    limit: 50,
+  });
+
+  /** Сразу после POST ответа — без ожидания сокета (иначе лаг точки и плейсхолдера). */
+  const handleStaffReplySuccess = useCallback(
+    (conversationId: string, content: string) => {
+      const preview = content.slice(0, 200);
+      const now = new Date().toISOString();
+      void mutateConversations(
+        (current) => {
+          if (!current?.data) return current;
+          const nextData = sortConversationsByActivity(
+            current.data.map((c) =>
+              c.id === conversationId
+                ? {
+                    ...c,
+                    status: 'resolved' as ConversationStatus,
+                    lastMessagePreview: preview,
+                    lastActivityAt: now,
+                  }
+                : c,
+            ),
+          );
+          return { ...current, data: nextData };
+        },
+        /** Сначала синхронный патч кэша (все точки из одного источника), затем фоновый GET */
+        { revalidate: true },
+      );
+    },
+    [mutateConversations],
+  );
+  /** id из списка SWR — активный чат всегда берётся из свежих данных, иначе точка статуса «застывает» */
+  const [activeId, setActiveId] = useState<string | null>(null);
+
+  const activeConversation = useMemo(() => {
+    if (!activeId) return null;
+    return conversations.find((c) => c.id === activeId) ?? null;
+  }, [activeId, conversations]);
+
+  useEffect(() => {
+    if (!activeId || inboxLoading) return;
+    if (!conversations.some((c) => c.id === activeId)) {
+      setActiveId(null);
+    }
+  }, [activeId, conversations, inboxLoading]);
 
   useEffect(() => {
     let cancelled = false;
@@ -59,12 +109,12 @@ export default function ChatPage() {
   }, []);
 
   const handleSelect = useCallback((conv: ConversationDto) => {
-    setActiveConversation(conv);
+    setActiveId(conv.id);
   }, []);
 
   const handleMobileBack = useCallback(() => {
-    if (activeConversation) {
-      setActiveConversation(null);
+    if (activeId) {
+      setActiveId(null);
       return;
     }
     if (typeof window !== 'undefined' && window.history.length > 1) {
@@ -72,23 +122,22 @@ export default function ChatPage() {
     } else {
       router.push('/dashboard');
     }
-  }, [activeConversation, router]);
+  }, [activeId, router]);
 
   if (isLoading) {
     return (
       <div
         className={cn(
-          'flex h-[calc(100vh-8rem)] gap-0 overflow-hidden rounded-xl bg-gray-50 shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:bg-muted/25',
-          CHAT_FRAME.box,
+          'flex h-full min-h-[280px] gap-0 overflow-hidden rounded-xl border border-slate-200 bg-gray-50 shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:border-slate-800 dark:bg-slate-900/50',
         )}
       >
-        <div className={cn('w-80 bg-background p-3 space-y-2', CHAT_FRAME.r)}>
+        <div className="w-80 border-r border-slate-200 bg-background p-3 space-y-2 dark:border-slate-800 dark:bg-slate-900/40">
           {Array.from({ length: 6 }).map((_, i) => (
             <Skeleton key={i} className="h-16 w-full rounded-lg" />
           ))}
         </div>
-        <div className="flex-1 bg-background p-6">
-          <Skeleton className="h-full w-full" />
+        <div className="flex-1 bg-background p-6 dark:bg-slate-900/30">
+          <Skeleton className="h-full w-full rounded-xl" />
         </div>
       </div>
     );
@@ -129,47 +178,52 @@ export default function ChatPage() {
   ) : undefined;
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-1 flex-col gap-0 overflow-hidden lg:gap-3 lg:h-[calc(100vh-8rem)]">
+    <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col gap-0 overflow-hidden lg:gap-3">
       <ChatMobileNav
         title={mobileTitle}
         onBack={handleMobileBack}
         right={mobileRight}
       />
 
-      <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden max-lg:pt-14">
-        {propertiesError && <BackendUnreachableBanner />}
-
-        {showGuestSimulator && (
-          <DevGuestSimulator
-            properties={properties}
-            syncedPropertyId={defaultPropertyId}
-            activeConversation={activeConversation}
-          />
+      <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden max-lg:pt-14">
+        {propertiesError && (
+          <div className="shrink-0">
+            <BackendUnreachableBanner />
+          </div>
         )}
 
-        {/* Master-detail — full bleed on mobile, framed on lg+ */}
+        {showGuestSimulator && (
+          <div className="shrink-0">
+            <DevGuestSimulator
+              properties={properties}
+              syncedPropertyId={defaultPropertyId}
+              activeConversation={activeConversation}
+            />
+          </div>
+        )}
+
+        {/* Master-detail — светлая тема как раньше (серый фон + белые панели); тёмная — сланец, не чистый чёрный */}
         <div
           className={cn(
-            'flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden bg-gray-50 shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:bg-muted/25',
+            'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden',
+            'border border-slate-200 bg-gray-50 shadow-[0_1px_2px_rgba(15,23,42,0.04)]',
+            'dark:border-slate-800 dark:bg-slate-900/45 dark:shadow-none',
             CHAT_FRAME.lgBox,
           )}
         >
-        <div
-          className={cn(
-            'flex min-h-0 w-full min-w-0 flex-1 flex-col lg:flex-row',
-            'bg-background',
-          )}
-        >
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background lg:flex-row dark:bg-slate-900/35">
           {/* List panel */}
           <div
             className={cn(
-              'flex min-h-0 w-full shrink-0 flex-col overflow-y-auto bg-background lg:w-80',
+              'flex min-h-0 w-full shrink-0 flex-col overflow-y-auto bg-background lg:h-auto lg:max-h-full lg:w-80',
               CHAT_FRAME.rLg,
               activeConversation && 'hidden lg:flex',
             )}
           >
             <InboxList
-              activeId={activeConversation?.id ?? null}
+              conversations={conversations}
+              isLoading={inboxLoading}
+              activeId={activeId}
               onSelect={handleSelect}
             />
           </div>
@@ -182,7 +236,11 @@ export default function ChatPage() {
             )}
           >
             {activeConversation ? (
-              <ConversationWindow key={activeConversation.id} conversation={activeConversation} />
+              <ConversationWindow
+                key={activeConversation.id}
+                conversation={activeConversation}
+                onStaffReplySuccess={handleStaffReplySuccess}
+              />
             ) : (
               <div className="flex h-full flex-col items-center justify-center p-6 text-center">
                 <Inbox className="mb-3 h-12 w-12 text-muted-foreground/30" />

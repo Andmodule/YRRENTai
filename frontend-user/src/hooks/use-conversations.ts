@@ -4,7 +4,7 @@ import { useCallback, useEffect } from 'react';
 import useSWR from 'swr';
 import { fetcher } from '@/lib/api/fetcher';
 import { apiClient } from '@/lib/api/client';
-import { getChatSocket } from '@/lib/socket/client';
+import { connectChatSocket } from '@/lib/socket/client';
 import type { ConversationStatus } from '@rentai/shared/constants';
 
 export interface ConversationDto {
@@ -24,6 +24,20 @@ interface ConversationsPage {
   meta: { page: number; limit: number; total: number; totalPages: number };
 }
 
+/** Payload с бэкенда (`chat.gateway` → `conversation:updated`) */
+export interface ConversationSocketPayload {
+  conversationId: string;
+  lastMessagePreview?: string;
+  lastActivityAt?: string;
+  status?: ConversationStatus;
+}
+
+export function sortConversationsByActivity(rows: ConversationDto[]): ConversationDto[] {
+  return [...rows].sort(
+    (a, b) => new Date(b.lastActivityAt).getTime() - new Date(a.lastActivityAt).getTime(),
+  );
+}
+
 interface UseConversationsOpts {
   status?: ConversationStatus;
   propertyId?: string;
@@ -40,19 +54,76 @@ export function useConversations(opts: UseConversationsOpts = {}) {
 
   const key = `/chats/conversations?${params.toString()}`;
 
-  const { data, error, isLoading, mutate } = useSWR<ConversationsPage>(key, fetcher);
+  const { data, error, isLoading, mutate } = useSWR<ConversationsPage>(key, fetcher, {
+    /** Иначе refetch после сокета может быть отложен до 2s — лаг точек и новых чатов */
+    dedupingInterval: 0,
+  });
 
+  /**
+   * Нельзя полагаться на getChatSocket() в первом рендере: эффекты дочерних компонентов
+   * (InboxList) выполняются раньше родительского ChatPage, где вызывается connectChatSocket().
+   * Без явного connect подписка на conversation:updated не ставилась — список не обновлялся.
+   *
+   * Payload сразу патчит кэш (точки/превью без ожидания GET); для нового чата в списке — revalidate.
+   */
   useEffect(() => {
-    const socket = getChatSocket();
-    if (!socket) return;
+    let cancelled = false;
+    let detach: (() => void) | undefined;
 
-    function handleUpdate() {
-      mutate();
-    }
+    connectChatSocket()
+      .then((socket) => {
+        if (cancelled) return;
 
-    socket.on('conversation:updated', handleUpdate);
+        function handleConversationUpdated(payload: ConversationSocketPayload) {
+          if (!payload?.conversationId) {
+            void mutate(undefined, { revalidate: true });
+            return;
+          }
+
+          void mutate(
+            (current) => {
+              if (!current?.data) return current;
+              const idx = current.data.findIndex((c) => c.id === payload.conversationId);
+              /** Новый чат ещё не в кэше — только revalidate (ниже) подтянет строку */
+              if (idx < 0) {
+                return current;
+              }
+              const row = current.data[idx];
+              if (!row) return current;
+              const nextRow: ConversationDto = {
+                ...row,
+                status: payload.status ?? row.status,
+                lastMessagePreview:
+                  payload.lastMessagePreview !== undefined
+                    ? payload.lastMessagePreview
+                    : row.lastMessagePreview,
+                lastActivityAt: payload.lastActivityAt ?? row.lastActivityAt,
+              };
+              const nextData = [...current.data];
+              nextData[idx] = nextRow;
+              return { ...current, data: sortConversationsByActivity(nextData) };
+            },
+            { revalidate: true },
+          );
+        }
+
+        /** После reconnect — подтянуть список, если события пропустили. */
+        function handleReconnect() {
+          void mutate(undefined, { revalidate: true });
+        }
+
+        socket.on('conversation:updated', handleConversationUpdated);
+        socket.on('reconnect', handleReconnect);
+        detach = () => {
+          socket.off('conversation:updated', handleConversationUpdated);
+          socket.off('reconnect', handleReconnect);
+        };
+      })
+      .catch(() => {});
+
     return () => {
-      socket.off('conversation:updated', handleUpdate);
+      cancelled = true;
+      detach?.();
     };
   }, [mutate]);
 

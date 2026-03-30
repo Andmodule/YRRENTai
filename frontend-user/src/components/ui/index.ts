@@ -1,4 +1,5 @@
 export { Button } from './button';
+export { ThemeToggle } from './theme-toggle';
 export { Input } from './input';
 export { Label } from './label';
 export { Textarea } from './textarea';

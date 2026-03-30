@@ -7,6 +7,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { apiClient } from '@/lib/api/client';
 import { useRouter } from '@/i18n/navigation';
 import { Button } from '@/components/ui/button';
+import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -30,7 +31,9 @@ export function Header() {
   return (
     <header
       className={cn(
-        'sticky top-0 z-30 flex h-16 shrink-0 items-center gap-4 border-b border-[#dbeafe] bg-background px-6 dark:border-b-indigo-900/45',
+        'sticky top-0 z-30 flex h-16 shrink-0 items-center gap-4',
+        'border-b border-slate-200 bg-background/95 backdrop-blur-sm dark:border-slate-800 dark:bg-slate-900/85',
+        'px-6',
         isChat && 'hidden lg:flex',
       )}
     >
@@ -38,7 +41,7 @@ export function Header() {
         variant="ghost"
         size="icon"
         onClick={toggleSidebar}
-        className="lg:hidden"
+        className="lg:hidden text-slate-400 hover:text-white hover:bg-slate-800"
         aria-label="Toggle sidebar"
       >
         <Menu className="h-5 w-5" />
@@ -47,19 +50,31 @@ export function Header() {
       <div className="flex-1" />
 
       {user && (
-        <div className="flex items-center gap-3">
-          <div className="hidden items-center gap-2 sm:flex">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary">
+        <div className="flex items-center gap-2">
+          {/* User info */}
+          <div className="hidden items-center gap-2.5 sm:flex">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/15 border border-primary/20 text-primary">
               <User className="h-4 w-4" />
             </div>
             <div className="hidden flex-col md:flex">
-              <span className="text-sm font-medium leading-none">
+              <span className="text-sm font-medium leading-none text-slate-200">
                 {user.firstName} {user.lastName}
               </span>
-              <span className="mt-0.5 text-xs text-muted-foreground">{user.email}</span>
+              <span className="mt-0.5 text-xs text-slate-500">{user.email}</span>
             </div>
           </div>
-          <Button variant="ghost" size="icon" onClick={handleLogout} aria-label="Sign out">
+
+          {/* Theme toggle */}
+          <ThemeToggle />
+
+          {/* Logout */}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleLogout}
+            aria-label="Sign out"
+            className="text-slate-400 hover:text-white hover:bg-slate-800"
+          >
             <LogOut className="h-4 w-4" />
           </Button>
         </div>

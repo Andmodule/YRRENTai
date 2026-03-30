@@ -4,6 +4,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Socket } from 'socket.io-client';
 import { connectChatSocket, getChatSocket } from '@/lib/socket/client';
 
+/** Mirrors backend `chat_messages.source` — staff = human reply from inbox. */
+export type ChatMessageSource = 'ai' | 'staff';
+
 export interface ChatMessage {
   id: string;
   propertyId: string;
@@ -11,6 +14,8 @@ export interface ChatMessage {
   userId?: string | null;
   content: string;
   role: 'user' | 'assistant' | 'system';
+  /** Present for messages loaded from API / socket; staff = manual manager reply. */
+  source?: ChatMessageSource;
   createdAt: string;
 }
 

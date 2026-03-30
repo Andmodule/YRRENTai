@@ -5,6 +5,7 @@ import { notFound } from 'next/navigation';
 import { Suspense } from 'react';
 import { Toaster } from 'sonner';
 import { routing } from '@/i18n/routing';
+import { ThemeProvider } from '@/components/providers/theme-provider';
 import '@/app/globals.css';
 
 export const metadata: Metadata = {
@@ -29,12 +30,14 @@ export default async function LocaleLayout({ children, params }: LayoutProps) {
   return (
     <html lang={locale} suppressHydrationWarning>
       <body className="min-h-screen bg-background text-foreground antialiased">
-        <NextIntlClientProvider messages={messages}>
-          <Suspense fallback={null}>
-            <Toaster richColors position="top-center" />
-          </Suspense>
-          {children}
-        </NextIntlClientProvider>
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange={false}>
+          <NextIntlClientProvider messages={messages}>
+            <Suspense fallback={null}>
+              <Toaster richColors position="top-center" />
+            </Suspense>
+            {children}
+          </NextIntlClientProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

@@ -2,21 +2,20 @@
 
 import { useTranslations } from 'next-intl';
 import { Inbox } from 'lucide-react';
-import { useConversations, type ConversationDto } from '@/hooks/use-conversations';
+import type { ConversationDto } from '@/hooks/use-conversations';
 import { InboxCard } from './inbox-card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/ui/empty-state';
 
 interface InboxListProps {
+  conversations: ConversationDto[];
+  isLoading: boolean;
   activeId: string | null;
   onSelect: (conv: ConversationDto) => void;
 }
 
-export function InboxList({ activeId, onSelect }: InboxListProps) {
+export function InboxList({ conversations, isLoading, activeId, onSelect }: InboxListProps) {
   const t = useTranslations('inbox');
-  const { conversations, isLoading } = useConversations({
-    limit: 50,
-  });
 
   if (isLoading) {
     return (

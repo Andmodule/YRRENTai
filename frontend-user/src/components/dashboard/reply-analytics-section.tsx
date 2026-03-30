@@ -2,22 +2,15 @@
 
 import { useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import {
-  endOfDay,
-  format,
-  parse,
-  startOfDay,
-  startOfYear,
-  subDays,
-} from 'date-fns';
+import { endOfDay, format, parse, startOfDay, subDays } from 'date-fns';
 import { Bot, Percent, UserRound } from 'lucide-react';
 import { useReplyAnalytics } from '@/hooks/use-reply-analytics';
 import { Label } from '@/components/ui/label';
-import { Select } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
+import { cn } from '@/lib/utils';
 
-type Preset = 'last30' | 'yearStart' | 'custom';
+type Preset = 'last30' | 'custom';
 
 export function ReplyAnalyticsSection() {
   const t = useTranslations('dashboard.analytics');
@@ -27,12 +20,7 @@ export function ReplyAnalyticsSection() {
 
   const range = useMemo((): { from: Date; to: Date } | null => {
     const now = new Date();
-    if (preset === 'last30') {
-      return { from: subDays(now, 30), to: now };
-    }
-    if (preset === 'yearStart') {
-      return { from: startOfYear(now), to: now };
-    }
+    if (preset === 'last30') return { from: subDays(now, 30), to: now };
     if (preset === 'custom' && customFrom && customTo) {
       const from = startOfDay(parse(customFrom, 'yyyy-MM-dd', new Date()));
       const to = endOfDay(parse(customTo, 'yyyy-MM-dd', new Date()));
@@ -44,8 +32,7 @@ export function ReplyAnalyticsSection() {
 
   const { data, isLoading, isValidating } = useReplyAnalytics(range);
 
-  function onPresetChange(value: string) {
-    const next = value as Preset;
+  function selectPreset(next: Preset) {
     setPreset(next);
     if (next === 'custom') {
       const now = new Date();
@@ -58,116 +45,133 @@ export function ReplyAnalyticsSection() {
   const invalidCustom =
     preset === 'custom' && Boolean(customFrom && customTo) && range === null;
   const showSkeleton =
-    !invalidCustom &&
-    (incompleteCustom || (range != null && (isLoading || isValidating)));
+    !invalidCustom && (incompleteCustom || (range != null && (isLoading || isValidating)));
+
+  const analyticsCards = [
+    {
+      key: 'ai',
+      icon: Bot,
+      accent: 'bg-blue-500/15 border border-blue-500/30 text-blue-400',
+      value: data?.ai ?? 0,
+      label: t('aiReplies'),
+    },
+    {
+      key: 'staff',
+      icon: UserRound,
+      accent: 'bg-amber-500/15 border border-amber-500/30 text-amber-400',
+      value: data?.staff ?? 0,
+      label: t('manualReplies'),
+    },
+    {
+      key: 'percent',
+      icon: Percent,
+      accent: 'bg-violet-500/15 border border-violet-500/30 text-violet-400',
+      value: data?.aiPercent == null ? '—' : `${data.aiPercent}%`,
+      label: t('aiShare'),
+    },
+  ];
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h2 className="text-base font-semibold">{t('title')}</h2>
-          <p className="mt-0.5 text-sm text-muted-foreground">{t('subtitle')}</p>
+    <section className="space-y-4 rounded-xl border border-slate-800/80 bg-slate-950/20 p-5 sm:p-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h2 className="text-xs font-semibold uppercase tracking-widest text-slate-500">
+            {t('title')}
+          </h2>
+          <p className="mt-1 text-sm text-slate-400">{t('subtitle')}</p>
         </div>
-        <div className="flex w-full flex-col gap-2 sm:w-auto sm:min-w-[220px]">
-          <Label htmlFor="analytics-period" className="text-xs text-muted-foreground">
-            {t('periodLabel')}
-          </Label>
-          <Select
-            id="analytics-period"
-            value={preset}
-            onChange={(e) => onPresetChange(e.target.value)}
+
+        <div className="flex shrink-0 flex-col items-stretch gap-2 sm:items-end">
+          <div
+            className="inline-flex rounded-md border border-slate-700/80 bg-slate-900/40 p-0.5"
+            role="group"
+            aria-label={t('ariaPeriod')}
           >
-            <option value="last30">{t('periodLast30')}</option>
-            <option value="yearStart">{t('periodYearStart')}</option>
-            <option value="custom">{t('periodCustom')}</option>
-          </Select>
+            <button
+              type="button"
+              onClick={() => selectPreset('last30')}
+              className={cn(
+                'rounded px-2.5 py-1.5 text-xs tabular-nums transition-colors',
+                preset === 'last30'
+                  ? 'bg-slate-700/70 text-slate-200'
+                  : 'text-slate-500 hover:bg-slate-800/80 hover:text-slate-300',
+              )}
+            >
+              {t('period30d')}
+            </button>
+            <button
+              type="button"
+              onClick={() => selectPreset('custom')}
+              className={cn(
+                'rounded px-2.5 py-1.5 text-xs transition-colors',
+                preset === 'custom'
+                  ? 'bg-slate-700/70 text-slate-200'
+                  : 'text-slate-500 hover:bg-slate-800/80 hover:text-slate-300',
+              )}
+            >
+              {t('periodChoose')}
+            </button>
+          </div>
+
+          {preset === 'custom' && (
+            <div className="flex flex-wrap items-end gap-3 sm:justify-end">
+              <div className="space-y-1">
+                <Label htmlFor="analytics-from" className="text-[10px] font-normal text-slate-500">
+                  {t('customFrom')}
+                </Label>
+                <Input
+                  id="analytics-from"
+                  type="date"
+                  value={customFrom}
+                  onChange={(e) => setCustomFrom(e.target.value)}
+                  className="h-8 w-[140px] border-slate-700/80 bg-slate-900/50 text-xs text-slate-300"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="analytics-to" className="text-[10px] font-normal text-slate-500">
+                  {t('customTo')}
+                </Label>
+                <Input
+                  id="analytics-to"
+                  type="date"
+                  value={customTo}
+                  onChange={(e) => setCustomTo(e.target.value)}
+                  className="h-8 w-[140px] border-slate-700/80 bg-slate-900/50 text-xs text-slate-300"
+                />
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
-      {preset === 'custom' && (
-        <div className="flex flex-wrap items-end gap-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="analytics-from" className="text-xs text-muted-foreground">
-              {t('customFrom')}
-            </Label>
-            <Input
-              id="analytics-from"
-              type="date"
-              value={customFrom}
-              onChange={(e) => setCustomFrom(e.target.value)}
-              className="w-[160px]"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="analytics-to" className="text-xs text-muted-foreground">
-              {t('customTo')}
-            </Label>
-            <Input
-              id="analytics-to"
-              type="date"
-              value={customTo}
-              onChange={(e) => setCustomTo(e.target.value)}
-              className="w-[160px]"
-            />
-          </div>
-        </div>
+      {invalidCustom && (
+        <p className="text-xs text-destructive">{t('invalidRange')}</p>
       )}
 
-      {invalidCustom ? (
-        <p className="text-sm text-destructive">{t('invalidRange')}</p>
-      ) : null}
-
       <div className="grid gap-4 sm:grid-cols-3">
-        <div className="flex items-center gap-4 rounded-lg border bg-card p-5 shadow-sm">
-          <div className="flex h-11 w-11 items-center justify-center rounded-lg text-blue-600 bg-blue-50">
-            <Bot className="h-5 w-5" />
+        {analyticsCards.map(({ key, icon: Icon, accent, value, label }) => (
+          <div
+            key={key}
+            className="flex items-center gap-4 rounded-xl border border-slate-700/80 bg-slate-800/50 p-5 shadow-[0_1px_0_rgba(255,255,255,0.04)]"
+          >
+            <div
+              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg ${accent}`}
+            >
+              <Icon className="h-5 w-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs uppercase tracking-wide text-slate-400">{label}</p>
+              {invalidCustom ? (
+                <p className="mt-1 text-2xl font-bold text-white">—</p>
+              ) : showSkeleton ? (
+                <Skeleton className="mt-1 h-7 w-12 bg-slate-700" />
+              ) : (
+                <p className="mt-1 text-2xl font-bold tabular-nums text-white">{value}</p>
+              )}
+            </div>
           </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-sm text-muted-foreground">{t('aiReplies')}</p>
-            {invalidCustom ? (
-              <p className="mt-1 text-2xl font-semibold">—</p>
-            ) : showSkeleton ? (
-              <Skeleton className="mt-1 h-8 w-12" />
-            ) : (
-              <p className="text-2xl font-semibold tabular-nums">{data?.ai ?? 0}</p>
-            )}
-          </div>
-        </div>
-
-        <div className="flex items-center gap-4 rounded-lg border bg-card p-5 shadow-sm">
-          <div className="flex h-11 w-11 items-center justify-center rounded-lg text-amber-700 bg-amber-50">
-            <UserRound className="h-5 w-5" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-sm text-muted-foreground">{t('manualReplies')}</p>
-            {invalidCustom ? (
-              <p className="mt-1 text-2xl font-semibold">—</p>
-            ) : showSkeleton ? (
-              <Skeleton className="mt-1 h-8 w-12" />
-            ) : (
-              <p className="text-2xl font-semibold tabular-nums">{data?.staff ?? 0}</p>
-            )}
-          </div>
-        </div>
-
-        <div className="flex items-center gap-4 rounded-lg border bg-card p-5 shadow-sm">
-          <div className="flex h-11 w-11 items-center justify-center rounded-lg text-violet-600 bg-violet-50">
-            <Percent className="h-5 w-5" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-sm text-muted-foreground">{t('aiShare')}</p>
-            {invalidCustom ? (
-              <p className="mt-1 text-2xl font-semibold">—</p>
-            ) : showSkeleton ? (
-              <Skeleton className="mt-1 h-8 w-14" />
-            ) : (
-              <p className="text-2xl font-semibold tabular-nums">
-                {data?.aiPercent == null ? '—' : `${data.aiPercent}%`}
-              </p>
-            )}
-          </div>
-        </div>
+        ))}
       </div>
-    </div>
+    </section>
   );
 }

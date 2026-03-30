@@ -39,17 +39,16 @@
     "viewAll": "Wszystkie obiekty",
     "analytics": {
       "title": "Analityka odpowiedzi",
-      "subtitle": "Odpowiedzi asystenta do gości (AI vs ręcznie) w wybranym okresie",
-      "periodLabel": "Okres",
-      "periodLast30": "Ostatnie 30 dni",
-      "periodYearStart": "Od początku roku",
-      "periodCustom": "Własny zakres",
+      "subtitle": "Odpowiedzi asystenta do gości (AI vs ręcznie) w wybranym zakresie",
+      "period30d": "30d",
+      "periodChoose": "Wybierz",
+      "ariaPeriod": "Zakres czasu analityki",
       "customFrom": "Od",
       "customTo": "Do",
+      "invalidRange": "Data początku jest późniejsza niż końca",
       "aiReplies": "Odpowiedzi AI",
       "manualReplies": "Odpowiedzi ręczne",
-      "aiShare": "Udział AI",
-      "invalidRange": "Data początku jest późniejsza niż końca"
+      "aiShare": "Udział AI"
     }
   },
   "properties": {
@@ -256,6 +255,7 @@
     "guestInputPlaceholder": "Pytanie gościa…",
     "guestAsUserHint": "Wiadomości trafiają do tej rozmowy jak pytanie gościa.",
     "staffReply": "Odpowiedź managera",
+    "operatorReplyBadge": "Odpowiedź operatora",
     "dev": {
       "panelSummary": "Dev: test gościa",
       "newGuestThread": "Nowy wątek gościa",

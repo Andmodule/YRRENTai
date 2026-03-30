@@ -39,17 +39,16 @@
     "viewAll": "Все объекты",
     "analytics": {
       "title": "Аналитика ответов",
-      "subtitle": "Ответы ассистента гостям (AI и вручную) за выбранный период",
-      "periodLabel": "Период",
-      "periodLast30": "Последние 30 дней",
-      "periodYearStart": "С начала года",
-      "periodCustom": "Свой период",
+      "subtitle": "Ответы ассистента гостям (AI и вручную) за выбранный интервал",
+      "period30d": "30d",
+      "periodChoose": "Выбрать",
+      "ariaPeriod": "Период аналитики",
       "customFrom": "С",
       "customTo": "По",
+      "invalidRange": "Дата начала позже даты окончания",
       "aiReplies": "Ответы AI",
       "manualReplies": "Ручные ответы",
-      "aiShare": "Доля AI",
-      "invalidRange": "Дата начала позже даты окончания"
+      "aiShare": "Доля AI"
     }
   },
   "properties": {
@@ -256,6 +255,7 @@
     "guestInputPlaceholder": "Вопрос от гостя…",
     "guestAsUserHint": "Сообщения уходят в этот диалог как вопрос гостя — как в старом тестовом чате.",
     "staffReply": "Ответ менеджера",
+    "operatorReplyBadge": "Ответил оператор",
     "dev": {
       "panelSummary": "Dev: тест гостя",
       "newGuestThread": "Новый гостевой тред",

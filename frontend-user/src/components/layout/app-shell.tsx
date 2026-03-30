@@ -4,7 +4,6 @@ import { useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import { useRouter } from '@/i18n/navigation';
 import { useAuth } from '@/hooks/use-auth';
-import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { Sidebar } from './sidebar';
 import { Header } from './header';
@@ -24,24 +23,24 @@ export function AppShell({ children }: AppShellProps) {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-screen">
-        <div className="hidden w-56 shrink-0 border-r lg:block">
-          <div className="flex h-16 items-center border-b px-6">
-            <Skeleton className="h-6 w-24" />
+      <div className="flex min-h-screen bg-background dark:bg-slate-900">
+        <div className="hidden w-56 shrink-0 border-r border-slate-800 lg:block">
+          <div className="flex h-16 items-center border-b border-slate-800 px-6">
+            <div className="h-6 w-24 rounded-md bg-slate-800 animate-pulse" />
           </div>
           <div className="space-y-2 p-4">
             {Array.from({ length: 5 }).map((_, i) => (
-              <Skeleton key={i} className="h-9 w-full" />
+              <div key={i} className="h-9 w-full rounded-md bg-slate-800 animate-pulse" />
             ))}
           </div>
         </div>
         <div className="flex flex-1 flex-col">
-          <div className="flex h-16 items-center border-b px-6">
-            <Skeleton className="ml-auto h-8 w-32" />
+          <div className="flex h-16 items-center border-b border-slate-800 px-6">
+            <div className="ml-auto h-8 w-32 rounded-md bg-slate-800 animate-pulse" />
           </div>
           <div className="flex flex-col gap-4 p-6">
-            <Skeleton className="h-8 w-48" />
-            <Skeleton className="h-48 w-full" />
+            <div className="h-8 w-48 rounded-md bg-slate-800 animate-pulse" />
+            <div className="h-48 w-full rounded-xl bg-slate-800 animate-pulse" />
           </div>
         </div>
       </div>
@@ -50,9 +49,7 @@ export function AppShell({ children }: AppShellProps) {
 
   if (!user) return null;
 
-  return (
-    <AppShellContent>{children}</AppShellContent>
-  );
+  return <AppShellContent>{children}</AppShellContent>;
 }
 
 function AppShellContent({ children }: { children: React.ReactNode }) {
@@ -60,12 +57,13 @@ function AppShellContent({ children }: { children: React.ReactNode }) {
   const isChat = pathname?.includes('/chat');
 
   return (
-    <div className="flex min-h-screen bg-background">
+    <div className="flex min-h-screen bg-background dark:bg-gradient-to-br dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
       <Sidebar />
       <div
         className={cn(
           'flex min-h-0 flex-1 flex-col lg:ml-56',
-          isChat && 'min-h-[100dvh] lg:min-h-screen',
+          /* Явная высота viewport — иначе h-full у детей = 0 и не работает скролл/поле ввода */
+          isChat ? 'h-dvh max-h-dvh overflow-hidden' : 'min-h-screen',
         )}
       >
         <Header />
@@ -73,7 +71,8 @@ function AppShellContent({ children }: { children: React.ReactNode }) {
           className={cn(
             'min-w-0 flex-1',
             isChat
-              ? 'flex min-h-0 flex-col overflow-hidden p-0 lg:overflow-visible lg:p-6'
+              ? /* overflow-hidden на всех ширинах — иначе ломается flex-скролл и поле ввода уезжает за viewport */
+                'flex min-h-0 flex-col overflow-hidden p-0 lg:p-6'
               : 'p-6',
           )}
         >

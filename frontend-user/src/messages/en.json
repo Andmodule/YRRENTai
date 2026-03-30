@@ -39,17 +39,16 @@
     "viewAll": "View all",
     "analytics": {
       "title": "Reply analytics",
-      "subtitle": "Assistant replies to guests (AI vs manual) in the selected range",
-      "periodLabel": "Period",
-      "periodLast30": "Last 30 days",
-      "periodYearStart": "Since start of year",
-      "periodCustom": "Custom range",
+      "subtitle": "Assistant replies to guests (AI vs manual) for the selected range",
+      "period30d": "30d",
+      "periodChoose": "Choose",
+      "ariaPeriod": "Analytics time range",
       "customFrom": "From",
       "customTo": "To",
+      "invalidRange": "Start date is after end date",
       "aiReplies": "AI replies",
       "manualReplies": "Manual replies",
-      "aiShare": "AI share",
-      "invalidRange": "Start date is after end date"
+      "aiShare": "AI share"
     }
   },
   "properties": {
@@ -256,6 +255,7 @@
     "guestInputPlaceholder": "Type a guest question…",
     "guestAsUserHint": "Messages here go into this conversation as a guest question — same as the old chat test.",
     "staffReply": "Manager reply",
+    "operatorReplyBadge": "Operator replied",
     "dev": {
       "panelSummary": "Dev: guest testing",
       "newGuestThread": "New guest thread",
