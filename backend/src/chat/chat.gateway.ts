@@ -19,6 +19,10 @@ import { KnowledgeBaseService } from '../knowledge-base/knowledge-base.service';
 import { TelegramService } from '../telegram/telegram.service';
 import { StaffRepliedEvent } from '../common/events/staff.events';
 import { sendChatMessageSchema } from '@rentai/shared';
+import {
+  GUEST_ESCALATION_FALLBACK_MESSAGE,
+  shouldForceEscalationGuestReply,
+} from '../agent/constants/agent-prompts';
 
 const ESCALATION_MARKER = '[ESCALATE]';
 
@@ -125,15 +129,21 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     });
 
     const property = await this.propertyService.findOne(propertyId, userId);
-    const kbEntries = await this.knowledgeBaseService.searchRelevant(propertyId, content, 8);
-    const knowledgeBase = kbEntries.map((e) => `## ${e.title}\n${e.content}`).join('\n\n');
+    const kbSearch = await this.knowledgeBaseService.searchRelevant(propertyId, content, 8);
+    const { entries: kbEntries, isWeakMatch: kbWeakMatch } = kbSearch;
+    const knowledgeBase = kbWeakMatch
+      ? ''
+      : kbEntries.map((e) => `## ${e.title}\n${e.content}`).join('\n\n');
+    const kbContextForAgent = kbWeakMatch
+      ? '(No sufficiently relevant knowledge base match for this question — do not invent facts; you MUST escalate: short message to the guest, then [ESCALATE] on a new line.)'
+      : knowledgeBase || 'No knowledge base entries yet.';
     const history = await this.chatService.getRecentHistory(propertyId);
 
     client.emit('agent:streamStart', { propertyId });
 
     await this.agentService.processMessageStream(
       property.name,
-      knowledgeBase || 'No knowledge base entries yet.',
+      kbContextForAgent,
       content,
       history,
       {
@@ -141,10 +151,24 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
           client.emit('agent:streamChunk', { propertyId, text });
         },
         onDone: async (fullText) => {
-          const isEscalation = fullText.trimEnd().endsWith(ESCALATION_MARKER);
-          const cleanText = isEscalation
+          const rawEndsEscalate = fullText.trimEnd().endsWith(ESCALATION_MARKER);
+          const textWithoutMarker = rawEndsEscalate
             ? fullText.replace(new RegExp(`\\n?\\${ESCALATION_MARKER}$`), '').trim()
-            : fullText;
+            : fullText.trim();
+
+          const kbEmpty = kbEntries.length === 0;
+          const forcedByForbidden = shouldForceEscalationGuestReply(textWithoutMarker);
+          const mustNotifyTelegram =
+            rawEndsEscalate || kbEmpty || forcedByForbidden || kbWeakMatch;
+
+          let cleanText: string;
+          if (!mustNotifyTelegram) {
+            cleanText = textWithoutMarker;
+          } else if (rawEndsEscalate && !forcedByForbidden) {
+            cleanText = textWithoutMarker || GUEST_ESCALATION_FALLBACK_MESSAGE;
+          } else {
+            cleanText = GUEST_ESCALATION_FALLBACK_MESSAGE;
+          }
 
           const agentMessage = await this.chatService.saveMessage({
             propertyId,
@@ -162,7 +186,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
             createdAt: agentMessage.createdAt.toISOString(),
           });
 
-          if (isEscalation) {
+          if (mustNotifyTelegram) {
             this.handleEscalation(propertyId, property.name, content, userMessage.id, property.ownerId).catch(
               (err) => this.logger.error(`Escalation failed: ${(err as Error).message}`),
             );

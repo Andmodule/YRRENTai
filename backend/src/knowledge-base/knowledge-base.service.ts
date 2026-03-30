@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { KnowledgeBaseEntryEntity, KbStatus } from './entities/knowledge-base-entry.entity';
 import { EmbeddingService } from '../embedding/embedding.service';
+import { KB_VECTOR_DISTANCE_THRESHOLD } from './knowledge-base.constants';
 
 interface KbCreateData {
   title: string;
@@ -19,6 +20,7 @@ interface KbUpdateData {
 }
 
 interface KbRawRow {
+  distance?: string | number;
   id: string;
   propertyId: string;
   title: string;
@@ -27,6 +29,16 @@ interface KbRawRow {
   status: KbStatus;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface KbVectorSearchResult {
+  entries: KnowledgeBaseEntryEntity[];
+  /** Smallest cosine distance when vector search returned rows; otherwise null */
+  bestDistance: number | null;
+  /** True when pgvector ranking was used (not findAll fallback) */
+  usedVectorSearch: boolean;
+  /** Best match is too far → do not trust KB for this question; escalate */
+  isWeakMatch: boolean;
 }
 
 @Injectable()
@@ -61,10 +73,16 @@ export class KnowledgeBaseService {
     propertyId: string,
     query: string,
     limit = 8,
-  ): Promise<KnowledgeBaseEntryEntity[]> {
+  ): Promise<KbVectorSearchResult> {
     if (!this.embeddingService.isAvailable) {
       this.logger.warn('EmbeddingService unavailable — falling back to full KB scan');
-      return this.findAll(propertyId);
+      const entries = await this.findAll(propertyId);
+      return {
+        entries,
+        bestDistance: null,
+        usedVectorSearch: false,
+        isWeakMatch: false,
+      };
     }
 
     try {
@@ -74,6 +92,7 @@ export class KnowledgeBaseService {
       const rows: KbRawRow[] = await this.kbRepository.query(
         `
         SELECT
+          (embedding::vector <=> $2::vector) AS distance,
           id,
           property_id   AS "propertyId",
           title,
@@ -94,13 +113,40 @@ export class KnowledgeBaseService {
 
       if (rows.length === 0) {
         this.logger.debug('No embedded entries yet — falling back to full KB scan');
-        return this.findAll(propertyId);
+        const entries = await this.findAll(propertyId);
+        return {
+          entries,
+          bestDistance: null,
+          usedVectorSearch: false,
+          isWeakMatch: false,
+        };
       }
 
-      return rows as unknown as KnowledgeBaseEntryEntity[];
+      const bestDistance = Number(rows[0]?.distance);
+      const usedVectorSearch = true;
+      const isWeakMatch =
+        Number.isFinite(bestDistance) && bestDistance > KB_VECTOR_DISTANCE_THRESHOLD;
+
+      if (isWeakMatch) {
+        this.logger.log(
+          `KB weak vector match for property ${propertyId}: bestDistance=${bestDistance.toFixed(4)} > ${KB_VECTOR_DISTANCE_THRESHOLD}`,
+        );
+      }
+
+      const entries = rows.map(
+        ({ distance: _d, ...rest }) => rest as unknown as KnowledgeBaseEntryEntity,
+      );
+
+      return { entries, bestDistance, usedVectorSearch, isWeakMatch };
     } catch (err) {
       this.logger.warn(`Vector search failed — falling back: ${(err as Error).message}`);
-      return this.findAll(propertyId);
+      const entries = await this.findAll(propertyId);
+      return {
+        entries,
+        bestDistance: null,
+        usedVectorSearch: false,
+        isWeakMatch: false,
+      };
     }
   }
 

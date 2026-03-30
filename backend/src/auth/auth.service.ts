@@ -112,19 +112,27 @@ export class AuthService {
     return { data: { ok: true as const } };
   }
 
-  private getCookieOptions(maxAgeMs: number) {
+  private getCookieBaseOptions() {
     const isProd = this.configService.get<string>('NODE_ENV') === 'production';
+    const crossSite = this.configService.get<boolean>('AUTH_COOKIE_CROSS_SITE');
+    const sameSite = isProd && crossSite ? ('none' as const) : ('lax' as const);
     return {
       httpOnly: true,
       secure: isProd,
-      sameSite: 'lax' as const,
+      sameSite,
       path: AUTH_COOKIE_PATH,
+    };
+  }
+
+  private getCookieOptions(maxAgeMs: number) {
+    return {
+      ...this.getCookieBaseOptions(),
       maxAge: maxAgeMs,
     };
   }
 
   private clearAuthCookies(res: Response) {
-    const opts = { httpOnly: true, secure: this.configService.get<string>('NODE_ENV') === 'production', sameSite: 'lax' as const, path: AUTH_COOKIE_PATH };
+    const opts = this.getCookieBaseOptions();
     res.clearCookie(ACCESS_TOKEN_COOKIE, opts);
     res.clearCookie(REFRESH_TOKEN_COOKIE, opts);
   }

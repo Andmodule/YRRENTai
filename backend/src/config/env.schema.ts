@@ -10,6 +10,9 @@ export const envSchema = z.object({
   JWT_ACCESS_EXPIRES_IN: z.string().default('15m'),
   JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
 
+  /** When true (production): httpOnly cookies use SameSite=None; Secure — required for SPA on another origin (e.g. Vercel) talking to API on Render. */
+  AUTH_COOKIE_CROSS_SITE: z.coerce.boolean().default(false),
+
   AI_PROVIDER: z.enum(['deepseek', 'openai']).default('deepseek'),
   DEEPSEEK_API_KEY: z.string().optional(),
   DEEPSEEK_BASE_URL: z.string().url().default('https://api.deepseek.com'),
