@@ -10,3 +10,7 @@ export const TELEGRAM_INSTRUCTION_NO_OPEN_ESCALATION =
 /** Ответ бота, если на карточку ответили не текстом (фото/стикер и т.д.). */
 export const TELEGRAM_INSTRUCTION_REPLY_NEEDS_TEXT =
   'Чтобы ответ ушёл гостю, отправьте его текстом, ответив Reply на карточку «Вопрос гостя».';
+
+/** Короткое подтверждение менеджеру: ответ уже в RentAI и у гостя в чате. */
+export const TELEGRAM_STAFF_REPLY_CONFIRMED =
+  '✅ Ответ передан гостю в RentAI.';

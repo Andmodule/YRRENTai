@@ -158,8 +158,13 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
           const kbEmpty = kbEntries.length === 0;
           const forcedByForbidden = shouldForceEscalationGuestReply(textWithoutMarker);
+          /** Strong KB hit: vector match under threshold with at least one entry — trust answer; do not ping staff if only the model wrongly appended [ESCALATE]. */
+          const kbHasReliableMatch = kbEntries.length > 0 && !kbWeakMatch;
           const mustNotifyTelegram =
-            rawEndsEscalate || kbEmpty || forcedByForbidden || kbWeakMatch;
+            kbEmpty ||
+            forcedByForbidden ||
+            kbWeakMatch ||
+            (rawEndsEscalate && !kbHasReliableMatch);
 
           let cleanText: string;
           if (!mustNotifyTelegram) {

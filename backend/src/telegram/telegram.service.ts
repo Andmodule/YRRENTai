@@ -13,6 +13,7 @@ import {
   TELEGRAM_INSTRUCTION_NO_OPEN_ESCALATION,
   TELEGRAM_INSTRUCTION_REPLY_NEEDS_TEXT,
   TELEGRAM_INSTRUCTION_REPLY_REQUIRED,
+  TELEGRAM_STAFF_REPLY_CONFIRMED,
 } from './constants/telegram-instruction.constants';
 
 interface TelegramSendMessageResponse {
@@ -169,6 +170,25 @@ export class TelegramService {
     this.logger.log(
       `Staff reply saved for escalation ${escalation.id}, property ${escalation.propertyId}`,
     );
+
+    await this.sendStaffReplyConfirmation(chatId, message.message_id);
+  }
+
+  /** Reply на сообщение менеджера — видно, что именно этот ответ ушёл гостю. */
+  private async sendStaffReplyConfirmation(chatId: string, replyToMessageId: number): Promise<void> {
+    try {
+      await axios.post<TelegramSendMessageResponse>(
+        `${this.apiBase}/sendMessage`,
+        {
+          chat_id: chatId,
+          text: TELEGRAM_STAFF_REPLY_CONFIRMED,
+          reply_to_message_id: replyToMessageId,
+        },
+        { timeout: 10000 },
+      );
+    } catch (err) {
+      this.logger.warn(`Telegram staff reply confirmation failed: ${(err as Error).message}`);
+    }
   }
 
   private async sendInstructionMessage(chatId: string, text: string): Promise<void> {
