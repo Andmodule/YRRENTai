@@ -2,15 +2,21 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Socket } from 'socket.io-client';
-import { connectChatSocket, disconnectChatSocket, getChatSocket } from '@/lib/socket/client';
+import { connectChatSocket, getChatSocket } from '@/lib/socket/client';
 
 export interface ChatMessage {
   id: string;
   propertyId: string;
+  conversationId?: string;
   userId?: string | null;
   content: string;
   role: 'user' | 'assistant' | 'system';
   createdAt: string;
+}
+
+export interface UseChatOpts {
+  /** When set, history and events are scoped to this conversation (inbox detail). */
+  conversationId?: string | null;
 }
 
 interface UseChatReturn {
@@ -19,90 +25,107 @@ interface UseChatReturn {
   isStreaming: boolean;
   isConnected: boolean;
   error: string | null;
-  sendMessage: (content: string) => void;
+  /** Guest-style test message. Use `guestSessionKey` (dev) to open a new thread without conversationId. */
+  sendMessage: (content: string, sendOpts?: { guestSessionKey?: string }) => void;
 }
 
-export function useChat(propertyId: string | null): UseChatReturn {
+interface StreamPayload {
+  propertyId: string;
+  conversationId?: string;
+  text?: string;
+  message?: string;
+}
+
+export function useChat(propertyId: string | null, opts?: UseChatOpts | null): UseChatReturn {
+  const conversationId = opts?.conversationId ?? undefined;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [streamingText, setStreamingText] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const currentPropertyId = useRef<string | null>(null);
+  const conversationIdRef = useRef<string | undefined>(conversationId);
 
   useEffect(() => {
-    return () => {
-      disconnectChatSocket();
-    };
+    conversationIdRef.current = conversationId;
+  }, [conversationId]);
+
+  const matchesConversation = useCallback((payload: { conversationId?: string }) => {
+    const cur = conversationIdRef.current;
+    if (!cur) return true;
+    if (!payload.conversationId) return false;
+    return payload.conversationId === cur;
   }, []);
 
   useEffect(() => {
     if (!propertyId) return;
 
     let cancelled = false;
-    let socket: Socket | null = null;
     let detachListeners: (() => void) | undefined;
 
     connectChatSocket()
       .then((s) => {
+        /** Do not call disconnectChatSocket() here — React Strict Mode remounts; killing the singleton breaks the second mount. */
         if (cancelled) {
-          s.disconnect();
-          disconnectChatSocket();
           return;
         }
-        socket = s;
         currentPropertyId.current = propertyId;
 
         function handleConnect() {
           if (cancelled) return;
           setIsConnected(true);
           setError(null);
-          s.emit('chat:join', { propertyId });
+          s.emit('chat:join', {
+            propertyId,
+            ...(conversationId ? { conversationId } : {}),
+          });
         }
 
         function handleDisconnect() {
           setIsConnected(false);
         }
 
-        function handleHistory(data: { propertyId: string; messages: ChatMessage[] }) {
-          if (data.propertyId === currentPropertyId.current) {
-            setMessages(data.messages);
-          }
+        function handleHistory(data: {
+          propertyId: string;
+          messages: ChatMessage[];
+        }) {
+          if (data.propertyId !== currentPropertyId.current) return;
+          setMessages(data.messages);
         }
 
         function handleMessageSaved(msg: ChatMessage) {
-          if (msg.propertyId === currentPropertyId.current) {
-            setMessages((prev) => [...prev, msg]);
-          }
+          if (msg.propertyId !== currentPropertyId.current) return;
+          if (!matchesConversation(msg)) return;
+          setMessages((prev) => [...prev, msg]);
         }
 
-        function handleStreamStart(data: { propertyId: string }) {
-          if (data.propertyId === currentPropertyId.current) {
-            setIsStreaming(true);
-            setStreamingText('');
-          }
+        function handleStreamStart(data: StreamPayload) {
+          if (data.propertyId !== currentPropertyId.current) return;
+          if (!matchesConversation(data)) return;
+          setIsStreaming(true);
+          setStreamingText('');
         }
 
-        function handleStreamChunk(data: { propertyId: string; text: string }) {
-          if (data.propertyId === currentPropertyId.current) {
-            setStreamingText((prev) => prev + data.text);
-          }
+        function handleStreamChunk(data: StreamPayload) {
+          if (data.propertyId !== currentPropertyId.current) return;
+          if (!matchesConversation(data)) return;
+          setStreamingText((prev) => prev + (data.text ?? ''));
         }
 
-        function handleStreamEnd(msg: ChatMessage) {
-          if (msg.propertyId === currentPropertyId.current) {
-            setIsStreaming(false);
-            setStreamingText('');
-            setMessages((prev) => [...prev, msg]);
-          }
+        function handleStreamEnd(msg: ChatMessage & { conversationId?: string }) {
+          if (msg.propertyId !== currentPropertyId.current) return;
+          if (!matchesConversation(msg)) return;
+          setIsStreaming(false);
+          setStreamingText('');
+          setMessages((prev) => [...prev, msg]);
         }
 
-        function handleAgentError(data: { propertyId: string; message: string }) {
-          if (data.propertyId === currentPropertyId.current) {
-            setIsStreaming(false);
-            setStreamingText('');
-            setError(data.message);
-          }
+        function handleAgentError(data: StreamPayload) {
+          if (data.propertyId !== currentPropertyId.current) return;
+          if (!matchesConversation(data)) return;
+          setIsStreaming(false);
+          setStreamingText('');
+          setError(data.message ?? 'Agent error');
         }
 
         function handleError(data: { message: string }) {
@@ -148,17 +171,30 @@ export function useChat(propertyId: string | null): UseChatReturn {
       detachListeners?.();
       currentPropertyId.current = null;
     };
-  }, [propertyId]);
+  }, [propertyId, conversationId, matchesConversation]);
 
   const sendMessage = useCallback(
-    (content: string) => {
+    (content: string, sendOpts?: { guestSessionKey?: string }) => {
       if (!propertyId || !content.trim()) return;
       setError(null);
       const s = getChatSocket();
       if (!s?.connected) return;
-      s.emit('message:send', { propertyId, content: content.trim() });
+      const trimmed = content.trim();
+      if (sendOpts?.guestSessionKey) {
+        s.emit('message:send', {
+          propertyId,
+          content: trimmed,
+          guestSessionKey: sendOpts.guestSessionKey,
+        });
+        return;
+      }
+      if (conversationId) {
+        s.emit('message:send', { propertyId, content: trimmed, conversationId });
+        return;
+      }
+      s.emit('message:send', { propertyId, content: trimmed });
     },
-    [propertyId],
+    [propertyId, conversationId],
   );
 
   return { messages, streamingText, isStreaming, isConnected, error, sendMessage };

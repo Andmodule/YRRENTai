@@ -36,7 +36,21 @@
     "noPropertiesDescription": "Dodaj pierwszy obiekt, aby rozpocząć pracę z RentAI",
     "addFirstProperty": "Dodaj obiekt",
     "recentProperties": "Ostatnie obiekty",
-    "viewAll": "Wszystkie obiekty"
+    "viewAll": "Wszystkie obiekty",
+    "analytics": {
+      "title": "Analityka odpowiedzi",
+      "subtitle": "Odpowiedzi asystenta do gości (AI vs ręcznie) w wybranym okresie",
+      "periodLabel": "Okres",
+      "periodLast30": "Ostatnie 30 dni",
+      "periodYearStart": "Od początku roku",
+      "periodCustom": "Własny zakres",
+      "customFrom": "Od",
+      "customTo": "Do",
+      "aiReplies": "Odpowiedzi AI",
+      "manualReplies": "Odpowiedzi ręczne",
+      "aiShare": "Udział AI",
+      "invalidRange": "Data początku jest późniejsza niż końca"
+    }
   },
   "properties": {
     "title": "Obiekty",
@@ -226,6 +240,39 @@
       "NO_SHOW": "Niepojawienie się"
     }
   },
+  "inbox": {
+    "backendUnreachable": "Brak połączenia z API",
+    "backendUnreachableHint": "Uruchom backend Nest, aby Next.js proxyował /api/v1 i Socket.IO mógł się połączyć. Oczekiwany URL API: {apiUrl}",
+    "title": "Skrzynka odbiorcza",
+    "selectConversation": "Wybierz rozmowę z listy",
+    "allProperties": "Wszystkie obiekty",
+    "allStatuses": "Wszystkie statusy",
+    "empty": "Brak rozmów",
+    "emptyHint": "Rozmowy pojawią się tutaj, gdy goście wyślą wiadomości",
+    "noMessages": "Brak wiadomości w tej rozmowie",
+    "replyPlaceholder": "Napisz odpowiedź dla gościa…",
+    "replyPlaceholderUrgent": "Gość czeka — napisz odpowiedź…",
+    "guestAsUser": "Jako gość (test)",
+    "guestInputPlaceholder": "Pytanie gościa…",
+    "guestAsUserHint": "Wiadomości trafiają do tej rozmowy jak pytanie gościa.",
+    "staffReply": "Odpowiedź managera",
+    "dev": {
+      "panelSummary": "Dev: test gościa",
+      "newGuestThread": "Nowy wątek gościa",
+      "newGuestHint": "Najpierw wybierz obiekt, potem klucz gościa. Różne klucze — różni goście przy tym obiekcie.",
+      "guestInOpenDialog": "Pytanie w otwartej rozmowie",
+      "selectDialogFirst": "Najpierw wybierz rozmowę na liście po lewej.",
+      "propertyForGuest": "Obiekt dla tego gościa",
+      "guestKey": "Klucz sesji gościa",
+      "guestKeyPlaceholder": "guest-a, guest-b…",
+      "messagePlaceholder": "Wiadomość od nowego gościa…"
+    },
+    "status": {
+      "ai_handling": "AI obsługuje",
+      "needs_human": "Wymaga odpowiedzi",
+      "resolved": "Rozwiązane"
+    }
+  },
   "settings": {
     "title": "Ustawienia konta",
     "telegram": {
@@ -245,17 +292,34 @@
   "kbImprovement": {
     "title": "Ulepszanie bazy wiedzy",
     "subtitle": "Ręczne odpowiedzi — dodaj je do bazy wiedzy",
-    "statsLabel": "W ciągu ostatnich {days} dni odpowiedziałeś ręcznie",
-    "statsCount": "{count} razy",
-    "selectProperty": "Wybierz obiekt",
-    "noProperty": "Wybierz obiekt z listy powyżej",
-    "noEscalations": "Brak ręcznych odpowiedzi w tym okresie",
-    "noEscalationsHint": "Gdy AI nie zna odpowiedzi, manager odpowiada przez Telegram. Te odpowiedzi pojawią się tutaj.",
+    "queueTab": "Kolejka",
+    "pendingStats": "Oczekujące: {count}",
+    "noEscalations": "Nic do przetworzenia",
+    "noEscalationsHint": "Gdy AI nie zna odpowiedzi, manager odpowiada przez Telegram. Najnowsze są na górze.",
     "guestQuestion": "Pytanie gościa",
-    "staffReply": "Twoja odpowiedź",
+    "answerForAi": "Odpowiedź dla AI",
     "editReply": "Edytuj odpowiedź",
-    "addToKb": "Dodaj do bazy ({count})",
+    "save": "Zapisz",
+    "cancel": "Anuluj",
+    "ignore": "Ukryj",
+    "addOneToKb": "Dodaj do bazy",
     "addSuccess": "Dodano {count} wpisów do bazy wiedzy",
-    "addError": "Nie udało się dodać wpisów"
+    "addError": "Nie udało się dodać wpisów",
+    "singleAddSuccess": "Dodano do bazy wiedzy",
+    "patchSuccess": "Zapisano",
+    "patchError": "Nie udało się zapisać",
+    "ignoreError": "Nie udało się ukryć",
+    "emptyAnswer": "Odpowiedź nie może być pusta",
+    "emptyQuestion": "Pytanie nie może być puste",
+    "selectAll": "Zaznacz wszystkie",
+    "deselectAll": "Odznacz wszystkie",
+    "bulkIgnoreSuccess": "Ukryto: {count}",
+    "selectedCount": "Wybrano: {count}",
+    "deleteSelected": "Ukryj wybrane",
+    "addSelectedToKb": "Dodaj do bazy wiedzy",
+    "a11y": {
+      "check": "Zaznacz",
+      "uncheck": "Odznacz"
+    }
   }
 }

@@ -36,7 +36,21 @@
     "noPropertiesDescription": "Agrega tu primera propiedad para comenzar a usar RentAI",
     "addFirstProperty": "Agregar propiedad",
     "recentProperties": "Propiedades recientes",
-    "viewAll": "Ver todas"
+    "viewAll": "Ver todas",
+    "analytics": {
+      "title": "Análisis de respuestas",
+      "subtitle": "Respuestas del asistente a huéspedes (IA vs manual) en el rango",
+      "periodLabel": "Período",
+      "periodLast30": "Últimos 30 días",
+      "periodYearStart": "Desde inicio de año",
+      "periodCustom": "Rango personalizado",
+      "customFrom": "Desde",
+      "customTo": "Hasta",
+      "aiReplies": "Respuestas IA",
+      "manualReplies": "Respuestas manuales",
+      "aiShare": "Cuota IA",
+      "invalidRange": "La fecha inicial es posterior a la final"
+    }
   },
   "properties": {
     "title": "Propiedades",
@@ -226,6 +240,39 @@
       "NO_SHOW": "No presentado"
     }
   },
+  "inbox": {
+    "backendUnreachable": "No hay conexión con la API",
+    "backendUnreachableHint": "Arranque el backend Nest para que Next.js proxifique /api/v1 y Socket.IO se conecte. URL esperada: {apiUrl}",
+    "title": "Bandeja de entrada",
+    "selectConversation": "Seleccione una conversación de la lista",
+    "allProperties": "Todas las propiedades",
+    "allStatuses": "Todos los estados",
+    "empty": "Sin conversaciones",
+    "emptyHint": "Las conversaciones aparecerán aquí cuando los huéspedes envíen mensajes",
+    "noMessages": "Aún no hay mensajes en esta conversación",
+    "replyPlaceholder": "Escriba una respuesta al huésped…",
+    "replyPlaceholderUrgent": "El huésped espera — escriba su respuesta…",
+    "guestAsUser": "Como huésped (prueba)",
+    "guestInputPlaceholder": "Pregunta del huésped…",
+    "guestAsUserHint": "Los mensajes van a esta conversación como pregunta del huésped.",
+    "staffReply": "Respuesta del gestor",
+    "dev": {
+      "panelSummary": "Dev: prueba de huésped",
+      "newGuestThread": "Nuevo hilo de huésped",
+      "newGuestHint": "Primero elige la propiedad, luego la clave. Cada clave es otro huésped en esa propiedad.",
+      "guestInOpenDialog": "Mensaje en la conversación abierta",
+      "selectDialogFirst": "Seleccione una conversación en la lista de la izquierda.",
+      "propertyForGuest": "Propiedad para este huésped",
+      "guestKey": "Clave de sesión",
+      "guestKeyPlaceholder": "guest-a, guest-b…",
+      "messagePlaceholder": "Mensaje como huésped nuevo…"
+    },
+    "status": {
+      "ai_handling": "IA procesando",
+      "needs_human": "Necesita respuesta",
+      "resolved": "Resuelto"
+    }
+  },
   "settings": {
     "title": "Configuración de cuenta",
     "telegram": {
@@ -245,17 +292,34 @@
   "kbImprovement": {
     "title": "Mejorar la base de conocimiento",
     "subtitle": "Respuestas manuales — agrégalas a la base de conocimiento",
-    "statsLabel": "En los últimos {days} días respondiste manualmente",
-    "statsCount": "{count} veces",
-    "selectProperty": "Selecciona una propiedad",
-    "noProperty": "Selecciona una propiedad de la lista de arriba",
-    "noEscalations": "Sin respuestas manuales en este período",
-    "noEscalationsHint": "Cuando la IA no sabe la respuesta, el gerente responde por Telegram. Esas respuestas aparecen aquí.",
+    "queueTab": "Cola",
+    "pendingStats": "Pendientes: {count}",
+    "noEscalations": "Nada pendiente ahora",
+    "noEscalationsHint": "Cuando la IA no sabe la respuesta, el gerente responde por Telegram. Las más recientes aparecen primero.",
     "guestQuestion": "Pregunta del huésped",
-    "staffReply": "Tu respuesta",
+    "answerForAi": "Respuesta para la IA",
     "editReply": "Editar respuesta",
-    "addToKb": "Agregar a la base ({count})",
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "ignore": "Descartar",
+    "addOneToKb": "Añadir a la base",
     "addSuccess": "Se agregaron {count} entradas a la base de conocimiento",
-    "addError": "No se pudieron agregar las entradas"
+    "addError": "No se pudieron agregar las entradas",
+    "singleAddSuccess": "Añadido a la base de conocimiento",
+    "patchSuccess": "Guardado",
+    "patchError": "No se pudo guardar",
+    "ignoreError": "No se pudo descartar",
+    "emptyAnswer": "La respuesta no puede estar vacía",
+    "emptyQuestion": "La pregunta no puede estar vacía",
+    "selectAll": "Seleccionar todo",
+    "deselectAll": "Quitar selección",
+    "bulkIgnoreSuccess": "Descartadas: {count}",
+    "selectedCount": "Seleccionadas: {count}",
+    "deleteSelected": "Descartar seleccionadas",
+    "addSelectedToKb": "Añadir a la base de conocimiento",
+    "a11y": {
+      "check": "Seleccionar",
+      "uncheck": "Deseleccionar"
+    }
   }
 }

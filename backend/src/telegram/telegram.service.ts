@@ -2,12 +2,13 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { Repository, IsNull, Not, MoreThan } from 'typeorm';
+import { Repository, IsNull } from 'typeorm';
 import axios from 'axios';
 import { EscalationEntity } from './entities/escalation.entity';
 import { PropertyNotificationSettingsEntity } from './entities/property-notification-settings.entity';
 import { StaffRepliedEvent } from '../common/events/staff.events';
 import { ChatService } from '../chat/chat.service';
+import { ConversationService } from '../chat/conversation.service';
 import { UserService } from '../user/user.service';
 import {
   TELEGRAM_INSTRUCTION_NO_OPEN_ESCALATION,
@@ -42,6 +43,7 @@ export class TelegramService {
     private readonly configService: ConfigService,
     private readonly eventEmitter: EventEmitter2,
     private readonly chatService: ChatService,
+    private readonly conversationService: ConversationService,
     private readonly userService: UserService,
     @InjectRepository(EscalationEntity)
     private readonly escalationRepository: Repository<EscalationEntity>,
@@ -77,12 +79,14 @@ export class TelegramService {
     guestQuestion: string,
     guestMessageId: string,
     telegramChatId: string,
+    conversationId?: string,
   ): Promise<EscalationEntity> {
     const escalation = this.escalationRepository.create({
       propertyId,
       propertyName,
       guestMessageId,
       guestQuestion,
+      ...(conversationId ? { conversationId } : {}),
     });
     await this.escalationRepository.save(escalation);
 
@@ -146,15 +150,24 @@ export class TelegramService {
       return;
     }
 
+    const convId = escalation.conversationId ?? undefined;
+
     const savedMessage = await this.chatService.saveMessage({
       propertyId: escalation.propertyId,
+      conversationId: convId,
       content: replyText,
       role: 'assistant',
       source: 'staff',
     });
 
+    if (convId) {
+      await this.conversationService.setStatus(convId, 'resolved');
+      await this.conversationService.touch(convId, replyText);
+    }
+
     escalation.staffReply = replyText;
     escalation.resolvedAt = new Date();
+    escalation.kbProcessingStatus = 'pending';
     await this.escalationRepository.save(escalation);
 
     this.eventEmitter.emit(
@@ -164,6 +177,7 @@ export class TelegramService {
         savedMessage.id,
         replyText,
         savedMessage.createdAt.toISOString(),
+        convId,
       ),
     );
 
@@ -224,18 +238,30 @@ export class TelegramService {
   async getResolvedEscalations(propertyId: string, days: number): Promise<EscalationEntity[]> {
     const since = new Date();
     since.setDate(since.getDate() - days);
-    return this.escalationRepository.find({
-      where: { propertyId, staffReply: Not(IsNull()), createdAt: MoreThan(since) },
-      order: { createdAt: 'DESC' },
-    });
+    return this.escalationRepository
+      .createQueryBuilder('e')
+      .where('e.propertyId = :propertyId', { propertyId })
+      .andWhere('e.staffReply IS NOT NULL')
+      .andWhere('e.createdAt > :since', { since })
+      .andWhere('(e.kbProcessingStatus IS NULL OR e.kbProcessingStatus = :pending)', {
+        pending: 'pending',
+      })
+      .orderBy('e.createdAt', 'DESC')
+      .getMany();
   }
 
   async countResolvedEscalations(propertyId: string, days: number): Promise<number> {
     const since = new Date();
     since.setDate(since.getDate() - days);
-    return this.escalationRepository.count({
-      where: { propertyId, staffReply: Not(IsNull()), createdAt: MoreThan(since) },
-    });
+    return this.escalationRepository
+      .createQueryBuilder('e')
+      .where('e.propertyId = :propertyId', { propertyId })
+      .andWhere('e.staffReply IS NOT NULL')
+      .andWhere('e.createdAt > :since', { since })
+      .andWhere('(e.kbProcessingStatus IS NULL OR e.kbProcessingStatus = :pending)', {
+        pending: 'pending',
+      })
+      .getCount();
   }
 
   private escape(text: string): string {

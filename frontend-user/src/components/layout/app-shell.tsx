@@ -1,9 +1,11 @@
 'use client';
 
 import { useEffect } from 'react';
+import { usePathname } from 'next/navigation';
 import { useRouter } from '@/i18n/navigation';
 import { useAuth } from '@/hooks/use-auth';
 import { Skeleton } from '@/components/ui/skeleton';
+import { cn } from '@/lib/utils';
 import { Sidebar } from './sidebar';
 import { Header } from './header';
 
@@ -23,7 +25,7 @@ export function AppShell({ children }: AppShellProps) {
   if (isLoading) {
     return (
       <div className="flex min-h-screen">
-        <div className="hidden w-64 shrink-0 border-r lg:block">
+        <div className="hidden w-56 shrink-0 border-r lg:block">
           <div className="flex h-16 items-center border-b px-6">
             <Skeleton className="h-6 w-24" />
           </div>
@@ -49,11 +51,34 @@ export function AppShell({ children }: AppShellProps) {
   if (!user) return null;
 
   return (
+    <AppShellContent>{children}</AppShellContent>
+  );
+}
+
+function AppShellContent({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const isChat = pathname?.includes('/chat');
+
+  return (
     <div className="flex min-h-screen bg-background">
       <Sidebar />
-      <div className="flex flex-1 flex-col lg:ml-64">
+      <div
+        className={cn(
+          'flex min-h-0 flex-1 flex-col lg:ml-56',
+          isChat && 'min-h-[100dvh] lg:min-h-screen',
+        )}
+      >
         <Header />
-        <main className="flex-1 p-6">{children}</main>
+        <main
+          className={cn(
+            'min-w-0 flex-1',
+            isChat
+              ? 'flex min-h-0 flex-col overflow-hidden p-0 lg:overflow-visible lg:p-6'
+              : 'p-6',
+          )}
+        >
+          {children}
+        </main>
       </div>
     </div>
   );

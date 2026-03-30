@@ -2,6 +2,24 @@
  * Shown to the guest when we escalate but the model did not follow the format
  * or used forbidden self-service wording (server-side fallback).
  */
+export const ESCALATION_MARKER = '[ESCALATE]' as const;
+
+/**
+ * Strip trailing `[ESCALATE]` (case-insensitive, optional leading newline/spaces).
+ */
+export function parseAssistantEscalation(fullText: string): {
+  rawEndsEscalate: boolean;
+  textWithoutMarker: string;
+} {
+  const trimmed = fullText.trimEnd();
+  const re = /\n?\s*\[ESCALATE\]\s*$/i;
+  if (!re.test(trimmed)) {
+    return { rawEndsEscalate: false, textWithoutMarker: fullText.trim() };
+  }
+  const textWithoutMarker = trimmed.replace(re, '').trim();
+  return { rawEndsEscalate: true, textWithoutMarker };
+}
+
 export const GUEST_ESCALATION_FALLBACK_MESSAGE =
   'Я уточню это у хозяина и скоро отвечу вам. Если появятся другие вопросы — с удовольствием помогу!';
 

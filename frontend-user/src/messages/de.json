@@ -36,7 +36,21 @@
     "noPropertiesDescription": "Fügen Sie Ihr erstes Objekt hinzu, um mit RentAI zu beginnen",
     "addFirstProperty": "Objekt hinzufügen",
     "recentProperties": "Letzte Objekte",
-    "viewAll": "Alle anzeigen"
+    "viewAll": "Alle anzeigen",
+    "analytics": {
+      "title": "Antwort-Analytik",
+      "subtitle": "Assistentenantworten an Gäste (KI vs manuell) im Zeitraum",
+      "periodLabel": "Zeitraum",
+      "periodLast30": "Letzte 30 Tage",
+      "periodYearStart": "Seit Jahresbeginn",
+      "periodCustom": "Eigener Zeitraum",
+      "customFrom": "Von",
+      "customTo": "Bis",
+      "aiReplies": "KI-Antworten",
+      "manualReplies": "Manuelle Antworten",
+      "aiShare": "KI-Anteil",
+      "invalidRange": "Startdatum liegt nach dem Enddatum"
+    }
   },
   "properties": {
     "title": "Objekte",
@@ -226,6 +240,39 @@
       "NO_SHOW": "Nicht erschienen"
     }
   },
+  "inbox": {
+    "backendUnreachable": "API nicht erreichbar",
+    "backendUnreachableHint": "Starten Sie das Nest-Backend, damit Next.js /api/v1 proxyt und Socket.IO verbindet. Erwartete API-URL: {apiUrl}",
+    "title": "Posteingang",
+    "selectConversation": "Wählen Sie eine Konversation aus der Liste",
+    "allProperties": "Alle Objekte",
+    "allStatuses": "Alle Status",
+    "empty": "Keine Konversationen",
+    "emptyHint": "Konversationen erscheinen hier, wenn Gäste Nachrichten senden",
+    "noMessages": "Noch keine Nachrichten in dieser Konversation",
+    "replyPlaceholder": "Antwort an den Gast eingeben…",
+    "replyPlaceholderUrgent": "Gast wartet — antworten Sie…",
+    "guestAsUser": "Als Gast (Test)",
+    "guestInputPlaceholder": "Gastfrage eingeben…",
+    "guestAsUserHint": "Nachrichten gehen in diese Konversation wie eine Gastfrage.",
+    "staffReply": "Antwort Manager",
+    "dev": {
+      "panelSummary": "Dev: Gast-Test",
+      "newGuestThread": "Neuer Gast-Thread",
+      "newGuestHint": "Zuerst Objekt wählen, dann Gast-Key. Pro Key ein anderer Gast für dieses Objekt.",
+      "guestInOpenDialog": "Frage im geöffneten Gespräch",
+      "selectDialogFirst": "Wählen Sie links ein Gespräch aus.",
+      "propertyForGuest": "Objekt für diesen Gast",
+      "guestKey": "Gast-Session-Key",
+      "guestKeyPlaceholder": "guest-a, guest-b…",
+      "messagePlaceholder": "Nachricht als neuer Gast…"
+    },
+    "status": {
+      "ai_handling": "KI bearbeitet",
+      "needs_human": "Antwort nötig",
+      "resolved": "Gelöst"
+    }
+  },
   "settings": {
     "title": "Kontoeinstellungen",
     "telegram": {
@@ -245,17 +292,34 @@
   "kbImprovement": {
     "title": "Wissensdatenbank verbessern",
     "subtitle": "Manuelle Antworten — fügen Sie sie der Wissensdatenbank hinzu",
-    "statsLabel": "In den letzten {days} Tagen haben Sie manuell geantwortet",
-    "statsCount": "{count} Mal",
-    "selectProperty": "Objekt auswählen",
-    "noProperty": "Wählen Sie ein Objekt aus der Liste oben",
-    "noEscalations": "Keine manuellen Antworten in diesem Zeitraum",
-    "noEscalationsHint": "Wenn die KI keine Antwort kennt, antwortet der Manager über Telegram. Diese Antworten erscheinen hier.",
+    "queueTab": "Warteschlange",
+    "pendingStats": "Ausstehend: {count}",
+    "noEscalations": "Derzeit nichts zu bearbeiten",
+    "noEscalationsHint": "Wenn die KI keine Antwort kennt, antwortet der Manager über Telegram. Die neuesten erscheinen zuerst.",
     "guestQuestion": "Gastfrage",
-    "staffReply": "Ihre Antwort",
+    "answerForAi": "Antwort für die KI",
     "editReply": "Antwort bearbeiten",
-    "addToKb": "Zur Wissensdatenbank hinzufügen ({count})",
+    "save": "Speichern",
+    "cancel": "Abbrechen",
+    "ignore": "Ausblenden",
+    "addOneToKb": "Zur Wissensdatenbank",
     "addSuccess": "{count} Einträge zur Wissensdatenbank hinzugefügt",
-    "addError": "Einträge konnten nicht hinzugefügt werden"
+    "addError": "Einträge konnten nicht hinzugefügt werden",
+    "singleAddSuccess": "Zur Wissensdatenbank hinzugefügt",
+    "patchSuccess": "Gespeichert",
+    "patchError": "Speichern fehlgeschlagen",
+    "ignoreError": "Ausblenden fehlgeschlagen",
+    "emptyAnswer": "Antwort darf nicht leer sein",
+    "emptyQuestion": "Frage darf nicht leer sein",
+    "selectAll": "Alle auswählen",
+    "deselectAll": "Auswahl aufheben",
+    "bulkIgnoreSuccess": "Ausgeblendet: {count}",
+    "selectedCount": "Ausgewählt: {count}",
+    "deleteSelected": "Ausgewählte ausblenden",
+    "addSelectedToKb": "Zur Wissensdatenbank hinzufügen",
+    "a11y": {
+      "check": "Auswählen",
+      "uncheck": "Abwählen"
+    }
   }
 }

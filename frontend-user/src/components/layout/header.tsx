@@ -1,14 +1,18 @@
 'use client';
 
 import { Menu, LogOut, User } from 'lucide-react';
+import { usePathname } from 'next/navigation';
 import { useUiStore } from '@/stores/ui.store';
 import { useAuth } from '@/hooks/use-auth';
 import { apiClient } from '@/lib/api/client';
 import { useRouter } from '@/i18n/navigation';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 
 export function Header() {
+  const pathname = usePathname();
+  const isChat = pathname?.includes('/chat');
   const { toggleSidebar } = useUiStore();
   const { user, mutate } = useAuth();
   const router = useRouter();
@@ -24,7 +28,12 @@ export function Header() {
   }
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-4 border-b bg-background px-6">
+    <header
+      className={cn(
+        'sticky top-0 z-30 flex h-16 shrink-0 items-center gap-4 border-b border-[#dbeafe] bg-background px-6 dark:border-b-indigo-900/45',
+        isChat && 'hidden lg:flex',
+      )}
+    >
       <Button
         variant="ghost"
         size="icon"

@@ -5,6 +5,8 @@ import { ChatController } from './chat.controller';
 import { ChatService } from './chat.service';
 import { ChatGateway } from './chat.gateway';
 import { ChatMessageEntity } from './entities/chat-message.entity';
+import { ConversationEntity } from './entities/conversation.entity';
+import { ConversationService } from './conversation.service';
 import { AgentModule } from '../agent/agent.module';
 import { PropertyModule } from '../property/property.module';
 import { KnowledgeBaseModule } from '../knowledge-base/knowledge-base.module';
@@ -12,7 +14,7 @@ import { TelegramModule } from '../telegram/telegram.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([ChatMessageEntity]),
+    TypeOrmModule.forFeature([ChatMessageEntity, ConversationEntity]),
     JwtModule.register({}),
     AgentModule,
     PropertyModule,
@@ -20,7 +22,7 @@ import { TelegramModule } from '../telegram/telegram.module';
     forwardRef(() => TelegramModule),
   ],
   controllers: [ChatController],
-  providers: [ChatService, ChatGateway],
-  exports: [ChatService, ChatGateway],
+  providers: [ChatService, ConversationService, ChatGateway],
+  exports: [ChatService, ConversationService, ChatGateway],
 })
 export class ChatModule {}

@@ -6,6 +6,7 @@ import { useProperties } from '@/hooks/use-properties';
 import { Building2, CalendarDays, MessageSquare, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ReplyAnalyticsSection } from '@/components/dashboard/reply-analytics-section';
 
 export default function DashboardPage() {
   const t = useTranslations('dashboard');
@@ -64,6 +65,8 @@ export default function DashboardPage() {
           </Link>
         ))}
       </div>
+
+      <ReplyAnalyticsSection />
 
       {!isLoading && properties.length === 0 && (
         <div className="rounded-lg border border-dashed p-8 text-center">

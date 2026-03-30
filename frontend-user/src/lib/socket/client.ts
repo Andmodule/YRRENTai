@@ -3,9 +3,12 @@ import { apiClient } from '@/lib/api/client';
 
 /**
  * Where Socket.IO connects:
- * - If `NEXT_PUBLIC_WS_URL` is set → that origin.
- * - Else if `NEXT_PUBLIC_API_URL` is a different origin than the page (e.g. Vercel → Render) → API origin (direct WS; auth via POST `/auth/ws-token`).
- * - Else same origin as the page (local Next rewrite to the backend).
+ * - `NEXT_PUBLIC_WS_URL` → that origin (explicit override).
+ * - Development in the browser → **same origin** as the page (e.g. :3012) so requests hit Next.js rewrites
+ *   (`/api/*` → backend). Direct `ws://localhost:3010` fails if the API process is not running; same-origin uses
+ *   HTTP long-polling through the proxy first.
+ * - Production cross-origin (e.g. Vercel → Render) → API origin + `/auth/ws-token` in handshake.
+ * - Else same origin.
  */
 function resolveSocketBaseUrl(): string {
   const wsOverride = process.env.NEXT_PUBLIC_WS_URL?.trim();
@@ -16,18 +19,24 @@ function resolveSocketBaseUrl(): string {
       return wsOverride.replace(/\/$/, '');
     }
   }
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
-  if (typeof window !== 'undefined' && apiUrl) {
-    try {
-      const apiOrigin = new URL(apiUrl).origin;
-      if (apiOrigin !== window.location.origin) {
-        return apiOrigin;
-      }
-    } catch {
-      /* ignore */
-    }
-  }
   if (typeof window !== 'undefined') {
+    if (process.env.NEXT_PUBLIC_SOCKET_SAME_ORIGIN === 'true') {
+      return window.location.origin;
+    }
+    if (process.env.NODE_ENV === 'development') {
+      return window.location.origin;
+    }
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
+    if (apiUrl) {
+      try {
+        const apiOrigin = new URL(apiUrl).origin;
+        if (apiOrigin !== window.location.origin) {
+          return apiOrigin;
+        }
+      } catch {
+        /* ignore */
+      }
+    }
     return window.location.origin;
   }
   return process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '') || 'http://localhost:3012';
@@ -50,6 +59,8 @@ export async function connectChatSocket(): Promise<Socket> {
     chatSocket = null;
   }
   const base = resolveSocketBaseUrl();
+  const useProxy =
+    typeof window !== 'undefined' && base === window.location.origin;
   chatSocket = io(`${base}/chat`, {
     path: '/api/socket.io',
     auth: (cb) => {
@@ -58,7 +69,8 @@ export async function connectChatSocket(): Promise<Socket> {
         .catch(() => cb({ token: '' }));
     },
     withCredentials: true,
-    transports: ['websocket', 'polling'],
+    /** Polling first when using Next rewrites — works reliably; WS may follow if the dev server proxies upgrades. */
+    transports: useProxy ? ['polling', 'websocket'] : ['websocket', 'polling'],
     autoConnect: false,
   });
   chatSocket.connect();

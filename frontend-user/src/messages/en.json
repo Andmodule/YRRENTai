@@ -36,7 +36,21 @@
     "noPropertiesDescription": "Add your first property to get started with RentAI",
     "addFirstProperty": "Add property",
     "recentProperties": "Recent properties",
-    "viewAll": "View all"
+    "viewAll": "View all",
+    "analytics": {
+      "title": "Reply analytics",
+      "subtitle": "Assistant replies to guests (AI vs manual) in the selected range",
+      "periodLabel": "Period",
+      "periodLast30": "Last 30 days",
+      "periodYearStart": "Since start of year",
+      "periodCustom": "Custom range",
+      "customFrom": "From",
+      "customTo": "To",
+      "aiReplies": "AI replies",
+      "manualReplies": "Manual replies",
+      "aiShare": "AI share",
+      "invalidRange": "Start date is after end date"
+    }
   },
   "properties": {
     "title": "Properties",
@@ -226,6 +240,39 @@
       "NO_SHOW": "No-show"
     }
   },
+  "inbox": {
+    "backendUnreachable": "Cannot reach the API",
+    "backendUnreachableHint": "Start the Nest backend so Next.js can proxy /api/v1 and Socket.IO can connect. Expected API base: {apiUrl}",
+    "title": "Inbox",
+    "selectConversation": "Select a conversation from the list",
+    "allProperties": "All properties",
+    "allStatuses": "All statuses",
+    "empty": "No conversations",
+    "emptyHint": "Conversations will appear here once guests send messages",
+    "noMessages": "No messages in this conversation yet",
+    "replyPlaceholder": "Type a reply to the guest…",
+    "replyPlaceholderUrgent": "Guest is waiting — type your reply…",
+    "guestAsUser": "As guest (test)",
+    "guestInputPlaceholder": "Type a guest question…",
+    "guestAsUserHint": "Messages here go into this conversation as a guest question — same as the old chat test.",
+    "staffReply": "Manager reply",
+    "dev": {
+      "panelSummary": "Dev: guest testing",
+      "newGuestThread": "New guest thread",
+      "newGuestHint": "First choose the property, then the guest key. Each key is a separate guest on that property.",
+      "guestInOpenDialog": "Question in the open conversation",
+      "selectDialogFirst": "Select a conversation in the list on the left.",
+      "propertyForGuest": "Property for this guest",
+      "guestKey": "Guest session key",
+      "guestKeyPlaceholder": "guest-a, guest-b…",
+      "messagePlaceholder": "Message as a new guest…"
+    },
+    "status": {
+      "ai_handling": "AI handling",
+      "needs_human": "Needs reply",
+      "resolved": "Resolved"
+    }
+  },
   "settings": {
     "title": "Account settings",
     "telegram": {
@@ -245,17 +292,34 @@
   "kbImprovement": {
     "title": "Improve Knowledge Base",
     "subtitle": "Manual replies you've given — add them to the knowledge base",
-    "statsLabel": "In the last {days} days you replied manually",
-    "statsCount": "{count} times",
-    "selectProperty": "Select a property",
-    "noProperty": "Select a property from the list above",
-    "noEscalations": "No manual replies in this period",
-    "noEscalationsHint": "When AI doesn't know the answer, the manager replies via Telegram. Those replies appear here.",
+    "queueTab": "Queue",
+    "pendingStats": "Pending: {count}",
+    "noEscalations": "Nothing waiting right now",
+    "noEscalationsHint": "When AI doesn't know the answer, the manager replies via Telegram. Those replies appear here, newest first.",
     "guestQuestion": "Guest question",
-    "staffReply": "Your reply",
+    "answerForAi": "Answer for AI",
     "editReply": "Edit reply",
-    "addToKb": "Add to KB ({count})",
-    "addSuccess": "Added {count} entries to knowledge base",
-    "addError": "Failed to add entries"
+    "save": "Save",
+    "cancel": "Cancel",
+    "ignore": "Dismiss",
+    "addOneToKb": "Add to KB",
+    "addSuccess": "Added {count} entries to the knowledge base",
+    "addError": "Failed to add entries",
+    "singleAddSuccess": "Added to the knowledge base",
+    "patchSuccess": "Saved",
+    "patchError": "Failed to save",
+    "ignoreError": "Failed to dismiss",
+    "emptyAnswer": "Answer cannot be empty",
+    "emptyQuestion": "Question cannot be empty",
+    "selectAll": "Select all",
+    "deselectAll": "Deselect all",
+    "bulkIgnoreSuccess": "Dismissed {count}",
+    "selectedCount": "Selected: {count}",
+    "deleteSelected": "Dismiss selected",
+    "addSelectedToKb": "Add to knowledge base",
+    "a11y": {
+      "check": "Select",
+      "uncheck": "Deselect"
+    }
   }
 }

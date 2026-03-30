@@ -4,5 +4,6 @@ export class StaffRepliedEvent {
     public readonly messageId: string,
     public readonly content: string,
     public readonly createdAt: string,
+    public readonly conversationId?: string,
   ) {}
 }

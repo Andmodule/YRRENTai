@@ -19,7 +19,13 @@ import {
   sendChatMessageSchema,
   chatMessageSchema,
   chatMessageRoleSchema,
+  replyAnalyticsQuerySchema,
 } from './schemas/chat.schema';
+import {
+  conversationPublicSchema,
+  listConversationsQuerySchema,
+  managerReplySchema,
+} from './schemas/conversation.schema';
 
 export type LoginDto = z.infer<typeof loginSchema>;
 export type RegisterDto = z.infer<typeof registerSchema>;
@@ -52,6 +58,21 @@ export type PaginationQuery = z.infer<typeof paginationSchema>;
 export type SendChatMessageDto = z.infer<typeof sendChatMessageSchema>;
 export type ChatMessage = z.infer<typeof chatMessageSchema>;
 export type ChatMessageRole = z.infer<typeof chatMessageRoleSchema>;
+
+export type ReplyAnalyticsQuery = z.infer<typeof replyAnalyticsQuerySchema>;
+
+export interface ReplyAnalyticsPayload {
+  ai: number;
+  staff: number;
+  /** Share of AI replies among assistant messages (0–100); null if none. */
+  aiPercent: number | null;
+  from: string;
+  to: string;
+}
+
+export type ConversationPublicDto = z.infer<typeof conversationPublicSchema>;
+export type ListConversationsQuery = z.infer<typeof listConversationsQuerySchema>;
+export type ManagerReplyDto = z.infer<typeof managerReplySchema>;
 
 export interface PaginatedResponse<T> {
   data: T[];

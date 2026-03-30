@@ -36,7 +36,21 @@
     "noPropertiesDescription": "Добавьте первый объект, чтобы начать работу",
     "addFirstProperty": "Добавить объект",
     "recentProperties": "Последние объекты",
-    "viewAll": "Все объекты"
+    "viewAll": "Все объекты",
+    "analytics": {
+      "title": "Аналитика ответов",
+      "subtitle": "Ответы ассистента гостям (AI и вручную) за выбранный период",
+      "periodLabel": "Период",
+      "periodLast30": "Последние 30 дней",
+      "periodYearStart": "С начала года",
+      "periodCustom": "Свой период",
+      "customFrom": "С",
+      "customTo": "По",
+      "aiReplies": "Ответы AI",
+      "manualReplies": "Ручные ответы",
+      "aiShare": "Доля AI",
+      "invalidRange": "Дата начала позже даты окончания"
+    }
   },
   "properties": {
     "title": "Объекты",
@@ -226,6 +240,39 @@
       "NO_SHOW": "Неявка"
     }
   },
+  "inbox": {
+    "backendUnreachable": "Нет связи с API",
+    "backendUnreachableHint": "Запустите бэкенд Nest — тогда Next сможет проксировать /api/v1, а WebSocket подключится к тому же хосту. Ожидаемый адрес API: {apiUrl}",
+    "title": "Входящие",
+    "selectConversation": "Выберите диалог из списка",
+    "allProperties": "Все объекты",
+    "allStatuses": "Все статусы",
+    "empty": "Нет диалогов",
+    "emptyHint": "Диалоги появятся здесь, когда гости начнут переписку",
+    "noMessages": "В этом диалоге пока нет сообщений",
+    "replyPlaceholder": "Напишите ответ гостю…",
+    "replyPlaceholderUrgent": "Гость ждёт ответа — напишите…",
+    "guestAsUser": "Как гость (тест)",
+    "guestInputPlaceholder": "Вопрос от гостя…",
+    "guestAsUserHint": "Сообщения уходят в этот диалог как вопрос гостя — как в старом тестовом чате.",
+    "staffReply": "Ответ менеджера",
+    "dev": {
+      "panelSummary": "Dev: тест гостя",
+      "newGuestThread": "Новый гостевой тред",
+      "newGuestHint": "Сначала выберите объект, затем ключ гостя. Разные ключи — разные гости на этом объекте.",
+      "guestInOpenDialog": "Вопрос в открытом диалоге",
+      "selectDialogFirst": "Сначала выберите диалог в списке слева.",
+      "propertyForGuest": "Объект для этого гостя",
+      "guestKey": "Ключ сессии гостя",
+      "guestKeyPlaceholder": "guest-a, guest-b…",
+      "messagePlaceholder": "Сообщение от нового гостя…"
+    },
+    "status": {
+      "ai_handling": "AI обрабатывает",
+      "needs_human": "Нужен ответ",
+      "resolved": "Решён"
+    }
+  },
   "settings": {
     "title": "Настройки аккаунта",
     "telegram": {
@@ -245,17 +292,34 @@
   "kbImprovement": {
     "title": "Улучшение базы знаний",
     "subtitle": "Ответы, которые вы дали вручную — добавьте их в базу знаний",
-    "statsLabel": "За последние {days} дн. вы ответили вручную",
-    "statsCount": "{count} раз",
-    "selectProperty": "Выберите объект",
-    "noProperty": "Выберите объект из списка выше",
-    "noEscalations": "За выбранный период нет ручных ответов",
-    "noEscalationsHint": "Когда AI не знает ответа — управляющий отвечает через Telegram. Эти ответы появятся здесь.",
+    "queueTab": "Очередь",
+    "pendingStats": "Ждут обработки: {count} шт.",
+    "noEscalations": "Сейчас нечего обрабатывать",
+    "noEscalationsHint": "Когда AI не знает ответа — управляющий отвечает через Telegram. Ответы появятся здесь, сначала новые.",
     "guestQuestion": "Вопрос гостя",
-    "staffReply": "Ваш ответ",
+    "answerForAi": "Ответ для AI",
     "editReply": "Редактировать ответ",
-    "addToKb": "Внести в базу знаний ({count})",
-    "addSuccess": "Добавлено {count} записей в базу знаний",
-    "addError": "Не удалось добавить записи"
+    "save": "Сохранить",
+    "cancel": "Отмена",
+    "ignore": "Скрыть",
+    "addOneToKb": "Добавить в БЗ",
+    "addSuccess": "Добавлено записей: {count}",
+    "addError": "Не удалось добавить в базу знаний",
+    "singleAddSuccess": "Добавлено в базу знаний",
+    "patchSuccess": "Сохранено",
+    "patchError": "Не удалось сохранить",
+    "ignoreError": "Не удалось скрыть",
+    "emptyAnswer": "Ответ не может быть пустым",
+    "emptyQuestion": "Вопрос не может быть пустым",
+    "selectAll": "Выделить все",
+    "deselectAll": "Снять выбор",
+    "bulkIgnoreSuccess": "Скрыто: {count}",
+    "selectedCount": "Выбрано: {count}",
+    "deleteSelected": "Удалить выбранные",
+    "addSelectedToKb": "Добавить в базу знаний",
+    "a11y": {
+      "check": "Выбрать",
+      "uncheck": "Снять выбор"
+    }
   }
 }

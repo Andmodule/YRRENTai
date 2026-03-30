@@ -5,6 +5,9 @@ import {
   CreateDateColumn,
 } from 'typeorm';
 
+/** Whether this resolved escalation is still queued for KB improvement */
+export type KbProcessingStatus = 'pending' | 'added_to_kb' | 'ignored';
+
 @Entity('escalations')
 export class EscalationEntity {
   @PrimaryGeneratedColumn('uuid')
@@ -12,6 +15,9 @@ export class EscalationEntity {
 
   @Column('uuid')
   propertyId!: string;
+
+  @Column('uuid', { nullable: true })
+  conversationId?: string;
 
   @Column()
   propertyName!: string;
@@ -31,6 +37,10 @@ export class EscalationEntity {
 
   @Column({ type: 'timestamptz', nullable: true })
   resolvedAt?: Date;
+
+  /** NULL = legacy pending (treat as pending in KB queue) */
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  kbProcessingStatus?: KbProcessingStatus | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;

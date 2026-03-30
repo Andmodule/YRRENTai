@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { FindOptionsWhere, Repository } from 'typeorm';
 import { ChatMessageEntity, type MessageSource } from './entities/chat-message.entity';
 
 @Injectable()
@@ -14,6 +14,7 @@ export class ChatService {
 
   async saveMessage(data: {
     propertyId: string;
+    conversationId?: string;
     userId?: string;
     content: string;
     role: string;
@@ -23,9 +24,13 @@ export class ChatService {
     return this.messageRepository.save(message);
   }
 
-  async getMessages(propertyId: string, page: number, limit: number) {
+  async getMessages(propertyId: string, page: number, limit: number, conversationId?: string) {
+    const where: FindOptionsWhere<ChatMessageEntity> = conversationId
+      ? { propertyId, conversationId }
+      : { propertyId };
+
     const [data, total] = await this.messageRepository.findAndCount({
-      where: { propertyId },
+      where,
       order: { createdAt: 'ASC' },
       skip: (page - 1) * limit,
       take: limit,
@@ -40,9 +45,14 @@ export class ChatService {
   async getRecentHistory(
     propertyId: string,
     count = 20,
+    conversationId?: string,
   ): Promise<{ role: 'user' | 'assistant'; content: string }[]> {
+    const where: FindOptionsWhere<ChatMessageEntity> = conversationId
+      ? { propertyId, conversationId }
+      : { propertyId };
+
     const messages = await this.messageRepository.find({
-      where: { propertyId },
+      where,
       order: { createdAt: 'DESC' },
       take: count,
     });
@@ -51,5 +61,36 @@ export class ChatService {
       role: m.role as 'user' | 'assistant',
       content: m.content,
     }));
+  }
+
+  /** Counts guest-facing assistant replies by source (AI vs staff) for the given properties and time range. */
+  async getReplyStats(
+    propertyIds: string[],
+    from: Date,
+    to: Date,
+  ): Promise<{ ai: number; staff: number }> {
+    if (propertyIds.length === 0) {
+      return { ai: 0, staff: 0 };
+    }
+
+    const rows = await this.messageRepository
+      .createQueryBuilder('m')
+      .select('m.source', 'source')
+      .addSelect('COUNT(*)', 'cnt')
+      .where('m.propertyId IN (:...ids)', { ids: propertyIds })
+      .andWhere('m.role = :role', { role: 'assistant' })
+      .andWhere('m.createdAt >= :from', { from })
+      .andWhere('m.createdAt <= :to', { to })
+      .groupBy('m.source')
+      .getRawMany<{ source: string; cnt: string }>();
+
+    let ai = 0;
+    let staff = 0;
+    for (const row of rows) {
+      const n = Number(row.cnt);
+      if (row.source === 'ai') ai = n;
+      else if (row.source === 'staff') staff = n;
+    }
+    return { ai, staff };
   }
 }

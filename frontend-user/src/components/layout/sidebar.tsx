@@ -39,12 +39,12 @@ export function Sidebar() {
 
       <aside
         className={cn(
-          'fixed left-0 top-0 z-40 flex h-screen w-64 flex-col border-r bg-background transition-transform duration-200',
+          'fixed left-0 top-0 z-40 flex h-screen w-56 flex-col border-r border-[#dbeafe] bg-background transition-transform duration-200 dark:border-r-indigo-900/45',
           sidebarOpen ? 'translate-x-0' : '-translate-x-full',
           'lg:translate-x-0',
         )}
       >
-        <div className="flex h-16 shrink-0 items-center border-b px-6">
+        <div className="flex h-16 shrink-0 items-center border-b border-[#dbeafe] px-6 dark:border-b-indigo-900/45">
           <span className="text-lg font-bold tracking-tight">RentAI</span>
         </div>
 
