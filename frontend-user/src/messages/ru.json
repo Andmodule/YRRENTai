@@ -203,6 +203,29 @@
     "kbImprovement": "База знаний",
     "settings": "Настройки"
   },
+  "bookings": {
+    "title": "Бронирования",
+    "subtitle": "Брони выбранного объекта",
+    "guest": "Гость",
+    "checkIn": "Заезд",
+    "checkOut": "Выезд",
+    "status": "Статус",
+    "total": "Сумма",
+    "empty": "Пока нет бронирований",
+    "emptyHint": "Здесь появятся брони после их создания.",
+    "noProperties": "Нет объектов",
+    "noPropertiesHint": "Сначала добавьте объект, чтобы вести бронирования.",
+    "goToProperties": "К объектам",
+    "statusLabels": {
+      "PENDING": "Ожидает",
+      "CONFIRMED": "Подтверждено",
+      "CHECKED_IN": "Заселение",
+      "CHECKED_OUT": "Выселение",
+      "CANCELLED": "Отменено",
+      "DECLINED": "Отклонено",
+      "NO_SHOW": "Неявка"
+    }
+  },
   "settings": {
     "title": "Настройки аккаунта",
     "telegram": {

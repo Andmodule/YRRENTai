@@ -203,6 +203,29 @@
     "kbImprovement": "Baza wiedzy",
     "settings": "Ustawienia"
   },
+  "bookings": {
+    "title": "Rezerwacje",
+    "subtitle": "Rezerwacje wybranego obiektu",
+    "guest": "Gość",
+    "checkIn": "Zameldowanie",
+    "checkOut": "Wymeldowanie",
+    "status": "Status",
+    "total": "Suma",
+    "empty": "Brak rezerwacji",
+    "emptyHint": "Rezerwacje pojawią się po utworzeniu.",
+    "noProperties": "Brak obiektów",
+    "noPropertiesHint": "Najpierw dodaj obiekt, aby zarządzać rezerwacjami.",
+    "goToProperties": "Przejdź do obiektów",
+    "statusLabels": {
+      "PENDING": "Oczekuje",
+      "CONFIRMED": "Potwierdzona",
+      "CHECKED_IN": "Zameldowanie",
+      "CHECKED_OUT": "Wymeldowanie",
+      "CANCELLED": "Anulowana",
+      "DECLINED": "Odrzucona",
+      "NO_SHOW": "Niepojawienie się"
+    }
+  },
   "settings": {
     "title": "Ustawienia konta",
     "telegram": {

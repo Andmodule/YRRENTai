@@ -203,6 +203,29 @@
     "kbImprovement": "Base de conocimiento",
     "settings": "Configuración"
   },
+  "bookings": {
+    "title": "Reservas",
+    "subtitle": "Reservas de la propiedad seleccionada",
+    "guest": "Huésped",
+    "checkIn": "Entrada",
+    "checkOut": "Salida",
+    "status": "Estado",
+    "total": "Total",
+    "empty": "Aún no hay reservas",
+    "emptyHint": "Las reservas aparecerán aquí al crearse.",
+    "noProperties": "Sin propiedades",
+    "noPropertiesHint": "Añade primero una propiedad para gestionar reservas.",
+    "goToProperties": "Ir a propiedades",
+    "statusLabels": {
+      "PENDING": "Pendiente",
+      "CONFIRMED": "Confirmada",
+      "CHECKED_IN": "Check-in",
+      "CHECKED_OUT": "Check-out",
+      "CANCELLED": "Cancelada",
+      "DECLINED": "Rechazada",
+      "NO_SHOW": "No presentado"
+    }
+  },
   "settings": {
     "title": "Configuración de cuenta",
     "telegram": {

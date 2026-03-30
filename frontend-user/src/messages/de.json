@@ -203,6 +203,29 @@
     "kbImprovement": "Wissensdatenbank",
     "settings": "Einstellungen"
   },
+  "bookings": {
+    "title": "Buchungen",
+    "subtitle": "Buchungen für das ausgewählte Objekt",
+    "guest": "Gast",
+    "checkIn": "Check-in",
+    "checkOut": "Check-out",
+    "status": "Status",
+    "total": "Betrag",
+    "empty": "Noch keine Buchungen",
+    "emptyHint": "Buchungen erscheinen hier, sobald sie angelegt sind.",
+    "noProperties": "Keine Objekte",
+    "noPropertiesHint": "Fügen Sie zuerst ein Objekt hinzu, um Buchungen zu verwalten.",
+    "goToProperties": "Zu den Objekten",
+    "statusLabels": {
+      "PENDING": "Ausstehend",
+      "CONFIRMED": "Bestätigt",
+      "CHECKED_IN": "Eingecheckt",
+      "CHECKED_OUT": "Ausgecheckt",
+      "CANCELLED": "Storniert",
+      "DECLINED": "Abgelehnt",
+      "NO_SHOW": "Nicht erschienen"
+    }
+  },
   "settings": {
     "title": "Kontoeinstellungen",
     "telegram": {

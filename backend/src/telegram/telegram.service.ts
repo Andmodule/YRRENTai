@@ -9,6 +9,11 @@ import { PropertyNotificationSettingsEntity } from './entities/property-notifica
 import { StaffRepliedEvent } from '../common/events/staff.events';
 import { ChatService } from '../chat/chat.service';
 import { UserService } from '../user/user.service';
+import {
+  TELEGRAM_INSTRUCTION_NO_OPEN_ESCALATION,
+  TELEGRAM_INSTRUCTION_REPLY_NEEDS_TEXT,
+  TELEGRAM_INSTRUCTION_REPLY_REQUIRED,
+} from './constants/telegram-instruction.constants';
 
 interface TelegramSendMessageResponse {
   ok: boolean;
@@ -22,6 +27,7 @@ interface TelegramUpdate {
     from?: { id: number; username?: string; first_name?: string };
     chat: { id: number };
     text?: string;
+    caption?: string;
     reply_to_message?: { message_id: number };
   };
 }
@@ -108,7 +114,24 @@ export class TelegramService {
 
   async handleWebhookUpdate(update: TelegramUpdate): Promise<void> {
     const message = update.message;
-    if (!message?.reply_to_message || !message.text) return;
+    if (!message) return;
+
+    const chatId = String(message.chat.id);
+
+    if (!this.isEnabled) {
+      return;
+    }
+
+    if (!message.reply_to_message) {
+      await this.sendInstructionMessage(chatId, TELEGRAM_INSTRUCTION_REPLY_REQUIRED);
+      return;
+    }
+
+    const replyText = (message.text ?? message.caption ?? '').trim();
+    if (!replyText) {
+      await this.sendInstructionMessage(chatId, TELEGRAM_INSTRUCTION_REPLY_NEEDS_TEXT);
+      return;
+    }
 
     const replyToId = message.reply_to_message.message_id;
 
@@ -118,17 +141,18 @@ export class TelegramService {
 
     if (!escalation) {
       this.logger.warn(`No open escalation for tg_message_id=${replyToId}`);
+      await this.sendInstructionMessage(chatId, TELEGRAM_INSTRUCTION_NO_OPEN_ESCALATION);
       return;
     }
 
     const savedMessage = await this.chatService.saveMessage({
       propertyId: escalation.propertyId,
-      content: message.text,
+      content: replyText,
       role: 'assistant',
       source: 'staff',
     });
 
-    escalation.staffReply = message.text;
+    escalation.staffReply = replyText;
     escalation.resolvedAt = new Date();
     await this.escalationRepository.save(escalation);
 
@@ -137,7 +161,7 @@ export class TelegramService {
       new StaffRepliedEvent(
         escalation.propertyId,
         savedMessage.id,
-        message.text,
+        replyText,
         savedMessage.createdAt.toISOString(),
       ),
     );
@@ -145,6 +169,18 @@ export class TelegramService {
     this.logger.log(
       `Staff reply saved for escalation ${escalation.id}, property ${escalation.propertyId}`,
     );
+  }
+
+  private async sendInstructionMessage(chatId: string, text: string): Promise<void> {
+    try {
+      await axios.post<TelegramSendMessageResponse>(
+        `${this.apiBase}/sendMessage`,
+        { chat_id: chatId, text },
+        { timeout: 10000 },
+      );
+    } catch (err) {
+      this.logger.warn(`Telegram instruction message failed: ${(err as Error).message}`);
+    }
   }
 
   async getNotificationSettings(

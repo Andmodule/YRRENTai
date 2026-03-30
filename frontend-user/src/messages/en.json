@@ -203,6 +203,29 @@
     "kbImprovement": "Knowledge Base",
     "settings": "Settings"
   },
+  "bookings": {
+    "title": "Bookings",
+    "subtitle": "Reservations for the selected property",
+    "guest": "Guest",
+    "checkIn": "Check-in",
+    "checkOut": "Check-out",
+    "status": "Status",
+    "total": "Total",
+    "empty": "No bookings yet",
+    "emptyHint": "Bookings will appear here once they are created.",
+    "noProperties": "No properties",
+    "noPropertiesHint": "Add a property first to manage bookings.",
+    "goToProperties": "Go to properties",
+    "statusLabels": {
+      "PENDING": "Pending",
+      "CONFIRMED": "Confirmed",
+      "CHECKED_IN": "Checked in",
+      "CHECKED_OUT": "Checked out",
+      "CANCELLED": "Cancelled",
+      "DECLINED": "Declined",
+      "NO_SHOW": "No-show"
+    }
+  },
   "settings": {
     "title": "Account settings",
     "telegram": {

@@ -1,7 +1,7 @@
 import useSWR from 'swr';
 import { fetcher } from '@/lib/api/fetcher';
 
-interface Booking {
+export interface Booking {
   id: string;
   propertyId: string;
   guestName: string;
@@ -12,25 +12,14 @@ interface Booking {
   currency: string;
 }
 
-interface BookingsResponse {
-  data: Booking[];
-  meta: {
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-  };
-}
-
-export function useBookings(propertyId: string | null, page = 1) {
-  const { data, error, isLoading, mutate } = useSWR<BookingsResponse>(
-    propertyId ? `/bookings?propertyId=${propertyId}&page=${page}` : null,
+export function useBookings(propertyId: string | null) {
+  const { data, error, isLoading, mutate } = useSWR<Booking[]>(
+    propertyId ? `/bookings?propertyId=${propertyId}` : null,
     fetcher,
   );
 
   return {
-    bookings: data?.data,
-    meta: data?.meta,
+    bookings: data ?? [],
     isLoading,
     isError: !!error,
     error,
