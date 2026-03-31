@@ -7,6 +7,8 @@ export interface PublicUser {
   role: string;
   language: string;
   telegramChatId: string | null;
+  /** STAFF only: last explicit shift completion (ISO string or null). */
+  staffShiftCompletedAt: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

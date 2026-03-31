@@ -253,11 +253,84 @@
   "nav": {
     "dashboard": "Панель управления",
     "properties": "Объекты",
+    "tasks": "Задачи",
     "calendar": "Календарь",
     "bookings": "Бронирования",
     "chat": "Чат",
     "kbImprovement": "База знаний",
     "settings": "Настройки"
+  },
+  "tasks": {
+    "pageTitle": "Задачи",
+    "loadError": "Не удалось загрузить задачи.",
+    "retry": "Повторить",
+    "unassigned": "Не назначено",
+    "priority": {
+      "urgent": "Срочно",
+      "normal": "Обычный",
+      "low": "Низкий"
+    },
+    "status": {
+      "pending": "Ожидает",
+      "in_progress": "В процессе",
+      "done": "Готово",
+      "issue": "Проблема"
+    },
+    "type": {
+      "checkout_cleaning": "Уборка (выезд)",
+      "checkin_prep": "Подготовка к заезду",
+      "mid_stay_cleaning": "Плановая уборка",
+      "manual": "Ручная задача"
+    },
+    "filters": {
+      "from": "С",
+      "to": "По",
+      "status": "Статус",
+      "priority": "Приоритет",
+      "property": "Объект",
+      "propertyPlaceholder": "Поиск по названию…",
+      "all": "Все"
+    },
+    "columns": {
+      "pending": "Ожидает",
+      "in_progress": "В процессе",
+      "done": "Готово",
+      "issue": "Проблема",
+      "columnAria": "{title}: {count} задач"
+    },
+    "emptyColumn": {
+      "emptyPending": "Нет задач в очереди",
+      "emptyProgress": "Никто не работает",
+      "emptyDone": "Пока нет выполненных",
+      "emptyIssue": "Проблем нет 👍"
+    },
+    "detail": {
+      "assignee": "Исполнитель",
+      "unassigned": "Не назначено",
+      "notes": "Заметки",
+      "photos": "Фото",
+      "close": "Закрыть"
+    },
+    "issue": {
+      "title": "Сообщить о проблеме",
+      "description": "Опишите, что не так",
+      "label": "Описание проблемы",
+      "placeholder": "Например: сломано кресло в гостиной",
+      "photos": "Прикрепить фото",
+      "cancel": "Отмена",
+      "submit": "Сообщить о проблеме"
+    },
+    "staff": {
+      "title": "Задачи на сегодня",
+      "progressAria": "Прогресс выполнения",
+      "progressText": "{done} из {total} выполнено",
+      "loading": "Загрузка…",
+      "loadingTasks": "Загрузка задач…",
+      "loadError": "Ошибка загрузки.",
+      "retry": "Повторить",
+      "empty": "На сегодня задач нет. Отдыхайте! 🎉",
+      "checkboxAria": "Задача: {title}"
+    }
   },
   "calendar": {
     "title": "Календарь",
@@ -287,6 +360,31 @@
     "loadError": "Не удалось загрузить данные календаря.",
     "retry": "Повторить",
     "nights": "ночей",
+    "nightsShort": "н",
+    "newBookingForm": {
+      "title": "Новая бронь",
+      "description": "Создание бронирования. Даты — в вашем локальном времени.",
+      "property": "Объект",
+      "guest": "Гость",
+      "guestPlaceholder": "Имя гостя",
+      "checkIn": "Заезд",
+      "checkOut": "Выезд",
+      "total": "Сумма",
+      "currency": "Валюта",
+      "guestsCount": "Гостей",
+      "initialStatus": "Начальный статус",
+      "statusPending": "Ожидает",
+      "statusConfirmed": "Подтверждено",
+      "cancel": "Отмена",
+      "submit": "Создать",
+      "submitting": "Создание…",
+      "success": "Бронь создана",
+      "error": "Не удалось создать бронь",
+      "validationRequired": "Заполните обязательные поля",
+      "validationRange": "Выезд должен быть позже заезда",
+      "validationPrice": "Введите корректную сумму",
+      "noPropertiesHint": "Сначала добавьте объект."
+    },
     "openChat": "Открыть чат",
     "chatUnavailable": "Чат будет доступен после подключения мессенджера",
     "copyId": "Копировать ID",

@@ -5,12 +5,16 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { patchNestJsSwagger } from 'nestjs-zod';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
+import express from 'express';
+import { join } from 'path';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const configService = app.get(ConfigService);
   const logger = new Logger('Bootstrap');
+
+  app.use('/uploads', express.static(join(process.cwd(), 'uploads')));
 
   app.use(cookieParser());
   app.use(helmet());

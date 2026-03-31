@@ -253,11 +253,84 @@
   "nav": {
     "dashboard": "Dashboard",
     "properties": "Properties",
+    "tasks": "Tasks",
     "calendar": "Calendar",
     "bookings": "Bookings",
     "chat": "Chat",
     "kbImprovement": "Knowledge Base",
     "settings": "Settings"
+  },
+  "tasks": {
+    "pageTitle": "Tasks",
+    "loadError": "Failed to load tasks.",
+    "retry": "Retry",
+    "unassigned": "Unassigned",
+    "priority": {
+      "urgent": "Urgent",
+      "normal": "Normal",
+      "low": "Low"
+    },
+    "status": {
+      "pending": "Pending",
+      "in_progress": "In progress",
+      "done": "Done",
+      "issue": "Issue"
+    },
+    "type": {
+      "checkout_cleaning": "Checkout cleaning",
+      "checkin_prep": "Check-in prep",
+      "mid_stay_cleaning": "Mid-stay cleaning",
+      "manual": "Manual task"
+    },
+    "filters": {
+      "from": "From",
+      "to": "To",
+      "status": "Status",
+      "priority": "Priority",
+      "property": "Property",
+      "propertyPlaceholder": "Search by name…",
+      "all": "All"
+    },
+    "columns": {
+      "pending": "Pending",
+      "in_progress": "In progress",
+      "done": "Done",
+      "issue": "Issue",
+      "columnAria": "{title}: {count} tasks"
+    },
+    "emptyColumn": {
+      "emptyPending": "No tasks in queue",
+      "emptyProgress": "No one is working",
+      "emptyDone": "No completed yet",
+      "emptyIssue": "No issues 👍"
+    },
+    "detail": {
+      "assignee": "Assignee",
+      "unassigned": "Unassigned",
+      "notes": "Notes",
+      "photos": "Photos",
+      "close": "Close"
+    },
+    "issue": {
+      "title": "Report an issue",
+      "description": "Describe what is wrong",
+      "label": "Issue description",
+      "placeholder": "e.g. broken chair in living room",
+      "photos": "Attach photos",
+      "cancel": "Cancel",
+      "submit": "Submit issue"
+    },
+    "staff": {
+      "title": "Today’s tasks",
+      "progressAria": "Completion progress",
+      "progressText": "{done} of {total} done",
+      "loading": "Loading…",
+      "loadingTasks": "Loading tasks…",
+      "loadError": "Failed to load.",
+      "retry": "Retry",
+      "empty": "No tasks for today. Enjoy your break! 🎉",
+      "checkboxAria": "Task: {title}"
+    }
   },
   "calendar": {
     "title": "Calendar",
@@ -287,6 +360,31 @@
     "loadError": "Could not load calendar data.",
     "retry": "Retry",
     "nights": "nights",
+    "nightsShort": "n",
+    "newBookingForm": {
+      "title": "New booking",
+      "description": "Create a reservation. Dates are in your local timezone.",
+      "property": "Property",
+      "guest": "Guest name",
+      "guestPlaceholder": "Guest name",
+      "checkIn": "Check-in",
+      "checkOut": "Check-out",
+      "total": "Total",
+      "currency": "Currency",
+      "guestsCount": "Guests",
+      "initialStatus": "Initial status",
+      "statusPending": "Pending",
+      "statusConfirmed": "Confirmed",
+      "cancel": "Cancel",
+      "submit": "Create",
+      "submitting": "Creating…",
+      "success": "Booking created",
+      "error": "Could not create booking",
+      "validationRequired": "Fill in required fields",
+      "validationRange": "Check-out must be after check-in",
+      "validationPrice": "Enter a valid amount",
+      "noPropertiesHint": "Add a property first."
+    },
     "openChat": "Open chat",
     "chatUnavailable": "Chat will be available after messenger is connected",
     "copyId": "Copy ID",

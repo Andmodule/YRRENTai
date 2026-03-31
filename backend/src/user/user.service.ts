@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { UserEntity } from './entities/user.entity';
@@ -50,9 +50,23 @@ export class UserService {
       role: user.role,
       language: user.language,
       telegramChatId: user.telegramChatId ?? null,
+      staffShiftCompletedAt: user.staffShiftCompletedAt
+        ? user.staffShiftCompletedAt.toISOString()
+        : null,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };
+  }
+
+  async markStaffShiftComplete(userId: string): Promise<PublicUser> {
+    const user = await this.findById(userId);
+    if (!user) throw new NotFoundException('User not found');
+    if (user.role !== 'STAFF') {
+      throw new ForbiddenException('Only staff can complete shift');
+    }
+    user.staffShiftCompletedAt = new Date();
+    const saved = await this.userRepository.save(user);
+    return this.toPublicUser(saved);
   }
 
   async updateTelegramChatId(userId: string, telegramChatId: string | null): Promise<PublicUser> {

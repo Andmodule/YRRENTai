@@ -253,11 +253,84 @@
   "nav": {
     "dashboard": "Dashboard",
     "properties": "Objekte",
+    "tasks": "Aufgaben",
     "calendar": "Kalender",
     "bookings": "Buchungen",
     "chat": "Chat",
     "kbImprovement": "Wissensdatenbank",
     "settings": "Einstellungen"
+  },
+  "tasks": {
+    "pageTitle": "Aufgaben",
+    "loadError": "Aufgaben konnten nicht geladen werden.",
+    "retry": "Erneut",
+    "unassigned": "Nicht zugewiesen",
+    "priority": {
+      "urgent": "Dringend",
+      "normal": "Normal",
+      "low": "Niedrig"
+    },
+    "status": {
+      "pending": "Ausstehend",
+      "in_progress": "In Arbeit",
+      "done": "Erledigt",
+      "issue": "Problem"
+    },
+    "type": {
+      "checkout_cleaning": "Check-out Reinigung",
+      "checkin_prep": "Check-in Vorbereitung",
+      "mid_stay_cleaning": "Zwischenreinigung",
+      "manual": "Manuelle Aufgabe"
+    },
+    "filters": {
+      "from": "Von",
+      "to": "Bis",
+      "status": "Status",
+      "priority": "Priorität",
+      "property": "Objekt",
+      "propertyPlaceholder": "Suche nach Name…",
+      "all": "Alle"
+    },
+    "columns": {
+      "pending": "Ausstehend",
+      "in_progress": "In Arbeit",
+      "done": "Erledigt",
+      "issue": "Problem",
+      "columnAria": "{title}: {count} Aufgaben"
+    },
+    "emptyColumn": {
+      "emptyPending": "Keine Aufgaben in der Warteschlange",
+      "emptyProgress": "Niemand arbeitet",
+      "emptyDone": "Noch keine erledigt",
+      "emptyIssue": "Keine Probleme 👍"
+    },
+    "detail": {
+      "assignee": "Bearbeiter",
+      "unassigned": "Nicht zugewiesen",
+      "notes": "Notizen",
+      "photos": "Fotos",
+      "close": "Schließen"
+    },
+    "issue": {
+      "title": "Problem melden",
+      "description": "Beschreiben Sie das Problem",
+      "label": "Beschreibung",
+      "placeholder": "z. B. defekter Stuhl im Wohnzimmer",
+      "photos": "Fotos anhängen",
+      "cancel": "Abbrechen",
+      "submit": "Melden"
+    },
+    "staff": {
+      "title": "Heutige Aufgaben",
+      "progressAria": "Fortschritt",
+      "progressText": "{done} von {total} erledigt",
+      "loading": "Laden…",
+      "loadingTasks": "Aufgaben laden…",
+      "loadError": "Ladefehler.",
+      "retry": "Erneut",
+      "empty": "Heute keine Aufgaben. Gute Pause! 🎉",
+      "checkboxAria": "Aufgabe: {title}"
+    }
   },
   "bookings": {
     "title": "Buchungen",

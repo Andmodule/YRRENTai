@@ -253,11 +253,84 @@
   "nav": {
     "dashboard": "Panel",
     "properties": "Obiekty",
+    "tasks": "Zadania",
     "calendar": "Kalendarz",
     "bookings": "Rezerwacje",
     "chat": "Czat",
     "kbImprovement": "Baza wiedzy",
     "settings": "Ustawienia"
+  },
+  "tasks": {
+    "pageTitle": "Zadania",
+    "loadError": "Nie udało się wczytać zadań.",
+    "retry": "Ponów",
+    "unassigned": "Nieprzypisane",
+    "priority": {
+      "urgent": "Pilne",
+      "normal": "Normalny",
+      "low": "Niski"
+    },
+    "status": {
+      "pending": "Oczekuje",
+      "in_progress": "W toku",
+      "done": "Gotowe",
+      "issue": "Problem"
+    },
+    "type": {
+      "checkout_cleaning": "Sprzątanie (wymeldowanie)",
+      "checkin_prep": "Przygotowanie zameldowania",
+      "mid_stay_cleaning": "Sprzątanie w trakcie pobytu",
+      "manual": "Zadanie ręczne"
+    },
+    "filters": {
+      "from": "Od",
+      "to": "Do",
+      "status": "Status",
+      "priority": "Priorytet",
+      "property": "Obiekt",
+      "propertyPlaceholder": "Szukaj po nazwie…",
+      "all": "Wszystkie"
+    },
+    "columns": {
+      "pending": "Oczekuje",
+      "in_progress": "W toku",
+      "done": "Gotowe",
+      "issue": "Problem",
+      "columnAria": "{title}: {count} zadań"
+    },
+    "emptyColumn": {
+      "emptyPending": "Brak zadań w kolejce",
+      "emptyProgress": "Nikt nie pracuje",
+      "emptyDone": "Brak ukończonych",
+      "emptyIssue": "Brak problemów 👍"
+    },
+    "detail": {
+      "assignee": "Wykonawca",
+      "unassigned": "Nieprzypisane",
+      "notes": "Notatki",
+      "photos": "Zdjęcia",
+      "close": "Zamknij"
+    },
+    "issue": {
+      "title": "Zgłoś problem",
+      "description": "Opisz, co jest nie tak",
+      "label": "Opis problemu",
+      "placeholder": "np. zepsute krzesło w salonie",
+      "photos": "Załącz zdjęcia",
+      "cancel": "Anuluj",
+      "submit": "Wyślij zgłoszenie"
+    },
+    "staff": {
+      "title": "Zadania na dziś",
+      "progressAria": "Postęp",
+      "progressText": "{done} z {total} wykonano",
+      "loading": "Ładowanie…",
+      "loadingTasks": "Ładowanie zadań…",
+      "loadError": "Błąd ładowania.",
+      "retry": "Ponów",
+      "empty": "Brak zadań na dziś. Miłego odpoczynku! 🎉",
+      "checkboxAria": "Zadanie: {title}"
+    }
   },
   "bookings": {
     "title": "Rezerwacje",

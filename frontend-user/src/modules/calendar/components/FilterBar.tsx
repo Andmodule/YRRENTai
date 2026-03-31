@@ -16,6 +16,8 @@ interface FilterBarProps {
   onFiltersChange: (f: CalendarFilters) => void;
   properties: Property[];
   filteredCount: number;
+  /** If set, «Новая бронь» opens sheet instead of navigating */
+  onNewBooking?: () => void;
 }
 
 const CHANNELS: { value: BookingChannel | 'all'; labelKey: string }[] = [
@@ -35,9 +37,11 @@ const STATUSES: { value: BookingStatus | 'all'; labelKey: string }[] = [
 function ChannelStatusRow({
   filters,
   onFiltersChange,
+  onNewBooking,
 }: {
   filters: CalendarFilters;
   onFiltersChange: (f: CalendarFilters) => void;
+  onNewBooking?: () => void;
 }) {
   const t = useTranslations('calendar');
   return (
@@ -76,14 +80,20 @@ function ChannelStatusRow({
           </button>
         ))}
       </div>
-      <Button asChild size="sm" className="hidden md:inline-flex">
-        <Link href="/bookings">{t('newBooking')}</Link>
-      </Button>
+      {onNewBooking ? (
+        <Button type="button" size="sm" className="hidden md:inline-flex" onClick={onNewBooking}>
+          {t('newBooking')}
+        </Button>
+      ) : (
+        <Button asChild size="sm" className="hidden md:inline-flex">
+          <Link href="/bookings">{t('newBooking')}</Link>
+        </Button>
+      )}
     </div>
   );
 }
 
-export function FilterBar({ filters, onFiltersChange, properties, filteredCount }: FilterBarProps) {
+export function FilterBar({ filters, onFiltersChange, properties, filteredCount, onNewBooking }: FilterBarProps) {
   const t = useTranslations('calendar');
   const isMobile = useIsMobile();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -148,7 +158,7 @@ export function FilterBar({ filters, onFiltersChange, properties, filteredCount 
         <>
           <div className="flex min-w-0 flex-1 justify-center px-2">{search}</div>
           <div className="min-w-0 max-w-full overflow-x-auto py-0.5">
-            <ChannelStatusRow filters={filters} onFiltersChange={onFiltersChange} />
+            <ChannelStatusRow filters={filters} onFiltersChange={onFiltersChange} onNewBooking={onNewBooking} />
           </div>
         </>
       )}
@@ -158,10 +168,16 @@ export function FilterBar({ filters, onFiltersChange, properties, filteredCount 
           <DrawerContent title={t('filters')} className="max-h-[90vh]">
             <div className="space-y-4 px-2 pb-6">
               {search}
-              <ChannelStatusRow filters={filters} onFiltersChange={onFiltersChange} />
-              <Button asChild className="w-full">
-                <Link href="/bookings">{t('newBooking')}</Link>
-              </Button>
+              <ChannelStatusRow filters={filters} onFiltersChange={onFiltersChange} onNewBooking={onNewBooking} />
+              {onNewBooking ? (
+                <Button type="button" className="w-full" onClick={() => { onNewBooking(); setDrawerOpen(false); }}>
+                  {t('newBooking')}
+                </Button>
+              ) : (
+                <Button asChild className="w-full">
+                  <Link href="/bookings">{t('newBooking')}</Link>
+                </Button>
+              )}
               <DrawerClose asChild>
                 <Button variant="outline" className="w-full" type="button">
                   {t('close')}

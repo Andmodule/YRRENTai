@@ -41,4 +41,8 @@ export class UserEntity {
 
   @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt!: Date;
+
+  /** STAFF: last time shift was explicitly completed (for manager visibility). */
+  @Column({ type: 'timestamptz', nullable: true })
+  staffShiftCompletedAt!: Date | null;
 }

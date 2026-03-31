@@ -11,11 +11,13 @@
   "scripts": {
     "dev:backend": "pnpm --filter backend dev",
     "dev:frontend": "pnpm --filter frontend-user dev",
+    "dev:staff": "pnpm --filter frontend-staff dev",
     "dev:admin": "pnpm --filter admin dev",
     "dev:landing": "pnpm --filter landing dev",
     "build:shared": "pnpm --filter @rentai/shared build",
     "build:backend": "pnpm --filter backend build",
     "build:frontend": "pnpm --filter frontend-user build",
+    "build:staff": "pnpm --filter frontend-staff build",
     "build:admin": "pnpm --filter admin build",
     "build:landing": "pnpm --filter landing build",
     "lint": "pnpm -r lint",

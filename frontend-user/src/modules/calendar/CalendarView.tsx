@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useId, useMemo, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { useTheme } from 'next-themes';
 import { Epg, Layout, useEpg } from 'planby';
 import type { Channel } from 'planby';
@@ -10,8 +10,9 @@ import { toast } from 'sonner';
 import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
 import { Button } from '@/components/ui/button';
-import { ResponsivePanel } from '@/components/ui/responsive-panel';
+import { ResponsiveModal, ResponsiveModalContent } from '@/components/ui/responsive-modal';
 import { Separator } from '@/components/ui/separator';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import { useDateLocale } from '@/hooks/useDateLocale';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { cn } from '@/lib/utils';
@@ -19,6 +20,7 @@ import type { CalendarDateRange, CalendarFilters, Reservation } from './types';
 import { useCalendarData } from './hooks/useCalendarData';
 import { useCalendarFilters } from './hooks/useCalendarFilters';
 import { getPropertyMeta, countNights } from './lib/property-meta';
+import { calendarStatusClasses } from './lib/calendar-status-styles';
 import { ProgramBlock } from './components/ProgramBlock';
 import { TimelineHeader } from './components/TimelineHeader';
 import { SidebarChannel } from './components/SidebarChannel';
@@ -27,18 +29,16 @@ import { CalendarEmptyNoProperties, CalendarEmptyNoReservations } from './compon
 import { CalendarError } from './components/CalendarError';
 import { FilterBar } from './components/FilterBar';
 import { TimelineNavBar } from './components/TimelineNavBar';
+import { NewBookingSheet } from './components/NewBookingSheet';
 import { getCalendarPlanbyTheme } from './lib/planby-app-theme';
 
 const ITEM_HEIGHT_PX = 64;
 
-const statusConfig: Record<
-  Reservation['status'],
-  { classes: string; labelKey: string }
-> = {
-  confirmed: { classes: 'bg-blue-100 text-blue-700 border-blue-200', labelKey: 'statusConfirmed' },
-  pending: { classes: 'bg-amber-100 text-amber-700 border-amber-200', labelKey: 'statusPending' },
-  cleaning: { classes: 'bg-rose-100 text-rose-700 border-rose-200', labelKey: 'statusCleaning' },
-  blocked: { classes: 'bg-gray-100 text-gray-500 border-gray-200', labelKey: 'statusBlocked' },
+const statusLabelKey: Record<Reservation['status'], string> = {
+  confirmed: 'statusConfirmed',
+  pending: 'statusPending',
+  cleaning: 'statusCleaning',
+  blocked: 'statusBlocked',
 };
 
 const channelLabelKeys: Record<Reservation['channel'], string> = {
@@ -77,6 +77,7 @@ export function CalendarView({
   const { filteredProperties, filteredReservations } = useCalendarFilters(properties, reservations, filters);
 
   const [selected, setSelected] = useState<Reservation | null>(null);
+  const [newBookingOpen, setNewBookingOpen] = useState(false);
 
   const numDays = useMemo(
     () => eachDayOfInterval({ start: startOfDay(dateRange.start), end: startOfDay(dateRange.end) }).length,
@@ -125,8 +126,25 @@ export function CalendarView({
 
   const epgProps = getEpgProps();
   const layoutProps = getLayoutProps();
-  const { hourWidth: layoutHourWidth, itemHeight: layoutItemHeight } = layoutProps;
+  const { hourWidth: layoutHourWidth, itemHeight: layoutItemHeight, ref: planbyScrollRef } = layoutProps;
   const dayColWidthPx = 24 * layoutHourWidth;
+
+  useEffect(() => {
+    if (filteredProperties.length === 0) return;
+    const el = planbyScrollRef.current;
+    if (!el) return;
+    const onClick = (e: MouseEvent) => {
+      const t = e.target as HTMLElement;
+      if (t.closest('[data-testid="program-item"]')) return;
+      if (t.closest('[data-testid="sidebar"]')) return;
+      if (t.closest('[data-testid="sidebar-item"]')) return;
+      if (t.closest('[data-testid="calendar-timeline-header"]')) return;
+      if (!t.closest('[data-testid="content"]')) return;
+      setNewBookingOpen(true);
+    };
+    el.addEventListener('click', onClick);
+    return () => el.removeEventListener('click', onClick);
+  }, [planbyScrollRef, filteredProperties.length]);
 
   const onSelectReservation = useCallback((r: Reservation) => setSelected(r), []);
 
@@ -252,10 +270,36 @@ export function CalendarView({
 #cal-${calendarScopeId} .planby[data-testid="container"] > div:first-child > div:first-child {
   display: none !important;
 }
+#cal-${calendarScopeId} .planby [data-testid="content"] {
+  cursor: crosshair;
+}
+#cal-${calendarScopeId} .planby [data-testid="program-item"] {
+  cursor: pointer;
+}
+#cal-${calendarScopeId} .planby {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(229 231 235) transparent;
+}
+.dark #cal-${calendarScopeId} .planby {
+  scrollbar-color: rgb(51 65 85 / 0.6) transparent;
+}
+#cal-${calendarScopeId} .planby ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+#cal-${calendarScopeId} .planby ::-webkit-scrollbar-thumb {
+  background: rgb(229 231 235);
+  border-radius: 9999px;
+}
+.dark #cal-${calendarScopeId} .planby ::-webkit-scrollbar-thumb {
+  background: rgb(51 65 85 / 0.7);
+}
 `;
     },
     [calendarScopeId, dayColWidthPx, layoutItemHeight],
   );
+
+  const openNewBooking = useCallback(() => setNewBookingOpen(true), []);
 
   if (isError) {
     return (
@@ -265,8 +309,10 @@ export function CalendarView({
           onFiltersChange={onFiltersChange}
           properties={properties}
           filteredCount={filteredProperties.length}
+          onNewBooking={openNewBooking}
         />
         <CalendarError onRetry={() => refetch()} />
+        <NewBookingSheet open={newBookingOpen} onOpenChange={setNewBookingOpen} properties={properties} />
       </div>
     );
   }
@@ -279,8 +325,10 @@ export function CalendarView({
           onFiltersChange={onFiltersChange}
           properties={properties}
           filteredCount={0}
+          onNewBooking={openNewBooking}
         />
         <CalendarSkeleton />
+        <NewBookingSheet open={newBookingOpen} onOpenChange={setNewBookingOpen} properties={properties} />
       </div>
     );
   }
@@ -288,19 +336,28 @@ export function CalendarView({
   if (properties.length === 0) {
     return (
       <div className="flex flex-1 flex-col">
-        <FilterBar filters={filters} onFiltersChange={onFiltersChange} properties={[]} filteredCount={0} />
+        <FilterBar
+          filters={filters}
+          onFiltersChange={onFiltersChange}
+          properties={[]}
+          filteredCount={0}
+          onNewBooking={openNewBooking}
+        />
         <CalendarEmptyNoProperties />
+        <NewBookingSheet open={newBookingOpen} onOpenChange={setNewBookingOpen} properties={properties} />
       </div>
     );
   }
 
   return (
+    <TooltipProvider delayDuration={200}>
     <div className="flex w-full min-w-0 max-w-full flex-col overflow-x-hidden">
       <FilterBar
         filters={filters}
         onFiltersChange={onFiltersChange}
         properties={properties}
         filteredCount={filteredProperties.length}
+        onNewBooking={openNewBooking}
       />
       <TimelineNavBar
         dateRange={dateRange}
@@ -333,12 +390,17 @@ export function CalendarView({
         )}
       </div>
 
-      <ResponsivePanel open={!!selected} onOpenChange={(o) => !o && setSelected(null)} title={selected?.guestName ?? ''}>
+      <ResponsiveModal open={!!selected} onOpenChange={(o) => !o && setSelected(null)}>
         {selected && (
-          <ReservationPanelContent reservation={selected} locale={locale} onCopy={() => toast.success(t('copied'))} />
+          <ResponsiveModalContent title={selected.guestName}>
+            <ReservationPanelContent reservation={selected} locale={locale} onCopy={() => toast.success(t('copied'))} />
+          </ResponsiveModalContent>
         )}
-      </ResponsivePanel>
+      </ResponsiveModal>
+
+      <NewBookingSheet open={newBookingOpen} onOpenChange={setNewBookingOpen} properties={properties} />
     </div>
+    </TooltipProvider>
   );
 }
 
@@ -353,13 +415,13 @@ function ReservationPanelContent({
 }) {
   const t = useTranslations('calendar');
   const nights = countNights(reservation.checkIn, reservation.checkOut);
-  const st = statusConfig[reservation.status];
+  const stClass = calendarStatusClasses[reservation.status];
 
   return (
     <div className="space-y-4">
-      <p className="text-lg font-semibold">{reservation.guestName}</p>
-      <span className={cn('inline-flex rounded-full border px-2 py-0.5 text-xs font-medium', st.classes)}>
-        {t(st.labelKey)}
+      <p className="text-lg font-semibold text-foreground">{reservation.guestName}</p>
+      <span className={cn('inline-flex rounded-full px-2 py-0.5 text-xs font-medium', stClass)}>
+        {t(statusLabelKey[reservation.status])}
       </span>
       <p className="text-sm text-muted-foreground">
         {t(channelLabelKeys[reservation.channel])}

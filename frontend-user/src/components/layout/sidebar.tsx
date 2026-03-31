@@ -10,6 +10,7 @@ import {
   Building2,
   CalendarDays,
   LayoutGrid,
+  ListTodo,
   MessageSquare,
   Settings,
   Sparkles,
@@ -18,6 +19,7 @@ import {
 const navItems = [
   { href: '/dashboard',      icon: LayoutDashboard, key: 'dashboard' },
   { href: '/properties',     icon: Building2,        key: 'properties' },
+  { href: '/dashboard/tasks', icon: ListTodo,        key: 'tasks' },
   { href: '/dashboard/calendar', icon: LayoutGrid, key: 'calendar' },
   { href: '/bookings',       icon: CalendarDays,     key: 'bookings' },
   { href: '/chat',           icon: MessageSquare,    key: 'chat' },
@@ -60,9 +62,11 @@ export function Sidebar() {
           <ul className="space-y-0.5">
             {navItems.map(({ href, icon: Icon, key }) => {
               const isActive =
-                href === '/dashboard'
-                  ? pathname.includes('/dashboard') && !pathname.includes('/dashboard/')
-                  : pathname.includes(href);
+                href === '/dashboard/tasks'
+                  ? pathname.includes('/dashboard/tasks')
+                  : href === '/dashboard'
+                    ? pathname.includes('/dashboard') && !pathname.includes('/dashboard/')
+                    : pathname.includes(href);
 
               return (
                 <li key={href}>

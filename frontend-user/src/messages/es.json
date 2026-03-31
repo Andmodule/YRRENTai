@@ -253,11 +253,84 @@
   "nav": {
     "dashboard": "Panel",
     "properties": "Propiedades",
+    "tasks": "Tareas",
     "calendar": "Calendario",
     "bookings": "Reservas",
     "chat": "Chat",
     "kbImprovement": "Base de conocimiento",
     "settings": "Configuración"
+  },
+  "tasks": {
+    "pageTitle": "Tareas",
+    "loadError": "No se pudieron cargar las tareas.",
+    "retry": "Reintentar",
+    "unassigned": "Sin asignar",
+    "priority": {
+      "urgent": "Urgente",
+      "normal": "Normal",
+      "low": "Baja"
+    },
+    "status": {
+      "pending": "Pendiente",
+      "in_progress": "En curso",
+      "done": "Hecho",
+      "issue": "Incidencia"
+    },
+    "type": {
+      "checkout_cleaning": "Limpieza salida",
+      "checkin_prep": "Prep. entrada",
+      "mid_stay_cleaning": "Limpieza intermedia",
+      "manual": "Tarea manual"
+    },
+    "filters": {
+      "from": "Desde",
+      "to": "Hasta",
+      "status": "Estado",
+      "priority": "Prioridad",
+      "property": "Propiedad",
+      "propertyPlaceholder": "Buscar por nombre…",
+      "all": "Todas"
+    },
+    "columns": {
+      "pending": "Pendiente",
+      "in_progress": "En curso",
+      "done": "Hecho",
+      "issue": "Incidencia",
+      "columnAria": "{title}: {count} tareas"
+    },
+    "emptyColumn": {
+      "emptyPending": "Sin tareas en cola",
+      "emptyProgress": "Nadie trabajando",
+      "emptyDone": "Sin completadas",
+      "emptyIssue": "Sin incidencias 👍"
+    },
+    "detail": {
+      "assignee": "Asignado",
+      "unassigned": "Sin asignar",
+      "notes": "Notas",
+      "photos": "Fotos",
+      "close": "Cerrar"
+    },
+    "issue": {
+      "title": "Reportar incidencia",
+      "description": "Describe el problema",
+      "label": "Descripción",
+      "placeholder": "p. ej. silla rota en el salón",
+      "photos": "Adjuntar fotos",
+      "cancel": "Cancelar",
+      "submit": "Enviar"
+    },
+    "staff": {
+      "title": "Tareas de hoy",
+      "progressAria": "Progreso",
+      "progressText": "{done} de {total} hechas",
+      "loading": "Cargando…",
+      "loadingTasks": "Cargando tareas…",
+      "loadError": "Error al cargar.",
+      "retry": "Reintentar",
+      "empty": "No hay tareas hoy. ¡Descansa! 🎉",
+      "checkboxAria": "Tarea: {title}"
+    }
   },
   "bookings": {
     "title": "Reservas",

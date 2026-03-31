@@ -23,6 +23,7 @@ import { FileModule } from './file/file.module';
 import { BillingModule } from './billing/billing.module';
 import { HealthModule } from './health/health.module';
 import { CalendarModule } from './calendar/calendar.module';
+import { TasksModule } from './tasks/tasks.module';
 
 @Module({
   imports: [
@@ -67,6 +68,7 @@ import { CalendarModule } from './calendar/calendar.module';
     BillingModule,
     HealthModule,
     CalendarModule,
+    TasksModule,
   ],
   providers: [
     {

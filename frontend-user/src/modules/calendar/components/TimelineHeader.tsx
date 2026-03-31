@@ -33,6 +33,7 @@ export const TimelineHeader = memo(function TimelineHeader({
 
   return (
     <div
+      data-testid="calendar-timeline-header"
       className="relative z-[5] flex h-[60px] min-h-[60px] shrink-0 border-b border-border bg-card"
       style={{ width: rowWidth, minWidth: rowWidth }}
     >
@@ -47,7 +48,7 @@ export const TimelineHeader = memo(function TimelineHeader({
               key={day.getTime()}
               className={cn(
                 'flex shrink-0 flex-col items-center justify-center border-r border-border py-2 text-center text-xs font-medium text-foreground',
-                weekend && 'bg-muted/40',
+                weekend && 'bg-gray-50/40 dark:bg-muted/35',
                 today && 'border-l-2 border-l-primary bg-primary/10 dark:bg-primary/15',
                 past && 'opacity-60',
               )}

@@ -1,8 +1,10 @@
-import { Controller, Get, Patch, Body, UseGuards } from '@nestjs/common';
+import { Controller, Get, Patch, Post, Body, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { UserService } from './user.service';
 import { CurrentUser, JwtPayload } from '../common/decorators/current-user.decorator';
+import { RolesGuard } from '../common/guards/roles.guard';
+import { Roles } from '../common/decorators/roles.decorator';
 
 @ApiTags('Users')
 @ApiBearerAuth()
@@ -14,6 +16,14 @@ export class UserController {
   @Get('me')
   async getProfile(@CurrentUser() user: JwtPayload) {
     const profile = await this.userService.getPublicProfileById(user.sub);
+    return { data: profile };
+  }
+
+  @Post('me/shift-complete')
+  @UseGuards(RolesGuard)
+  @Roles('STAFF')
+  async completeShift(@CurrentUser() user: JwtPayload) {
+    const profile = await this.userService.markStaffShiftComplete(user.sub);
     return { data: profile };
   }
 
