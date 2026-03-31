@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useRouter } from '@/i18n/navigation';
 import { useAuth } from '@/hooks/use-auth';
 import { cn } from '@/lib/utils';
+import { APP_SHELL_GRADIENT_DARK } from './shell-background';
 import { Sidebar } from './sidebar';
 import { Header } from './header';
 
@@ -57,11 +58,12 @@ function AppShellContent({ children }: { children: React.ReactNode }) {
   const isChat = pathname?.includes('/chat');
 
   return (
-    <div className="flex min-h-screen bg-background dark:bg-gradient-to-br dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
+    <div className={cn('flex min-h-screen overflow-x-hidden bg-background', APP_SHELL_GRADIENT_DARK)}>
       <Sidebar />
       <div
         className={cn(
-          'flex min-h-0 flex-1 flex-col lg:ml-56',
+          /* min-w-0: flex-элемент иначе не сужается ниже ширины контента → горизонтальный скролл всей страницы */
+          'flex min-h-0 min-w-0 max-w-full flex-1 flex-col overflow-x-hidden lg:ml-56',
           /* Явная высота viewport — иначе h-full у детей = 0 и не работает скролл/поле ввода */
           isChat ? 'h-dvh max-h-dvh overflow-hidden' : 'min-h-screen',
         )}
@@ -73,7 +75,8 @@ function AppShellContent({ children }: { children: React.ReactNode }) {
             isChat
               ? /* overflow-hidden на всех ширинах — иначе ломается flex-скролл и поле ввода уезжает за viewport */
                 'flex min-h-0 flex-col overflow-hidden p-0 lg:p-6'
-              : 'p-6',
+              : /* overflow-x-hidden: широкий тулбар/сетка не расширяют viewport по X */
+                'flex min-h-0 min-w-0 flex-col overflow-x-hidden p-4 sm:p-6',
           )}
         >
           {children}

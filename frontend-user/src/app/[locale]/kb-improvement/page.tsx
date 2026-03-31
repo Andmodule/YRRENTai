@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Sparkles, BookOpen } from 'lucide-react';
+import { BookOpen } from 'lucide-react';
 import {
   useKbPending,
   kbBulkAdd,
@@ -132,20 +132,14 @@ export default function KbImprovementPage() {
   return (
     <div className="mx-auto max-w-2xl space-y-5 pb-28">
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-md border border-border/60 bg-muted/30 text-foreground/80">
-            <Sparkles className="h-4 w-4" strokeWidth={1.5} />
-          </div>
-          <div>
-            <h1 className="text-lg font-semibold tracking-tight text-foreground">{t('title')}</h1>
-            <p className="mt-0.5 text-sm text-muted-foreground">{t('subtitle')}</p>
-          </div>
+        <div>
+          <h1 className="text-lg font-semibold tracking-tight text-foreground">{t('title')}</h1>
+          <p className="mt-0.5 text-sm text-muted-foreground">{t('subtitle')}</p>
         </div>
       </div>
 
       <div className="flex border-b border-border/80">
         <div className="flex items-center gap-2 border-b-2 border-foreground/80 px-0.5 pb-2 text-sm font-medium text-foreground">
-          <Sparkles className="h-3.5 w-3.5 shrink-0 opacity-70" />
           {t('queueTab')}
           {total > 0 && (
             <span className="rounded bg-muted px-1.5 py-0.5 text-xs font-normal tabular-nums text-muted-foreground">

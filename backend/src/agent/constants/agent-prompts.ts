@@ -20,8 +20,23 @@ export function parseAssistantEscalation(fullText: string): {
   return { rawEndsEscalate: true, textWithoutMarker };
 }
 
+/** Russian fallback when the model did not return guest-safe text (escalation path). */
 export const GUEST_ESCALATION_FALLBACK_MESSAGE =
   'Я уточню это у хозяина и скоро отвечу вам. Если появятся другие вопросы — с удовольствием помогу!';
+
+/** English fallback — same role as {@link GUEST_ESCALATION_FALLBACK_MESSAGE}. */
+export const GUEST_ESCALATION_FALLBACK_MESSAGE_EN =
+  "I'll check this with the host and get back to you shortly. If you have any other questions, I'm happy to help!";
+
+/**
+ * Pick escalation fallback text to match the guest's message language (Latin vs Cyrillic heuristic).
+ */
+export function resolveGuestEscalationFallback(userMessage: string): string {
+  const t = userMessage.trim();
+  if (/[а-яА-ЯёЁ]/.test(t)) return GUEST_ESCALATION_FALLBACK_MESSAGE;
+  if (/[a-zA-Z]/.test(t)) return GUEST_ESCALATION_FALLBACK_MESSAGE_EN;
+  return GUEST_ESCALATION_FALLBACK_MESSAGE;
+}
 
 const FORBIDDEN_GUEST_REPLY_PATTERNS: RegExp[] = [
   /свяжитесь\s+напрямую/i,
@@ -50,15 +65,58 @@ export function shouldForceEscalationGuestReply(text: string): boolean {
   return FORBIDDEN_GUEST_REPLY_PATTERNS.some((re) => re.test(t));
 }
 
+/** Short hints so the model maps each KB block to the right topic (reduces cross-topic number misuse). */
+const KB_CATEGORY_TOPIC_HINT: Record<string, string> = {
+  checkin: 'check-in/check-out times and access windows — numbers here are times, NOT floor or flat number',
+  wifi: 'Wi‑Fi and internet',
+  rules: 'house rules',
+  location: 'address, directions, floor/building only if explicitly stated here',
+  neighborhood: 'area, shops, surroundings',
+  parking: 'parking and transport',
+  equipment: 'appliances and equipment in the unit',
+  services: 'services and amenities',
+  contacts: 'contacts and access details',
+  safety: 'safety and emergencies',
+  waste: 'trash and recycling',
+  pets: 'pets policy',
+  family: 'children and family',
+  quiet: 'quiet hours and noise',
+  other: 'general — still match topic before using any numbers',
+};
+
+export function formatKnowledgeBaseEntriesForAgent(
+  entries: { title: string; content: string; category?: string | null }[],
+): string {
+  return entries
+    .map((e) => {
+      const raw = (e.category ?? 'other').trim().toLowerCase();
+      const hint = KB_CATEGORY_TOPIC_HINT[raw] ?? KB_CATEGORY_TOPIC_HINT.other;
+      return [`### ${e.title}`, `Category: ${raw} — ${hint}`, '', e.content].join('\n');
+    })
+    .join('\n\n---\n\n');
+}
+
 export function buildSystemPrompt(propertyName: string, knowledgeBase: string): string {
   return [
     `You are a helpful AI assistant for the rental property "${propertyName}".`,
+    '',
+    'LANGUAGE — MANDATORY (always):',
+    '- Identify the language of the guest\'s latest message (the question you are answering).',
+    '- Your entire reply to the guest must be in that same language — every sentence, including lists and details.',
+    '- If the guest wrote in English, reply only in English; if in Russian, only in Russian; apply the same rule for any other language.',
+    '- The Knowledge Base section below may be written in a different language; still convey only those facts, translated faithfully into the guest\'s language. Never answer in the KB\'s language when it differs from the guest\'s.',
+    '- If the guest mixes languages, use the language that clearly dominates the question.',
     '',
     'PRIMARY RULE — KNOWLEDGE BASE:',
     '- You may ONLY state facts that appear in the "Knowledge Base" section below.',
     '- If the guest\'s question is NOT fully answered by that text (missing details, different topic, or no matching entry), you MUST escalate — see ESCALATION below.',
     '- Never invent amenities, rules, prices, addresses, or policies.',
     '- Never guess from general world knowledge when the KB is silent on that point.',
+    '',
+    'TOPIC MATCHING — CRITICAL:',
+    '- Each entry has a Category line. Use only entries whose topic matches the guest\'s question.',
+    '- Numbers in check-in/check-out or time windows (e.g. "12-15", "14:00–16:00", "с 12 до 15") mean TIME, never floor, apartment number, or door code.',
+    '- For floor (этаж), apartment number, or "which floor": the KB must explicitly state floor/этаж/квартира № (or equivalent). If that is missing, escalate — do NOT reuse numbers from unrelated categories.',
     '',
     'ABSOLUTELY FORBIDDEN (never include in your reply to the guest):',
     '- Telling the guest to contact the host, owner, administrator, or property manager themselves.',

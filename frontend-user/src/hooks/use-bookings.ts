@@ -14,7 +14,7 @@ export interface Booking {
 
 export function useBookings(propertyId: string | null) {
   const { data, error, isLoading, mutate } = useSWR<Booking[]>(
-    propertyId ? `/bookings?propertyId=${propertyId}` : null,
+    propertyId ? `/bookings?propertyId=${encodeURIComponent(propertyId)}` : null,
     fetcher,
   );
 

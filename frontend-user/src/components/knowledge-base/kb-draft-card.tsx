@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useCallback, useState, useEffect } from 'react';
-import { Check, X, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { KbCategoryBadge } from './kb-category-badge';
@@ -44,11 +44,15 @@ export function KbDraftCard({ defaultCategory = 'other', onCreate, onDiscard }: 
 
   function handleCardBlur(e: React.FocusEvent<HTMLDivElement>) {
     if (e.currentTarget.contains(e.relatedTarget)) return;
-    if (!title.trim() && !content.trim()) onDiscard();
+    if (!title.trim() && !content.trim()) {
+      onDiscard();
+      return;
+    }
+    if (title.trim()) void handleSave();
   }
 
   async function handleSave() {
-    if (!title.trim()) {
+    if (!title.trim() || isSaving) {
       return;
     }
     setIsSaving(true);
@@ -67,8 +71,13 @@ export function KbDraftCard({ defaultCategory = 'other', onCreate, onDiscard }: 
       onKeyDown={handleKeyDown}
       className="rounded-lg border-2 border-dashed border-primary/50 bg-primary/[0.03] shadow-sm"
     >
-      <div className="px-3 pt-2.5 pb-2">
+      <div className="flex items-start justify-between gap-2 px-3 pt-2.5 pb-2">
         <KbCategoryBadge category={category} />
+        <div className="flex min-h-4 shrink-0 items-center pt-0.5" aria-live="polite">
+          {isSaving && (
+            <Loader2 className="h-3 w-3 animate-spin text-muted-foreground/50" aria-hidden />
+          )}
+        </div>
       </div>
 
       <input
@@ -88,35 +97,8 @@ export function KbDraftCard({ defaultCategory = 'other', onCreate, onDiscard }: 
         onChange={(e) => { setContent(e.target.value); resizeTextarea(); }}
         placeholder={t('form.contentPlaceholder')}
         rows={3}
-        className="w-full resize-none border-0 bg-transparent px-4 pb-2 text-xs text-foreground/80 focus:outline-none placeholder:text-muted-foreground/40 leading-relaxed"
+        className="w-full resize-none border-0 bg-transparent px-4 pb-3 text-xs text-foreground/80 focus:outline-none placeholder:text-muted-foreground/40 leading-relaxed"
       />
-
-      <div className="flex items-center justify-between border-t border-primary/20 px-3 py-2">
-        <span className="hidden sm:block text-[10px] text-muted-foreground/60">
-          Esc — {t('form.cancel')} · ⌘↵ — {t('createSubmit')}
-        </span>
-        <div className="flex items-center gap-1 ml-auto">
-          <button
-            type="button"
-            onClick={onDiscard}
-            disabled={isSaving}
-            className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted disabled:opacity-50"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={isSaving || !title.trim()}
-            className="flex h-6 w-6 items-center justify-center rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
-          >
-            {isSaving
-              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              : <Check className="h-3.5 w-3.5" />
-            }
-          </button>
-        </div>
-      </div>
     </div>
   );
 }

@@ -21,7 +21,8 @@ import { TelegramService } from '../telegram/telegram.service';
 import { StaffRepliedEvent } from '../common/events/staff.events';
 import { sendChatMessageSchema } from '@rentai/shared';
 import {
-  GUEST_ESCALATION_FALLBACK_MESSAGE,
+  resolveGuestEscalationFallback,
+  formatKnowledgeBaseEntriesForAgent,
   parseAssistantEscalation,
   shouldForceEscalationGuestReply,
 } from '../agent/constants/agent-prompts';
@@ -161,9 +162,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const property = await this.propertyService.findOne(propertyId, userId);
     const kbSearch = await this.knowledgeBaseService.searchRelevant(propertyId, content, 8);
     const { entries: kbEntries, isWeakMatch: kbWeakMatch } = kbSearch;
-    const knowledgeBase = kbWeakMatch
-      ? ''
-      : kbEntries.map((e) => `## ${e.title}\n${e.content}`).join('\n\n');
+    const knowledgeBase = kbWeakMatch ? '' : formatKnowledgeBaseEntriesForAgent(kbEntries);
     const kbContextForAgent = kbWeakMatch
       ? '(No sufficiently relevant knowledge base match for this question — do not invent facts; you MUST escalate: short message to the guest, then [ESCALATE] on a new line.)'
       : knowledgeBase || 'No knowledge base entries yet.';
@@ -199,17 +198,19 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
           const guestEscalationUi =
             kbEmpty || forcedByForbidden || kbWeakMatch || (rawEndsEscalate && !kbHasReliableMatch);
 
+          const escalationFallback = resolveGuestEscalationFallback(content);
+
           let cleanText: string;
           if (!guestEscalationUi) {
             cleanText = textWithoutMarker;
           } else if (rawEndsEscalate && !forcedByForbidden) {
-            cleanText = textWithoutMarker || GUEST_ESCALATION_FALLBACK_MESSAGE;
+            cleanText = textWithoutMarker || escalationFallback;
           } else {
-            cleanText = GUEST_ESCALATION_FALLBACK_MESSAGE;
+            cleanText = escalationFallback;
           }
 
           if (!cleanText.trim()) {
-            cleanText = GUEST_ESCALATION_FALLBACK_MESSAGE;
+            cleanText = escalationFallback;
           }
 
           const agentMessage = await this.chatService.saveMessage({
@@ -243,6 +244,15 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
             this.handleEscalation(propertyId, property.name, content, userMessage.id, property.ownerId, conversation.id).catch(
               (err) => this.logger.error(`Escalation failed: ${(err as Error).message}`),
             );
+          } else {
+            /** AI answered from KB / guest-facing reply without staff — thread is idle until the next guest message. */
+            await this.conversationService.setStatus(conversation.id, 'resolved');
+            this.server.to(`inbox:${propertyId}`).emit('conversation:updated', {
+              conversationId: conversation.id,
+              status: 'resolved',
+              lastMessagePreview: cleanText.slice(0, 200),
+              lastActivityAt: agentMessage.createdAt.toISOString(),
+            });
           }
         },
         onError: (error) => {

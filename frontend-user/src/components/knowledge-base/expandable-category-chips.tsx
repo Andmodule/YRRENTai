@@ -46,7 +46,7 @@ export function ExpandableCategoryChips({
             type="button"
             onClick={() => onSelect(cat)}
             className={cn(
-              'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-all hover:scale-[1.02] active:scale-[0.98]',
+              'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors transition-transform duration-200 ease-in-out hover:scale-[1.02] active:scale-[0.98]',
               variant === 'filled' && (CATEGORY_STYLES[cat] ?? CATEGORY_STYLES.other),
               variant === 'dashed' &&
                 'border border-dashed text-muted-foreground hover:border-foreground/40 hover:text-foreground',

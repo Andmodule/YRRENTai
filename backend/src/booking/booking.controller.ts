@@ -17,19 +17,22 @@ export class BookingController {
   @Post()
   @Roles('OWNER', 'MANAGER')
   async create(@Body() dto: CreateBookingDto, @CurrentUser() user: JwtPayload) {
-    return this.bookingService.create(dto, user.sub);
+    const booking = await this.bookingService.create(dto, user.sub);
+    return { data: booking };
   }
 
   @Get()
   @Roles('OWNER', 'MANAGER')
   async findAll(@Query('propertyId') propertyId: string, @CurrentUser() user: JwtPayload) {
-    return this.bookingService.findAllByProperty(propertyId, user.sub);
+    const rows = await this.bookingService.findAllByProperty(propertyId, user.sub);
+    return { data: rows };
   }
 
   @Get(':id')
   @Roles('OWNER', 'MANAGER')
   async findOne(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
-    return this.bookingService.findOne(id, user.sub);
+    const booking = await this.bookingService.findOne(id, user.sub);
+    return { data: booking };
   }
 
   @Patch(':id/status')
@@ -39,6 +42,7 @@ export class BookingController {
     @Body() dto: { status: string; cancelledBy?: string },
     @CurrentUser() user: JwtPayload,
   ) {
-    return this.bookingService.transition(id, dto.status, user.sub, dto.cancelledBy);
+    const booking = await this.bookingService.transition(id, dto.status, user.sub, dto.cancelledBy);
+    return { data: booking };
   }
 }

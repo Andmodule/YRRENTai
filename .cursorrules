@@ -543,7 +543,7 @@ NEXT_PUBLIC_WS_URL=ws://localhost:3010
 - Include `requestId` in all log entries and error responses
 
 ## What AI Assistant Should Never Do
-- Install new packages without explicit user request
+- Do not add dependencies unless the user explicitly allows it (e.g. “you may add dependencies”) or you have stated a one-line rationale and confirmed no suitable alternative already exists in the repo.
 - Hardcode secrets, tokens, or API keys
 - Use `any` TypeScript type
 - Call LLM provider SDK directly outside of `AgentService`
@@ -560,3 +560,23 @@ NEXT_PUBLIC_WS_URL=ws://localhost:3010
 
 ## Optional Product Docs
 - If `docs/ARCHITECTURE.md` or `docs/PRODUCT.md` exists, follow them for domain boundaries and defer to them when `.cursorrules` and docs conflict (then flag the conflict to the user).
+
+## UI Architecture & Animations (`frontend-user`, Next.js + Tailwind + Radix UI)
+
+1. **Performant CSS transitions**
+   - Avoid `transition-all`. For hover/focus use targeted utilities: `transition-colors`, `transition-opacity`, and/or `transition-transform` as needed.
+   - Default timing: `duration-200 ease-in-out`.
+
+2. **Modals, dialogs, popovers (strict)**
+   - Do **not** use `framer-motion` for modals, `Dialog`, `Sheet`, `Dropdown`, or `Popover`.
+   - Use Radix UI + `tailwindcss-animate` only (`animate-in`, `fade-in`, `zoom-in-95`, `data-[state=closed]:animate-out`, etc.).
+   - Reserve `framer-motion` for complex layout-only cases (e.g. Knowledge Base improvement flows), not for standard overlays.
+
+3. **Loading: skeletons vs spinners**
+   - **Data fetching (SWR / client fetch):** use `<Skeleton>` from shadcn-style UI; no full-page center spinners for empty states.
+   - **Mutations (submit / post / delete):** in action buttons use `<Loader2 className="animate-spin" />` (lucide-react) and `disabled` while pending.
+   - **AI typing / generating:** use `animate-pulse` on placeholder text blocks where appropriate.
+
+4. **Responsive modals (mobile-first)**
+   - For overlays that need input or confirmation, use `ResponsiveModal`, `ResponsiveModalTrigger`, `ResponsiveModalContent`, and `ResponsiveModalClose` from `@/components/ui/responsive-modal` (Dialog on `md+`, Vaul `Drawer` below `md`). Do not reimplement this split per page.
+ 

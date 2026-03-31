@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { MoreHorizontal, Check, X, Loader2 } from 'lucide-react';
+import { MoreHorizontal, Loader2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -28,7 +28,9 @@ export function KbCard({ entry, onUpdate, onDelete }: KbCardProps) {
   const titleRef = useRef<HTMLInputElement>(null);
   const contentRef = useRef<HTMLTextAreaElement>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const savedHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isDirtyRef = useRef(false);
+  const [justSaved, setJustSaved] = useState(false);
 
   useEffect(() => {
     if (status === 'idle') {
@@ -37,6 +39,12 @@ export function KbCard({ entry, onUpdate, onDelete }: KbCardProps) {
       setCategory((entry.category ?? 'other') as KbCategory);
     }
   }, [entry, status]);
+
+  useEffect(() => {
+    return () => {
+      if (savedHintTimerRef.current) clearTimeout(savedHintTimerRef.current);
+    };
+  }, []);
 
   const resizeTextarea = useCallback(() => {
     const el = contentRef.current;
@@ -59,6 +67,7 @@ export function KbCard({ entry, onUpdate, onDelete }: KbCardProps) {
 
   function scheduleSave(newTitle = title, newContent = content, newCategory = category) {
     isDirtyRef.current = true;
+    setJustSaved(false);
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
       void executeSave(newTitle, newContent, newCategory);
@@ -77,6 +86,9 @@ export function KbCard({ entry, onUpdate, onDelete }: KbCardProps) {
     setStatus('saving');
     try {
       await onUpdate({ title: t2.trim(), content: c2, category: cat2 });
+      if (savedHintTimerRef.current) clearTimeout(savedHintTimerRef.current);
+      setJustSaved(true);
+      savedHintTimerRef.current = setTimeout(() => setJustSaved(false), 2200);
       setStatus(collapse ? 'idle' : wasEditing ? 'editing' : 'idle');
     } catch {
       toast.error(t('updateError'));
@@ -163,7 +175,7 @@ export function KbCard({ entry, onUpdate, onDelete }: KbCardProps) {
         onClick={enterEdit}
         onKeyDown={(e) => e.key === 'Enter' && enterEdit()}
         className={cn(
-          'group relative flex items-start gap-3 rounded-lg border bg-card px-4 py-3 cursor-pointer hover:border-primary/40 hover:bg-muted/30 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+          'group relative flex items-start gap-3 rounded-lg border bg-card px-4 py-3 cursor-pointer hover:border-primary/40 hover:bg-muted/30 transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
           isRecent && 'border-primary/30 bg-primary/[0.02]',
         )}
       >
@@ -204,8 +216,19 @@ export function KbCard({ entry, onUpdate, onDelete }: KbCardProps) {
       onKeyDown={handleKeyDown}
       className="rounded-lg border border-primary/50 bg-card shadow-sm ring-1 ring-primary/20"
     >
-      <div className="px-3 pt-2.5 pb-2">
+      <div className="flex items-start justify-between gap-2 px-3 pt-2.5 pb-2">
         <KbCategoryBadge category={category} />
+        <div
+          className="flex min-h-4 shrink-0 items-center gap-1 pt-0.5 text-[10px] text-muted-foreground/45"
+          aria-live="polite"
+        >
+          {status === 'saving' && (
+            <Loader2 className="h-3 w-3 animate-spin opacity-60" aria-hidden />
+          )}
+          {status !== 'saving' && justSaved && (
+            <span className="font-normal tracking-tight">{t('form.saved')}</span>
+          )}
+        </div>
       </div>
 
       <input
@@ -227,36 +250,8 @@ export function KbCard({ entry, onUpdate, onDelete }: KbCardProps) {
         }}
         placeholder={t('form.contentPlaceholder')}
         rows={3}
-        className="w-full resize-none border-0 bg-transparent px-4 pb-2 text-xs text-foreground/80 focus:outline-none placeholder:text-muted-foreground/40 leading-relaxed"
+        className="w-full resize-none border-0 bg-transparent px-4 pb-3 text-xs text-foreground/80 focus:outline-none placeholder:text-muted-foreground/40 leading-relaxed"
       />
-
-      <div className="flex items-center justify-between border-t px-3 py-2">
-        <span className="hidden sm:block text-[10px] text-muted-foreground/60">
-          Esc — {t('form.cancel')} · ⌘↵ — {t('form.saveClose')}
-        </span>
-        <div className="flex items-center gap-1 ml-auto">
-          {status === 'saving' && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
-          <button
-            tabIndex={-1}
-            type="button"
-            onClick={revert}
-            className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-              void executeSave(title, content, category, true);
-            }}
-            disabled={!title.trim()}
-            className="flex h-6 w-6 items-center justify-center rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
-          >
-            <Check className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      </div>
     </div>
   );
 }

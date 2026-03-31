@@ -31,9 +31,9 @@ export function Header() {
   return (
     <header
       className={cn(
-        'sticky top-0 z-30 flex h-16 shrink-0 items-center gap-4',
+        'sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 sm:h-16 sm:gap-4',
         'border-b border-slate-200 bg-background/95 backdrop-blur-sm dark:border-slate-800 dark:bg-slate-900/85',
-        'px-6',
+        'px-4 sm:px-6',
         isChat && 'hidden lg:flex',
       )}
     >

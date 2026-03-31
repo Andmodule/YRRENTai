@@ -4,7 +4,12 @@ import { useState, type ReactElement } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { Trash2 } from 'lucide-react';
-import { Dialog, DialogContent, DialogTrigger, DialogClose } from '@/components/ui/dialog';
+import {
+  ResponsiveModal,
+  ResponsiveModalTrigger,
+  ResponsiveModalContent,
+  ResponsiveModalClose,
+} from '@/components/ui/responsive-modal';
 import { Button } from '@/components/ui/button';
 
 interface DeletePropertyDialogProps {
@@ -33,8 +38,8 @@ export function DeletePropertyDialog({ propertyName, onDelete, trigger }: Delete
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
+    <ResponsiveModal open={open} onOpenChange={setOpen}>
+      <ResponsiveModalTrigger asChild>
         {trigger ?? (
           <Button
             variant="ghost"
@@ -45,19 +50,19 @@ export function DeletePropertyDialog({ propertyName, onDelete, trigger }: Delete
             {t('delete')}
           </Button>
         )}
-      </DialogTrigger>
-      <DialogContent title={t('deleteTitle')} description={t('deleteDescription', { name: propertyName })}>
+      </ResponsiveModalTrigger>
+      <ResponsiveModalContent title={t('deleteTitle')} description={t('deleteDescription', { name: propertyName })}>
         <div className="flex justify-end gap-2">
-          <DialogClose asChild>
+          <ResponsiveModalClose asChild>
             <Button variant="outline" disabled={isDeleting}>
               {t('form.cancel')}
             </Button>
-          </DialogClose>
+          </ResponsiveModalClose>
           <Button variant="destructive" onClick={handleDelete} disabled={isDeleting}>
             {isDeleting ? t('deleting') : t('confirmDelete')}
           </Button>
         </div>
-      </DialogContent>
-    </Dialog>
+      </ResponsiveModalContent>
+    </ResponsiveModal>
   );
 }

@@ -4,7 +4,12 @@ import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { Plus, Pencil, Trash2 } from 'lucide-react';
-import { Dialog, DialogContent, DialogTrigger, DialogClose } from '@/components/ui/dialog';
+import {
+  ResponsiveModal,
+  ResponsiveModalTrigger,
+  ResponsiveModalContent,
+  ResponsiveModalClose,
+} from '@/components/ui/responsive-modal';
 import { Button } from '@/components/ui/button';
 import { KbEntryForm } from './kb-entry-form';
 import type { KbEntry } from '@/types';
@@ -28,21 +33,21 @@ export function CreateKbEntryDialog({ onCreate }: CreateEntryDialogProps) {
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
+    <ResponsiveModal open={open} onOpenChange={setOpen}>
+      <ResponsiveModalTrigger asChild>
         <Button size="sm">
           <Plus className="mr-2 h-4 w-4" />
           {t('addEntry')}
         </Button>
-      </DialogTrigger>
-      <DialogContent title={t('createTitle')}>
+      </ResponsiveModalTrigger>
+      <ResponsiveModalContent title={t('createTitle')}>
         <KbEntryForm
           onSubmit={handleSubmit}
           onCancel={() => setOpen(false)}
           submitLabel={t('createSubmit')}
         />
-      </DialogContent>
-    </Dialog>
+      </ResponsiveModalContent>
+    </ResponsiveModal>
   );
 }
 
@@ -66,21 +71,21 @@ export function EditKbEntryDialog({ entry, onUpdate }: EditEntryDialogProps) {
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
+    <ResponsiveModal open={open} onOpenChange={setOpen}>
+      <ResponsiveModalTrigger asChild>
         <Button variant="ghost" size="icon" className="h-8 w-8">
           <Pencil className="h-3.5 w-3.5" />
         </Button>
-      </DialogTrigger>
-      <DialogContent title={t('editTitle')} description={entry.title}>
+      </ResponsiveModalTrigger>
+      <ResponsiveModalContent title={t('editTitle')} description={entry.title}>
         <KbEntryForm
           defaultValues={entry}
           onSubmit={handleSubmit}
           onCancel={() => setOpen(false)}
           submitLabel={t('updateSubmit')}
         />
-      </DialogContent>
-    </Dialog>
+      </ResponsiveModalContent>
+    </ResponsiveModal>
   );
 }
 
@@ -108,24 +113,24 @@ export function DeleteKbEntryDialog({ entryTitle, onDelete }: DeleteEntryDialogP
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
+    <ResponsiveModal open={open} onOpenChange={setOpen}>
+      <ResponsiveModalTrigger asChild>
         <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive">
           <Trash2 className="h-3.5 w-3.5" />
         </Button>
-      </DialogTrigger>
-      <DialogContent title={t('deleteTitle')} description={t('deleteDescription', { title: entryTitle })}>
+      </ResponsiveModalTrigger>
+      <ResponsiveModalContent title={t('deleteTitle')} description={t('deleteDescription', { title: entryTitle })}>
         <div className="flex justify-end gap-2">
-          <DialogClose asChild>
+          <ResponsiveModalClose asChild>
             <Button variant="outline" disabled={isDeleting}>
               {t('form.cancel')}
             </Button>
-          </DialogClose>
+          </ResponsiveModalClose>
           <Button variant="destructive" onClick={handleDelete} disabled={isDeleting}>
             {isDeleting ? t('deleting') : t('confirmDelete')}
           </Button>
         </div>
-      </DialogContent>
-    </Dialog>
+      </ResponsiveModalContent>
+    </ResponsiveModal>
   );
 }

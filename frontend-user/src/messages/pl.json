@@ -5,15 +5,33 @@
     "goDashboard": "Panel"
   },
   "auth": {
+    "brandName": "RentAI",
     "loginTitle": "Logowanie",
+    "loginWelcome": "Witaj ponownie",
+    "loginSubtitle": "Zaloguj się do panelu",
+    "loginHeroHeading": "Zarządzaj apartamentami mądrzej, nie trudniej",
+    "loginHeroBody": "Jedna platforma do rezerwacji, odpowiedzi AI i wielu obiektów w jednym miejscu.",
     "registerTitle": "Rejestracja",
     "email": "Email",
     "password": "Hasło",
+    "emailPlaceholder": "manager@rentai.com",
+    "passwordPlaceholder": "••••••••",
+    "emailInvalid": "Podaj prawidłowy adres email",
+    "passwordMin": "Hasło musi mieć co najmniej 8 znaków",
+    "passwordMax": "Hasło jest za długie",
     "firstName": "Imię",
     "lastName": "Nazwisko",
     "loginSubmit": "Zaloguj się",
+    "loginSubmitPanel": "Przejdź do panelu",
+    "loginSubmitLoading": "Logowanie…",
     "registerSubmit": "Zarejestruj się",
     "submitting": "Wysyłanie…",
+    "forgotPassword": "Nie pamiętasz hasła?",
+    "forgotPasswordTitle": "Reset hasła",
+    "forgotPasswordDescription": "Samodzielny reset nie jest jeszcze dostępny. Skontaktuj się z pomocą.",
+    "forgotPasswordBack": "Powrót do logowania",
+    "showPassword": "Pokaż hasło",
+    "hidePassword": "Ukryj hasło",
     "goRegister": "Brak konta? Zarejestruj się",
     "goLogin": "Masz konto? Zaloguj się",
     "loginSuccess": "Zalogowano",
@@ -49,6 +67,13 @@
       "aiReplies": "Odpowiedzi AI",
       "manualReplies": "Odpowiedzi ręczne",
       "aiShare": "Udział AI"
+    },
+    "aiHoursSaved": {
+      "title": "Zaoszczędzone godziny dzięki AI",
+      "subtitle": "Szacunek dzienny — trend z ostatnich 30 dni",
+      "totalHours": "{hours, plural, one {# godzina} few {# godziny} many {# godzin} other {# godzin}}",
+      "hoursAbbr": "godz.",
+      "seriesLabel": "Godziny"
     }
   },
   "properties": {
@@ -228,6 +253,7 @@
   "nav": {
     "dashboard": "Panel",
     "properties": "Obiekty",
+    "calendar": "Kalendarz",
     "bookings": "Rezerwacje",
     "chat": "Czat",
     "kbImprovement": "Baza wiedzy",

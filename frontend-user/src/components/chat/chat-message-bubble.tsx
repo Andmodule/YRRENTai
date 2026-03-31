@@ -72,10 +72,9 @@ export function StreamingBubble({ text }: StreamingBubbleProps) {
             <ReactMarkdown>{text}</ReactMarkdown>
           </div>
         ) : (
-          <div className="flex items-center gap-1 py-0.5">
-            <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-cyan-500 dark:bg-cyan-400 [animation-delay:0ms]" />
-            <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-cyan-500 dark:bg-cyan-400 [animation-delay:150ms]" />
-            <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-cyan-500 dark:bg-cyan-400 [animation-delay:300ms]" />
+          <div className="space-y-1.5 py-0.5" aria-hidden>
+            <div className="h-3 w-32 max-w-full animate-pulse rounded-md bg-muted-foreground/35 dark:bg-slate-500/45" />
+            <div className="h-3 w-20 max-w-full animate-pulse rounded-md bg-muted-foreground/25 dark:bg-slate-500/35" />
           </div>
         )}
       </div>

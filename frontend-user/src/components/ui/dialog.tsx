@@ -40,7 +40,7 @@ export function DialogContent({ title, description, children, className, ...prop
               </RadixDialog.Description>
             )}
           </div>
-          <RadixDialog.Close className="ml-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
+          <RadixDialog.Close className="ml-4 rounded-sm opacity-70 ring-offset-background transition-opacity duration-200 ease-in-out hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
             <X className="h-4 w-4" />
             <span className="sr-only">Close</span>
           </RadixDialog.Close>

@@ -17,7 +17,9 @@
     "migration:generate": "typeorm-ts-node-commonjs migration:generate -d src/database/data-source.ts",
     "migration:run": "typeorm-ts-node-commonjs migration:run -d src/database/data-source.ts",
     "migration:revert": "typeorm-ts-node-commonjs migration:revert -d src/database/data-source.ts",
-    "seed": "ts-node src/database/seed.ts"
+    "seed": "ts-node src/database/seed.ts",
+    "seed:kb-arbat": "ts-node src/database/seed-kb-arbat.ts",
+    "seed:test-booking": "ts-node src/database/seed-test-booking.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.15",

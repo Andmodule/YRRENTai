@@ -22,6 +22,7 @@ import { TelegramModule } from './telegram/telegram.module';
 import { FileModule } from './file/file.module';
 import { BillingModule } from './billing/billing.module';
 import { HealthModule } from './health/health.module';
+import { CalendarModule } from './calendar/calendar.module';
 
 @Module({
   imports: [
@@ -65,6 +66,7 @@ import { HealthModule } from './health/health.module';
     FileModule,
     BillingModule,
     HealthModule,
+    CalendarModule,
   ],
   providers: [
     {

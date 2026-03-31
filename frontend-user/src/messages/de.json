@@ -5,15 +5,33 @@
     "goDashboard": "Dashboard"
   },
   "auth": {
+    "brandName": "RentAI",
     "loginTitle": "Anmelden",
+    "loginWelcome": "Willkommen zurück",
+    "loginSubtitle": "Melden Sie sich in Ihrem Dashboard an",
+    "loginHeroHeading": "Apartments smarter verwalten, nicht komplizierter",
+    "loginHeroBody": "Eine Plattform für Buchungen, KI-Antworten und viele Objekte an einem Ort.",
     "registerTitle": "Konto erstellen",
     "email": "E-Mail",
     "password": "Passwort",
+    "emailPlaceholder": "manager@rentai.com",
+    "passwordPlaceholder": "••••••••",
+    "emailInvalid": "Bitte gültige E-Mail eingeben",
+    "passwordMin": "Passwort mindestens 8 Zeichen",
+    "passwordMax": "Passwort zu lang",
     "firstName": "Vorname",
     "lastName": "Nachname",
     "loginSubmit": "Anmelden",
+    "loginSubmitPanel": "Zum Dashboard",
+    "loginSubmitLoading": "Anmeldung…",
     "registerSubmit": "Registrieren",
     "submitting": "Wird gesendet…",
+    "forgotPassword": "Passwort vergessen?",
+    "forgotPasswordTitle": "Passwort zurücksetzen",
+    "forgotPasswordDescription": "Self-Service ist noch nicht verfügbar. Bitte den Support kontaktieren.",
+    "forgotPasswordBack": "Zur Anmeldung",
+    "showPassword": "Passwort anzeigen",
+    "hidePassword": "Passwort verbergen",
     "goRegister": "Kein Konto? Registrieren",
     "goLogin": "Bereits ein Konto? Anmelden",
     "loginSuccess": "Angemeldet",
@@ -49,6 +67,13 @@
       "aiReplies": "KI-Antworten",
       "manualReplies": "Manuelle Antworten",
       "aiShare": "KI-Anteil"
+    },
+    "aiHoursSaved": {
+      "title": "Durch KI gesparte Stunden",
+      "subtitle": "Tägliche Schätzung — Trend der letzten 30 Tage",
+      "totalHours": "{hours, plural, one {# Stunde} other {# Stunden}}",
+      "hoursAbbr": "Std.",
+      "seriesLabel": "Stunden"
     }
   },
   "properties": {
@@ -228,6 +253,7 @@
   "nav": {
     "dashboard": "Dashboard",
     "properties": "Objekte",
+    "calendar": "Kalender",
     "bookings": "Buchungen",
     "chat": "Chat",
     "kbImprovement": "Wissensdatenbank",

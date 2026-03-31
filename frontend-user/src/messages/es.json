@@ -5,15 +5,33 @@
     "goDashboard": "Panel"
   },
   "auth": {
+    "brandName": "RentAI",
     "loginTitle": "Iniciar sesión",
+    "loginWelcome": "Bienvenido de nuevo",
+    "loginSubtitle": "Accede a tu panel de control",
+    "loginHeroHeading": "Gestiona apartamentos con más inteligencia, no más complejidad",
+    "loginHeroBody": "Una plataforma para reservas, respuestas con IA y muchos alojamientos en un solo lugar.",
     "registerTitle": "Crear cuenta",
     "email": "Correo",
     "password": "Contraseña",
+    "emailPlaceholder": "manager@rentai.com",
+    "passwordPlaceholder": "••••••••",
+    "emailInvalid": "Introduce un correo válido",
+    "passwordMin": "La contraseña debe tener al menos 8 caracteres",
+    "passwordMax": "Contraseña demasiado larga",
     "firstName": "Nombre",
     "lastName": "Apellido",
     "loginSubmit": "Entrar",
+    "loginSubmitPanel": "Ir al panel",
+    "loginSubmitLoading": "Iniciando sesión…",
     "registerSubmit": "Registrarse",
     "submitting": "Enviando…",
+    "forgotPassword": "¿Olvidaste la contraseña?",
+    "forgotPasswordTitle": "Restablecer contraseña",
+    "forgotPasswordDescription": "El restablecimiento automático aún no está disponible. Contacta con soporte.",
+    "forgotPasswordBack": "Volver al inicio de sesión",
+    "showPassword": "Mostrar contraseña",
+    "hidePassword": "Ocultar contraseña",
     "goRegister": "¿Sin cuenta? Regístrate",
     "goLogin": "¿Ya tienes cuenta? Entra",
     "loginSuccess": "Sesión iniciada",
@@ -49,6 +67,13 @@
       "aiReplies": "Respuestas IA",
       "manualReplies": "Respuestas manuales",
       "aiShare": "Cuota IA"
+    },
+    "aiHoursSaved": {
+      "title": "Horas ahorradas gracias a la IA",
+      "subtitle": "Estimación diaria — tendencia de los últimos 30 días",
+      "totalHours": "{hours, plural, one {# hora} other {# horas}}",
+      "hoursAbbr": "h",
+      "seriesLabel": "Horas"
     }
   },
   "properties": {
@@ -228,6 +253,7 @@
   "nav": {
     "dashboard": "Panel",
     "properties": "Propiedades",
+    "calendar": "Calendario",
     "bookings": "Reservas",
     "chat": "Chat",
     "kbImprovement": "Base de conocimiento",

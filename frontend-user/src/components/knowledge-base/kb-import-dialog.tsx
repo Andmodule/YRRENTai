@@ -4,7 +4,12 @@ import { useState, useRef } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { Upload, Link2, CheckSquare, Square, Loader2, FileText } from 'lucide-react';
-import { Dialog, DialogContent, DialogTrigger, DialogClose } from '@/components/ui/dialog';
+import {
+  ResponsiveModal,
+  ResponsiveModalTrigger,
+  ResponsiveModalContent,
+  ResponsiveModalClose,
+} from '@/components/ui/responsive-modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -138,15 +143,15 @@ export function KbImportDialog({ propertyId, onConfirmed }: KbImportDialogProps)
   }
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose(); else setOpen(true); }}>
-      <DialogTrigger asChild>
+    <ResponsiveModal open={open} onOpenChange={(v) => { if (!v) handleClose(); else setOpen(true); }}>
+      <ResponsiveModalTrigger asChild>
         <Button variant="outline" size="sm">
           <Upload className="mr-2 h-4 w-4" />
           {t('button')}
         </Button>
-      </DialogTrigger>
+      </ResponsiveModalTrigger>
 
-      <DialogContent title={t('title')} description={t('description')}>
+      <ResponsiveModalContent title={t('title')} description={t('description')}>
         {step === 'input' && (
           <div className="space-y-5">
             <div className="grid grid-cols-2 gap-3">
@@ -217,9 +222,9 @@ export function KbImportDialog({ propertyId, onConfirmed }: KbImportDialogProps)
             )}
 
             <div className="flex justify-end">
-              <DialogClose asChild>
+              <ResponsiveModalClose asChild>
                 <Button variant="outline">{t('cancel')}</Button>
-              </DialogClose>
+              </ResponsiveModalClose>
             </div>
           </div>
         )}
@@ -290,7 +295,7 @@ export function KbImportDialog({ propertyId, onConfirmed }: KbImportDialogProps)
             </div>
           </div>
         )}
-      </DialogContent>
-    </Dialog>
+      </ResponsiveModalContent>
+    </ResponsiveModal>
   );
 }

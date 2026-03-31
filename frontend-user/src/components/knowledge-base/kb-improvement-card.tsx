@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import { Check, Loader2, Trash2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
@@ -45,26 +45,40 @@ export function KbImprovementCard({
     }
   }, [item, status]);
 
-  const resizeAnswer = useCallback(() => {
-    const el = answerRef.current;
+  /** Auto-height without layout jump: shrink-wrap to content, min-height from CSS. */
+  const syncTextareaHeight = useCallback((el: HTMLTextAreaElement | null) => {
     if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = `${Math.max(el.scrollHeight, 48)}px`;
+    el.style.height = '0px';
+    el.style.height = `${el.scrollHeight}px`;
   }, []);
 
   const resizeQuestion = useCallback(() => {
-    const el = questionRef.current;
-    if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = `${Math.max(el.scrollHeight, 40)}px`;
-  }, []);
+    syncTextareaHeight(questionRef.current);
+  }, [syncTextareaHeight]);
 
-  useEffect(() => {
-    if (status === 'editing') {
-      resizeQuestion();
-      resizeAnswer();
-    }
-  }, [status, question, answer, resizeQuestion, resizeAnswer]);
+  const resizeAnswer = useCallback(() => {
+    syncTextareaHeight(answerRef.current);
+  }, [syncTextareaHeight]);
+
+  /** Sync height once when entering edit (avoids jump vs idle min-heights; typing uses onChange resize). */
+  useLayoutEffect(() => {
+    if (status !== 'editing') return;
+    syncTextareaHeight(questionRef.current);
+    syncTextareaHeight(answerRef.current);
+  }, [status, syncTextareaHeight]);
+
+  function focusTextareaAtEnd(el: HTMLTextAreaElement | null) {
+    if (!el) return;
+    el.focus();
+    const len = el.value.length;
+    requestAnimationFrame(() => {
+      try {
+        el.setSelectionRange(len, len);
+      } catch {
+        /* ignore */
+      }
+    });
+  }
 
   function enterEdit() {
     setQuestion(item.guestQuestion);
@@ -72,7 +86,7 @@ export function KbImprovementCard({
     isDirtyRef.current = false;
     setStatus('editing');
     setTimeout(() => {
-      questionRef.current?.focus();
+      focusTextareaAtEnd(questionRef.current);
     }, 30);
   }
 
@@ -152,7 +166,7 @@ export function KbImprovementCard({
     <div
       className={cn(
         'group relative rounded-lg border bg-card transition-colors',
-        'border-border/80 shadow-[0_1px_2px_rgba(0,0,0,0.04)] dark:shadow-none',
+        'border-border/80 shadow-none',
         'hover:border-border hover:bg-muted/15',
         selected && 'border-primary/35 bg-muted/10 ring-1 ring-primary/10',
         status === 'editing' && 'border-primary/45 ring-1 ring-primary/20',
@@ -182,7 +196,7 @@ export function KbImprovementCard({
             onToggle();
           }}
           className={cn(
-            'mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-sm border-2 transition-all',
+            'mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-sm border-2 transition-colors duration-200 ease-in-out',
             selected
               ? 'border-primary bg-primary shadow-[inset_0_1px_0_rgba(255,255,255,0.15)]'
               : 'border-muted-foreground/40 bg-background hover:border-muted-foreground/65',
@@ -204,24 +218,29 @@ export function KbImprovementCard({
 
           {status === 'idle' ? (
             <div className="mt-2 space-y-2">
-              <button
-                type="button"
-                onClick={enterEdit}
-                className={cn(
-                  'w-full cursor-text rounded px-1.5 py-1 text-left text-[15px] font-normal leading-snug text-foreground',
-                  '-mx-1.5 transition-colors hover:bg-muted/50',
-                )}
-              >
-                {item.guestQuestion}
-              </button>
               <div>
-                <div className="text-[11px] font-medium text-muted-foreground">{t('answerForAi')}</div>
+                <div className="mb-1 text-[11px] font-medium text-muted-foreground">{t('guestQuestion')}</div>
                 <button
                   type="button"
                   onClick={enterEdit}
                   className={cn(
-                    'mt-1 w-full cursor-text rounded px-1.5 py-1 text-left text-sm leading-relaxed text-foreground',
-                    '-mx-1.5 transition-colors hover:bg-muted/50',
+                    'w-full min-h-[2.5rem] cursor-text rounded-md border border-border/80 bg-background px-2 py-1.5 text-left text-[15px] font-normal leading-snug text-foreground shadow-none',
+                    'whitespace-pre-wrap break-words transition-colors hover:bg-muted/25',
+                    'dark:border-transparent dark:bg-transparent dark:hover:bg-muted/15',
+                  )}
+                >
+                  {item.guestQuestion}
+                </button>
+              </div>
+              <div>
+                <div className="mb-1 text-[11px] font-medium text-muted-foreground">{t('answerForAi')}</div>
+                <button
+                  type="button"
+                  onClick={enterEdit}
+                  className={cn(
+                    'w-full min-h-[2.5rem] cursor-text rounded-md border border-border/80 bg-background px-2 py-1.5 text-left text-sm leading-relaxed text-foreground shadow-none',
+                    'whitespace-pre-wrap break-words transition-colors hover:bg-muted/25',
+                    'dark:border-transparent dark:bg-transparent dark:hover:bg-muted/15',
                   )}
                 >
                   {item.managerAnswer}
@@ -229,44 +248,58 @@ export function KbImprovementCard({
               </div>
             </div>
           ) : (
-            <div onBlur={handleCardBlur} onKeyDown={handleKeyDown} className="mt-2 space-y-1">
-              <div className="text-[11px] font-medium text-muted-foreground">{t('guestQuestion')}</div>
-              <textarea
-                ref={questionRef}
-                value={question}
-                readOnly={status === 'saving'}
-                onChange={(e) => {
-                  setQuestion(e.target.value);
-                  scheduleSave(e.target.value, answer);
-                  resizeQuestion();
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Tab' && !e.shiftKey) {
-                    e.preventDefault();
-                    answerRef.current?.focus();
-                  }
-                }}
-                rows={2}
-                className="w-full resize-none rounded-md border-0 bg-transparent px-1 py-0.5 text-[15px] leading-snug text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-0 read-only:opacity-60"
-                placeholder={t('guestQuestion')}
-              />
+            <div onBlur={handleCardBlur} onKeyDown={handleKeyDown} className="mt-2 space-y-2">
+              <div>
+                <div className="mb-1 text-[11px] font-medium text-muted-foreground">{t('guestQuestion')}</div>
+                <textarea
+                  ref={questionRef}
+                  value={question}
+                  readOnly={status === 'saving'}
+                  onChange={(e) => {
+                    setQuestion(e.target.value);
+                    scheduleSave(e.target.value, answer);
+                    resizeQuestion();
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Tab' && !e.shiftKey) {
+                      e.preventDefault();
+                      focusTextareaAtEnd(answerRef.current);
+                    }
+                  }}
+                  rows={1}
+                  className={cn(
+                    'box-border w-full min-h-[2.5rem] max-h-[min(40vh,280px)] resize-none overflow-y-auto rounded-md border px-2 py-1.5 text-[15px] leading-snug text-foreground shadow-none',
+                    'border-border/80 bg-background dark:border-slate-600 dark:bg-slate-950/95',
+                    'whitespace-pre-wrap break-words placeholder:text-muted-foreground/40',
+                    'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/60 read-only:opacity-60',
+                  )}
+                  placeholder={t('guestQuestion')}
+                />
+              </div>
 
-              <div className="pt-1 text-[11px] font-medium text-muted-foreground">{t('answerForAi')}</div>
-              <textarea
-                ref={answerRef}
-                value={answer}
-                readOnly={status === 'saving'}
-                onChange={(e) => {
-                  setAnswer(e.target.value);
-                  scheduleSave(question, e.target.value);
-                  resizeAnswer();
-                }}
-                rows={3}
-                className="w-full resize-y rounded-md border-0 bg-transparent px-1 py-0.5 text-sm leading-relaxed text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-0 read-only:opacity-60"
-                placeholder={t('answerForAi')}
-              />
+              <div>
+                <div className="mb-1 text-[11px] font-medium text-muted-foreground">{t('answerForAi')}</div>
+                <textarea
+                  ref={answerRef}
+                  value={answer}
+                  readOnly={status === 'saving'}
+                  onChange={(e) => {
+                    setAnswer(e.target.value);
+                    scheduleSave(question, e.target.value);
+                    resizeAnswer();
+                  }}
+                  rows={1}
+                  className={cn(
+                    'box-border w-full min-h-[2.5rem] max-h-[min(45vh,320px)] resize-none overflow-y-auto rounded-md border px-2 py-1.5 text-sm leading-relaxed text-foreground shadow-none',
+                    'border-border/80 bg-background dark:border-slate-600 dark:bg-slate-950/95',
+                    'whitespace-pre-wrap break-words placeholder:text-muted-foreground/40',
+                    'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/60 read-only:opacity-60',
+                  )}
+                  placeholder={t('answerForAi')}
+                />
+              </div>
 
-              <div className="flex items-center justify-end gap-2 pt-2">
+              <div className="flex items-center justify-end gap-2 pt-0.5">
                 <span className="mr-auto hidden text-[10px] text-muted-foreground/70 sm:block">
                   Esc — {tKb('form.cancel')} · ⌘↵ — {tKb('form.saveClose')}
                 </span>

@@ -5,6 +5,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { BookingEntity } from './entities/booking.entity';
 import { BookingStatusChangedEvent } from '../common/events/booking.events';
 import { isValidTransition, type BookingStatus, type CreateBookingDto } from '@rentai/shared';
+import { PropertyService } from '../property/property.service';
 
 @Injectable()
 export class BookingService {
@@ -14,6 +15,7 @@ export class BookingService {
     @InjectRepository(BookingEntity)
     private readonly bookingRepository: Repository<BookingEntity>,
     private readonly eventEmitter: EventEmitter2,
+    private readonly propertyService: PropertyService,
   ) {}
 
   async create(dto: CreateBookingDto, userId: string): Promise<BookingEntity> {
@@ -25,8 +27,16 @@ export class BookingService {
     return this.bookingRepository.save(booking);
   }
 
-  async findAllByProperty(propertyId: string, _userId: string): Promise<BookingEntity[]> {
-    return this.bookingRepository.find({ where: { propertyId } });
+  async findAllByProperty(propertyId: string, userId: string): Promise<BookingEntity[]> {
+    const pid = propertyId?.trim();
+    if (!pid) {
+      throw new BadRequestException('Query parameter propertyId is required');
+    }
+    await this.propertyService.findOne(pid, userId);
+    return this.bookingRepository.find({
+      where: { propertyId: pid },
+      order: { checkIn: 'DESC' },
+    });
   }
 
   async findOne(id: string, _userId: string): Promise<BookingEntity> {

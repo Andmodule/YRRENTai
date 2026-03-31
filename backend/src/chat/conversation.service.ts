@@ -27,7 +27,9 @@ export class ConversationService {
       order: { lastActivityAt: 'DESC' },
     });
 
-    if (existing && existing.status !== 'resolved') {
+    // One thread per guest (property + channel + key). Reuse even if previously resolved;
+    // callers (e.g. chat gateway) reopen the conversation when the guest writes again.
+    if (existing) {
       return existing;
     }
 
