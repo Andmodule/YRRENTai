@@ -75,12 +75,14 @@ export const ProgramBlock = memo(function ProgramBlock({ program, onSelect, isMo
       currency: reservation.currency,
     }).format(reservation.totalPrice);
     const st = t(statusLabelKey[reservation.status]);
-    return [
+    const lines = [
       reservation.guestName,
       `${format(parseISO(reservation.checkIn), 'd MMM', { locale })} → ${format(parseISO(reservation.checkOut), 'd MMM yyyy', { locale })}`,
       st,
       price,
-    ].join('\n');
+    ];
+    if (reservation.fromOta) lines.push(t('otaSyncedTooltip'));
+    return lines.join('\n');
   }, [reservation, locale, t]);
 
   const handleClick = useCallback(

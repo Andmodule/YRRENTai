@@ -40,6 +40,7 @@ export function PropertyForm({ defaultValues, onSubmit, onCancel, submitLabel }:
       timezone: defaultValues?.timezone ?? 'UTC',
       currency: defaultValues?.currency ?? 'USD',
       maxGuests: defaultValues?.maxGuests,
+      zodomusPropertyId: defaultValues?.zodomusPropertyId ?? '',
     },
   });
 
@@ -157,6 +158,30 @@ export function PropertyForm({ defaultValues, onSubmit, onCancel, submitLabel }:
             setValueAs: (v: string) => (v === '' || v === undefined ? undefined : Number(v)),
           })}
         />
+      </div>
+
+      <div className="space-y-1.5 rounded-lg border border-border/60 bg-muted/20 p-3">
+        <p className="text-xs font-medium text-foreground">{t('integrationsSection')}</p>
+        <div className="space-y-1.5">
+          <Label htmlFor="zodomusPropertyId" className="text-xs">
+            {t('zodomusPropertyId')}
+          </Label>
+          <Input
+            id="zodomusPropertyId"
+            placeholder={t('zodomusPropertyIdPlaceholder')}
+            autoComplete="off"
+            className="font-mono text-sm tabular-nums"
+            aria-invalid={!!errors.zodomusPropertyId}
+            aria-describedby="zodomus-hint"
+            {...register('zodomusPropertyId')}
+          />
+          <p id="zodomus-hint" className="text-[11px] leading-snug text-muted-foreground">
+            {t('zodomusPropertyIdHint')}
+          </p>
+          {errors.zodomusPropertyId && (
+            <p className="text-xs text-destructive">{errors.zodomusPropertyId.message}</p>
+          )}
+        </div>
       </div>
 
       <div className="flex justify-end gap-2 pt-2">

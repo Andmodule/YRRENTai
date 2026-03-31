@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Filter } from 'lucide-react';
+import { Filter, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Drawer, DrawerClose, DrawerContent } from '@/components/ui/drawer';
@@ -16,6 +16,10 @@ interface FilterBarProps {
   properties: Property[];
   filteredCount: number;
   onNewBooking: () => void;
+  showSyncOta?: boolean;
+  /** `force` — удерживайте Shift при клике (принудительная перезапись уже синхронизированных броней). */
+  onSyncOta?: (force?: boolean) => void;
+  isSyncingOta?: boolean;
 }
 
 const CHANNELS: { value: BookingChannel | 'all'; labelKey: string }[] = [
@@ -36,14 +40,36 @@ function ChannelStatusRow({
   filters,
   onFiltersChange,
   onNewBooking,
+  showSyncOta,
+  onSyncOta,
+  isSyncingOta,
 }: {
   filters: CalendarFilters;
   onFiltersChange: (f: CalendarFilters) => void;
   onNewBooking: () => void;
+  showSyncOta?: boolean;
+  /** `force` — удерживайте Shift при клике (принудительная перезапись уже синхронизированных броней). */
+  onSyncOta?: (force?: boolean) => void;
+  isSyncingOta?: boolean;
 }) {
   const t = useTranslations('calendar');
   return (
     <div className="flex flex-wrap items-center justify-end gap-2">
+      {showSyncOta && onSyncOta && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="shrink-0 gap-1.5"
+          disabled={isSyncingOta}
+          title={t('syncOtaShiftHint')}
+          onClick={(e) => onSyncOta?.(e.shiftKey)}
+          aria-label={t('syncOta')}
+        >
+          <RefreshCw className={cn('h-3.5 w-3.5', isSyncingOta && 'animate-spin')} />
+          {isSyncingOta ? t('syncOtaLoading') : t('syncOta')}
+        </Button>
+      )}
       <div className="flex flex-wrap gap-1">
         {CHANNELS.map(({ value, labelKey }) => (
           <button
@@ -85,7 +111,16 @@ function ChannelStatusRow({
   );
 }
 
-export function FilterBar({ filters, onFiltersChange, properties, filteredCount, onNewBooking }: FilterBarProps) {
+export function FilterBar({
+  filters,
+  onFiltersChange,
+  properties,
+  filteredCount,
+  onNewBooking,
+  showSyncOta,
+  onSyncOta,
+  isSyncingOta,
+}: FilterBarProps) {
   const t = useTranslations('calendar');
   const isMobile = useIsMobile();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -150,7 +185,14 @@ export function FilterBar({ filters, onFiltersChange, properties, filteredCount,
         <>
           <div className="flex min-w-0 flex-1 justify-center px-2">{search}</div>
           <div className="min-w-0 max-w-full overflow-x-auto py-0.5">
-            <ChannelStatusRow filters={filters} onFiltersChange={onFiltersChange} onNewBooking={onNewBooking} />
+            <ChannelStatusRow
+              filters={filters}
+              onFiltersChange={onFiltersChange}
+              onNewBooking={onNewBooking}
+              showSyncOta={showSyncOta}
+              onSyncOta={onSyncOta}
+              isSyncingOta={isSyncingOta}
+            />
           </div>
         </>
       )}
@@ -160,7 +202,14 @@ export function FilterBar({ filters, onFiltersChange, properties, filteredCount,
           <DrawerContent title={t('filters')} className="max-h-[90vh]">
             <div className="space-y-4 px-2 pb-6">
               {search}
-              <ChannelStatusRow filters={filters} onFiltersChange={onFiltersChange} onNewBooking={onNewBooking} />
+              <ChannelStatusRow
+                filters={filters}
+                onFiltersChange={onFiltersChange}
+                onNewBooking={onNewBooking}
+                showSyncOta={showSyncOta}
+                onSyncOta={onSyncOta}
+                isSyncingOta={isSyncingOta}
+              />
               <Button
                 type="button"
                 className="w-full"

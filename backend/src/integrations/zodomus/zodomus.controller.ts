@@ -31,14 +31,26 @@ export class ZodomusController {
   @Roles('OWNER', 'MANAGER')
   async sync(
     @CurrentUser() user: JwtPayload,
-    @Body() body: { channelId: number; propertyId: string },
+    @Body() body: { channelId: number; propertyId: string; force?: boolean },
   ) {
     const channelId = Number(body.channelId);
     const propertyId = body.propertyId?.trim();
     if (!propertyId || !Number.isFinite(channelId)) {
       throw new BadRequestException('channelId and propertyId are required');
     }
-    const result = await this.zodomusSync.syncQueueForProperty(user.sub, propertyId, channelId);
+    const result = await this.zodomusSync.syncQueueForProperty(user.sub, propertyId, channelId, Boolean(body.force));
+    return { data: result };
+  }
+
+  /** Синхронизация очереди для всех объектов владельца с привязкой Zodomus. */
+  @Post('sync-all')
+  @Roles('OWNER', 'MANAGER')
+  async syncAll(@CurrentUser() user: JwtPayload, @Body() body: { channelId?: number; force?: boolean }) {
+    const channelId = Number(body?.channelId ?? 1);
+    if (!Number.isFinite(channelId)) {
+      throw new BadRequestException('channelId must be a number');
+    }
+    const result = await this.zodomusSync.syncAllForUser(user.sub, channelId, Boolean(body.force));
     return { data: result };
   }
 }

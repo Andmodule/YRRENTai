@@ -1,6 +1,6 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { QueryFailedError, Repository } from 'typeorm';
 import { PropertyEntity } from './entities/property.entity';
 import type { CreatePropertyDto, UpdatePropertyDto } from '@rentai/shared';
 
@@ -15,7 +15,12 @@ export class PropertyService {
 
   async create(dto: CreatePropertyDto, ownerId: string): Promise<PropertyEntity> {
     const property = this.propertyRepository.create({ ...dto, ownerId });
-    return this.propertyRepository.save(property);
+    try {
+      return await this.propertyRepository.save(property);
+    } catch (e) {
+      this.rethrowIfDuplicateZodomusId(e);
+      throw e;
+    }
   }
 
   async findAllByOwner(ownerId: string): Promise<PropertyEntity[]> {
@@ -33,7 +38,23 @@ export class PropertyService {
   async update(id: string, dto: UpdatePropertyDto, ownerId: string): Promise<PropertyEntity> {
     const property = await this.findOne(id, ownerId);
     Object.assign(property, dto);
-    return this.propertyRepository.save(property);
+    try {
+      return await this.propertyRepository.save(property);
+    } catch (e) {
+      this.rethrowIfDuplicateZodomusId(e);
+      throw e;
+    }
+  }
+
+  private rethrowIfDuplicateZodomusId(e: unknown): void {
+    if (e instanceof QueryFailedError) {
+      const err = e.driverError as { code?: string; constraint?: string } | undefined;
+      if (err?.code === '23505' && String(err?.constraint ?? '').includes('zodomus')) {
+        throw new BadRequestException(
+          'This Zodomus property id is already linked to another listing in RentAI.',
+        );
+      }
+    }
   }
 
   async remove(id: string, ownerId: string): Promise<void> {

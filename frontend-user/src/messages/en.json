@@ -147,6 +147,7 @@
       "colAddress": "Location",
       "colCurrency": "Currency",
       "colTimezone": "Timezone",
+      "colOta": "OTA",
       "colGuests": "Guests",
       "noSearchResults": "No matches"
     },
@@ -188,7 +189,11 @@
       "maxGuests": "Max guests",
       "maxGuestsPlaceholder": "4",
       "cancel": "Cancel",
-      "saving": "Saving…"
+      "saving": "Saving…",
+      "integrationsSection": "Integrations (channel manager)",
+      "zodomusPropertyId": "Zodomus property ID",
+      "zodomusPropertyIdPlaceholder": "e.g. 10322630",
+      "zodomusPropertyIdHint": "External id from Zodomus (sandbox / backoffice). Required to sync OTA bookings into the calendar. Leave empty if not connected."
     },
     "detail": {
       "settings": "Settings",
@@ -198,6 +203,7 @@
       "timezone": "Timezone",
       "currency": "Currency",
       "maxGuests": "Max guests",
+      "zodomusPropertyId": "Zodomus property id",
       "notSpecified": "Not specified"
     }
   },
@@ -596,7 +602,24 @@
     "openChat": "Open chat",
     "chatUnavailable": "Chat will be available after messenger is connected",
     "copyId": "Copy ID",
-    "copied": "Copied"
+    "copied": "Copied",
+    "syncOta": "Sync OTA",
+    "syncOtaLoading": "Syncing…",
+    "syncOtaSuccess": "OTA sync: {processed} processed, {skipped} skipped, {failed} failed ({properties} properties)",
+    "syncOtaAllFailed": "Could not import queue items from Zodomus: {failed} failed. Check backend logs and reservation ids.",
+    "syncOtaError": "Could not sync from channel manager",
+    "syncOtaBackendDown": "Nest backend is not running — Next.js cannot reach the API. Start it (e.g. pnpm dev:backend) and match NEXT_PUBLIC_API_URL.",
+    "syncOtaNoLinkedProperties": "No property has a Zodomus property id — set it on the property form (integrations section).",
+    "syncOtaQueueEmpty": "Zodomus queue is empty: nothing new to import.",
+    "syncOtaAllSkipped": "No new bookings: skipped {skipped} (already synced), {properties} OTA-linked properties.",
+    "syncOtaShiftHint": "Shift+click: re-import queue items even if already marked synced (e.g. after fixing date mapping on the server).",
+    "syncOtaForceSuffix": "(forced re-import)",
+    "otaSyncedBadge": "OTA",
+    "otaSyncedTooltip": "Synced from channel manager (Zodomus)",
+    "propertyOtaBadgeTitle": "Property linked to Zodomus — OTA bookings appear on this row after “Sync OTA”",
+    "emptyPeriodHint": "No bookings in RentAI for this period—the grid is empty because there are no rows in the database for these dates, not because property rows are missing.",
+    "emptyPeriodOtaHint": "If the booking exists in the channel manager: set the Zodomus external id on the property, then click “Sync OTA”. Bookings show only on the property they were synced to.",
+    "emptyFiltersHint": "Bookings exist, but none match the current channel or status filters—set filters to “All”."
   },
   "inbox": {
     "backendUnreachable": "Cannot reach the API",

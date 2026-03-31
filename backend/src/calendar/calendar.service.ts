@@ -10,6 +10,10 @@ export interface CalendarPropertyDto {
   uuid: string;
   title: string;
   avatarUrl?: string;
+  /** Есть внешний id Zodomus — доступна синхронизация OTA. */
+  zodomusLinked: boolean;
+  /** Для UI-бейджа; дублирует флаг выше. */
+  zodomusPropertyId?: string | null;
 }
 
 export type CalendarBookingStatus = 'confirmed' | 'pending' | 'cleaning' | 'blocked';
@@ -17,7 +21,10 @@ export type CalendarBookingChannel = 'booking' | 'airbnb' | 'direct' | 'other';
 
 export interface CalendarReservationDto {
   uuid: string;
+  /** Внутренний id брони или внешний id Zodomus для отображения. */
   externalId: string;
+  /** Подтянута из channel manager (Zodomus). */
+  fromOta: boolean;
   propertyId: string;
   guestName: string;
   channel: CalendarBookingChannel;
@@ -61,10 +68,11 @@ export class CalendarService {
 
     const reservations: CalendarReservationDto[] = bookings.map((b) => ({
       uuid: b.id,
-      externalId: b.id,
+      externalId: b.zodomusReservationId?.trim() || b.id,
+      fromOta: Boolean(b.zodomusReservationId?.trim()),
       propertyId: b.propertyId,
       guestName: b.guestName,
-      channel: 'direct' as const,
+      channel: calendarChannelFromBooking(b),
       status: mapBookingStatus(b.status as SharedBookingStatus),
       totalPrice: b.totalPriceMinor / 100,
       currency: b.currency,
@@ -73,13 +81,26 @@ export class CalendarService {
       chatThreadId: null,
     }));
 
-    const propertyDtos: CalendarPropertyDto[] = properties.map((p) => ({
-      uuid: p.id,
-      title: p.name,
-    }));
+    const propertyDtos: CalendarPropertyDto[] = properties.map((p) => {
+      const zid = p.zodomusPropertyId?.trim() ?? null;
+      return {
+        uuid: p.id,
+        title: p.name,
+        zodomusLinked: Boolean(zid),
+        zodomusPropertyId: zid,
+      };
+    });
 
     return { properties: propertyDtos, reservations };
   }
+}
+
+function calendarChannelFromBooking(b: BookingEntity): CalendarBookingChannel {
+  const zid = b.zodomusChannelId;
+  if (zid == null) return 'direct';
+  if (zid === 1) return 'booking';
+  if (zid === 3) return 'airbnb';
+  return 'other';
 }
 
 function mapBookingStatus(s: SharedBookingStatus): CalendarBookingStatus {

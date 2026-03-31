@@ -4,11 +4,12 @@ import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { useTheme } from 'next-themes';
 import { Epg, Layout, useEpg } from 'planby';
 import type { Channel } from 'planby';
-import { eachDayOfInterval, format, parseISO, startOfDay } from 'date-fns';
+import { addDays, eachDayOfInterval, format, parseISO, startOfDay } from 'date-fns';
 import { Copy } from 'lucide-react';
 import { toast } from 'sonner';
 import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { ResponsiveModal, ResponsiveModalContent } from '@/components/ui/responsive-modal';
 import { Separator } from '@/components/ui/separator';
@@ -19,6 +20,7 @@ import { cn } from '@/lib/utils';
 import type { CalendarDateRange, CalendarFilters, Reservation } from './types';
 import { useCalendarData } from './hooks/useCalendarData';
 import { useCalendarFilters } from './hooks/useCalendarFilters';
+import { useZodomusCalendarSync } from './hooks/useZodomusCalendarSync';
 import { getPropertyMeta, countNights } from './lib/property-meta';
 import { calendarStatusClasses } from './lib/calendar-status-styles';
 import { ProgramBlock } from './components/ProgramBlock';
@@ -71,6 +73,7 @@ export function CalendarView({
     [resolvedTheme],
   );
   const { data, isLoading, isError, isFetching, refetch, isPending } = useCalendarData(dateRange);
+  const zodomusSync = useZodomusCalendarSync(1);
 
   const properties = data?.properties ?? [];
   const reservations = data?.reservations ?? [];
@@ -113,8 +116,9 @@ export function CalendarView({
   const { getEpgProps, getLayoutProps } = useEpg({
     channels,
     epg,
-    startDate: format(dateRange.start, "yyyy-MM-dd'T'00:00:00"),
-    endDate: format(dateRange.end, "yyyy-MM-dd'T'00:00:00"),
+    startDate: format(startOfDay(dateRange.start), "yyyy-MM-dd'T'00:00:00"),
+    /** Planby span = hours between start and this instant; use day after last visible day (same idea as calendar API `to` + 1). */
+    endDate: format(addDays(startOfDay(dateRange.end), 1), "yyyy-MM-dd'T'00:00:00"),
     dayWidth: dayWidthPx,
     sidebarWidth: isMobile ? 56 : 240,
     itemHeight: ITEM_HEIGHT_PX,
@@ -301,6 +305,63 @@ export function CalendarView({
 
   const openNewBooking = useCallback(() => setNewBookingOpen(true), []);
 
+  /** Кнопка синка показывается при любых объектах; без Zodomus id тост подскажет. */
+  const showSyncOta = useMemo(() => properties.length > 0, [properties]);
+  const showEmptyPeriodHint = reservations.length === 0 && properties.length > 0;
+  const showFiltersEmptyHint =
+    reservations.length > 0 && filteredReservations.length === 0 && properties.length > 0;
+
+  const onSyncOta = useCallback((force?: boolean) => {
+    zodomusSync.mutateAsync({ force: Boolean(force) }).then(
+      (r) => {
+        if (r.propertiesTouched === 0) {
+          toast.message(t('syncOtaNoLinkedProperties'));
+          return;
+        }
+        if (r.processed === 0 && r.skipped === 0 && r.failed === 0) {
+          toast.message(t('syncOtaQueueEmpty'));
+          return;
+        }
+        if (r.processed === 0 && r.skipped === 0 && r.failed > 0) {
+          toast.error(t('syncOtaAllFailed', { failed: r.failed }));
+          return;
+        }
+        if (r.processed === 0 && r.skipped > 0 && r.failed === 0) {
+          toast.success(
+            t('syncOtaAllSkipped', {
+              skipped: r.skipped,
+              properties: r.propertiesTouched,
+            }),
+          );
+          return;
+        }
+        const msg = t('syncOtaSuccess', {
+          processed: r.processed,
+          skipped: r.skipped,
+          failed: r.failed,
+          properties: r.propertiesTouched,
+        });
+        const out = force ? `${msg} ${t('syncOtaForceSuffix')}` : msg;
+        if (r.failed > 0) {
+          toast.warning(out);
+        } else {
+          toast.success(out);
+        }
+      },
+      (err: unknown) => {
+        const data =
+          err && typeof err === 'object' && 'response' in err
+            ? (err as { response?: { status?: number; data?: { code?: string } } }).response?.data
+            : undefined;
+        if (data?.code === 'BACKEND_UNREACHABLE') {
+          toast.error(t('syncOtaBackendDown'));
+        } else {
+          toast.error(t('syncOtaError'));
+        }
+      },
+    );
+  }, [zodomusSync, t]);
+
   if (isError) {
     return (
       <div className="flex flex-1 flex-col">
@@ -310,6 +371,9 @@ export function CalendarView({
           properties={properties}
           filteredCount={filteredProperties.length}
           onNewBooking={openNewBooking}
+          showSyncOta={showSyncOta}
+          onSyncOta={onSyncOta}
+          isSyncingOta={zodomusSync.isPending}
         />
         <CalendarError onRetry={() => refetch()} />
         <NewBookingSheet open={newBookingOpen} onOpenChange={setNewBookingOpen} properties={properties} />
@@ -326,6 +390,9 @@ export function CalendarView({
           properties={properties}
           filteredCount={0}
           onNewBooking={openNewBooking}
+          showSyncOta={showSyncOta}
+          onSyncOta={onSyncOta}
+          isSyncingOta={zodomusSync.isPending}
         />
         <CalendarSkeleton />
         <NewBookingSheet open={newBookingOpen} onOpenChange={setNewBookingOpen} properties={properties} />
@@ -342,6 +409,7 @@ export function CalendarView({
           properties={[]}
           filteredCount={0}
           onNewBooking={openNewBooking}
+          showSyncOta={false}
         />
         <CalendarEmptyNoProperties />
         <NewBookingSheet open={newBookingOpen} onOpenChange={setNewBookingOpen} properties={properties} />
@@ -358,7 +426,25 @@ export function CalendarView({
         properties={properties}
         filteredCount={filteredProperties.length}
         onNewBooking={openNewBooking}
+        showSyncOta={showSyncOta}
+        onSyncOta={onSyncOta}
+        isSyncingOta={zodomusSync.isPending}
       />
+      {showEmptyPeriodHint ? (
+        <Alert className="mb-3 border-dashed">
+          <AlertDescription className="space-y-1">
+            <span className="block">{t('emptyPeriodHint')}</span>
+            {showSyncOta ? (
+              <span className="block text-muted-foreground">{t('emptyPeriodOtaHint')}</span>
+            ) : null}
+          </AlertDescription>
+        </Alert>
+      ) : null}
+      {showFiltersEmptyHint ? (
+        <Alert className="mb-3 border-dashed" variant="default">
+          <AlertDescription>{t('emptyFiltersHint')}</AlertDescription>
+        </Alert>
+      ) : null}
       <TimelineNavBar
         dateRange={dateRange}
         onDateRangeChange={onDateRangeChange}
@@ -425,6 +511,11 @@ function ReservationPanelContent({
       </span>
       <p className="text-sm text-muted-foreground">
         {t(channelLabelKeys[reservation.channel])}
+        {reservation.fromOta ? (
+          <span className="ml-2 rounded-md bg-muted px-1.5 py-0.5 text-xs font-medium text-foreground">
+            {t('otaSyncedBadge')}
+          </span>
+        ) : null}
       </p>
       <p className="text-sm">
         {format(parseISO(reservation.checkIn), 'dd MMM yyyy', { locale })} →{' '}

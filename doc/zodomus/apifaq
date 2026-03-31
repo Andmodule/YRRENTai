@@ -1,0 +1,4629 @@
+могут быть немного перепутаны блоки иззакопирования. сомтри по смыслам.
+
+Account and info
+Access account data and other general info APIs
+
+Operations
+
+get
+/account
+
+get
+/channels
+
+get
+/currencies
+
+get
+/price-model
+Get account information
+Request
+Security
+View details
+basicAuth
+
+get
+/account
+Payload
+No request payload
+Responses
+200
+401
+Expand all
+Detailed account info
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+account
+object
+(account)
+
++
+Show 11 properties
+Response
+200
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "account": {
+    "name": "string",
+    "address": "string",
+    "postalCode": "string",
+    "city": "string",
+    "country": "string",
+    "email": "string",
+    "telephone": "string",
+    "webhook": "string",
+    "webhookKey": "string",
+    "apiStatus": "string",
+    "reservationType": "string"
+  }
+}
+Get a list of current active channels
+Request
+Security
+View details
+basicAuth
+
+get
+/channels
+Payload
+No request payload
+Responses
+200
+401
+Expand all
+Returns a list of active channels
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+channels
+Array of objects
+(channels)
+
++
+Show 2 array properties
+Response
+200
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "channels": [
+    { … }
+  ]
+}
+Get a list of currencies
+Request
+Security
+View details
+basicAuth
+
+get
+/currencies
+Payload
+No request payload
+Responses
+200
+401
+Expand all
+Returns a list of currencies
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+channels
+Array of objects
+(channels)
+
++
+Show 2 array properties
+Response
+200
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "channels": [
+    { … }
+  ]
+}
+Get a list of price models
+Request
+Security
+View details
+basicAuth
+
+get
+/price-model
+Payload
+No request payload
+Responses
+200
+401
+Expand all
+Returns a list of price models
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+channels
+Array of objects
+(channels)
+
++
+Show 2 array properties
+Response
+200
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "channels": [
+    { … }
+  ]
+}
+
+------
+
+Mapping
+Mapping properties, rooms and rates from the channel
+
+Operations
+
+post
+/property-activation
+
+post
+/property-cancellation
+
+post
+/property-check
+
+post
+/rooms-activation
+
+post
+/rooms-cancellation
+Activate a channel property with Zodomus
+Request
+Activate a propertyId on the channelId selected.
+
+priceModelId should be
+
+1 = Maximum / single (Booking only, recommended price by Booking)
+2 = Derived prices (Booking only)
+3 = Occupancy (Expedia only, recommended by Expedia)
+4 = Per day / Length of stay (Booking and Expedia)
+
+Security
+View details
+basicAuth
+Body
+application/json
+required
+channelId
+integer
+required
+Example:
+1
+propertyId
+string
+required
+Example:
+"999999"
+priceModelId
+integer
+required
+Example:
+1
+
+post
+/property-activation
+Payload
+application/json
+
+{
+  "channelId": 1,
+  "propertyId": "999999",
+  "priceModelId": 1
+}
+Responses
+200
+400
+401
+OK
+
+Cancel a channel property with Zodomus
+Request
+Security
+View details
+basicAuth
+Body
+application/json
+required
+channelId
+integer
+Example:
+1
+propertyId
+string
+Example:
+"999999"
+
+post
+/property-cancellation
+Payload
+application/json
+
+{
+  "channelId": 1,
+  "propertyId": "999999"
+}
+Responses
+200
+400
+401
+OK
+
+Check a property with Zodomus
+Request
+Security
+View details
+basicAuth
+Body
+application/json
+required
+channelId
+integer
+Example:
+1
+propertyId
+string
+Example:
+"999999"
+
+post
+/property-check
+Payload
+application/json
+
+{
+  "channelId": 1,
+  "propertyId": "999999"
+}
+Responses
+200
+400
+401
+OK
+
+Activate the property rooms and rates and map them with Zodomus
+RequestExpand all
+Security
+View details
+basicAuth
+Body
+application/json
+required
+channelId
+integer
+required
+Example:
+1
+propertyId
+string
+required
+Example:
+"999999"
+rooms
+Array of objects
+required
+
+-
+rooms[].​roomId
+string
+Example:
+"90001"
+rooms[].​roomName
+string
+Example:
+"Suite"
+rooms[].​quantity
+integer
+Example:
+1
+rooms[].​status
+integer
+Example:
+1
+rooms[].​rates
+Array of strings
+Example:
+["99001"]
+
+post
+/rooms-activation
+Payload
+application/json
+
+
+
+{
+  "channelId": 1,
+  "propertyId": "999999",
+  "rooms": [
+    { … }
+  ]
+}
+Responses
+200
+400
+401
+OK
+
+Cancel property rooms associated with Zodomus
+RequestExpand all
+Security
+View details
+basicAuth
+Body
+application/json
+required
+channelId
+integer
+Example:
+1
+propertyId
+string
+Example:
+"999999"
+rooms
+Array of objects
+
++
+Show array property
+
+post
+/rooms-cancellation
+Payload
+application/json
+
+
+
+{
+  "channelId": 1,
+  "propertyId": "999999",
+  "rooms": [
+    { … }
+  ]
+}
+Responses
+200
+400
+401
+OK
+
+-------------
+Rates and Availability
+Rates and Availability API functions
+
+Operations
+
+get
+/room-rates
+
+get
+/availability
+
+post
+/availability
+
+post
+/rates
+
+post
+/rates-derived
+Get a list of rooms and rates for the corresponding channel / property
+Request
+Security
+View details
+basicAuth
+Query
+channelId
+integer
+required
+Channel id
+
+propertyId
+string
+required
+Property id supplied by the channel
+
+
+get
+/room-rates
+Payload
+No request payload
+Responses
+200
+400
+401
+Expand all
+Return a list of rooms and rates
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+rooms
+Array of objects
+(rooms)
+
++
+Show 3 array properties
+Response
+200
+400
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "rooms": [
+    { … }
+  ]
+}
+Get the rooms availability for the corresponding channel / property / dates
+Request
+Security
+View details
+basicAuth
+Query
+channelId
+integer
+required
+Channel id
+
+propertyId
+string
+required
+Property id supplied by the channel
+
+dateFrom
+string
+required
+Starting date to get availability
+
+dateTo
+string
+required
+Ending date to get availability
+
+
+get
+/availability
+Payload
+No request payload
+Responses
+200
+400
+401
+Return a list of rooms with dates and availability
+
+Set your availability in the defined channel / property / room
+Request
+Security
+View details
+basicAuth
+Body
+application/json
+required
+channelId
+integer
+Example:
+1
+propertyId
+string
+Example:
+"999999"
+roomId
+string
+Example:
+"90001"
+dateFrom
+string
+Example:
+"2019-08-01"
+dateTo
+string
+Example:
+"2019-08-03 dateTo as up to date and not including this date"
+availability
+integer
+Example:
+2
+
+post
+/availability
+Payload
+application/json
+
+{
+  "channelId": 1,
+  "propertyId": "999999",
+  "roomId": "90001",
+  "dateFrom": "2019-08-01",
+  "dateTo": "2019-08-03 dateTo as up to date and not including this date",
+  "availability": 2
+}
+Responses
+200
+400
+401
+OK
+
+Set rates for your channel / property / room /rate
+RequestExpand all
+Set rates according to the price model defined in the channel property
+Some parameters depend on the price model. Please check documentation
+
+Security
+View details
+basicAuth
+Body
+application/json
+required
+channelId
+integer
+Example:
+1
+propertyId
+string
+Example:
+"999999"
+roomId
+string
+Example:
+"90001"
+rateId
+string
+Example:
+"99001"
+dateFrom
+string
+Example:
+"2019-08-01"
+dateTo
+string
+Example:
+"2019-08-03 dateTo as up to date and not including this date"
+currencyCode
+string
+Example:
+"EUR"
+prices
+object
+
++
+Show 2 properties
+weekDays
+object
+
++
+Show 7 properties
+closed
+string
+Example:
+"0=false , 1=true, (optional restrition)"
+minAdvanceRes
+string
+Example:
+"4D = four days; 4D4H = four days and four hours, (optional restrition)"
+maxAdvanceRes
+string
+Example:
+"4D = four days; 4D4H = four days and four hours, (optional restrition)"
+minimumStay
+string
+Example:
+"Between 0 and 31, (optional restrition)"
+maximumStay
+string
+Example:
+"Between 0 and 31, (optional restrition)"
+minimumStayArrival
+string
+Example:
+"Between 0 and 31, (optional restrition)"
+maximumStayArrival
+string
+Example:
+"Between 0 and 31, (optional restrition)"
+exactStayArrival
+string
+Example:
+"Between 0 and 31, (optional restrition)"
+closedOnArrival
+string
+Example:
+"0=false , 1=true, (optional restrition)"
+closedOnDeparture
+string
+Example:
+"0=false , 1=true, (optional restrition)"
+
+post
+/rates
+Payload
+application/json
+
+
+
+{
+  "channelId": 1,
+  "propertyId": "999999",
+  "roomId": "90001",
+  "rateId": "99001",
+  "dateFrom": "2019-08-01",
+  "dateTo": "2019-08-03 dateTo as up to date and not including this date",
+  "currencyCode": "EUR",
+  "prices": {
+    "price": "###.##",
+    "priceSingle": "###.##, not used on single rooms"
+  },
+  "weekDays": {
+    "sun": "true or false - (weekDays are optional)",
+    "mon": "true or false",
+    "tue": "true or false",
+    "wed": "true or false",
+    "thu": "true or false",
+    "fri": "true or false",
+    "sat": "true or false"
+  },
+  "closed": "0=false , 1=true, (optional restrition)",
+  "minAdvanceRes": "4D = four days; 4D4H = four days and four hours, (optional restrition)",
+  "maxAdvanceRes": "4D = four days; 4D4H = four days and four hours, (optional restrition)",
+  "minimumStay": "Between 0 and 31, (optional restrition)",
+  "maximumStay": "Between 0 and 31, (optional restrition)",
+  "minimumStayArrival": "Between 0 and 31, (optional restrition)",
+  "maximumStayArrival": "Between 0 and 31, (optional restrition)",
+  "exactStayArrival": "Between 0 and 31, (optional restrition)",
+  "closedOnArrival": "0=false , 1=true, (optional restrition)",
+  "closedOnDeparture": "0=false , 1=true, (optional restrition)"
+}
+Responses
+200
+400
+401
+OK
+
+Set rates (derived) for your channel / property / room /rate
+Request
+Used in Booking channel only on derived prices
+
+Security
+View details
+basicAuth
+Body
+application/json
+required
+channelId
+integer
+Example:
+1
+propertyId
+string
+Example:
+"999999"
+roomId
+string
+Example:
+"90001"
+rateId
+string
+Example:
+"990001"
+dateFrom
+string
+Example:
+"2019-08-01"
+dateTo
+string
+Example:
+"2019-08-03"
+currencyCode
+string
+Example:
+"EUR"
+baseOccupancy
+integer
+Example:
+1
+occupancy
+object
+
+post
+/rates-derived
+Payload
+application/json
+
+
+
+{
+  "channelId": 1,
+  "propertyId": "999999",
+  "roomId": "90001",
+  "rateId": "990001",
+  "dateFrom": "2019-08-01",
+  "dateTo": "2019-08-03",
+  "currencyCode": "EUR",
+  "baseOccupancy": 1,
+  "occupancy": {}
+}
+Responses
+200
+400
+401
+OK
+
+-----------------
+Reservation
+Reservation API functions
+
+Operations
+
+get
+/reservations-queue
+
+get
+/reservations
+
+get
+/reservations-cc
+
+get
+/reservations-summary
+
+post
+/reservations-createtest
+Get a list of reservations
+Request
+Get a list of new, modified or cancelled reservations made by the channel
+
+Security
+View details
+basicAuth
+Query
+channelId
+integer
+required
+Channel id
+
+propertyId
+string
+required
+Property id supplied by the channel
+
+
+get
+/reservations-queue
+Payload
+No request payload
+Responses
+200
+400
+401
+Expand all
+Get a list of reservations (new, modified or cancelled)
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+reservations
+Array of objects
+
++
+Show 3 array properties
+Response
+200
+400
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "reservations": [
+    { … }
+  ]
+}
+Get a reservation
+Request
+Get a reservation complete information. The credit card information can be obtained in another API
+
+Security
+View details
+basicAuth
+Query
+channelId
+integer
+required
+Channel id string
+
+propertyId
+string
+required
+Property id supplied by the channel
+
+reservationId
+string
+required
+Reservation id supplied by the channel in reservations-queue
+
+
+get
+/reservations
+Payload
+No request payload
+Responses
+200
+400
+401
+Expand all
+Get a complete reservation (without credit card data)
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+reservations
+Array of objects
+
++
+Show 3 array properties
+Response
+200
+400
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "reservations": [
+    { … }
+  ]
+}
+Get a reservation credit card info.
+Request
+Get a reservation credit card info. You need a special key password to access this API. Check your backoffice for more informationa about your API Keys
+
+Security
+View details
+basicAuth
+Query
+channelId
+integer
+required
+Channel id
+
+propertyId
+string
+required
+Property id supplied by the channel
+
+reservationId
+string
+required
+Reservation id supplied by the channel in reservations-queue
+
+
+get
+/reservations-cc
+Payload
+No request payload
+Responses
+200
+400
+401
+Expand all
+Get the reservation credit card information
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+reservation
+Array of objects
+
++
+Show 2 array properties
+Response
+200
+400
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "reservation": [
+    { … }
+  ]
+}
+Get a list of future reservations
+Request
+Get a list of reservations scheduled for future dates that were created before your connection to this channel manager
+
+Security
+View details
+basicAuth
+Query
+channelId
+integer
+required
+Channel id
+
+propertyId
+string
+required
+Property id supplied by the channel
+
+
+get
+/reservations-summary
+Payload
+No request payload
+Responses
+200
+400
+401
+Expand all
+Get a list of future reservations
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+reservations
+Array of objects
+
++
+Show 3 array properties
+Response
+200
+400
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "reservations": [
+    { … }
+  ]
+}
+Create a test reservation for your test property
+Request
+Creates a test reservation. status can be 'new', 'modified' or 'cancelled'. Optionally you can set a new reservation id
+
+Security
+View details
+basicAuth
+Body
+application/json
+required
+channelId
+integer
+required
+Example:
+1
+propertyId
+string
+required
+Example:
+"999999"
+status
+string
+required
+Example:
+"new"
+reservationId
+string
+Example:
+"111211212"
+
+post
+/reservations-createtest
+Payload
+application/json
+
+{
+  "channelId": 1,
+  "propertyId": "999999",
+  "status": "new",
+  "reservationId": "111211212"
+}
+Responses
+200
+400
+401
+OK
+
+-------------
+Content
+Content API functions
+
+Operations
+
+get
+/property
+
+post
+/property
+
+post
+/property-status
+
+get
+/room
+
+post
+/room
+
+post
+/room-status
+
+get
+/rate
+
+post
+/rate
+Show 1 more...
+Get property details (used only on Expedia)
+Request
+Security
+View details
+basicAuth
+Query
+channelId
+integer
+required
+Channel id
+
+propertyId
+string
+required
+Property id supplied by the channel
+
+
+get
+/property
+Payload
+No request payload
+Responses
+200
+400
+401
+Return details about a property
+
+Create or modify a property (used only in Booking)
+RequestExpand all
+Security
+View details
+basicAuth
+Body
+application/json
+required
+channelId
+integer
+Example:
+1
+hotelContent
+object
+
++
+Show 4 properties
+contactInfo
+object
+
++
+Show 2 properties
+hotelInfo
+object
+
++
+Show 5 properties
+facilityInfo
+object
+
++
+Show 3 properties
+tpaExtensions
+object
+
++
+Show property
+policies
+object
+
++
+Show 6 properties
+areaInfo
+object
+
++
+Show property
+affiliationInfo
+object
+
++
+Show property
+multimediaDescriptions
+Array of objects
+
++
+Show 2 array properties
+
+post
+/property
+Payload
+application/json
+
+
+
+{
+  "channelId": 1,
+  "hotelContent": {
+    "status": "New",
+    "name": "Test Hotel",
+    "languageCode": "en",
+    "propertyLicenseNumber": "121212"
+  },
+  "contactInfo": {
+    "type": "PhysicalLocation",
+    "addresses": { … }
+  },
+  "hotelInfo": {
+    "guestRoomQuantity": "1",
+    "propertyType": "1",
+    "services": [ … ],
+    "acceptedPayments": [ … ],
+    "transportations": [ … ]
+  },
+  "facilityInfo": {
+    "guestRooms": "1",
+    "restaurants": "1",
+    "tpaExtensions": "1"
+  },
+  "tpaExtensions": {
+    "sellMealsThroughBooking": "1"
+  },
+  "policies": {
+    "policyInfo": "1",
+    "petsPolicies": "1",
+    "cancelPolicies": "1",
+    "guaranteePaymentPolicies": "1",
+    "taxPolicies": "1",
+    "feePolicies": "1"
+  },
+  "areaInfo": {
+    "attractions": "1"
+  },
+  "affiliationInfo": {
+    "awards": "1"
+  },
+  "multimediaDescriptions": [
+    { … }
+  ]
+}
+Responses
+200
+400
+401
+OK
+
+Set property status or check property (used only on Booking)
+Request
+Security
+View details
+basicAuth
+Body
+application/json
+required
+channelId
+integer
+Example:
+1
+type
+any
+properties
+any
+
+post
+/property-status
+Payload
+application/json
+
+{
+  "channelId": 1,
+  "type": null,
+  "properties": null
+}
+Responses
+200
+400
+401
+Return details about a property
+
+Get room details (used only on Expedia)
+Request
+Security
+View details
+basicAuth
+Query
+channelId
+integer
+required
+Channel id
+
+propertyId
+string
+required
+Property id supplied by the channel
+
+roomId
+string
+required
+Room id supplied by the channel
+
+
+get
+/room
+Payload
+No request payload
+Responses
+200
+400
+401
+Return details about a property
+
+Create or modify a room
+Request
+Security
+View details
+basicAuth
+Body
+application/json
+required
+channelId
+integer
+Example:
+1
+status
+string
+Example:
+"New"
+name
+string
+Example:
+"Test Hotel"
+
+post
+/room
+Payload
+application/json
+
+{
+  "channelId": 1,
+  "status": "New",
+  "name": "Test Hotel"
+}
+Responses
+200
+400
+401
+OK
+
+Set room status (used only on Booking)
+Request
+Security
+View details
+basicAuth
+Body
+application/json
+required
+channelId
+integer
+Example:
+1
+propertyId
+string
+Example:
+"120120"
+roomId
+string
+Example:
+"12012001"
+status
+string
+Example:
+"Activate,Deactivated"
+
+post
+/room-status
+Payload
+application/json
+
+{
+  "channelId": 1,
+  "propertyId": "120120",
+  "roomId": "12012001",
+  "status": "Activate,Deactivated"
+}
+Responses
+200
+400
+401
+Return details about a property
+
+Get rate details (used only on Expedia)
+Request
+Security
+View details
+basicAuth
+Query
+channelId
+integer
+required
+Channel id
+
+propertyId
+string
+required
+Property id supplied by the channel
+
+roomId
+string
+required
+Room id supplied by the channel
+
+rateId
+string
+required
+Rate id supplied by the channel
+
+
+get
+/rate
+Payload
+No request payload
+Responses
+200
+400
+401
+Return details about a property
+
+Create, modify or delete a rate
+Request
+Security
+View details
+basicAuth
+Body
+application/json
+required
+channelId
+integer
+Example:
+1
+status
+string
+Example:
+"New"
+name
+string
+Example:
+"Test Hotel"
+
+post
+/rate
+Payload
+application/json
+
+{
+  "channelId": 1,
+  "status": "New",
+  "name": "Test Hotel"
+}
+Responses
+200
+400
+401
+OK
+
+Create, modify or delete a product (only used in Booking)
+Request
+Security
+View details
+basicAuth
+Body
+application/json
+required
+channelId
+integer
+Example:
+1
+propertyId
+string
+Example:
+"120120"
+roomId
+string
+Example:
+"12012001"
+rateId
+string
+Example:
+"12012099"
+status
+string
+Example:
+"New"
+
+post
+/product
+Payload
+application/json
+
+{
+  "channelId": 1,
+  "propertyId": "120120",
+  "roomId": "12012001",
+  "rateId": "12012099",
+  "status": "New"
+}
+Responses
+200
+400
+401
+OK
+
+
+--------------------------------
+
+
+Booking tables
+Booking Content tables
+
+Operations
+
+get
+/booking-property-types
+
+get
+/booking-room-types
+
+get
+/booking-room-amenities
+
+get
+/booking-breakfast-types
+
+get
+/booking-cancellation-types
+
+get
+/booking-cuisine-types
+
+get
+/booking-fee-tax-policies
+
+get
+/booking-hotel-amenities
+Show 19 more...
+Get Booking Property Types
+Request
+Security
+View details
+basicAuth
+
+get
+/booking-property-types
+Payload
+No request payload
+Responses
+200
+401
+Expand all
+Booking property types
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+account
+object
+(bookingtables)
+
++
+Show 4 properties
+Response
+200
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "account": {
+    "code": "string",
+    "description": "string",
+    "value": "string",
+    "required": "string"
+  }
+}
+Get Booking Room Types
+Request
+Security
+View details
+basicAuth
+
+get
+/booking-room-types
+Payload
+No request payload
+Responses
+200
+401
+Expand all
+Booking room types
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+account
+object
+(bookingtables)
+
++
+Show 4 properties
+Response
+200
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "account": {
+    "code": "string",
+    "description": "string",
+    "value": "string",
+    "required": "string"
+  }
+}
+Get Booking Room Amenities
+Request
+Security
+View details
+basicAuth
+
+get
+/booking-room-amenities
+Payload
+No request payload
+Responses
+200
+401
+Expand all
+Booking room amenities
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+account
+object
+(bookingtables)
+
++
+Show 4 properties
+Response
+200
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "account": {
+    "code": "string",
+    "description": "string",
+    "value": "string",
+    "required": "string"
+  }
+}
+Get Booking Breakfast Types
+Request
+Security
+View details
+basicAuth
+
+get
+/booking-breakfast-types
+Payload
+No request payload
+Responses
+200
+401
+Expand all
+Booking breakfast types
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+account
+object
+(bookingtables)
+
++
+Show 4 properties
+Response
+200
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "account": {
+    "code": "string",
+    "description": "string",
+    "value": "string",
+    "required": "string"
+  }
+}
+Get Booking Cancellation Types
+Request
+Security
+View details
+basicAuth
+
+get
+/booking-cancellation-types
+Payload
+No request payload
+Responses
+200
+401
+Expand all
+Booking cancellation types
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+account
+object
+(bookingtables)
+
++
+Show 4 properties
+Response
+200
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "account": {
+    "code": "string",
+    "description": "string",
+    "value": "string",
+    "required": "string"
+  }
+}
+Get Booking Cuisine Types
+Request
+Security
+View details
+basicAuth
+
+get
+/booking-cuisine-types
+Payload
+No request payload
+Responses
+200
+401
+Expand all
+Booking cuisine types
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+account
+object
+(bookingtables)
+
++
+Show 4 properties
+Response
+200
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "account": {
+    "code": "string",
+    "description": "string",
+    "value": "string",
+    "required": "string"
+  }
+}
+Get Booking Fee Tax Policies
+Request
+Security
+View details
+basicAuth
+
+get
+/booking-fee-tax-policies
+Payload
+No request payload
+Responses
+200
+401
+Expand all
+Booking fee tax policies
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+account
+object
+(bookingtables)
+
++
+Show 4 properties
+Response
+200
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "account": {
+    "code": "string",
+    "description": "string",
+    "value": "string",
+    "required": "string"
+  }
+}
+Get Booking Hotel Amenities
+Request
+Security
+View details
+basicAuth
+
+get
+/booking-hotel-amenities
+Payload
+No request payload
+Responses
+200
+401
+Expand all
+Booking hotel amenities
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+account
+object
+(bookingtables)
+
++
+Show 4 properties
+Response
+200
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "account": {
+    "code": "string",
+    "description": "string",
+    "value": "string",
+    "required": "string"
+  }
+}
+Get Booking Phone Types
+Request
+Security
+View details
+basicAuth
+
+get
+/booking-phone-types
+Payload
+No request payload
+Responses
+200
+401
+Expand all
+Booking phone types
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+account
+object
+(bookingtables)
+
++
+Show 4 properties
+Response
+200
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "account": {
+    "code": "string",
+    "description": "string",
+    "value": "string",
+    "required": "string"
+  }
+}
+Get Booking Payment Types
+Request
+Security
+View details
+basicAuth
+
+get
+/booking-payment-types
+Payload
+No request payload
+Responses
+200
+401
+Expand all
+Booking payment types
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+account
+object
+(bookingtables)
+
++
+Show 4 properties
+Response
+200
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "account": {
+    "code": "string",
+    "description": "string",
+    "value": "string",
+    "required": "string"
+  }
+}
+Get Booking Contact Types
+Request
+Security
+View details
+basicAuth
+
+get
+/booking-contact-types
+Payload
+No request payload
+Responses
+200
+401
+Expand all
+Booking contact types
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+account
+object
+(bookingtables)
+
++
+Show 4 properties
+Response
+200
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "account": {
+    "code": "string",
+    "description": "string",
+    "value": "string",
+    "required": "string"
+  }
+}
+Get Booking Restaurant Services
+Request
+Security
+View details
+basicAuth
+
+get
+/booking-restaurant-services
+Payload
+No request payload
+Responses
+200
+401
+Expand all
+Booking restaurant services
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+account
+object
+(bookingtables)
+
++
+Show 4 properties
+Response
+200
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "account": {
+    "code": "string",
+    "description": "string",
+    "value": "string",
+    "required": "string"
+  }
+}
+Get Booking Ambiance Types
+Request
+Security
+View details
+basicAuth
+
+get
+/booking-ambiance-types
+Payload
+No request payload
+Responses
+200
+401
+Expand all
+Booking ambiance types
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+account
+object
+(bookingtables)
+
++
+Show 4 properties
+Response
+200
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "account": {
+    "code": "string",
+    "description": "string",
+    "value": "string",
+    "required": "string"
+  }
+}
+Get Booking Dietary Types
+Request
+Security
+View details
+basicAuth
+
+get
+/booking-dietary-types
+Payload
+No request payload
+Responses
+200
+401
+Expand all
+Booking dietary types
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+account
+object
+(bookingtables)
+
++
+Show 4 properties
+Response
+200
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "account": {
+    "code": "string",
+    "description": "string",
+    "value": "string",
+    "required": "string"
+  }
+}
+Get Booking Charge Types
+Request
+Security
+View details
+basicAuth
+
+get
+/booking-charge-types
+Payload
+No request payload
+Responses
+200
+401
+Expand all
+Booking charge types
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+account
+object
+(bookingtables)
+
++
+Show 4 properties
+Response
+200
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "account": {
+    "code": "string",
+    "description": "string",
+    "value": "string",
+    "required": "string"
+  }
+}
+Get Booking Meal Plans
+Request
+Security
+View details
+basicAuth
+
+get
+/booking-meal-plans
+Payload
+No request payload
+Responses
+200
+401
+Expand all
+Booking meal plans
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+account
+object
+(bookingtables)
+
++
+Show 4 properties
+Response
+200
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "account": {
+    "code": "string",
+    "description": "string",
+    "value": "string",
+    "required": "string"
+  }
+}
+Get Booking Image Tags
+Request
+Security
+View details
+basicAuth
+
+get
+/booking-image-tags
+Payload
+No request payload
+Responses
+200
+401
+Expand all
+Booking image tags
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+account
+object
+(bookingtables)
+
++
+Show 4 properties
+Response
+200
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "account": {
+    "code": "string",
+    "description": "string",
+    "value": "string",
+    "required": "string"
+  }
+}
+Get Booking Language Codes
+Request
+Security
+View details
+basicAuth
+
+get
+/booking-language-codes
+Payload
+No request payload
+Responses
+200
+401
+Expand all
+Booking language codes
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+account
+object
+(bookingtables)
+
++
+Show 4 properties
+Response
+200
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "account": {
+    "code": "string",
+    "description": "string",
+    "value": "string",
+    "required": "string"
+  }
+}
+Get Booking Transportation Codes
+Request
+Security
+View details
+basicAuth
+
+get
+/booking-transportation-codes
+Payload
+No request payload
+Responses
+200
+401
+Expand all
+Booking transportation codes
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+account
+object
+(bookingtables)
+
++
+Show 4 properties
+Response
+200
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "account": {
+    "code": "string",
+    "description": "string",
+    "value": "string",
+    "required": "string"
+  }
+}
+Get Booking Noshow Types
+Request
+Security
+View details
+basicAuth
+
+get
+/booking-noshow-types
+Payload
+No request payload
+Responses
+200
+401
+Expand all
+Booking noshow types
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+account
+object
+(bookingtables)
+
++
+Show 4 properties
+Response
+200
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "account": {
+    "code": "string",
+    "description": "string",
+    "value": "string",
+    "required": "string"
+  }
+}
+Get Booking Prepayment Types
+Request
+Security
+View details
+basicAuth
+
+get
+/booking-prepayment-types
+Payload
+No request payload
+Responses
+200
+401
+Expand all
+Booking prepayment types
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+account
+object
+(bookingtables)
+
++
+Show 4 properties
+Response
+200
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "account": {
+    "code": "string",
+    "description": "string",
+    "value": "string",
+    "required": "string"
+  }
+}
+Get Booking Parking Types
+Request
+Security
+View details
+basicAuth
+
+get
+/booking-parking-types
+Payload
+No request payload
+Responses
+200
+401
+Expand all
+Booking parking types
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+account
+object
+(bookingtables)
+
++
+Show 4 properties
+Response
+200
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "account": {
+    "code": "string",
+    "description": "string",
+    "value": "string",
+    "required": "string"
+  }
+}
+Get Booking Parking Reservations
+Request
+Security
+View details
+basicAuth
+
+get
+/booking-parking-reservations
+Payload
+No request payload
+Responses
+200
+401
+Expand all
+Booking parking reservations
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+account
+object
+(bookingtables)
+
++
+Show 4 properties
+Response
+200
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "account": {
+    "code": "string",
+    "description": "string",
+    "value": "string",
+    "required": "string"
+  }
+}
+Get Booking Parking Properties
+Request
+Security
+View details
+basicAuth
+
+get
+/booking-parking-properties
+Payload
+No request payload
+Responses
+200
+401
+Expand all
+Booking parking properties
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+account
+object
+(bookingtables)
+
++
+Show 4 properties
+Response
+200
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "account": {
+    "code": "string",
+    "description": "string",
+    "value": "string",
+    "required": "string"
+  }
+}
+Get Booking Internet Types
+Request
+Security
+View details
+basicAuth
+
+get
+/booking-internet-types
+Payload
+No request payload
+Responses
+200
+401
+Expand all
+Booking internet types
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+account
+object
+(bookingtables)
+
++
+Show 4 properties
+Response
+200
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "account": {
+    "code": "string",
+    "description": "string",
+    "value": "string",
+    "required": "string"
+  }
+}
+Get Booking Internet Coverages
+Request
+Security
+View details
+basicAuth
+
+get
+/booking-internet-coverages
+Payload
+No request payload
+Responses
+200
+401
+Expand all
+Booking internet coverages
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+account
+object
+(bookingtables)
+
++
+Show 4 properties
+Response
+200
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "account": {
+    "code": "string",
+    "description": "string",
+    "value": "string",
+    "required": "string"
+  }
+}
+Get Booking Pets Allowed
+Request
+Security
+View details
+basicAuth
+
+get
+/booking-pets-allowed
+Payload
+No request payload
+Responses
+200
+401
+Expand all
+Booking pets allowed
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+account
+object
+(bookingtables)
+
++
+Show 4 properties
+Response
+200
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "account": {
+    "code": "string",
+    "description": "string",
+    "value": "string",
+    "required": "string"
+  }
+}
+
+---------------------
+
+Expedia tables
+Expedia Content tables
+
+Operations
+
+get
+/expedia-room-types
+
+get
+/expedia-views
+
+get
+/expedia-areas
+
+get
+/expedia-categories
+
+get
+/expedia-featured-amenities
+
+get
+/expedia-perstay-fees
+
+get
+/expedia-room-classes
+
+get
+/expedia-room-details
+
+get
+/expedia-room-names
+
+get
+/expedia-surcharges
+
+get
+/expedia-value-addinclusions
+
+get
+/expedia-value-addinclusions-corporate
+
+get
+/expedia-bedtypes
+
+get
+/expedia-bedtypesizes
+
+get
+/expedia-bedsizes
+
+get
+/expedia-amenity-codes
+Get Expedia Room Types
+Request
+Security
+View details
+basicAuth
+
+get
+/expedia-room-types
+Payload
+No request payload
+Responses
+200
+401
+Expand all
+Expedia room types
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+account
+object
+(expediatables)
+
++
+Show 2 properties
+Response
+200
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "account": {
+    "description": "string",
+    "type": "string"
+  }
+}
+Get Expedia Views
+Request
+Security
+View details
+basicAuth
+
+get
+/expedia-views
+Payload
+No request payload
+Responses
+200
+401
+Expand all
+Expedia views
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+account
+object
+(expediatables)
+
++
+Show 2 properties
+Response
+200
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "account": {
+    "description": "string",
+    "type": "string"
+  }
+}
+Get Expedia Areas
+Request
+Security
+View details
+basicAuth
+
+get
+/expedia-areas
+Payload
+No request payload
+Responses
+200
+401
+Expand all
+Expedia areas
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+account
+object
+(expediatables)
+
++
+Show 2 properties
+Response
+200
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "account": {
+    "description": "string",
+    "type": "string"
+  }
+}
+Get Expedia Categories
+Request
+Security
+View details
+basicAuth
+
+get
+/expedia-categories
+Payload
+No request payload
+Responses
+200
+401
+Expand all
+Expedia categories
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+account
+object
+(expediatables)
+
++
+Show 2 properties
+Response
+200
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "account": {
+    "description": "string",
+    "type": "string"
+  }
+}
+Get Expedia Featured Amenities
+Request
+Security
+View details
+basicAuth
+
+get
+/expedia-featured-amenities
+Payload
+No request payload
+Responses
+200
+401
+Expand all
+Expedia featured amenities
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+account
+object
+(expediatables)
+
++
+Show 2 properties
+Response
+200
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "account": {
+    "description": "string",
+    "type": "string"
+  }
+}
+Get Expedia Perstay Fees
+Request
+Security
+View details
+basicAuth
+
+get
+/expedia-perstay-fees
+Payload
+No request payload
+Responses
+200
+401
+Expand all
+Expedia perstay fees
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+account
+object
+(expediatables)
+
++
+Show 2 properties
+Response
+200
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "account": {
+    "description": "string",
+    "type": "string"
+  }
+}
+Get Expedia Room Classes
+Request
+Security
+View details
+basicAuth
+
+get
+/expedia-room-classes
+Payload
+No request payload
+Responses
+200
+401
+Expand all
+Expedia room classes
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+account
+object
+(expediatables)
+
++
+Show 2 properties
+Response
+200
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "account": {
+    "description": "string",
+    "type": "string"
+  }
+}
+Get Expedia Room Details
+Request
+Security
+View details
+basicAuth
+
+get
+/expedia-room-details
+Payload
+No request payload
+Responses
+200
+401
+Expand all
+Expedia room details
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+account
+object
+(expediatables)
+
++
+Show 2 properties
+Response
+200
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "account": {
+    "description": "string",
+    "type": "string"
+  }
+}
+Get Expedia Room Names
+Request
+Security
+View details
+basicAuth
+
+get
+/expedia-room-names
+Payload
+No request payload
+Responses
+200
+401
+Expand all
+Expedia room Names
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+account
+object
+(expediatables)
+
++
+Show 2 properties
+Response
+200
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "account": {
+    "description": "string",
+    "type": "string"
+  }
+}
+Get Expedia Surcharges
+Request
+Security
+View details
+basicAuth
+
+get
+/expedia-surcharges
+Payload
+No request payload
+Responses
+200
+401
+Expand all
+Expedia surcharges
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+account
+object
+(expediatables)
+
++
+Show 2 properties
+Response
+200
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "account": {
+    "description": "string",
+    "type": "string"
+  }
+}
+Get Expedia Value Addinclusions
+Request
+Security
+View details
+basicAuth
+
+get
+/expedia-value-addinclusions
+Payload
+No request payload
+Responses
+200
+401
+Expand all
+Expedia value addinclusions
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+account
+object
+(expediatables)
+
++
+Show 2 properties
+Response
+200
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "account": {
+    "description": "string",
+    "type": "string"
+  }
+}
+Get Expedia Value Addinclusions Corporate
+Request
+Security
+View details
+basicAuth
+
+get
+/expedia-value-addinclusions-corporate
+Payload
+No request payload
+Responses
+200
+401
+Expand all
+Expedia value addinclusions corporate
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+account
+object
+(expediatables)
+
++
+Show 2 properties
+Response
+200
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "account": {
+    "description": "string",
+    "type": "string"
+  }
+}
+Get Expedia Bedtypes
+Request
+Security
+View details
+basicAuth
+
+get
+/expedia-bedtypes
+Payload
+No request payload
+Responses
+200
+401
+Expand all
+Expedia bedtypes
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+account
+object
+(expediatables)
+
++
+Show 2 properties
+Response
+200
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "account": {
+    "description": "string",
+    "type": "string"
+  }
+}
+Get Expedia Bedtypesizes
+Request
+Security
+View details
+basicAuth
+
+get
+/expedia-bedtypesizes
+Payload
+No request payload
+Responses
+200
+401
+Expand all
+Expedia bedtypesizes
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+account
+object
+(expediatables)
+
++
+Show 2 properties
+Response
+200
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "account": {
+    "description": "string",
+    "type": "string"
+  }
+}
+Get Expedia Bedsizes
+Request
+Security
+View details
+basicAuth
+
+get
+/expedia-bedsizes
+Payload
+No request payload
+Responses
+200
+401
+Expand all
+Expedia bedsizes
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+account
+object
+(expediatables)
+
++
+Show 2 properties
+Response
+200
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "account": {
+    "description": "string",
+    "type": "string"
+  }
+}
+Get Expedia Amenity Codes
+Request
+Security
+View details
+basicAuth
+
+get
+/expedia-amenity-codes
+Payload
+No request payload
+Responses
+200
+401
+Expand all
+Expedia amenity codes
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+account
+object
+(expediatables)
+
++
+Show 2 properties
+Response
+200
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "account": {
+    "description": "string",
+    "type": "string"
+  }
+}
+
+--------------------------
+
+
+Booking Opportunities
+Booking Opportunities
+
+Operations
+
+get
+/opportunities
+
+post
+/opportunities
+Get a list of opportunities for a property
+Request
+Security
+View details
+basicAuth
+Query
+channelId
+integer
+required
+Channel id
+
+propertyId
+string
+required
+Property id supplied by the channel
+
+
+get
+/opportunities
+Payload
+No request payload
+Responses
+200
+400
+401
+Expand all
+Return a list of opportunities
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+opportunities
+Array of objects
+
++
+Show 6 array properties
+Response
+200
+400
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "opportunities": [
+    { … }
+  ]
+}
+Reply to opportunities
+Request
+Reply to an opportunity, setting the status as ENABLE or DISMISS
+
+Security
+View details
+basicAuth
+Body
+application/json
+required
+channelId
+integer
+Example:
+1
+propertyId
+string
+Example:
+"999999"
+action
+string
+Example:
+"ENABLE or DISMISS"
+opportunityId
+string
+Example:
+"AD5252522"
+
+post
+/opportunities
+Payload
+application/json
+
+{
+  "channelId": 1,
+  "propertyId": "999999",
+  "action": "ENABLE or DISMISS",
+  "opportunityId": "AD5252522"
+}
+Responses
+200
+400
+401
+OK
+
+----------------
+Booking Guest Reviews
+Booking Guest Reviews
+
+Operations
+
+get
+/reviews
+
+post
+/reviews
+
+get
+/reviews-score
+Get a list of guest reviews
+Request
+Security
+View details
+basicAuth
+Query
+channelId
+integer
+required
+Channel id
+
+propertyId
+string
+required
+Property id supplied by the channel
+
+reviewId
+string
+Review id supplied by the channel
+
+
+get
+/reviews
+Payload
+No request payload
+Responses
+200
+400
+401
+Expand all
+Return a list of guest reviews
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+opportunities
+Array of objects
+
++
+Show 6 array properties
+Response
+200
+400
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "opportunities": [
+    { … }
+  ]
+}
+Reply to to a guest review
+Request
+Reply to an opportunity, setting the status as ENABLE or DISMISS
+
+Security
+View details
+basicAuth
+Body
+application/json
+required
+channelId
+integer
+Example:
+1
+propertyId
+string
+Example:
+"999999"
+action
+string
+Example:
+"ENABLE or DISMISS"
+reviewsId
+string
+Example:
+"AD5252522"
+reply
+string
+Example:
+"Your reply test"
+
+post
+/reviews
+Payload
+application/json
+
+{
+  "channelId": 1,
+  "propertyId": "999999",
+  "action": "ENABLE or DISMISS",
+  "reviewsId": "AD5252522",
+  "reply": "Your reply test"
+}
+Responses
+200
+400
+401
+OK
+
+Get a list of guest reviews score from a property
+Request
+Security
+View details
+basicAuth
+Query
+channelId
+integer
+required
+Channel id
+
+propertyId
+string
+required
+Property id supplied by the channel
+
+
+get
+/reviews-score
+Payload
+No request payload
+Responses
+200
+400
+401
+Expand all
+Return a the property guest review score
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+reviewsScores
+Array of objects
+
++
+Show 7 array properties
+Response
+200
+400
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "reviewsScores": [
+    { … }
+  ]
+}
+
+----------
+
+Booking Promotions
+Booking Promotions
+
+Operations
+
+get
+/promotions
+
+post
+/promotions
+
+get
+/promotion-channels
+
+post
+/activate-promotion
+
+post
+/deactivate-promotion
+Get a list of promotions
+Request
+Security
+View details
+basicAuth
+Query
+channelId
+integer
+required
+Channel id
+
+propertyId
+string
+required
+Property id supplied by the channel
+
+active
+integer
+required
+0 or 1
+
+
+get
+/promotions
+Payload
+No request payload
+Responses
+200
+400
+401
+Expand all
+Return a list of promotions
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+promotions
+Array of objects
+
++
+Show 11 array properties
+Response
+200
+400
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "promotions": [
+    { … }
+  ]
+}
+Post a promotion
+RequestExpand all
+Post a promotion
+
+Security
+View details
+basicAuth
+Body
+application/json
+required
+channelId
+integer
+Example:
+1
+propertyId
+string
+Example:
+"999999"
+name
+string
+type
+string
+targetChannel
+string
+minStayThrough
+string
+nonRefundable
+string
+noCcPromotion
+string
+lastMinute
+object
+
++
+Show 2 properties
+bookDate
+object
+
++
+Show 2 properties
+bookTime
+object
+
++
+Show 2 properties
+stayDate
+object
+
++
+Show 4 properties
+additionalDates
+object
+
++
+Show 2 properties
+rooms
+Array of objects
+
++
+Show array property
+parentRates
+Array of objects
+
++
+Show array property
+discount
+string
+
+post
+/promotions
+Payload
+application/json
+
+
+
+{
+  "channelId": 1,
+  "propertyId": "999999",
+  "name": "string",
+  "type": "string",
+  "targetChannel": "string",
+  "minStayThrough": "string",
+  "nonRefundable": "string",
+  "noCcPromotion": "string",
+  "lastMinute": {
+    "unit": "string",
+    "value": "string"
+  },
+  "bookDate": {
+    "start": "string",
+    "end": "string"
+  },
+  "bookTime": {
+    "start": "string",
+    "end": "string"
+  },
+  "stayDate": {
+    "start": "string",
+    "end": "string",
+    "activeWeekdays": [ … ],
+    "excludedDates": [ … ]
+  },
+  "additionalDates": {
+    "start": "string",
+    "end": "string"
+  },
+  "rooms": [
+    { … }
+  ],
+  "parentRates": [
+    { … }
+  ],
+  "discount": "string"
+}
+Responses
+200
+400
+401
+OK
+
+Get a list of promotion channels
+Request
+Security
+View details
+basicAuth
+Query
+channelId
+integer
+required
+Channel id
+
+propertyId
+string
+required
+Property id supplied by the channel
+
+type
+string
+required
+Type of promotion channel
+
+
+get
+/promotion-channels
+Payload
+No request payload
+Responses
+200
+400
+401
+Return a list of promotion channels
+
+Activate a promotion
+Request
+Security
+View details
+basicAuth
+Query
+channelId
+integer
+required
+Channel id
+
+propertyId
+string
+required
+Property id supplied by the channel
+
+promotionId
+string
+required
+Promotion Id
+
+
+post
+/activate-promotion
+Payload
+No request payload
+Responses
+200
+400
+401
+Return status
+
+Deactivate a promotion
+Request
+Security
+View details
+basicAuth
+Query
+channelId
+integer
+required
+Channel id
+
+propertyId
+string
+required
+Property id supplied by the channel
+
+promotionId
+string
+required
+Promotion Id
+
+
+post
+/deactivate-promotion
+Payload
+No request payload
+Responses
+200
+400
+401
+Return status
+
+
+
+-------------
+Booking Reporting
+Booking Reporting
+
+Operations
+
+get
+/reporting-misconduct-categories
+
+post
+/reporting
+Get a list of reporting misconduct categories
+Request
+Security
+View details
+basicAuth
+Query
+channelId
+integer
+required
+Channel id
+
+propertyId
+string
+required
+Property id supplied by the channel
+
+
+get
+/reporting-misconduct-categories
+Payload
+No request payload
+Responses
+200
+400
+401
+Expand all
+Return a list of promotions
+
+Body
+application/json
+status
+object
+(status)
+
++
+Show 5 properties
+rooms
+Array of objects
+(rooms)
+
++
+Show 3 array properties
+Response
+200
+400
+401
+application/json
+
+
+
+{
+  "status": {
+    "returnCode": 0,
+    "returnMessage": "string",
+    "channelLogId": "string",
+    "channelOtherMessages": "string",
+    "timestamp": "string"
+  },
+  "rooms": [
+    { … }
+  ]
+}
+Post a reporting status
+Request
+Post a reporting status (isNoShow, StayChange, guestMisconduct, ccIsInvalid,...)
+
+Security
+View details
+basicAuth
+Body
+application/json
+required
+channelId
+integer
+Example:
+1
+propertyId
+string
+Example:
+"999999"
+action
+string
+Example:
+"ENABLE or DISMISS"
+opportunityId
+string
+Example:
+"AD5252522"
+
+post
+/reporting
+Payload
+application/json
+
+{
+  "channelId": 1,
+  "propertyId": "999999",
+  "action": "ENABLE or DISMISS",
+  "opportunityId": "AD5252522"
+}
+Responses
+200
+400
+401
+OK

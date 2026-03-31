@@ -1,0 +1,898 @@
+Introduction
+Zodomus is a channel manager API created to provide easy and affordable access to OTA's (Online Travel Agencies, like Booking, Expedia and Airbnb).
+
+A channel manager is a tool that allows access to Rates, Availability and Bookings from any connected channel.
+
+To use Zodomus in production you will need to have previous access to OTA properties and to associate Zodomus as a channel manager in some OTA's or provide us your autentication data to access the OTA's (depends on the OTA's channel manager proceedings).
+
+However you can test Zodomus and prepare your code using our sandbox until you have access to real properties in OTA's.
+
+Since we are also Content API certified you will be able to create and modify properties, rooms and rates.
+
+Zodomus also provide more advanced OTA APIs like:
+
+- Promotions,
+- Guest reviews,
+- Opportunities,
+- Reporting,
+- Guest Communications
+
+as provided by the OTA's.
+
+Zodomus OTA certifications
+Booking
+Zodomus is a Booking certified partner since 2019
+
+Expedia
+Zodomus is an Expedia certified partner.
+
+Airbnb
+Zodomus is an Airbnb certified partner.
+
+Agoda
+We are now making certification tests with Agoda and expect to be certified soon.
+
+Other OTAs
+Other OTA's will be available soon.
+
+Get started
+After registration you get immediate access to Zodomus backoffice.
+On the development tab you can get your API Keys to start testing your API code.
+All available API functions can and should be used in test mode.
+To test reservations you need to create manually reservations using /reservations-createtest API.
+Zodomus list of API's
+Account API's
+Access account data, a list of channels and some generic tables
+
+
+Operation	Description
+GET /account	
+Get account information
+
+GET /channels	
+Get a list of current active channels
+
+GET /currencies	
+Get a list of current currencies
+
+GET /price-model	
+Get a list of price models
+
+Mapping API's
+Mapping properties, rooms and rates from the channel with Zodomus
+
+
+Operation	Description
+POST /property-activation	
+Activate a channel property with Zodomus
+
+POST /property-cancellation	
+Cancel a channel property with Zodomus
+
+POST /property-check	
+Check a property with Zodomus
+
+POST /rooms-activation	
+Activate the property rooms and rates and map them with Zodomus
+
+POST /rooms-cancellation	
+Cancel property rooms associated with Zodomus
+
+Airbnb Mapping API's
+Mapping Airbnb hosts and properties. (Please request more information to our support team).
+
+
+Operation	Description
+POST /airbnb-host-activation	
+Activate a host with Zodomus
+
+POST /airbnb-host-cancellation	
+Cancel an Airbnb host with Zodomus
+
+GET /airbnb-host-status	
+Get the status of an Airbnb Host with Zodomus
+
+GET /airbnb-host-info/a>	
+Get the account information of an Airbnb Host with Zodomus
+
+GET /airbnb-listings	
+Get a list of listings from the Airbnb Host Zodomus
+
+For more information about Airbnb APIs please contact our support team.
+
+Rates and Availability API's
+Rates and Availability APIs
+
+Set Rates and Availabilties for your rooms and rates
+
+
+Operation	Description
+GET /room-rates	
+Get a list of rooms and rates for the corresponding channel / property
+
+GET /availability	
+Get the rooms availability for the corresponding channel / property / dates
+
+POST /availability	
+Set your availability in the defined channel / property / room
+
+POST /rates	
+Set rates for your channel / property / room /rate
+
+POST /rates-derived	
+Set rates (derived) for your channel / property / room /rate
+
+Reservation API's
+Reservation APIs
+
+Create test reservations and handle production reservations from OTAs
+
+
+Operation	Description
+GET /reservations-queue	
+Get a list of reservations
+
+GET /reservations	
+Get a reservation
+
+GET /reservations-cc	
+Get a reservation credit card info.
+
+GET /reservations-summary	
+Get a list of future reservations
+
+POST /reservations-createtest	
+Create a test reservation for your test property (only used in tests)
+
+Content API's
+Content APIs
+
+Create and manage properties, rooms and rates (some APIs are only available on some OTAs)
+
+
+Operation	Description
+GET /property	
+Get a list of properties or detail about a property (Only in Expedia)
+
+POST /property	
+Create or modify a property (only in Booking)
+
+POST /property-status	
+Set your property status (only in Booking)
+
+GET /room	
+Get a list of rooms or a specific room (only in Expedia)
+
+POST /room	
+Create or modify a room (Booking and Expedia)
+
+POST /room-status	
+Set room status (only in Booking).
+
+GET /rate	
+Get a list of rates or a specific rate (only in Expedia)
+
+POST /rate	
+Create or modify a rate (Booking and Expedia)
+
+POST /product	
+Create, modify or delete a product (only in Booking).
+
+Booking Content tables API's
+Booking Content table APIs
+
+Tables and lists of values for Booking Content APIs
+
+
+Operation	Description
+GET /booking-property-types	
+GET /booking-room-types	
+GET /booking-room-amenities	
+GET /booking-breakfast-types	
+GET /booking-cancellation-types	
+GET /booking-cuisine-types	
+GET /booking-fee-tax-policies	
+GET /booking-hotel-amenities	
+GET /booking-phone-types	
+GET /booking-payment-types	
+GET /booking-contact-types	
+GET /booking-restaurant-services	
+GET /booking-ambiance-types	
+GET /booking-dietary-types	
+GET /booking-charge-types	
+GET /booking-meal-plans	
+GET /booking-image-tags	
+GET /booking-language-codes	
+GET /booking-transportation-codes	
+GET /booking-noshow-types	
+GET /booking-prepayment-types	
+GET /booking-parking-types	
+GET /booking-parking-reservations	
+GET /booking-parking-properties	
+GET /booking-internet-types	
+GET /booking-internet-coverages	
+GET /booking-pets-allowed	
+Expedia Content tables API's
+Expedia Content table APIs
+
+Tables and lists of values for Expedia Content APIs
+
+
+Operation	Description
+GET /expedia-room-types	
+GET /expedia-views	
+GET /expedia-areas	
+GET /expedia-categories	
+GET /expedia-featured-amenities	
+GET /expedia-perstay-fees	
+GET /expedia-room-classes	
+GET /expedia-room-details	
+GET /expedia-room-names	
+GET /expedia-surcharges	
+GET /expedia-value-addinclusions	
+GET /expedia-value-addinclusions-corporate	
+GET /expedia-bedtypes	
+GET /expedia-bedtypesizes	
+GET /expedia-bedsizes	
+GET /expedia-amenity-codes	
+Booking Opportunities
+Booking opportunities APIs
+
+Use the Opportunity API to retrieve actionable opportunities for your connected properties.
+Opportunities helps you identify ways to improve your property's performance and your guests experiences
+
+
+Operation	Description
+GET /opportunities	
+Get a list of opportunities for a specific property
+
+POST /opportunities	
+POST a reply to an opportunity
+
+Booking Guest Reviews
+Booking Guest Reviews APIs
+
+Use the Review API to retrieve a property's reviews, render them in your interface, and let the property reply.
+Publicly replying to reviews is a great way for properties to show they care about their guests experiences and potentially attract more bookings.
+
+
+Operation	Description
+GET /reviews	
+Get a list or a specific guest review
+
+GET /reviews-score	
+GET a review score for a specific property
+
+POST /reviews	
+POST a guest review reply
+
+Booking Reporting
+Booking Reporting APIs
+
+Use the Reporting API to report the following types of changes to a reservation:
+- Guest provided invalid credit card
+- Changes to check-out date and/or price
+- Cancellation due to guest no-show
+- Cancellation due to invalid credit card
+
+
+Operation	Description
+GET /reporting-misconduct-categories	
+Get a list of misconduct categories
+
+POST /reporting	
+POST a specific report (isNoShow, StayChange guestMisconduct, ccIsInvalid,...)
+
+Booking Promotions
+Booking Promotions APIs
+
+The Promotions API enables you to create and manage promotions.
+Promotions are special prices that a property can offer during a certain time window, or to a certain type of booker
+
+
+Operation	Description
+POST /promotions	
+Create or update a promotion
+
+GET /promotions	
+Get a list of promotions
+
+GET /promotion-channels	
+Get a list of promotion channels
+
+POST /activate-promotion	
+Activate a promotion
+
+POST /deactivate-promotion	
+Deactivate a promotion
+
+Pricing models used in Booking, Expedia and Airbnb
+You should choose the pricing model when you associate your property with Zodomus.
+The pricing model used must be the same used in the channel, otherwise you can't send rates to the channel.
+If the property is new use the recommended price model.
+Check with your channel what is the current pricing model you are using now.
+
+Zodomus uses the following price models:
+
+Maximum / Single (only used in Booking)
+In this price model you specify a default price for when the maximum number of adult guests stay in the room and a price for when a single adult guest stays in the room.
+For single rooms, where single occupancy and maximum occupancy are the same, you only specify a price for maximum occupancy.
+The optional restritions are parameters that you can use to set specific weekdays or specific restritions.
+Some restritions may apply only to some channels, check with our support team for more information.
+
+Code example:
+                                        
+                    POST /rates
+
+                    JSON Body (For single rooms)
+                    {
+                      "channelId": "1",
+                      "propertyId": "999999",
+                      "roomId" : "90001",
+                      "dateFrom": "2019-03-01",
+                      "dateTo": "2019-03-31",
+                      "currencyCode":"EUR",
+                      "rateId":"99001",
+                      "prices": {
+                          "price":"100"
+                      }
+                    }
+
+                    JSON Body (For non single rooms)
+                    {
+                      "channelId": "1",
+                      "propertyId": "999999",
+                      "roomId" : "90001",
+                      "dateFrom": "2019-03-01",
+                      "dateTo": "2019-03-31",
+                      "currencyCode":"EUR",
+                      "rateId":"99001",
+                      "prices": {
+                        "price":"100",
+                        "priceSingle":"90",
+                      }
+                    }                    
+
+                    Restritions: Optional parameters that can be included in the Json Body
+                      "closed": "0=No" or "1=Yes"
+                      "minAdvanceRes": Examples: 4D = four days; 4D4H = four days and four hours.
+                      "maxAdvanceRes": Examples: 4D = four days; 4D4H = four days and four hours.
+                      "minimumStay": Max. value: 31. Value must be less than maximum_stay and maximum_stay_arrival
+                      "minimumStayArrival": Max.value: 31. Value must be less than maximum_stay and maximum_stay_arrival.
+                      "maximumStay": Max.value: 31. Value must be greater than minimum_stay and minimum_stay_arrival
+                      "maximumStayArrival": Max.value: 31. Value must be greater than minimum_stay and minimum_stay_arrival
+                      "exactStayArrival": Max.value: 31.
+                      "closedOnArrival": "0=No" or "1=Yes"                                            
+                      "closedOnDeparture": "0=No" or "1=Yes"                                                         
+                      "weekDays": { if all true its not used
+                        "sun": "true or false",
+                        "mon": "true or false",
+                        "tue": "true or false",
+                        "wed": "true or false",
+                        "thu": "true or false",
+                        "fri": "true or false",
+                        "sat": "true or false",                                                                                                                                                
+                      }
+                    
+                    
+
+
+Derived pricing model (recommended Booking pricing model, only used in Booking)
+Under the derived pricing model, you specify a price for a standard number of occupants, and one or more "offsets" to derive prices for other numbers of occupants.
+When the number of occupants is different than the standard number, we add or subtract the offset from the standard price. An offset can be a percentage or an amount.
+With the derived pricing model, you set prices in two steps:
+1- Specify prices using the Maximum / Single model, just using the default price,
+2- Specify the base occupancy and offset prices with the derived pricing model
+
+Code example:
+                                        
+                    POST /rates (1st call)
+
+                    JSON Body (To set the default price)
+                    {
+                      "channelId": "1",
+                      "propertyId": "999999",
+                      "roomId" : "90001",
+                      "dateFrom": "2019-03-01",
+                      "dateTo": "2019-03-31",
+                      "currencyCode":"EUR",
+                      "rateId":"99001",
+                      "prices": {
+                          "price":"100"
+                      }
+                    }
+
+                    // Notes: PriceSingle cannot be set on POST rates (on derived prices model), it must be set on the POST rates-derived API
+
+                    Restritions: Optional parameters that can be included in the Json Body
+                      "closed": "0=No" or "1=Yes"
+                      "minAdvanceRes": Examples: 4D = four days; 4D4H = four days and four hours.
+                      "maxAdvanceRes": Examples: 4D = four days; 4D4H = four days and four hours.
+                      "minimumStay": Max. value: 31. Value must be less than maximum_stay and maximum_stay_arrival
+                      "minimumStayArrival": Max.value: 31. Value must be less than maximum_stay and maximum_stay_arrival.
+                      "maximumStay": Max.value: 31. Value must be greater than minimum_stay and minimum_stay_arrival
+                      "maximumStayArrival": Max.value: 31. Value must be greater than minimum_stay and minimum_stay_arrival
+                      "exactStayArrival": Max.value: 31.
+                      "closedOnArrival": "0=No" or "1=Yes"                                            
+                      "closedOnDeparture": "0=No" or "1=Yes"                                                         
+                      "weekDays": { if all true its not used
+                        "sun": "true or false",
+                        "mon": "true or false",
+                        "tue": "true or false",
+                        "wed": "true or false",
+                        "thu": "true or false",
+                        "fri": "true or false",
+                        "sat": "true or false",                                                                                                                                                
+                      }                    
+
+
+                    POST /rates-derived (2nd call)
+
+                    JSON Body (To set the derived prices)
+                    {
+                      "channelId": "1",
+                      "propertyId": "999999",
+                      "roomId" : "90001",
+                      "rateId":"99001",
+                      "baseOccupancy":"2",
+                      "occupancy": [
+                        {
+                          "persons":"1",
+                          "percentage":"-25",
+                          "round":"1"						
+                        },
+                        {
+                          "persons":"3",
+                          "additional":"10",
+                          "round":"1"						
+                        }
+                      ]
+                    }                    
+
+                    // Notes: Dates and currency are not used on the derived prices
+                    //        The number of persons ("persons") must not be higher then the room MaxPersons, otherwise you will get an error from the channel
+                    
+                    
+
+
+Occupancy pricing model (Recommended in Expedia not used in Booking for now)
+Occupancy pricing model based on number of travelers staying in the room. It is recommended to define a rate for each applicable occupancy
+You should set a price for each number of guests your room supports.
+On Expedia the price is different for each date (On Booking derived prices the price stays the same for all dates).
+If the reservation exceeds the number of guests you set , the higher number of guests price will be used by the channel
+
+Code example:
+                                        
+                    POST /rates
+
+                    JSON Body 
+                    {
+                      "channelId": "2",
+                      "propertyId": "999999",
+                      "roomId" : "90001",
+                      "dateFrom": "2019-03-01",
+                      "dateTo": "2019-03-31",
+                      "currencyCode":"EUR",
+                      "rateId":"99001",
+                      "prices": [
+                        {
+                            "guests":"1",
+                            "price":"100"		
+                          },
+                          {
+                            "guests":"2",
+                            "price":"110"		
+                          },
+                          {
+                            "guests":"3",
+                            "price":"130"		
+                          }		
+                      ],
+	                    "closed":"0",
+	                    "minimumStay": "3",                      
+	                    "maximumStay": "20"                                         
+                    }
+
+                    
+                    
+
+
+Per day / Length of Stay pricing model (Used in Expedia and Airbnb (Per day only on Airbnb). PerDay and Occupancy are recommended in Expedia)
+The Per day is similar to the maximum price used by booking
+Length-of-stay is not so common on Expedia now.
+Under length-of-stay (LOS) model, you specify a room price for every possible combination of length of stay.
+You should set a price for each number of days you allow.
+If the reservation exceeds the number of days you set , the higher day price will be used by the channel
+
+Code example (Per Day):
+                                        
+                    POST /rates
+
+                    JSON Body (Per day)
+                    {
+                      "channelId": "2",
+                      "propertyId": "999999",
+                      "roomId" : "90001",
+                      "dateFrom": "2019-03-01",
+                      "dateTo": "2019-03-31",
+                      "currencyCode":"EUR",
+                      "rateId":"99001",
+                      "baseOccupancy":"2",                      
+                      "prices": 
+                        {
+                          "price":"100"                          
+                        },
+                        ,
+	                    "closed":"0",
+	                    "minimumStay": "3",
+	                    "weekDays": {
+		                    "sun": "false",
+		                    "mon": "true",		
+		                    "tue": "true",
+		                    "wed": "true",
+		                    "thu": "true",
+		                    "fri": "true",
+		                    "sat": "false"		
+	                    }                        
+                    }
+
+                    
+                    
+
+Code example (Length of Stay):
+                                        
+                    POST /rates
+
+                    JSON Body (Length of Stay)
+                    {
+                      "channelId": "2",
+                      "propertyId": "999999",
+                      "roomId" : "90001",
+                      "dateFrom": "2019-03-01",
+                      "dateTo": "2019-03-31",
+                      "currencyCode":"EUR",
+                      "rateId":"99001",
+                      "baseOccupancy":"2",                      
+                      "prices": [
+                        {
+                          "days":"1",
+                          "price":"100"                          
+                        },
+                        {
+                          "days":"2",
+                          "price":"100"                          
+                        },                        
+                        {
+                          "days":"3",
+                          "price":"90"                          
+                        }
+                      ]
+                    }
+
+                    
+                    
+
+OTA differences
+There are small differences how some OTAs operate.
+We created some documents that explain the main differences between OTAs.
+Please request our support those documents for more information.
+Currency code
+You should choose the currency code when you associate your property with Zodomus.
+The 3 digit currency code should be the same associated with your channel property
+Start using our API's
+Zodomus API's are REST API's with JSON requests and responses.
+On the API reference you can get a detailed reference for each API.
+
+Our API endpoint is : https://api.zodomus.com
+
+To connect to our API and for security reasons you should use HTTPS and TLS (>=1.2).
+Zodomus uses Basic Authentication, with the API User and API Password keys provided in the backoffice.
+
+Let's see some examples to call one simple API : https://api.zodomus.com/channels, to get a list of active channels.
+
+curl:
+                                        
+                    curl -u api_key_password:api_key_password -i -H 'Accept:application/json' https://api.zodomus.com/channels
+                    
+                    
+Guzzle (Http client for PHP):
+                    
+                      $credentials = base64_encode($api_key_user.":".$api_key_password);
+
+                      $client = new GuzzleHttp\Client();
+
+                      $url="https://api.zodomus.com/channels";
+
+                      $response = $client->request('GET',$url, [
+
+                       'headers' => [
+
+                          'Authorization' => ['Basic '.$credentials],
+
+                          'Content-type' => 'application/json; charset=UTF8'
+
+                        ]
+
+                      ]);
+                      
+                      
+Python:
+                                            
+                      import requests
+
+                      from requests.auth import HTTPBasicAuth
+
+                      r = requests.post('https://api.zodomus.com/channels', auth=HTTPBasicAuth('user', 'pass'))
+                      
+                      
+C#:
+                                            
+                      WebRequest req = WebRequest.Create(@"https://api.zodomus.com/channels");
+                      req.Method = "GET";
+                      req.Headers["Authorization"] = "Basic " + Convert.ToBase64String(Encoding.Default.GetBytes("api_key_user:api_key_password"));
+                      HttpWebResponse resp = req.GetResponse() as HttpWebResponse;
+                      
+                      
+Test data
+During tests you will use a limited set of channels, properties, rooms, rates and reservations.
+The following data is available for your tests:
+
+channelId: 1 (only Booking and Expedia channels are available during tests for the moment)
+propertyId: Any integer you define for tests
+
+Important note: On test mode most of the responses have fixed values and don't depend on your request values. For instance GET /availability will return always the same data.
+The purpose of the tests are to provide you a sample of the data you will get on production.
+
+Recomended steps to use our API's in tests
+The following steps show the recommended path to use our API's during tests.
+
+1 - Create all necessary information and test API calls on your software
+You should create a property, rooms, rates and test the call of our API's to send and receive information.
+In production is very important that you are ready to send availability and rates, and receive reservations before connecting to the OTA's
+
+2 - GET /channels
+Get a list of available channels and test you authentication keys in an easy API.
+
+3 - GET /price-model
+Get a list of available price models to use in the property activation.
+
+4 - POST /property-activation
+(Please note that for Airbnb there are some extra steps to connect the Host. See details on the next paragraph.)
+Activate your channel / property with Zodomus.
+In production you should provide the property ID and price model used in the channel.
+
+5 - GET /room-rates
+Get room and rates id's so that you can map your rooms and rates with the ones from the channel.
+
+6 - POST /property-check
+Check if your property is in evaluation to be able to activate your rooms.In test mode this operation allows the property to change state and continue tests.
+
+7 - POST /rooms-activation
+Activate your rooms and rates with Zodomus.
+This API is used to inform Zodomus which rooms will be maped to channel rooms.
+
+8 - POST /property-check
+Check again if your property is active to get rooms and rates. If all is ok you can continue your tests.
+
+9 - POST /availability
+Post your availability for all your rooms for a period of a year (recommended by the channels).
+As soon as you receive confirmation from your channel that the channel manager association is ready you should send you new rates and availability.
+After connection to a new channel manager the channel usally clears all future rates and availability.
+You should interpret dateTo as "up to and not including". In other words, a request with dateFrom="2019-08-27" and dateTo="2019-09-02" will apply to all days from 27 August 2019 to 1 September 2019.
+
+10 - POST /rates
+Post your rates for all your rooms for a period of a year (recommended by the channels).
+You should interpret dateTo as "up to and not including". In other words, a request with dateFrom="2019-08-27" and dateTo="2019-09-02" will apply to all days from 27 August 2019 to 1 September 2019.
+
+11 - GET /reservations-summary
+If necessary get a summary of already made reservations (future reservations).
+This API can be used to populated your software with future reservations that were made before the channel association.
+It's optional, just use it if you needed it.
+The reservations information retrieved is usually very limited, they don't provide a complete reservation dataset.
+
+12 - POST /reservations-createtest
+Use this API in tests to simulate the creation of a new reservation.
+If you have a webhook activated, Zodomus will call you webhook with reservation data, otherwise you can use get reservations-queue to get the list.
+
+13 - GET /reservations-queue
+Check if new reservations are available.
+You will get a list (or none) of new, modified or cancelled reservations.
+If you have a webhook activated Zodomus will call you webhook with reservation data
+
+14 - GET /reservations
+Get a specific reservation, from the reservations queue list.
+After a reservation is retrieved, it will no longer be available, so you should store the information after retrieval.
+If a reservation is modified or cancelled by the guest a modified reservation will be available at /reservations-queue.
+Since all reservation information and rooms can be modified or cancelled you should update or erase the reservation and rooms information.
+
+15 - GET /reservations-cc
+Get credit card info from a reservation.
+You need to replace the normal API Password with the API Password CC to access this API.
+If you are not PCI DSS certified you should not store the credit card data in you system.
+
+
+Recommended steps connect to Airbnb Hosts in tests
+The following steps show the recommended path to connect to Airbnb Hosts during tests.
+
+For more detailed information, request our support.
+
+1 - Activate a Host in Zodomus
+Use POST airbnb-host-activation to get a token for a new Host.
+
+2 - Call Airbnb to allow the host to accept Zodomus as a channel manager
+On tests this call is based on a Zodomus URL
+Inside your PMS, use an html link to allow the Host to accept Zodomus as the channel manager
+On Production the Host must be logged in the Airbnb account to approve the request.
+On Tests there is no Host approval since we cannot simulate an Airbnb account, so after you call the URL the approval is immediate
+(if all the parameters are sent)
+
+3 - Check if the Host is active
+Call airbnb-host-status to check the host status
+
+4 -Get the listings managed by the Host
+Call airbnb-listings to get host listings
+
+How to get Reservation data
+Depending on your API access type you can get reservation information:
+
+Reservations by API Call
+In this mode you should call GET reservations-queue to check if there are any new reservations in Zodomus.
+Then you should read the reservation data using the "GET reservations and GET reservations-cc" APIs
+
+Reservations by Webhook
+In this mode Zodomus we will call your webhook URL each time we receive a reservation from the channels.
+The Webhook URL must be HTTPS.
+The Webhook key is a string defined by you that we will send you on each call so that you can validate who is calling your webhook.
+The webhook call is a POST command with a JSON body.
+Even with the webhook active you can still call GET reservations-queue.
+The webhook url will be called 3 times until we get success, after those 3 calls we give up. So if you have problems in your servers you should call reservations-queue to double check.
+
+Webhook JSON Body fields sent to your URL:
+                                            
+                      webhookKey (Your webhook key, you should validate if a call to your webhook has the correct key)
+                      token (Not used for now, we send a token we create)
+                      channelId (Integer)
+                      propertyId (String)
+                      reservationId (String, sent from the channel to identify the reservation)
+                      reservationStatus (Integer 1=new, 2=modified, 3=cancelled)
+                      
+                      
+A call to to your webhook is made for each reservation we receive.
+After you get the POST you should read the reservation data using the "GET reservations and GET reservations-cc" APIs
+
+Diagram of API calls in tests
+API diagram from zodomus
+Access to credit card data from Bookings
+To access credit card data from a Booking, just replace your API password with the API Password for credit card and using the same API User
+Please note that for you to be PCI DSS complaint you should not store credit card info in your system, unless your system is PCI DSS certified.
+PCI compliance and security
+Anyone involved with the processing, transmission or storage of credit card data must comply with the Payment Card Industry Data Security Standards (PCI DSS).
+
+Zodomus is PCI DSS compliant to store credit card data.
+
+PCI compliance is a shared responsibility and applies to both Zodomus and your business.
+If you are not PCI DSS compliant you should not store card data in your system, you should use Zodomus to access card data and not store it.
+All our users must validate their PCI compliance if they need to access credit card data in Production.
+If you don't store card data, usually you can do this with a Self-Assessment Questionnaire (SAQ) provided by the PCI Security Standards Council.
+
+If you need any help regarding security, call our support team.
+
+Your API calls must use HTTPS and a modern version of TLS (TLS 1.2 or bigger).
+You get can a free certificate at Let's Encrypt or any other provider. TLS can be easily setup if you are a developer, but if you need help, please call our support.
+You can check your SSL security using Qualys SSL Labs to make sure you have everything set up in a secure way.
+Access to production
+To get access to production you need to have tested all API's in test mode with no errors at least once.
+You also need to pass our certification tests in order to go to production.
+To pass our certification you should call our support so that we can follow with you all the steps needed to pass certification.
+Certification steps
+In this first release the certification process is manually confirmed by our support team. In the future the process will be automated.
+
+The certification steps are:
+
+1. Get a list of channels (GET /channels sucessfully)
+2. Activate at least one property (POST /property-activation sucessfully)
+3. Check your property status (POST /property-check sucessfully) Check with our team if your property is ready for connection.
+4. Activate your rooms and rates and map them on Zodomus (POST /rooms-activation sucessfully)
+5. Check your property status (POST /property-check sucessfully)
+6. Get a list of rooms and rates (GET /room-rates sucessfully)
+7. Post your availability to the channel (POST /availability sucessfully)
+8. Post your rates to the channel (POST /rates sucessfully)
+9. Get a reservation summary list, if exists (GET /reservations-summary sucessfully)
+10. Check for reservations, if they exist (GET /reservations-queue sucessfully) or get them using your Webhook
+11. Get a reservation (GET /reservations sucessfully)
+12. Get a reservation card data(GET /reservations-cc sucessfully)
+
+Recomended steps to use our API's in production
+The following steps show the recommended path to use our API's in production.
+
+1 - Create all necessary information and test API calls on your software
+You should create a property, rooms, rates and test the call of our API's to send and receive information.
+In production is very important that you are ready to send availability and rates, and receive reservations before connecting to the OTA's
+
+2 - GET /channels
+Get a list of available channels and test you authentication keys in an easy API.
+
+3 - GET /price-model
+Get a list of available price models to use in the property activation.
+
+4 - POST /property-activation
+Activate your channel / property with Zodomus.
+In production you should provide the property ID and price model used in the channel.
+
+5 - Change your channel manager in Booking (on Booking Admin)
+Important note:Talk to our support team before selecting the channel manager to be sure that everything is ready on your side.
+Go to the admin page in Booking and change the channel manager to Zodomus (2 way full connection).
+Then accept the agreement
+
+6 - GET /room-rates
+Get room and rates id's so that you can map your rooms and rates with the ones from the channel.
+
+7 - POST /rooms-activation
+Activate your rooms and rates with Zodomus.
+This API is used to inform Zodomus which rooms will be maped to channel rooms.
+
+8 - We accept your channel manager request in Booking
+Important note:We need to check with you if all is mapped and if you are ready to post rates and availability.
+We accept your channel manager request in Booking.
+
+9 - Confirm the new channel manager in Booking (on Booking Admin)
+Go to the admin page in Booking and confirm the channel manager.
+
+10 - POST /availability
+Post your availability for all your rooms for a period of a year (recommended by the channels).
+As soon as you receive confirmation from your channel that the channel manager association is ready you should send you new rates and availability.
+After connection to a new channel manager the channel usally clears all future rates and availability.
+You should interpret dateTo as "up to and not including". In other words, a request with dateFrom="2019-08-27" and dateTo="2019-09-02" will apply to all days from 27 August 2019 to 1 September 2019.
+
+11 - POST /rates
+Post your rates for all your rooms for a period of a year (recommended by the channels).
+You should interpret dateTo as "up to and not including". In other words, a request with dateFrom="2019-08-27" and dateTo="2019-09-02" will apply to all days from 27 August 2019 to 1 September 2019.
+
+12 - GET /reservations-summary
+If necessary get a summary of already made reservations (future reservations).
+This API can be used to populated your software with future reservations that were made before the channel association.
+It's optional, just use it if you needed it.
+The reservations information retrieved is usually very limited, they don't provide a complete reservation dataset.
+
+13 - GET /reservations-queue or check your Webhook
+Check if new reservations are available.
+You will get a list (or none) of new, modified or cancelled reservations.
+If you have a webhook activated, Zodomus will call you webhook with reservation data (See Backoffice Development - Access type for more info about setting you webhook)
+
+14 - GET /reservations
+Get a specific reservation, from the reservations queue list.
+After a reservation is retrieved, it will no longer be available, so you should store the information after retrieval.
+If a reservation is modified or cancelled by the guest a modified reservation will be available at /reservations-queue.
+Since all reservation information and rooms can be modified or cancelled you should update or erase the reservation and rooms information.
+
+15 - GET /reservations-cc
+Get credit card info from a reservation.
+You need to replace the normal API Password with the API Password CC to access this API.
+If you are not PCI DSS certified you should not store the credit card data in you system.
+
+
+Recommended steps connect to Airbnb Hosts in production
+The following steps show the recommended path to connect to Airbnb Hosts on production.
+
+For more detailed information, request our support.
+
+1 - Activate a Host in Zodomus
+Use POST airbnb-host-activation to get a token for a new Host.
+
+2 - Call Airbnb to allow the host to accept Zodomus as a channel manager
+The link is to an Authorization page in Airbnb
+Inside your PMS, use an html link to allow the Host to accept Zodomus as the channel manager
+On Production the Host must be logged in the Airbnb account to approve the request.
+
+3 - Check if the Host is active
+Call airbnb-host-status to check the host status
+
+4 -Get the listings managed by the Host
+Call airbnb-listings to get host listings
+
+Diagram of API calls in production
+API diagram from zodomus
+More information
+We follow the API rules and definitions created by the channels.
+If you need any help send an email to our support email (support@zodomus.com)
+Or if you prefer you could check the API documentation provided by the channel (if available).

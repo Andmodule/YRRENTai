@@ -18,16 +18,31 @@ export interface ZodomusChannel {
   [key: string]: unknown;
 }
 
+/** GET /reservations-queue — live API uses `id` per item; `reservationId` kept for compatibility. */
 export interface ZodomusReservationQueueItem {
-  reservationId: string;
+  id?: string;
+  reservationId?: string;
+  status?: number;
+  date?: string;
   channelId?: number;
   propertyId?: string;
   action?: string;
   [key: string]: unknown;
 }
 
+/** Один номер в теле POST /rooms-activation (официальный формат Zodomus). */
+export interface ZodomusRoomActivationRoom {
+  roomId: string;
+  roomName: string;
+  quantity: number;
+  status: number;
+  rates: string[];
+}
+
 /** Full reservation from GET /reservations — refine fields against live API. */
 export interface ZodomusReservation {
+  /** Some responses use `id` instead of `reservationId`. */
+  id?: string | number;
   reservationId?: string;
   channelId?: number;
   propertyId?: string;

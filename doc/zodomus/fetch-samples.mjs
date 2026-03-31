@@ -1,14 +1,18 @@
 /**
  * Zodomus API samples: account → channels → [optional activation] → [optional createtest] → reservations-queue.
- * Run from repo root: node doc/zodomus/fetch-samples.mjs
+ * Run from RentAI repo root: pnpm zodomus:fetch-samples   OR   node doc/zodomus/fetch-samples.mjs
  * Requires ZODOMUS_API_USER and ZODOMUS_API_PASSWORD in .env (root).
  *
  * Optional (see RUNBOOK.md — Mapping API):
  *   ZODOMUS_RUN_ACTIVATION=true     — property-check → property-activation → optional rooms-activation
  *   ZODOMUS_SAMPLE_CHANNEL_ID=1     — override channel (default: first from /channels)
  *   ZODOMUS_PRICE_MODEL_ID=...      — optional; если не задан, берётся первый id из GET /price-model
- *   ZODOMUS_ROOMS_ACTIVATION_JSON — опционально; иначе rooms для POST строятся из GET /room-rates
+ *   ZODOMUS_ROOMS_ACTIVATION_JSON — опционально; иначе POST /rooms-activation собирается из GET /room-rates
+ *   (формат Zodomus: roomId, roomName, quantity, status, rates[] — см. rooms-activation.example.json)
  *   ZODOMUS_CREATE_TEST_RESERVATION=true — POST /reservations-createtest before queue
+ *   ZODOMUS_CREATE_TEST_STATUS=new      — status для POST /reservations-createtest: new | modified | cancelled | summary
+ *   ZODOMUS_CREATE_TEST_RESERVATION_ID=   — optional; если задан — передаётся как reservationId в теле POST /reservations-createtest (Zodomus API)
+ *   ZODOMUS_FETCH_RESERVATION_SAMPLE=true (default) — после очереди GET /reservations для первого id (см. response-reservation.json)
  */
 import fs from 'fs';
 import path from 'path';
@@ -105,6 +109,19 @@ function truthy(v) {
   return v === 'true' || v === '1' || v === 'yes';
 }
 
+/** Первый id из тела GET /reservations-queue (body.reservations[].id). */
+function firstQueueReservationId(body) {
+  if (!body || typeof body !== 'object') return undefined;
+  const list = body.reservations;
+  if (!Array.isArray(list) || list.length === 0) return undefined;
+  const first = list[0];
+  if (first && typeof first === 'object') {
+    const id = first.id ?? first.reservationId;
+    if (id != null && id !== '') return String(id);
+  }
+  return undefined;
+}
+
 /** Первый priceModelId из тела GET /price-model (полный JSON до unwrap в клиенте) */
 function pickFirstPriceModelId(body) {
   if (!body || typeof body !== 'object') return undefined;
@@ -126,14 +143,20 @@ function pickFirstPriceModelId(body) {
 }
 
 /**
- * Полный body POST /rooms-activation: из файла, или JSON-строки, или массива комнат (добавятся channelId/propertyId).
+ * Полный body POST /rooms-activation: файл или JSON; массив только если элементы — комнаты с rates[] (официальный формат).
  */
 function loadRoomsActivationPayload(raw, channelId, propertyId) {
   const t = raw.trim();
   if (t.startsWith('{') || t.startsWith('[')) {
     const parsed = JSON.parse(t);
     if (Array.isArray(parsed)) {
-      return { channelId, propertyId, rooms: parsed };
+      const first = parsed[0];
+      if (first && typeof first === 'object' && Array.isArray(first.rates)) {
+        return { channelId, propertyId, rooms: parsed };
+      }
+      throw new Error(
+        'ZODOMUS_ROOMS_ACTIVATION_JSON: устаревший формат [ { roomId, rateId, priceModelId } ]. Используйте полный объект с rooms[].{ roomId, roomName, quantity, status, rates } — см. doc/zodomus/rooms-activation.example.json',
+      );
     }
     return parsed;
   }
@@ -142,48 +165,48 @@ function loadRoomsActivationPayload(raw, channelId, propertyId) {
   return JSON.parse(fileContent);
 }
 
-/** Сырой JSON GET /room-rates — плоские пары { roomId, rateId } для /rooms-activation */
-function pickRoomRatesRows(body) {
-  if (!body || typeof body !== 'object') return [];
-  if (Array.isArray(body.roomRates)) return body.roomRates;
-  if (Array.isArray(body.data)) return body.data;
-  const d = body.data;
-  if (d && typeof d === 'object') {
-    if (Array.isArray(d.roomRates)) return d.roomRates;
-    if (Array.isArray(d)) return d;
+/** Сборка rooms[] для POST /rooms-activation из тела GET /room-rates (Zodomus: roomName, quantity, status, rates[]). */
+function inferRoomQuantity(room, roomName) {
+  if (room.quantity != null && Number.isFinite(Number(room.quantity))) {
+    return Math.max(1, Math.floor(Number(room.quantity)));
   }
-  const rooms = body.rooms;
-  if (Array.isArray(rooms)) {
-    const flat = [];
-    for (const room of rooms) {
-      if (!room || typeof room !== 'object') continue;
-      const roomId = room.id ?? room.roomId;
-      const rates = room.rates;
-      if (!roomId || !Array.isArray(rates)) continue;
-      for (const rate of rates) {
-        if (!rate || typeof rate !== 'object') continue;
-        const rateId = rate.id ?? rate.rateId;
-        if (rateId == null) continue;
-        flat.push({ roomId, rateId });
-      }
-    }
-    return flat;
+  const n = String(roomName).toLowerCase();
+  if (n.includes('double') || n.includes('suite') || n.includes('twin')) return 2;
+  const mp = room.rates?.[0]?.maxPersons;
+  if (mp != null) {
+    const m = parseInt(String(mp), 10);
+    if (Number.isFinite(m) && m > 0) return Math.min(8, m);
   }
-  return [];
+  return 1;
 }
 
-function buildRoomsFromRoomRatesRows(rows, priceModelId) {
-  const pm = normalizePriceModelId(priceModelId) ?? 1;
+function buildRoomsActivationFromRoomRatesBody(body) {
+  const rooms = body?.rooms;
+  if (!Array.isArray(rooms)) return [];
   const out = [];
-  for (const r of rows) {
-    if (!r || typeof r !== 'object') continue;
-    const roomId = r.roomId ?? r.room_id;
-    const rateId = r.rateId ?? r.rate_id;
-    if (roomId == null || rateId == null) continue;
+  for (const room of rooms) {
+    if (!room || typeof room !== 'object') continue;
+    const roomId = room.id ?? room.roomId;
+    if (roomId == null) continue;
+    const roomName = String(room.name ?? room.roomName ?? 'Room');
+    const rates = [];
+    if (Array.isArray(room.rates)) {
+      for (const rate of room.rates) {
+        if (rate && typeof rate === 'object') {
+          const id = rate.id ?? rate.rateId;
+          if (id != null) rates.push(String(id));
+        }
+      }
+    }
+    if (rates.length === 0) continue;
+    const quantity = inferRoomQuantity(room, roomName);
+    const status = Number(room.status ?? 1) || 1;
     out.push({
       roomId: String(roomId),
-      rateId: String(rateId),
-      priceModelId: pm,
+      roomName,
+      quantity,
+      status,
+      rates,
     });
   }
   return out;
@@ -196,6 +219,16 @@ function normalizePriceModelId(raw) {
   if (!s) return undefined;
   const n = Number(s);
   return Number.isFinite(n) ? n : s;
+}
+
+/** POST /reservations-createtest: status — одно из new | modified | cancelled | summary (ответ API при ошибке). */
+function parseCreateTestStatus(raw) {
+  const allowed = new Set(['new', 'modified', 'cancelled', 'summary']);
+  if (raw === undefined || raw === null || String(raw).trim() === '') return 'new';
+  const s = String(raw).trim().toLowerCase();
+  if (allowed.has(s)) return s;
+  if (s === '1' || s === '0') return 'new';
+  return String(raw).trim();
 }
 
 function extractQueueParams(channelsBody, envPropertyId) {
@@ -375,16 +408,15 @@ if (truthy(env.ZODOMUS_RUN_ACTIVATION)) {
     if (roomsPath) {
       roomsPayload = loadRoomsActivationPayload(roomsPath, activationChannelId, propertyId);
       const n = Array.isArray(roomsPayload.rooms) ? roomsPayload.rooms.length : 0;
-      console.log(`POST /rooms-activation: using ZODOMUS_ROOMS_ACTIVATION_JSON (${n} room/rate pair(s))`);
+      console.log(`POST /rooms-activation: using ZODOMUS_ROOMS_ACTIVATION_JSON (${n} room(s))`);
     } else {
-      const rows = pickRoomRatesRows(rr.body);
-      const rooms = buildRoomsFromRoomRatesRows(rows, priceModelId);
+      const rooms = buildRoomsActivationFromRoomRatesBody(rr.body);
       if (rooms.length === 0) {
         console.warn(
-          'GET /room-rates: no room/rate rows — POST /rooms-activation may activate 0 rooms (use sandbox test property from Zodomus backoffice; set ZODOMUS_ROOMS_ACTIVATION_JSON to override)',
+          'GET /room-rates: could not build rooms[] — POST /rooms-activation may activate 0 rooms (set ZODOMUS_ROOMS_ACTIVATION_JSON to doc/zodomus/rooms-activation.mapped-products.example.json)',
         );
       } else {
-        console.log(`POST /rooms-activation: built ${rooms.length} room/rate pair(s) from GET /room-rates`);
+        console.log(`POST /rooms-activation: built ${rooms.length} room(s) from GET /room-rates (roomName, quantity, status, rates[])`);
       }
       roomsPayload = { channelId: activationChannelId, propertyId, rooms };
     }
@@ -417,10 +449,16 @@ if (truthy(env.ZODOMUS_RUN_ACTIVATION)) {
 }
 
 if (truthy(env.ZODOMUS_CREATE_TEST_RESERVATION)) {
-  const cr = await fetchPost(base, '/reservations-createtest', authHeader, {
+  const createtestBody = {
     channelId: activationChannelId,
     propertyId,
-  });
+    status: parseCreateTestStatus(env.ZODOMUS_CREATE_TEST_STATUS),
+  };
+  const testRid = env.ZODOMUS_CREATE_TEST_RESERVATION_ID?.trim();
+  if (testRid) {
+    createtestBody.reservationId = testRid;
+  }
+  const cr = await fetchPost(base, '/reservations-createtest', authHeader, createtestBody);
   writeJson('response-createtest.json', {
     _meta: {
       step: 'reservations-createtest',
@@ -455,4 +493,37 @@ if (!queueApiOk) {
   console.warn(
     'Queue: Zodomus body.status indicates error — see response-queue.json. Run with ZODOMUS_RUN_ACTIVATION=true or fix propertyId in backoffice.',
   );
+}
+
+const fetchReservationSample =
+  env.ZODOMUS_FETCH_RESERVATION_SAMPLE === undefined || env.ZODOMUS_FETCH_RESERVATION_SAMPLE === ''
+    ? true
+    : truthy(env.ZODOMUS_FETCH_RESERVATION_SAMPLE);
+const firstRid = firstQueueReservationId(q.body);
+if (fetchReservationSample && firstRid && q.ok && queueApiOk) {
+  const resUrl = new URL(`${base}/reservations`);
+  resUrl.searchParams.set('channelId', String(channelId));
+  resUrl.searchParams.set('propertyId', String(propertyId));
+  resUrl.searchParams.set('reservationId', firstRid);
+  const res = await fetchGet(resUrl.toString(), authHeader);
+  writeJson('response-reservation.json', {
+    _meta: {
+      step: 'reservations',
+      url: resUrl.toString(),
+      httpStatus: res.status,
+      ok: res.ok,
+      zodomusApiOk: zodomusReturnOk(res.body),
+      channelId,
+      propertyId,
+      reservationId: firstRid,
+    },
+    body: res.body,
+  });
+  if (!zodomusReturnOk(res.body)) {
+    console.warn(
+      'GET /reservations: see response-reservation.json — check propertyId/channelId/reservationId or align upsertBooking with live fields.',
+    );
+  }
+} else if (fetchReservationSample && !firstRid) {
+  console.log('GET /reservations sample skipped: queue empty or no id in body.reservations');
 }

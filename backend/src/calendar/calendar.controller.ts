@@ -24,6 +24,7 @@ export class CalendarController {
     const today = new Date();
     const from = fromParam?.trim() || format(addDays(today, -3), 'yyyy-MM-dd');
     const to = toParam?.trim() || format(addDays(today, 18), 'yyyy-MM-dd');
-    return this.calendarService.getCalendarData(user.sub, from, to);
+    const payload = await this.calendarService.getCalendarData(user.sub, from, to);
+    return { data: payload };
   }
 }

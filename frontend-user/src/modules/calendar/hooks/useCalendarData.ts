@@ -17,10 +17,17 @@ export function useCalendarData(dateRange: CalendarDateRange) {
   return useQuery({
     queryKey: ['calendar', from, to],
     queryFn: async (): Promise<CalendarApiResponse> => {
-      const res = await apiClient.get<CalendarApiResponse>('/calendar', {
+      const res = await apiClient.get<{ data: CalendarApiResponse } | CalendarApiResponse>('/calendar', {
         params: { from, to },
       });
-      return res.data;
+      const body = res.data;
+      if (body && typeof body === 'object' && 'properties' in body && Array.isArray(body.properties)) {
+        return body as CalendarApiResponse;
+      }
+      if (body && typeof body === 'object' && 'data' in body && body.data && 'properties' in body.data) {
+        return body.data as CalendarApiResponse;
+      }
+      return { properties: [], reservations: [] };
     },
     staleTime: 60_000,
     placeholderData: (prev) => prev,

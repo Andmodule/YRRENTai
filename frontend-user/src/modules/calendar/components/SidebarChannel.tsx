@@ -3,6 +3,7 @@
 import { memo } from 'react';
 import type { Channel } from 'planby';
 import { Building2 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { cn } from '@/lib/utils';
 import type { Property } from '../types';
 
@@ -14,6 +15,7 @@ interface SidebarChannelProps {
 
 /** Row height is fixed by Planby (64px); keep content single column, tight leading, no extra vertical padding. */
 export const SidebarChannel = memo(function SidebarChannel({ channel, meta, isMobile }: SidebarChannelProps) {
+  const t = useTranslations('calendar');
   const property = (channel as Channel & { _property?: Property })._property;
   const title = property?.title ?? '';
   const logo = channel.logo;
@@ -49,7 +51,17 @@ export const SidebarChannel = memo(function SidebarChannel({ channel, meta, isMo
       )}
       {!isMobile && (
         <div className="flex min-h-0 min-w-0 flex-1 flex-col justify-center gap-0.5 overflow-hidden leading-none">
-          <p className="truncate text-xs font-medium leading-tight">{title}</p>
+          <p className="flex min-w-0 items-center gap-1">
+            <span className="truncate text-xs font-medium leading-tight">{title}</span>
+            {(property?.zodomusLinked || property?.zodomusPropertyId?.trim()) ? (
+              <span
+                className="shrink-0 rounded bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-primary"
+                title={t('propertyOtaBadgeTitle')}
+              >
+                OTA
+              </span>
+            ) : null}
+          </p>
           <p className="truncate text-[11px] leading-tight text-muted-foreground">{meta}</p>
         </div>
       )}

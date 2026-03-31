@@ -49,7 +49,7 @@ Zodomus часто отвечает **HTTP 200**, а успех/ошибка л�
 
 Для **`GET /reservations-queue`** объект должен быть **привязан к каналу** (Mapping): типичный порядок в их доке — `POST /property-activation` → при необходимости `POST /rooms-activation` → `POST /property-check`, и только потом очередь. Без активации запросы с `propertyId` могут возвращать `400` / `Invalid property id`.
 
-**Sandbox:** создайте **тестовый объект в Zodomus backoffice** (Development), не привязываясь к чужому отелю на Booking.com — иначе `roomId`/`rateId` из чужого OTA не активируются («**0 rooms activated**»). Возьмите **`propertyId`** из кабинета как `ZODOMUS_SAMPLE_PROPERTY_ID`. Скрипт вызывает **`GET /room-rates`** и собирает тело **`POST /rooms-activation`** из ответа; ручной override — только **`ZODOMUS_ROOMS_ACTIVATION_JSON`**.
+**Sandbox:** тестовый объект в Zodomus backoffice (Development). **`Property awaiting approval`** в ответе на `POST /property-activation` — нормальный статус sandbox, не блокер. Возьмите **`propertyId`** как `ZODOMUS_SAMPLE_PROPERTY_ID`. Скрипт вызывает **`GET /room-rates`**, затем **`POST /rooms-activation`** в официальном формате Zodomus: `rooms[]` с **`roomId`**, **`roomName`**, **`quantity`**, **`status`**, **`rates`** (массив id тарифов) — см. **`doc/zodomus/rooms-activation.example.json`**. Ручной override: **`ZODOMUS_ROOMS_ACTIVATION_JSON`** (файл или JSON-строка). После успешной активации ожидайте в ответе что-то вроде **«Number of rooms activated: N»**, затем **`POST /property-check`** → Ok и работает **`GET /reservations-queue`**.
 
 **Скрипт с активацией** (из корня репозитория):
 
@@ -64,6 +64,8 @@ ZODOMUS_RUN_ACTIVATION=true
 # ZODOMUS_ROOMS_ACTIVATION_JSON=doc/zodomus/rooms-activation.mapped-products.example.json
 # опционально: тестовая бронь в sandbox
 # ZODOMUS_CREATE_TEST_RESERVATION=true
+# ZODOMUS_CREATE_TEST_STATUS=new   # new | modified | cancelled | summary — обязательно для POST /reservations-createtest
+# ZODOMUS_CREATE_TEST_RESERVATION_ID=   # optional — свой id тестовой брони (поле reservationId в теле createtest)
 ```
 
 ```bash

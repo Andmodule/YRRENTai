@@ -1,61 +1,98 @@
 # Zodomus (Channel Manager) — план и статус
 
-**Пошаговый запуск (env → скрипт → PATCH → sync):** [RUNBOOK.md](./RUNBOOK.md)
+**Пошаговый запуск (env → скрипт → PATCH → mapping):** [RUNBOOK.md](./RUNBOOK.md)
+
+Сообщения гостей / чат через Zodomus **в этом документе не описаны** — отдельная задача.
 
 ## Цель
 
-Единый REST-клиент к [Zodomus](https://www.zodomus.com/) (Basic Auth), без утечки секретов на фронт. Интеграция опциональна (`ZODOMUS_ENABLED`).
+REST-клиент к [Zodomus](https://www.zodomus.com/) (Basic Auth), без утечки секретов на фронт. Интеграция опциональна (`ZODOMUS_ENABLED`).
 
 ## Архитектура
 
 | Слой | Назначение |
 |------|------------|
-| `ZodomusClient` | HTTP GET/POST, Basic Auth, `502` при ошибке upstream, нормализация `{ data }` |
-| `ZodomusService` | Вызовы `/account`, `/channels`, `/reservations-queue`, `/reservations`, `/availability`, ACK |
-| `ZodomusSyncService` | Очередь → upsert `BookingEntity` по `zodomusReservationId`, затем ACK |
-| `ZodomusController` | `GET .../integrations/zodomus/status`, `POST .../integrations/zodomus/sync` (OWNER/MANAGER) |
+| `ZodomusClient` | HTTP GET/POST, Basic Auth; при ошибке в теле `body.status.returnCode` (или верхний `returnCode`) ≥ 400 → **502**; разворачивание `{ data }` где есть |
+| `ZodomusService` | `/account`, `/channels`, `/price-model`, `/room-rates`, `/reservations-queue`, `/reservations`, `/availability`, `POST /rooms-activation` (`activateRooms`), ACK очереди |
+| `ZodomusSyncService` | Очередь → **upsert** `BookingEntity` по `zodomusReservationId` → ACK; **`syncAllForUser`** для всех объектов с `zodomusPropertyId` |
+| `ZodomusController` | См. [HTTP API](#http-api-nest) |
+| `CalendarService` | `GET /calendar` — брони из БД; канал OTA выводится **не** из поля `channelSource` (такого поля нет), а из **`zodomusChannelId`** |
+
+## HTTP API (Nest)
+
+Базовый путь: **`/api/v1/integrations/zodomus`** (все ответы обёрнуты в `{ data: ... }`).
+
+| Метод | Путь | Тело | Роль |
+|-------|------|------|------|
+| GET | `status` | — | Проверка включения и `GET /account` Zodomus |
+| POST | `sync` | `{ channelId, propertyId }` | **`propertyId` — внутренний UUID объекта RentAI**; синк очереди для одного объекта |
+| POST | `sync-all` | `{ channelId? }` (по умолчанию `1`) | Синк для **всех** объектов владельца, у которых задан `zodomusPropertyId` |
 
 ## Переменные окружения
 
-См. `.env.example`: `ZODOMUS_ENABLED` парсится явно (`true`/`1`/`yes`), не через `Boolean("false")`.
+См. **`.env.example`**: `ZODOMUS_ENABLED` задаётся явно (`true`/`1`/`yes`), не через `Boolean("false")`.
 
 При `ZODOMUS_ENABLED=true` обязательны `ZODOMUS_API_USER` и `ZODOMUS_API_PASSWORD`.
 
+Скрипт образцов: см. комментарии в `doc/zodomus/fetch-samples.mjs` (в т.ч. `ZODOMUS_RUN_ACTIVATION`, `ZODOMUS_ROOMS_ACTIVATION_JSON`, `ZODOMUS_CREATE_TEST_RESERVATION`, `ZODOMUS_CREATE_TEST_STATUS`, `ZODOMUS_CREATE_TEST_RESERVATION_ID`).
+
 ## База данных
 
-- **bookings**: `zodomusReservationId` (varchar, unique, nullable), `zodomusChannelId`, `zodomusSynced`
-- **properties**: `zodomusPropertyId` — внешний id объекта в Zodomus для вызовов API очереди
+- **bookings**: `zodomusReservationId` (varchar, unique, nullable), **`zodomusChannelId`** (int, nullable), `zodomusSynced` (boolean)
+- **properties**: `zodomusPropertyId` — внешний id объекта в Zodomus для очереди / синка
 
-## Синхронизация
+Отдельного поля **`channelSource`** в сущностях нет: источник канала для календаря выводится из **`zodomusChannelId`** (см. ниже).
 
-1. На объекте задаётся `zodomusPropertyId` (PATCH property).
-2. `POST /api/v1/integrations/zodomus/sync` с `channelId` и внутренним `propertyId`.
-3. Для каждого элемента очереди: идемпотентность по `zodomusReservationId`; при незавершённом sync — повтор fetch + upsert + ACK.
-4. Точный путь ACK уточняется по официальной доке (заглушка: `POST /reservations-queue/ack`).
+## `upsertBooking` (реализовано)
+
+`ZodomusSyncService` после `GET /reservations` сохраняет бронь в **`BookingEntity`**:
+
+- Идентификация: **`zodomusReservationId`**, **`zodomusChannelId`** = числовой `channelId` синка (например `1` = Booking.com в типичной конфигурации).
+- Гость: `guestFirstName` / `guestLastName` / `guestName`, `guestEmail`.
+- Даты: `checkIn`, `checkOut` (ISO-строки из API → `Date`; при отсутствии — запасные значения).
+- Сумма: `totalPrice` трактуется как **основные единицы валюты** → **`totalPriceMinor`** = `round(price * 100)` (как в календаре `totalPrice = minor / 100`).
+- Статус строки брони: **`mapZodomusStatusToBookingStatus(raw.status)`** → значения **`BOOKING_STATUS`** из `@rentai/shared` (по подстрокам cancel / confirm и т.д.).
+- После успешного сохранения и ACK у записи выставляется **`zodomusSynced = true`**.
+
+Если реальный JSON `GET /reservations` отличается от черновика в `zodomus.types.ts` (`ZodomusReservation`), имеет смысл **уточнить типы и маппинг полей** под живой ответ — логика upsert уже на месте.
+
+## Календарь (frontend-user)
+
+- Данные: **`useCalendarData`** → **`GET /api/v1/calendar?from&to`** — только брони из БД.
+- В DTO брони поле **`channel`**: `'booking' | 'airbnb' | 'direct' | 'other'` — заполняется в **`CalendarService`** функцией **`calendarChannelFromBooking`** по **`zodomusChannelId`** (например `1` → `booking`, `3` → `airbnb`, иначе при наличии Zodomus → `other`, без Zodomus → `direct`).
+- Объекты с **`zodomusPropertyId`** помечаются флагом **`zodomusLinked`** в ответе календаря.
+- Кнопка **«Синхр. OTA»** вызывает **`POST /integrations/zodomus/sync-all`** (хук **`useZodomusCalendarSync`**, по успеху **`invalidateQueries(['calendar'])`**).
+
+Тест вручную: задать **`zodomusPropertyId`** на объекте → синк очереди (кнопка или `sync` для одного объекта) → бронь OTA с фильтром канала **Booking** (i18n-ключи вида `channelBooking`, не обязательно строка «Booking.com»).
+
+## Синхронизация (поток)
+
+1. На объекте задаётся **`zodomusPropertyId`** (PATCH property / UI).
+2. Вызов **`POST .../sync`** с **`channelId`** и **внутренним UUID `propertyId`**, либо **`POST .../sync-all`** с опциональным **`channelId`**.
+3. Для каждого элемента очереди: поиск по **`zodomusReservationId`**; если уже **`zodomusSynced`** — пропуск; иначе **`getReservation`** → **`upsertBooking`** → **`ackReservation`**.
 
 ## Сертификация
 
-Перед production Zodomus требует пройти certification tests в sandbox; ключи Test vs Production из backoffice.
+Перед production Zodomus требует certification в sandbox; ключи Test vs Production — из backoffice.
 
-## Снятие образцов ответов API (локально)
+## Снятие образцов API (локально)
 
-Из корня репозитория (нужны `ZODOMUS_API_USER` / `ZODOMUS_API_PASSWORD` в `.env`):
+Из **корня** репозитория (в `.env` — `ZODOMUS_API_USER` / `ZODOMUS_API_PASSWORD`):
 
 ```bash
 node doc/zodomus/fetch-samples.mjs
 ```
 
-Шаги 1–2 всегда пишут `response-account.json` и `response-channels.json`.  
-Шаг 3 (`response-queue.json`) требует **id объекта в Zodomus** — в ответе `/channels` его нет. Добавьте в `.env` опционально `ZODOMUS_SAMPLE_PROPERTY_ID=<id из backoffice>` и перезапустите скрипт.
+Подробности шагов (активация, `room-rates`, `rooms-activation`, `createtest`, очередь): [RUNBOOK.md](./RUNBOOK.md).
 
-Файлы `response-*.json` в `.gitignore` (могут содержать персональные данные).
+Файлы `response-*.json` в `.gitignore`.
 
-## Реализовано в репозитории
+## Реализовано в репозитории (чеклист)
 
-- Модуль `backend/src/integrations/zodomus/` (`client`, `service`, `sync.service`, `controller`, `module`, `tokens`, `types`)
-- `env.schema.ts`: `ZODOMUS_*` + refine при `ENABLED=true`
-- Миграция `1773400000000-zodomus-booking-property.ts`
-- `PropertyEntity.zodomusPropertyId`, поля Zodomus в `BookingEntity`
-- Shared: `zodomusPropertyId` в `createPropertySchema` / update
-- Эндпоинты: `GET /api/v1/integrations/zodomus/status`, `POST /api/v1/integrations/zodomus/sync`
-- Типы ответов — черновик; после первого живого `GET /account` при необходимости подправить `zodomus.types.ts` и разбор списков в `ZodomusService.normalizeArray`
+- Модуль `backend/src/integrations/zodomus/` (`client`, `service`, `sync.service`, `controller`, `module`, `tokens`, `types`, `zodomus-status.util`)
+- `env.schema.ts`: блок `ZODOMUS_*`
+- Миграция с полями Zodomus у **bookings** / **properties**
+- Shared: `zodomusPropertyId` в схемах property
+- Эндпоинты: **`status`**, **`sync`**, **`sync-all`**
+- Календарь: маппинг канала из **`zodomusChannelId`**, **`zodomusLinked`**, кнопка синка OTA
+- `doc/zodomus/fetch-samples.mjs` + примеры JSON для **`rooms-activation`**

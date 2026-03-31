@@ -147,6 +147,7 @@
       "colAddress": "Локация",
       "colCurrency": "Валюта",
       "colTimezone": "Часовой пояс",
+      "colOta": "OTA",
       "colGuests": "Гости",
       "noSearchResults": "Ничего не найдено"
     },
@@ -188,7 +189,11 @@
       "maxGuests": "Макс. гостей",
       "maxGuestsPlaceholder": "4",
       "cancel": "Отмена",
-      "saving": "Сохранение…"
+      "saving": "Сохранение…",
+      "integrationsSection": "Интеграции (channel manager)",
+      "zodomusPropertyId": "ID объекта в Zodomus",
+      "zodomusPropertyIdPlaceholder": "например 10322630",
+      "zodomusPropertyIdHint": "Внешний id из Zodomus (sandbox / backoffice). Нужен для синхронизации броней с OTA в календаре. Оставьте пустым, если канал не подключён."
     },
     "detail": {
       "settings": "Настройки",
@@ -198,6 +203,7 @@
       "timezone": "Часовой пояс",
       "currency": "Валюта",
       "maxGuests": "Макс. гостей",
+      "zodomusPropertyId": "Zodomus property id",
       "notSpecified": "Не указано"
     }
   },
@@ -596,7 +602,24 @@
     "openChat": "Открыть чат",
     "chatUnavailable": "Чат будет доступен после подключения мессенджера",
     "copyId": "Копировать ID",
-    "copied": "Скопировано"
+    "copied": "Скопировано",
+    "syncOta": "Синхр. OTA",
+    "syncOtaLoading": "Синхронизация…",
+    "syncOtaSuccess": "OTA: обработано {processed}, пропущено {skipped}, ошибок {failed} ({properties} объектов)",
+    "syncOtaAllFailed": "Не удалось импортировать брони из очереди Zodomus: {failed} ошибок. Проверьте логи бэкенда и id броней.",
+    "syncOtaError": "Не удалось синхронизировать с channel manager",
+    "syncOtaBackendDown": "Бэкенд Nest не запущен — Next не может достучаться до API. Запустите: pnpm dev:backend (порт из NEXT_PUBLIC_API_URL).",
+    "syncOtaNoLinkedProperties": "Ни у одного объекта не задан Zodomus property id — укажите его в карточке объекта (раздел интеграций).",
+    "syncOtaQueueEmpty": "Очередь Zodomus пуста: новых броней для импорта нет.",
+    "syncOtaAllSkipped": "Новых броней нет: пропущено {skipped} (уже синхронизированы), объектов с OTA: {properties}.",
+    "syncOtaShiftHint": "Shift+клик: заново импортировать брони из очереди, даже если уже помечены как синхронизированные (исправление дат после обновления сервера).",
+    "syncOtaForceSuffix": "(принудительная перезапись)",
+    "otaSyncedBadge": "OTA",
+    "otaSyncedTooltip": "Синхронизировано из channel manager (Zodomus)",
+    "propertyOtaBadgeTitle": "Объект привязан к Zodomus — брони с OTA попадают на эту строку после «Синхр. OTA»",
+    "emptyPeriodHint": "В выбранном периоде в RentAI нет броней: сетка пустая не из‑за «пропавших» строк — просто нет записей в базе на эти даты.",
+    "emptyPeriodOtaHint": "Если бронь есть в channel manager: у объекта должен быть задан внешний id Zodomus, затем нажмите «Синхр. OTA». Бронь отображается только у того объекта, к которому она привязана в синке.",
+    "emptyFiltersHint": "Есть брони, но ни одна не подходит под текущие фильтры канала или статуса — сбросьте фильтры на «Все»."
   },
   "inbox": {
     "backendUnreachable": "Нет связи с API",

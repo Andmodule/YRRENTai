@@ -38,6 +38,7 @@ export function PropertyDraftCard({ onCreate, onDiscard }: PropertyDraftCardProp
       timezone: 'UTC',
       currency: 'USD',
       maxGuests: undefined,
+      zodomusPropertyId: '',
     },
   });
 
@@ -160,6 +161,24 @@ export function PropertyDraftCard({ onCreate, onDiscard }: PropertyDraftCardProp
               setValueAs: (v: string) => (v === '' || v === undefined ? undefined : Number(v)),
             })}
           />
+        </div>
+
+        <div className="space-y-1.5 rounded-md border border-primary/25 bg-background/80 p-2.5">
+          <p className="text-[11px] font-medium text-foreground">{tf('integrationsSection')}</p>
+          <Label htmlFor="draft-zodomus" className="text-[10px]">
+            {tf('zodomusPropertyId')}
+          </Label>
+          <Input
+            id="draft-zodomus"
+            autoComplete="off"
+            className="h-8 font-mono text-xs"
+            placeholder={tf('zodomusPropertyIdPlaceholder')}
+            aria-describedby="draft-zodomus-hint"
+            {...register('zodomusPropertyId')}
+          />
+          <p id="draft-zodomus-hint" className="text-[10px] leading-snug text-muted-foreground">
+            {tf('zodomusPropertyIdHint')}
+          </p>
         </div>
 
         <div className="flex items-center justify-end gap-2 border-t border-primary/20 pt-3">

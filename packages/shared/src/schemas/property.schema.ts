@@ -10,7 +10,14 @@ export const createPropertySchema = z.object({
   currency: z.string().length(3).default('USD'),
   maxGuests: z.number().int().positive().max(100).optional(),
   /** External property id in Zodomus (channel manager); required for queue sync */
-  zodomusPropertyId: z.string().max(255).optional().nullable(),
+  zodomusPropertyId: z.preprocess(
+    (val) => {
+      if (val === undefined || val === null) return null;
+      const t = String(val).trim();
+      return t === '' ? null : t;
+    },
+    z.union([z.string().max(255), z.null()]).optional(),
+  ),
 });
 
 export const updatePropertySchema = createPropertySchema.partial();

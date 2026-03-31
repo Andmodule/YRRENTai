@@ -48,7 +48,8 @@ export function PropertyListTable({ properties }: PropertyListTableProps) {
         (p.city?.toLowerCase().includes(q) ?? false) ||
         p.address.toLowerCase().includes(q) ||
         p.currency.toLowerCase().includes(q) ||
-        p.timezone.toLowerCase().includes(q)
+        p.timezone.toLowerCase().includes(q) ||
+        (p.zodomusPropertyId?.toLowerCase().includes(q) ?? false)
       );
     });
 
@@ -140,6 +141,9 @@ export function PropertyListTable({ properties }: PropertyListTableProps) {
               <th scope="col" className="w-32 px-2 py-2.5">
                 {headerButton('timezone', t('colTimezone'))}
               </th>
+              <th scope="col" className="w-14 px-2 py-2.5 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground/90">
+                {t('colOta')}
+              </th>
               <th scope="col" className="w-24 px-2 py-2.5">
                 {headerButton('maxGuests', t('colGuests'), 'right')}
               </th>
@@ -148,7 +152,7 @@ export function PropertyListTable({ properties }: PropertyListTableProps) {
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-3 py-10 text-center text-sm text-muted-foreground">
+                <td colSpan={7} className="px-3 py-10 text-center text-sm text-muted-foreground">
                   {query.trim() ? t('noSearchResults') : '—'}
                 </td>
               </tr>
@@ -177,6 +181,18 @@ export function PropertyListTable({ properties }: PropertyListTableProps) {
                   </td>
                   <td className="px-2 py-3 tabular-nums text-muted-foreground">{property.currency}</td>
                   <td className="px-2 py-3 text-muted-foreground/90">{property.timezone}</td>
+                  <td className="px-2 py-3">
+                    {property.zodomusPropertyId?.trim() ? (
+                      <span
+                        className="inline-flex rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-primary"
+                        title={property.zodomusPropertyId}
+                      >
+                        OTA
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground/50">—</span>
+                    )}
+                  </td>
                   <td className="px-2 py-3 text-right tabular-nums text-muted-foreground">
                     {property.maxGuests ?? '—'}
                   </td>

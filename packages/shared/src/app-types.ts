@@ -44,6 +44,8 @@ export interface Property {
   timezone: string;
   currency: string;
   maxGuests?: number;
+  /** External property id in Zodomus (channel manager). */
+  zodomusPropertyId?: string | null;
   ownerId: string;
   createdAt: string;
   updatedAt: string;
