@@ -16,10 +16,10 @@ interface SheetContentProps extends RadixDialog.DialogContentProps {
 export function SheetContent({ title, description, children, className, ...props }: SheetContentProps) {
   return (
     <RadixDialog.Portal>
-      <RadixDialog.Overlay className="fixed inset-0 z-50 bg-black/50 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+      <RadixDialog.Overlay className="fixed inset-0 z-[100] bg-black/50 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
       <RadixDialog.Content
         className={cn(
-          'fixed inset-y-0 right-0 z-50 flex h-full w-full max-w-md flex-col border-l bg-background shadow-lg duration-300 ease-out',
+          'fixed inset-y-0 right-0 z-[100] flex h-full w-full max-w-md flex-col border-l bg-background shadow-lg duration-300 ease-out',
           'data-[state=open]:animate-in data-[state=closed]:animate-out',
           'data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right',
           className,

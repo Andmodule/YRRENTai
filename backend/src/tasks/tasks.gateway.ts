@@ -67,6 +67,23 @@ export class TasksGateway implements OnGatewayConnection {
     this.server.emit('task_note_added', payload);
   }
 
+  emitChecklistItemUpdated(payload: { taskId: string; itemId: string; checked: boolean }) {
+    this.server.emit('checklist_item_updated', payload);
+  }
+
+  emitIncidentCreated(payload: { incidentId: string; propertyOwnerId: string }) {
+    this.server.emit('incident_created', payload);
+  }
+
+  /** Manager replied in Telegram (thread on incident alert) — staff app shows toast if reportedBy matches. */
+  emitIncidentManagerNote(payload: {
+    incidentId: string;
+    text: string;
+    reportedByUserId: string;
+  }) {
+    this.server.emit('incident_manager_note', payload);
+  }
+
   private extractToken(client: Socket): string | null {
     const cookieHeader = client.handshake.headers.cookie;
     if (cookieHeader) {

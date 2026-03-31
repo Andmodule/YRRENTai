@@ -106,7 +106,8 @@ frontend-staff/
 │   │   ├── tasks/
 │   │   │   ├── checklist.tsx              ← смена, маршрут, профиль, онлайн, сокет
 │   │   │   ├── checklist-item.tsx         ← дедлайн (teal/amber/red только при просрочке), таймер in_progress
-│   │   │   ├── task-detail-staff.tsx      ← старт задачи, заметки staff→manager
+│   │   │   ├── task-detail-staff.tsx      ← заметки staff→manager, детали
+│   │   │   ├── task-quick-actions-drawer.tsx ← тап по строке: Начать / Готово / Проблема
 │   │   │   ├── photo-verification-drawer.tsx ← фото после «готово» (hasVerificationPhoto)
 │   │   │   ├── progress-bar.tsx
 │   │   │   └── issue-drawer.tsx           ← проблема + фото
@@ -141,7 +142,7 @@ frontend-staff/
 
 ### Новая роль `STAFF`
 - `packages/shared/src/constants/roles.ts` — добавлен `STAFF`
-- `CORS_ORIGINS` обновлён: `localhost:3012,localhost:3013`
+- `CORS_ORIGINS` обновлён: `localhost:3012,localhost:3013` (и `http://localhost:3013` в полном виде в `.env` backend). Запросы Staff к API идут через same-origin `/api` (Next Route Handler `app/api/[[...path]]` → Nest), cookies остаются на `:3013`.
 
 ### `TasksController`
 - `GET /tasks`, `PATCH /tasks/:uuid`, `POST /tasks/:uuid/photos` — разрешены для `STAFF`
@@ -260,3 +261,11 @@ SELECT id, email, role FROM users WHERE email = 'cleaner@test.com';
 - [ ] Переключение языка (добавить next-intl в staff)
 - [ ] История выполненных задач (архив)
 - [ ] Двусторонний чат с менеджером (сейчас только заметки от персонала)
+
+---
+
+## Roadmap / глобальные пробелы
+
+Подробный разбор по категориям (инвентарь, чеклисты в задаче, инспекция, смены, коммуникация, маршрут, статистика, инциденты, i18n) и таблица приоритетов: **[staff-roadmap.md](./staff-roadmap.md)**.
+
+**Реализация P1 (чеклисты + инциденты):** спека, RBAC, a11y DoD, этапы — **[staff-checklists-incidents-spec.md](./staff-checklists-incidents-spec.md)**.

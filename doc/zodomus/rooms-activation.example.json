@@ -1,0 +1,11 @@
+{
+  "channelId": 1,
+  "propertyId": "REPLACE_WITH_ZODOMUS_PROPERTY_ID",
+  "rooms": [
+    {
+      "roomId": "ROOM_ID_FROM_OTA",
+      "rateId": "RATE_ID_FROM_OTA",
+      "priceModelId": 1
+    }
+  ]
+}

@@ -13,6 +13,9 @@ build/
 .env.local
 .env.*.local
 
+# Zodomus API samples (may contain account data)
+doc/zodomus/response-*.json
+
 # IDE
 .vscode/
 !.vscode/settings.json

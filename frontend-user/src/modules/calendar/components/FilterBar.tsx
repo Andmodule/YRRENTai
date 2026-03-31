@@ -6,7 +6,6 @@ import { Filter } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Drawer, DrawerClose, DrawerContent } from '@/components/ui/drawer';
-import { Link } from '@/i18n/navigation';
 import { cn } from '@/lib/utils';
 import type { BookingChannel, BookingStatus, CalendarFilters, Property } from '../types';
 import { useIsMobile } from '@/hooks/useIsMobile';
@@ -16,8 +15,7 @@ interface FilterBarProps {
   onFiltersChange: (f: CalendarFilters) => void;
   properties: Property[];
   filteredCount: number;
-  /** If set, «Новая бронь» opens sheet instead of navigating */
-  onNewBooking?: () => void;
+  onNewBooking: () => void;
 }
 
 const CHANNELS: { value: BookingChannel | 'all'; labelKey: string }[] = [
@@ -41,7 +39,7 @@ function ChannelStatusRow({
 }: {
   filters: CalendarFilters;
   onFiltersChange: (f: CalendarFilters) => void;
-  onNewBooking?: () => void;
+  onNewBooking: () => void;
 }) {
   const t = useTranslations('calendar');
   return (
@@ -80,15 +78,9 @@ function ChannelStatusRow({
           </button>
         ))}
       </div>
-      {onNewBooking ? (
-        <Button type="button" size="sm" className="hidden md:inline-flex" onClick={onNewBooking}>
-          {t('newBooking')}
-        </Button>
-      ) : (
-        <Button asChild size="sm" className="hidden md:inline-flex">
-          <Link href="/bookings">{t('newBooking')}</Link>
-        </Button>
-      )}
+      <Button type="button" size="sm" className="hidden md:inline-flex" onClick={onNewBooking}>
+        {t('newBooking')}
+      </Button>
     </div>
   );
 }
@@ -169,15 +161,16 @@ export function FilterBar({ filters, onFiltersChange, properties, filteredCount,
             <div className="space-y-4 px-2 pb-6">
               {search}
               <ChannelStatusRow filters={filters} onFiltersChange={onFiltersChange} onNewBooking={onNewBooking} />
-              {onNewBooking ? (
-                <Button type="button" className="w-full" onClick={() => { onNewBooking(); setDrawerOpen(false); }}>
-                  {t('newBooking')}
-                </Button>
-              ) : (
-                <Button asChild className="w-full">
-                  <Link href="/bookings">{t('newBooking')}</Link>
-                </Button>
-              )}
+              <Button
+                type="button"
+                className="w-full"
+                onClick={() => {
+                  onNewBooking();
+                  setDrawerOpen(false);
+                }}
+              >
+                {t('newBooking')}
+              </Button>
               <DrawerClose asChild>
                 <Button variant="outline" className="w-full" type="button">
                   {t('close')}

@@ -11,6 +11,8 @@ import {
   UploadedFiles,
   UploadedFile,
   BadRequestException,
+  forwardRef,
+  Inject,
 } from '@nestjs/common';
 import { FilesInterceptor, FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
@@ -25,6 +27,9 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { CurrentUser, JwtPayload } from '../common/decorators/current-user.decorator';
 import { TasksService } from './tasks.service';
+import { ChecklistService } from './checklist.service';
+import { IncidentsService } from '../incidents/incidents.service';
+import type { IncidentType } from '../incidents/entities/incident.entity';
 
 @ApiTags('Tasks')
 @ApiBearerAuth()
@@ -33,7 +38,10 @@ import { TasksService } from './tasks.service';
 export class TasksController {
   constructor(
     private readonly tasksService: TasksService,
+    private readonly checklistService: ChecklistService,
     private readonly configService: ConfigService,
+    @Inject(forwardRef(() => IncidentsService))
+    private readonly incidentsService: IncidentsService,
   ) {}
 
   @Get()
@@ -58,6 +66,85 @@ export class TasksController {
 
     const tasks = await this.tasksService.findForUser(user.sub, from, to, assigneeId);
     return { data: { tasks } };
+  }
+
+  /** Staff: same handlers as POST /incidents (some dev setups never register IncidentsController). */
+  @Post('incidents/upload-photos')
+  @Roles('STAFF')
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(
+    FilesInterceptor('files', 5, {
+      storage: memoryStorage(),
+      limits: { fileSize: 8 * 1024 * 1024 },
+    }),
+  )
+  async uploadIncidentPhotos(
+    @UploadedFiles() files: Express.Multer.File[],
+  ): Promise<{ data: { photoUrls: string[] } }> {
+    if (!files?.length) {
+      return { data: { photoUrls: [] } };
+    }
+    const sessionId = randomUUID();
+    const dir = join(process.cwd(), 'uploads', 'incidents', sessionId);
+    await fs.mkdir(dir, { recursive: true });
+    const apiBase =
+      this.configService.get<string>('API_PUBLIC_URL')?.replace(/\/$/, '') ||
+      `http://localhost:${this.configService.get<number>('PORT', 3010)}`;
+    const urls: string[] = [];
+    for (const file of files) {
+      const name = `${randomUUID()}.jpg`;
+      const full = join(dir, name);
+      await fs.writeFile(full, file.buffer);
+      urls.push(`${apiBase}/uploads/incidents/${sessionId}/${name}`);
+    }
+    return { data: { photoUrls: urls } };
+  }
+
+  @Post('incidents')
+  @Roles('STAFF')
+  async createIncident(
+    @CurrentUser() user: JwtPayload,
+    @Body()
+    body: {
+      type: IncidentType;
+      propertyId: string;
+      taskId: string | null;
+      description: string;
+      photoUrls: string[];
+      guestName?: string | null;
+      itemDescription?: string | null;
+      damageLocation?: string | null;
+      reservationId?: string | null;
+    },
+  ) {
+    const incident = await this.incidentsService.createForStaff(user.sub, body);
+    return { data: { incident } };
+  }
+
+  @Get(':uuid/checklist')
+  @Roles('OWNER', 'MANAGER', 'STAFF')
+  async getChecklist(@Param('uuid') uuid: string, @CurrentUser() user: JwtPayload) {
+    await this.tasksService.ensureTaskAccess(uuid, user.sub, user.role);
+    const items = await this.checklistService.listForTask(uuid);
+    return { data: { items } };
+  }
+
+  @Patch(':uuid/checklist/:itemId')
+  @Roles('OWNER', 'MANAGER', 'STAFF')
+  async patchChecklistItem(
+    @Param('uuid') uuid: string,
+    @Param('itemId') itemId: string,
+    @Body() body: { checked: boolean },
+    @CurrentUser() user: JwtPayload,
+  ) {
+    const item = await this.checklistService.patchItem(
+      uuid,
+      itemId,
+      user.sub,
+      user.role,
+      !!body.checked,
+    );
+    return { data: { item } };
   }
 
   @Get(':uuid/notes')
@@ -120,9 +207,16 @@ export class TasksController {
       notes: string;
       issueDescription: string | null;
     }>,
+    @Query('forceComplete') forceComplete: string | undefined,
     @CurrentUser() user: JwtPayload,
   ) {
-    const task = await this.tasksService.update(uuid, user.sub, user.role, body);
+    const task = await this.tasksService.update(
+      uuid,
+      user.sub,
+      user.role,
+      body,
+      forceComplete === 'true',
+    );
     return { data: task };
   }
 

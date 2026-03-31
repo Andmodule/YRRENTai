@@ -1,49 +1,52 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { usePathname } from 'next/navigation';
-import { Link } from '@/i18n/navigation';
+import { Link, usePathname, useRouter } from '@/i18n/navigation';
 import { useUiStore } from '@/stores/ui.store';
 import { cn } from '@/lib/utils';
 import {
   LayoutDashboard,
   Building2,
-  CalendarDays,
   LayoutGrid,
   ListTodo,
   MessageSquare,
   Settings,
   Sparkles,
+  Warehouse,
 } from 'lucide-react';
+import { useOpenIncidentsCount } from '@/modules/incidents/hooks/useIncidents';
 
 const navItems = [
   { href: '/dashboard',      icon: LayoutDashboard, key: 'dashboard' },
   { href: '/properties',     icon: Building2,        key: 'properties' },
   { href: '/dashboard/tasks', icon: ListTodo,        key: 'tasks' },
+  { href: '/dashboard/operations', icon: Warehouse,  key: 'operations' },
   { href: '/dashboard/calendar', icon: LayoutGrid, key: 'calendar' },
-  { href: '/bookings',       icon: CalendarDays,     key: 'bookings' },
   { href: '/chat',           icon: MessageSquare,    key: 'chat' },
   { href: '/kb-improvement', icon: Sparkles,         key: 'kbImprovement' },
-  { href: '/settings',       icon: Settings,         key: 'settings' },
+  { href: '/settings/profile', icon: Settings,       key: 'settings' },
 ] as const;
 
 export function Sidebar() {
   const t = useTranslations('nav');
+  const router = useRouter();
   const { sidebarOpen, setSidebarOpen } = useUiStore();
   const pathname = usePathname();
+  const { data: openIncidents = 0 } = useOpenIncidentsCount();
 
   return (
     <>
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-30 bg-black/60 backdrop-blur-sm lg:hidden"
+          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden"
+          aria-hidden
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
       <aside
         className={cn(
-          'fixed left-0 top-0 z-40 flex h-screen w-56 flex-col',
+          'fixed left-0 top-0 z-50 flex h-screen w-56 flex-col',
           'border-r border-slate-800 bg-slate-900/95 backdrop-blur-sm',
           'transition-transform duration-200',
           sidebarOpen ? 'translate-x-0' : '-translate-x-full',
@@ -62,17 +65,33 @@ export function Sidebar() {
           <ul className="space-y-0.5">
             {navItems.map(({ href, icon: Icon, key }) => {
               const isActive =
-                href === '/dashboard/tasks'
-                  ? pathname.includes('/dashboard/tasks')
-                  : href === '/dashboard'
-                    ? pathname.includes('/dashboard') && !pathname.includes('/dashboard/')
-                    : pathname.includes(href);
+                href === '/settings/profile'
+                  ? pathname.includes('/settings')
+                  : href === '/dashboard/tasks'
+                    ? pathname.includes('/dashboard/tasks')
+                    : href === '/dashboard/operations'
+                      ? pathname.includes('/dashboard/operations')
+                      : href === '/dashboard'
+                        ? pathname.includes('/dashboard') &&
+                          !pathname.includes('/dashboard/tasks') &&
+                          !pathname.includes('/dashboard/calendar') &&
+                          !pathname.includes('/dashboard/operations') &&
+                          !pathname.match(/\/dashboard\/incidents/)
+                        : pathname.includes(href);
 
               return (
                 <li key={href}>
                   <Link
                     href={href}
-                    onClick={() => setSidebarOpen(false)}
+                    onClick={(e) => {
+                      if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) {
+                        setSidebarOpen(false);
+                        return;
+                      }
+                      e.preventDefault();
+                      setSidebarOpen(false);
+                      router.push(href);
+                    }}
                     className={cn(
                       'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
                       isActive
@@ -81,7 +100,14 @@ export function Sidebar() {
                     )}
                   >
                     <Icon className="h-4 w-4 shrink-0" />
-                    <span>{t(key)}</span>
+                    <span className="flex-1 text-left">{t(key)}</span>
+                    {key === 'tasks' && openIncidents > 0 && (
+                      <span
+                        className="h-2 w-2 shrink-0 rounded-full bg-amber-500"
+                        title={t('tasksIncidentsHint')}
+                        aria-label={t('tasksIncidentsHint')}
+                      />
+                    )}
                   </Link>
                 </li>
               );

@@ -130,7 +130,7 @@ export default function KbImprovementPage() {
   };
 
   return (
-    <div className="mx-auto max-w-2xl space-y-5 pb-28">
+    <div className="mx-auto w-full max-w-7xl space-y-5 pb-28 2xl:max-w-[min(100%,96rem)]">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-lg font-semibold tracking-tight text-foreground">{t('title')}</h1>
@@ -152,7 +152,7 @@ export default function KbImprovementPage() {
       {isLoading ? (
         <div className="space-y-2">
           {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-24 w-full rounded-md" />
+            <Skeleton key={i} className="h-20 w-full rounded-md" />
           ))}
         </div>
       ) : items.length === 0 ? (
@@ -176,12 +176,22 @@ export default function KbImprovementPage() {
             </button>
           </div>
 
+          <div
+            className="flex gap-3 border-b border-border/60 px-3 pb-2 pt-0.5 text-[11px] font-medium text-muted-foreground sm:px-4 sm:pr-11"
+            role="row"
+          >
+            <span className="w-[18px] shrink-0" aria-hidden />
+            <div className="grid min-w-0 flex-1 grid-cols-2 gap-3">
+              <div className="min-w-0">{t('guestQuestion')}</div>
+              <div className="min-w-0">{t('answerForAi')}</div>
+            </div>
+          </div>
+
           <div className="space-y-2">
             <AnimatePresence mode="popLayout">
               {items.map((item) => (
                 <motion.div
                   key={item.id}
-                  layout
                   initial={{ opacity: 0, y: 4 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, height: 0, marginBottom: 0 }}
@@ -204,7 +214,7 @@ export default function KbImprovementPage() {
 
       {selectedCount > 0 && (
         <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-border/80 bg-background/95 px-4 py-3 backdrop-blur-md supports-[backdrop-filter]:bg-background/80 dark:bg-background/95 lg:left-56">
-          <div className="mx-auto flex max-w-2xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="mx-auto flex w-full max-w-7xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between 2xl:max-w-[min(100%,96rem)]">
             <p className="text-sm text-muted-foreground">{t('selectedCount', { count: selectedCount })}</p>
             <div className="flex flex-wrap gap-2">
               <Button type="button" variant="outline" size="sm" onClick={handleBulkIgnore}>

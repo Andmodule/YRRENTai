@@ -15,6 +15,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { useUpdateTaskNotes, useTaskNotes, useMarkTaskSeen } from '../../hooks/useTasks';
 import type { Task } from '../../types';
+import { stripStaffSeedTaskMarker } from '@rentai/shared';
 import { TaskStatusBadge } from './TaskStatusBadge';
 import { TaskTypeBadge } from './TaskTypeBadge';
 
@@ -35,7 +36,7 @@ export function TaskDetailDrawer({ task, open, onOpenChange, isStaffView }: Task
 
   useEffect(() => {
     if (task && open) {
-      setNotes(task.notes);
+      setNotes(stripStaffSeedTaskMarker(task.notes));
     }
   }, [task, open]);
 
@@ -62,14 +63,16 @@ export function TaskDetailDrawer({ task, open, onOpenChange, isStaffView }: Task
             <TaskStatusBadge status={task.status} />
             <TaskTypeBadge type={task.type} />
             {(task.hasVerificationPhoto ?? false) && (
-              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">
+              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
                 verified
               </span>
             )}
           </div>
 
           {task.contextLabel ? (
-            <div className="rounded-lg bg-blue-50 p-3 text-sm text-blue-900">{task.contextLabel}</div>
+            <div className="rounded-lg border border-blue-200/80 bg-blue-50 p-3 text-sm text-blue-900 dark:border-blue-500/35 dark:bg-blue-950/55 dark:text-blue-100">
+              {task.contextLabel}
+            </div>
           ) : null}
 
           <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
@@ -91,13 +94,15 @@ export function TaskDetailDrawer({ task, open, onOpenChange, isStaffView }: Task
           )}
 
           {!isStaffView && staffNotes && staffNotes.length > 0 && (
-            <div className="rounded-lg border border-amber-100 bg-amber-50/90 p-3">
-              <p className="mb-2 text-sm font-medium text-amber-950">Заметки от персонала</p>
+            <div className="rounded-lg border border-amber-200/90 bg-amber-50/95 p-3 dark:border-amber-800/55 dark:bg-amber-950/45">
+              <p className="mb-2 text-sm font-medium text-amber-950 dark:text-amber-100">
+                Заметки от персонала
+              </p>
               <ul className="space-y-2 text-sm">
                 {staffNotes.map((n) => (
-                  <li key={n.uuid} className="border-b border-amber-100/80 pb-2 last:border-0">
-                    <span className="text-xs text-muted-foreground">{n.authorName}</span>
-                    <p className="text-foreground">{n.text}</p>
+                  <li key={n.uuid} className="border-b border-amber-200/70 pb-2 last:border-0 dark:border-amber-800/45">
+                    <span className="text-xs text-amber-800/90 dark:text-amber-200/85">{n.authorName}</span>
+                    <p className="text-amber-950 dark:text-amber-50">{n.text}</p>
                     {n.photoUrl && (
                       <a href={n.photoUrl} target="_blank" rel="noreferrer" className="text-xs text-primary underline">
                         Фото
@@ -117,7 +122,7 @@ export function TaskDetailDrawer({ task, open, onOpenChange, isStaffView }: Task
               onChange={(e) => setNotes(e.target.value)}
               readOnly={isStaffView}
               onBlur={() => {
-                if (!isStaffView && notes !== task.notes) {
+                if (!isStaffView && notes !== stripStaffSeedTaskMarker(task.notes)) {
                   void saveNotes({ uuid: task.uuid, notes });
                 }
               }}
@@ -129,7 +134,7 @@ export function TaskDetailDrawer({ task, open, onOpenChange, isStaffView }: Task
           {task.photoUrls.length > 0 && (
             <div>
               <p className="mb-2 text-sm font-medium">{t('photos')}</p>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {task.photoUrls.map((url) => (
                   <a
                     key={url}

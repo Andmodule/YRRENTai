@@ -24,6 +24,9 @@ import { BillingModule } from './billing/billing.module';
 import { HealthModule } from './health/health.module';
 import { CalendarModule } from './calendar/calendar.module';
 import { TasksModule } from './tasks/tasks.module';
+import { IncidentsModule } from './incidents/incidents.module';
+import { OperationsModule } from './operations/operations.module';
+import { ZodomusModule } from './integrations/zodomus/zodomus.module';
 
 @Module({
   imports: [
@@ -69,6 +72,9 @@ import { TasksModule } from './tasks/tasks.module';
     HealthModule,
     CalendarModule,
     TasksModule,
+    IncidentsModule,
+    OperationsModule,
+    ZodomusModule,
   ],
   providers: [
     {

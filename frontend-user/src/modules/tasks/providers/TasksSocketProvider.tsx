@@ -22,6 +22,14 @@ export function TasksSocketProvider({ children }: { children: React.ReactNode })
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
       queryClient.invalidateQueries({ queryKey: ['task-notes'] });
     });
+    socket.on('checklist_item_updated', () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    });
+    socket.on('incident_created', () => {
+      toast.info('Новый инцидент', { description: 'Откройте раздел «Инциденты».' });
+      queryClient.invalidateQueries({ queryKey: ['incidents'] });
+      queryClient.invalidateQueries({ queryKey: ['incidents-open-count'] });
+    });
     return () => {
       socket.disconnect();
     };

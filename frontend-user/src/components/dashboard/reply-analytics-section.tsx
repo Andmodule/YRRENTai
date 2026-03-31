@@ -73,8 +73,7 @@ export function ReplyAnalyticsSection() {
 
   return (
     <section className="space-y-3 rounded-lg border border-slate-800/80 bg-slate-950/20 py-3 sm:space-y-4 sm:rounded-xl sm:py-6">
-      {/* px-0 на верхнем ряду: заголовок и подпись совпадают по левому краю с «Добро пожаловать» на главной странице */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+      <div className="flex flex-col gap-2 px-3 sm:flex-row sm:items-start sm:justify-between sm:gap-3 sm:px-6">
         <div className="min-w-0">
           <h2 className="text-[10px] font-semibold uppercase tracking-widest text-slate-500 sm:text-xs">
             {t('title')}
@@ -82,7 +81,7 @@ export function ReplyAnalyticsSection() {
           <p className="mt-0.5 text-xs leading-snug text-slate-400 sm:mt-1 sm:text-sm">{t('subtitle')}</p>
         </div>
 
-        <div className="flex shrink-0 flex-col items-stretch gap-2 pr-3 sm:items-end sm:pr-6">
+        <div className="flex shrink-0 flex-col items-stretch gap-2 sm:items-end">
           <div
             className="inline-flex self-start rounded-md border border-slate-700/80 bg-slate-900/40 p-0.5 sm:self-auto"
             role="group"
@@ -146,7 +145,7 @@ export function ReplyAnalyticsSection() {
       </div>
 
       {invalidCustom && (
-        <p className="px-0 text-xs text-destructive">{t('invalidRange')}</p>
+        <p className="px-3 text-xs text-destructive sm:px-6">{t('invalidRange')}</p>
       )}
 
       <div className="grid grid-cols-3 gap-2 px-3 sm:gap-4 sm:px-6">

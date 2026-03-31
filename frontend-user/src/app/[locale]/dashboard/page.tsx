@@ -3,7 +3,7 @@
 import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
 import { useProperties } from '@/hooks/use-properties';
-import { Building2, CalendarDays, MessageSquare, ArrowRight, ChevronRight } from 'lucide-react';
+import { Building2, LayoutGrid, MessageSquare, ArrowRight, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AiHoursSavedWidget } from '@/components/dashboard/ai-hours-saved-widget';
@@ -17,9 +17,9 @@ const STAT_ICONS = [
     accent: 'bg-cyan-500/15 border border-cyan-500/30 text-cyan-400',
   },
   {
-    key: 'bookings' as const,
-    icon: CalendarDays,
-    href: '/bookings',
+    key: 'calendar' as const,
+    icon: LayoutGrid,
+    href: '/dashboard/calendar',
     accent: 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-400',
   },
   {
@@ -36,7 +36,7 @@ export default function DashboardPage() {
 
   const statValues: Record<string, string | number | null> = {
     properties: isLoading ? null : properties.length,
-    bookings: '—',
+    calendar: '—',
     chats: '—',
   };
 

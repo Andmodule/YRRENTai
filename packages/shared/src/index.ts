@@ -11,5 +11,6 @@ export * from './constants/booking-states';
 export * from './constants/conversation';
 
 export * from './utils/booking.utils';
+export * from './utils/task-notes';
 
 export * from './app-types';

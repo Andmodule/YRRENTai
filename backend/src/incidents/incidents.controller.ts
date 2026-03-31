@@ -1,0 +1,134 @@
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Param,
+  Body,
+  Query,
+  UseGuards,
+  UseInterceptors,
+  UploadedFiles,
+} from '@nestjs/common';
+import { FilesInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import { join } from 'path';
+import { promises as fs } from 'fs';
+import { randomUUID } from 'crypto';
+import { ConfigService } from '@nestjs/config';
+import { ApiTags, ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
+import { AuthGuard } from '@nestjs/passport';
+import { Roles } from '../common/decorators/roles.decorator';
+import { RolesGuard } from '../common/guards/roles.guard';
+import { CurrentUser, JwtPayload } from '../common/decorators/current-user.decorator';
+import { IncidentsService } from './incidents.service';
+import type { IncidentStatus, IncidentType } from './entities/incident.entity';
+
+@ApiTags('Incidents')
+@ApiBearerAuth()
+@UseGuards(AuthGuard('jwt'), RolesGuard)
+@Controller('incidents')
+export class IncidentsController {
+  constructor(
+    private readonly incidentsService: IncidentsService,
+    private readonly configService: ConfigService,
+  ) {}
+
+  @Post('upload-photos')
+  @Roles('STAFF')
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(
+    FilesInterceptor('files', 5, {
+      storage: memoryStorage(),
+      limits: { fileSize: 8 * 1024 * 1024 },
+    }),
+  )
+  async uploadPhotos(
+    @UploadedFiles() files: Express.Multer.File[],
+  ): Promise<{ data: { photoUrls: string[] } }> {
+    if (!files?.length) {
+      return { data: { photoUrls: [] } };
+    }
+    const sessionId = randomUUID();
+    const dir = join(process.cwd(), 'uploads', 'incidents', sessionId);
+    await fs.mkdir(dir, { recursive: true });
+    const apiBase =
+      this.configService.get<string>('API_PUBLIC_URL')?.replace(/\/$/, '') ||
+      `http://localhost:${this.configService.get<number>('PORT', 3010)}`;
+    const urls: string[] = [];
+    for (const file of files) {
+      const name = `${randomUUID()}.jpg`;
+      const full = join(dir, name);
+      await fs.writeFile(full, file.buffer);
+      urls.push(`${apiBase}/uploads/incidents/${sessionId}/${name}`);
+    }
+    return { data: { photoUrls: urls } };
+  }
+
+  @Post()
+  @Roles('STAFF')
+  async create(
+    @CurrentUser() user: JwtPayload,
+    @Body()
+    body: {
+      type: IncidentType;
+      propertyId: string;
+      taskId: string | null;
+      description: string;
+      photoUrls: string[];
+      guestName?: string | null;
+      itemDescription?: string | null;
+      damageLocation?: string | null;
+      reservationId?: string | null;
+    },
+  ) {
+    const incident = await this.incidentsService.createForStaff(user.sub, body);
+    return { data: { incident } };
+  }
+
+  @Get()
+  @Roles('OWNER', 'MANAGER')
+  async list(
+    @CurrentUser() user: JwtPayload,
+    @Query('propertyId') propertyId?: string,
+    @Query('type') type?: IncidentType,
+    @Query('status') status?: IncidentStatus,
+  ) {
+    const incidents = await this.incidentsService.listForOwner(user.sub, {
+      propertyId,
+      type,
+      status,
+    });
+    return { data: { incidents } };
+  }
+
+  @Get('open-count')
+  @Roles('OWNER', 'MANAGER')
+  async openCount(@CurrentUser() user: JwtPayload) {
+    const count = await this.incidentsService.countOpenForOwner(user.sub);
+    return { data: { count } };
+  }
+
+  @Get(':uuid')
+  @Roles('OWNER', 'MANAGER')
+  async one(@Param('uuid') uuid: string, @CurrentUser() user: JwtPayload) {
+    const incident = await this.incidentsService.findOneForOwner(uuid, user.sub);
+    return { data: { incident } };
+  }
+
+  @Patch(':uuid')
+  @Roles('OWNER', 'MANAGER')
+  async patch(
+    @Param('uuid') uuid: string,
+    @CurrentUser() user: JwtPayload,
+    @Body()
+    body: Partial<{
+      status: IncidentStatus;
+      managerNote: string | null;
+      estimatedCost: string | null;
+    }>,
+  ) {
+    const incident = await this.incidentsService.patchForOwner(uuid, user.sub, body);
+    return { data: { incident } };
+  }
+}

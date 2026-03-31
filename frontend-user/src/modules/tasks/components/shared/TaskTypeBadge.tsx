@@ -21,7 +21,7 @@ export const TaskTypeBadge = memo(function TaskTypeBadge({ type }: { type: TaskT
     manual: 'manual',
   };
   return (
-    <span className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-0.5 text-xs font-medium text-gray-700">
+    <span className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-0.5 text-xs font-medium text-foreground dark:bg-muted/60">
       <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden />
       {t(labelKey[type])}
     </span>

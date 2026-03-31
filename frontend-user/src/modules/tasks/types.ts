@@ -28,6 +28,11 @@ export interface Task {
   unseenNotesCount?: number;
   createdAt: string;
   completedAt: string | null;
+  checklistSummary?: {
+    total: number;
+    checked: number;
+    requiredUnchecked: number;
+  } | null;
 }
 
 export interface TaskNote {

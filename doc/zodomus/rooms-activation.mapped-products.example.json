@@ -1,0 +1,15 @@
+{
+  "channelId": 1,
+  "propertyId": "10322630",
+  "rooms": [
+    { "roomId": "1032263001", "rateId": "10322630991", "priceModelId": 1 },
+    { "roomId": "1032263001", "rateId": "10322630992", "priceModelId": 1 },
+    { "roomId": "1032263001", "rateId": "10322630993", "priceModelId": 1 },
+    { "roomId": "1032263002", "rateId": "10322630991", "priceModelId": 1 },
+    { "roomId": "1032263002", "rateId": "10322630992", "priceModelId": 1 },
+    { "roomId": "1032263002", "rateId": "10322630993", "priceModelId": 1 },
+    { "roomId": "1032263003", "rateId": "10322630991", "priceModelId": 1 },
+    { "roomId": "1032263003", "rateId": "10322630992", "priceModelId": 1 },
+    { "roomId": "1032263003", "rateId": "10322630993", "priceModelId": 1 }
+  ]
+}

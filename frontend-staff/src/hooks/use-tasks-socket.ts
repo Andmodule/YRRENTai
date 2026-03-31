@@ -14,7 +14,7 @@ async function fetchWsToken(): Promise<string> {
   return res.data.data.token;
 }
 
-export function useTasksSocket() {
+export function useTasksSocket(staffUserId?: string) {
   const queryClient = useQueryClient();
   const today = format(new Date(), 'yyyy-MM-dd');
 
@@ -32,6 +32,16 @@ export function useTasksSocket() {
           .catch(() => cb({ token: '' }));
       },
       transports: sameOrigin ? ['polling', 'websocket'] : ['websocket', 'polling'],
+    });
+
+    socket.on('checklist_item_updated', () => {
+      void queryClient.invalidateQueries({ queryKey: ['tasks', today] });
+      void queryClient.invalidateQueries({ queryKey: ['task-checklist'] });
+    });
+
+    socket.on('incident_manager_note', (payload: { incidentId: string; text: string; reportedByUserId: string }) => {
+      if (staffUserId && payload.reportedByUserId !== staffUserId) return;
+      toast.info('Ответ менеджера по инциденту', { description: payload.text });
     });
 
     socket.on('task_updated', async () => {
@@ -62,5 +72,5 @@ export function useTasksSocket() {
     return () => {
       socket.disconnect();
     };
-  }, [queryClient, today]);
+  }, [queryClient, today, staffUserId]);
 }

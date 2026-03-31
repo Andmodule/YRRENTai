@@ -38,6 +38,10 @@ export class PropertyEntity {
   @Column({ nullable: true })
   maxGuests?: number;
 
+  /** External property id in Zodomus (for reservations-queue / sync). */
+  @Column({ type: 'varchar', length: 255, nullable: true, unique: true })
+  zodomusPropertyId!: string | null;
+
   @Column('uuid')
   ownerId!: string;
 

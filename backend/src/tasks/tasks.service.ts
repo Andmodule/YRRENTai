@@ -1,10 +1,16 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { format } from 'date-fns';
 import { TaskEntity } from './entities/task.entity';
 import { TaskNoteEntity } from './entities/task-note.entity';
 import { TasksGateway } from './tasks.gateway';
+import { ChecklistService } from './checklist.service';
 
 export interface TaskDto {
   uuid: string;
@@ -32,6 +38,12 @@ export interface TaskDto {
   unseenNotesCount: number;
   createdAt: string;
   completedAt: string | null;
+  /** null if no checklist rows for this task */
+  checklistSummary: {
+    total: number;
+    checked: number;
+    requiredUnchecked: number;
+  } | null;
 }
 
 export interface TaskNoteDto {
@@ -52,11 +64,15 @@ export class TasksService {
     @InjectRepository(TaskNoteEntity)
     private readonly taskNoteRepo: Repository<TaskNoteEntity>,
     private readonly tasksGateway: TasksGateway,
+    private readonly checklistService: ChecklistService,
   ) {}
 
   private toDto(
     t: TaskEntity,
-    extras: { unseenNotesCount: number },
+    extras: {
+      unseenNotesCount: number;
+      checklistSummary: TaskDto['checklistSummary'];
+    },
   ): TaskDto {
     const addr = [t.property.city, t.property.address].filter(Boolean).join(', ');
     return {
@@ -85,6 +101,7 @@ export class TasksService {
       unseenNotesCount: extras.unseenNotesCount,
       createdAt: t.createdAt.toISOString(),
       completedAt: t.completedAt ? t.completedAt.toISOString() : null,
+      checklistSummary: extras.checklistSummary,
     };
   }
 
@@ -124,7 +141,13 @@ export class TasksService {
 
     const rows = await qb.orderBy('t.dueDate', 'ASC').addOrderBy('t.dueTime', 'ASC').getMany();
     const unseen = await this.unseenNoteCounts(rows.map((r) => r.id));
-    return rows.map((r) => this.toDto(r, { unseenNotesCount: unseen.get(r.id) ?? 0 }));
+    const summaries = await this.checklistService.summariesForTasks(rows.map((r) => r.id));
+    return rows.map((r) =>
+      this.toDto(r, {
+        unseenNotesCount: unseen.get(r.id) ?? 0,
+        checklistSummary: summaries.get(r.id) ?? null,
+      }),
+    );
   }
 
   async findForStaff(userId: string, from: string, to: string): Promise<TaskDto[]> {
@@ -137,7 +160,13 @@ export class TasksService {
       .orderBy('t.dueDate', 'ASC')
       .addOrderBy('t.dueTime', 'ASC')
       .getMany();
-    return rows.map((r) => this.toDto(r, { unseenNotesCount: 0 }));
+    const summaries = await this.checklistService.summariesForTasks(rows.map((r) => r.id));
+    return rows.map((r) =>
+      this.toDto(r, {
+        unseenNotesCount: 0,
+        checklistSummary: summaries.get(r.id) ?? null,
+      }),
+    );
   }
 
   async ensureTaskAccess(taskId: string, userId: string, role: string): Promise<TaskEntity> {
@@ -170,8 +199,25 @@ export class TasksService {
       notes: string;
       issueDescription: string | null;
     }>,
+    forceComplete?: boolean,
   ): Promise<TaskDto> {
     const task = await this.ensureTaskAccess(taskId, userId, role);
+
+    if (patch.status === 'done') {
+      const result = await this.checklistService.assertCanCompleteTask(taskId);
+      if (!result.ok) {
+        if (forceComplete && (role === 'OWNER' || role === 'MANAGER')) {
+          /* allow */
+        } else if (forceComplete) {
+          throw new ForbiddenException('forceComplete is only for owner/manager');
+        } else {
+          throw new UnprocessableEntityException({
+            message: 'Не все обязательные пункты выполнены',
+            uncheckedRequired: result.unchecked,
+          });
+        }
+      }
+    }
 
     if (patch.status !== undefined) task.status = patch.status;
     if (patch.assigneeId !== undefined && role !== 'STAFF') task.assigneeId = patch.assigneeId;
@@ -209,7 +255,11 @@ export class TasksService {
   private async toDtoForRole(t: TaskEntity, role: string): Promise<TaskDto> {
     const unseen =
       role === 'STAFF' ? 0 : (await this.unseenNoteCounts([t.id])).get(t.id) ?? 0;
-    return this.toDto(t, { unseenNotesCount: unseen });
+    const summaries = await this.checklistService.summariesForTasks([t.id]);
+    return this.toDto(t, {
+      unseenNotesCount: unseen,
+      checklistSummary: summaries.get(t.id) ?? null,
+    });
   }
 
   async appendPhotoUrls(taskId: string, userId: string, role: string, urls: string[]): Promise<TaskDto> {
@@ -366,7 +416,8 @@ export class TasksService {
     }
 
     for (const r of rows) {
-      await this.taskRepo.save(this.taskRepo.create(r));
+      const saved = await this.taskRepo.save(this.taskRepo.create(r));
+      await this.checklistService.applyAutoTemplateIfAny(saved.id);
     }
   }
 }

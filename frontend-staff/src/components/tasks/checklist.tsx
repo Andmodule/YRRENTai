@@ -1,6 +1,7 @@
 'use client';
 
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useCallback } from 'react';
+import { toast } from 'sonner';
 import { format, startOfDay } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import {
@@ -13,6 +14,8 @@ import {
   Wifi,
   WifiOff,
   Route,
+  Play,
+  AlertTriangle,
 } from 'lucide-react';
 import { useTodayTasks } from '@/hooks/use-tasks';
 import { useTasksSocket } from '@/hooks/use-tasks-socket';
@@ -24,10 +27,20 @@ import { ProgressBar } from './progress-bar';
 import { IssueDrawer } from './issue-drawer';
 import { PhotoVerificationDrawer } from './photo-verification-drawer';
 import { TaskDetailStaff } from './task-detail-staff';
+import { TaskQuickActionsDrawer } from './task-quick-actions-drawer';
+import { IncidentReportDrawer } from './incident-report-drawer';
+import { strings } from '@/strings/tasks';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { Drawer, DrawerContent } from '@/components/ui/drawer';
-import { deadlineUrgency, estimateShiftEnd, isShiftDoneToday } from '@/lib/shift-utils';
+import {
+  deadlineUrgency,
+  estimateShiftEnd,
+  isShiftDoneToday,
+  pickNextTaskByDueTime,
+  formatShiftDurationLabel,
+} from '@/lib/shift-utils';
+import { parseChecklist422 } from '@/lib/is-checklist-422';
 
 interface StaffChecklistProps {
   user: StaffUser;
@@ -35,22 +48,24 @@ interface StaffChecklistProps {
 }
 
 export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
-  useTasksSocket();
+  useTasksSocket(user.id);
 
   const today = useMemo(() => startOfDay(new Date()), []);
   const todayStr = format(today, 'yyyy-MM-dd');
   const dateLabel = format(today, 'EEEE, d MMMM', { locale: ru });
 
   const { data, isLoading, isError, refetch } = useTodayTasks();
-  const { mutate: updateStatus } = useUpdateTaskStatus();
+  const { mutate: updateStatus, isPending: statusPending } = useUpdateTaskStatus();
   const { mutateAsync: completeShift, isPending: shiftPending } = useCompleteShift();
 
   const [issueUuid, setIssueUuid] = useState<string | null>(null);
   const [detailTask, setDetailTask] = useState<Task | null>(null);
+  const [quickTask, setQuickTask] = useState<Task | null>(null);
   const [photoTaskUuid, setPhotoTaskUuid] = useState<string | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const [routeOpen, setRouteOpen] = useState(false);
-  const [shiftCompleteView, setShiftCompleteView] = useState(false);
+  const [incidentOpen, setIncidentOpen] = useState(false);
+  const [checklistScrollNonce, setChecklistScrollNonce] = useState(0);
   const [online, setOnline] = useState(
     typeof navigator !== 'undefined' ? navigator.onLine : true,
   );
@@ -90,10 +105,15 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
   const allDone = total > 0 && doneCount === total;
   const shiftEst = estimateShiftEnd(todayTasks);
 
-  const nextTask = useMemo(() => {
-    const pending = todayTasks.filter((t) => t.status !== 'done' && t.status !== 'issue');
-    return pending[0] ?? null;
-  }, [todayTasks]);
+  const nextTask = useMemo(() => pickNextTaskByDueTime(todayTasks), [todayTasks]);
+
+  const [sessionShiftStartMs, setSessionShiftStartMs] = useState<number | null>(null);
+  useEffect(() => {
+    const raw = sessionStorage.getItem(`staffShiftStart_${todayStr}`);
+    setSessionShiftStartMs(raw ? Number(raw) : null);
+  }, [todayStr]);
+
+  const incidentPropertyId = todayTasks[0]?.propertyId ?? null;
 
   const routeSorted = useMemo(() => {
     return [...todayTasks].sort((a, b) =>
@@ -103,29 +123,62 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
 
   const initials = `${user.firstName[0] ?? ''}${user.lastName[0] ?? ''}`.toUpperCase();
 
+  const handleMarkDoneTask = useCallback(
+    (task: Task) => {
+      updateStatus(
+        { uuid: task.uuid, status: 'done' },
+        {
+          onSuccess: () => {
+            setQuickTask(null);
+            setPhotoTaskUuid(task.uuid);
+          },
+          onError: (err: unknown) => {
+            const checklistErr = parseChecklist422(err);
+            if (checklistErr) {
+              toast.warning(strings.tasks.checklist.completeRequired);
+              setQuickTask(null);
+              setDetailTask(task);
+              setChecklistScrollNonce((n) => n + 1);
+              return;
+            }
+            toast.error('Не удалось обновить статус');
+          },
+        },
+      );
+    },
+    [updateStatus],
+  );
+
   const handleMarkDone = (uuid: string) => {
-    updateStatus(
-      { uuid, status: 'done' },
-      {
-        onSuccess: () => setPhotoTaskUuid(uuid),
-      },
-    );
+    const t = todayTasks.find((x) => x.uuid === uuid);
+    if (t) handleMarkDoneTask(t);
   };
 
-  const shiftDurationLabel = () => {
-    if (typeof sessionStorage === 'undefined') return '—';
-    const key = `staffShiftStart_${todayStr}`;
-    const raw = sessionStorage.getItem(key);
-    if (!raw) return '—';
-    const mins = Math.round((Date.now() - Number(raw)) / 60000);
-    const h = Math.floor(mins / 60);
-    const m = mins % 60;
-    return h > 0 ? `${h}ч ${m}мин` : `${m}мин`;
-  };
+  const shiftCompletedDurationLabel = formatShiftDurationLabel(
+    todayTasks,
+    user.staffShiftCompletedAt ?? null,
+    sessionShiftStartMs,
+  );
 
   const handleFinishShift = async () => {
     await completeShift();
-    setShiftCompleteView(true);
+  };
+
+  const handleQuickStart = (uuid: string) => {
+    updateStatus(
+      { uuid, status: 'in_progress' },
+      { onSuccess: () => setQuickTask(null) },
+    );
+  };
+
+  const handleQuickIssue = (uuid: string) => {
+    setQuickTask(null);
+    setIssueUuid(uuid);
+  };
+
+  const handleStartNextCard = () => {
+    if (!nextTask || nextTask.status !== 'pending') return;
+    updateStatus({ uuid: nextTask.uuid, status: 'in_progress' });
   };
 
   const shiftAlreadyDoneToday = isShiftDoneToday(user.staffShiftCompletedAt ?? null);
@@ -185,16 +238,6 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
               (~45 мин × оставшихся задач)
             </p>
           )}
-          {nextTask && (
-            <div className="mt-4 rounded-2xl border border-teal-200/80 bg-gradient-to-br from-teal-50 to-white p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-teal-800">Сейчас дальше</p>
-              <p className="mt-1 text-sm font-semibold text-slate-900">{nextTask.propertyTitle}</p>
-              <p className="text-xs text-slate-600">
-                {nextTask.contextLabel ?? typeLabel(nextTask.type)}
-                {nextTask.dueTime ? ` · до ${nextTask.dueTime}` : ''}
-              </p>
-            </div>
-          )}
           <ProgressBar done={doneCount} total={total} />
         </section>
 
@@ -238,7 +281,26 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
           </div>
         )}
 
-        {!isLoading && !isError && allDone && !shiftCompleteView && (
+        {shiftAlreadyDoneToday && (
+          <div className="mb-4 rounded-2xl border-2 border-teal-500/70 bg-gradient-to-br from-teal-50 via-white to-emerald-50/80 p-5 shadow-md shadow-teal-900/5">
+            <p className="text-xl font-bold text-slate-900">🎉 Смена завершена!</p>
+            <p className="mt-3 text-sm text-slate-700">
+              Выполнено задач:{' '}
+              <span className="font-semibold text-teal-900">
+                {doneCount} / {total || '—'}
+              </span>
+            </p>
+            <p className="mt-1 text-sm text-slate-700">
+              С фото-верификацией:{' '}
+              <span className="font-semibold text-teal-900">{verifiedCount}</span>
+            </p>
+            <p className="mt-1 text-sm text-slate-700">
+              Время смены: <span className="font-semibold text-slate-900">{shiftCompletedDurationLabel}</span>
+            </p>
+          </div>
+        )}
+
+        {!isLoading && !isError && allDone && !shiftAlreadyDoneToday && (
           <div className="mb-4 space-y-3">
             <div className="flex items-center gap-3 rounded-2xl border border-emerald-200/80 bg-gradient-to-r from-emerald-50 to-teal-50 px-4 py-3 text-emerald-900 shadow-sm">
               <PartyPopper className="h-8 w-8 shrink-0 text-emerald-600" aria-hidden />
@@ -250,11 +312,37 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
             <Button
               className="w-full rounded-xl"
               size="lg"
-              disabled={shiftPending || shiftAlreadyDoneToday}
+              disabled={shiftPending}
               onClick={() => void handleFinishShift()}
             >
-              {shiftAlreadyDoneToday ? 'Смена уже отмечена' : 'Завершить смену'}
+              Завершить смену
             </Button>
+          </div>
+        )}
+
+        {!isLoading && !isError && total > 0 && nextTask && !allDone && (
+          <div className="mb-4 rounded-2xl border-2 border-teal-500 bg-gradient-to-br from-teal-50/90 to-white p-4 shadow-sm">
+            <p className="text-xs font-bold uppercase tracking-wide text-teal-800">Следующая задача</p>
+            <p className="mt-2 text-sm font-semibold text-slate-900">
+              {typeLabel(nextTask.type)} · {nextTask.propertyTitle}
+            </p>
+            {nextTask.contextLabel ? (
+              <p className="mt-1 text-sm text-slate-700">{nextTask.contextLabel}</p>
+            ) : null}
+            {nextTask.dueTime ? (
+              <p className="mt-2 text-sm font-medium text-teal-900">До {nextTask.dueTime}</p>
+            ) : (
+              <p className="mt-2 text-sm text-slate-500">Без времени дедлайна</p>
+            )}
+            {nextTask.status === 'pending' && (
+              <Button className="mt-4 w-full rounded-xl gap-2" onClick={handleStartNextCard}>
+                <Play className="h-4 w-4" />
+                Начать
+              </Button>
+            )}
+            {nextTask.status === 'in_progress' && (
+              <p className="mt-3 text-sm font-medium text-teal-800">В работе — откройте строку в списке для действий</p>
+            )}
           </div>
         )}
 
@@ -271,13 +359,29 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
                 deadlineUrgency={deadlineUrgency(task)}
                 onMarkDone={handleMarkDone}
                 onMarkIssue={(uuid) => setIssueUuid(uuid)}
-                onOpen={setDetailTask}
+                onQuickOpen={setQuickTask}
               />
             ))}
           </div>
         )}
 
-        <TaskDetailStaff task={detailTask} open={!!detailTask} onClose={() => setDetailTask(null)} />
+        <TaskQuickActionsDrawer
+          task={quickTask}
+          open={!!quickTask}
+          onOpenChange={(o) => !o && setQuickTask(null)}
+          onStart={handleQuickStart}
+          onMarkDone={handleMarkDoneTask}
+          onMarkIssue={handleQuickIssue}
+          onOpenDetails={(t) => setDetailTask(t)}
+          startPending={statusPending}
+        />
+
+        <TaskDetailStaff
+          task={detailTask}
+          open={!!detailTask}
+          onClose={() => setDetailTask(null)}
+          checklistScrollNonce={checklistScrollNonce}
+        />
 
         <PhotoVerificationDrawer
           taskUuid={photoTaskUuid}
@@ -345,23 +449,28 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
           </DrawerContent>
         </Drawer>
 
-        {shiftCompleteView && (
-          <div className="fixed inset-0 z-[60] flex flex-col items-center justify-center bg-gradient-to-b from-teal-50 to-white p-6 text-center">
-            <PartyPopper className="mb-4 h-16 w-16 text-teal-600" />
-            <h2 className="text-2xl font-bold text-slate-900">Смена завершена</h2>
-            <p className="mt-2 text-slate-600">
-              Выполнено задач: {doneCount}/{total}
-            </p>
-            <p className="mt-1 text-slate-600">Фото к задачам: {verifiedCount} из {doneCount || total}</p>
-            <p className="mt-1 text-slate-600">Время на смене: ~{shiftDurationLabel()}</p>
-            <Button className="mt-8" onClick={() => setShiftCompleteView(false)}>
-              Закрыть
-            </Button>
-          </div>
-        )}
       </main>
 
       <IssueDrawer taskUuid={issueUuid} open={!!issueUuid} onOpenChange={(o) => !o && setIssueUuid(null)} />
+
+      {todayTasks.length > 0 && incidentPropertyId && (
+        <>
+          <button
+            type="button"
+            className="fixed bottom-24 right-4 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-amber-500 text-white shadow-lg shadow-amber-900/20 transition-transform active:scale-95"
+            onClick={() => setIncidentOpen(true)}
+            aria-label={strings.tasks.incident.fabLabel}
+          >
+            <AlertTriangle className="h-7 w-7" aria-hidden />
+          </button>
+          <IncidentReportDrawer
+            open={incidentOpen}
+            onOpenChange={setIncidentOpen}
+            propertyId={incidentPropertyId}
+            taskId={null}
+          />
+        </>
+      )}
 
       <div className="pb-safe" />
     </div>

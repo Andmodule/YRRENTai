@@ -217,89 +217,98 @@ export function KbImprovementCard({
           </div>
 
           {status === 'idle' ? (
-            <div className="mt-2 space-y-2">
-              <div>
-                <div className="mb-1 text-[11px] font-medium text-muted-foreground">{t('guestQuestion')}</div>
-                <button
-                  type="button"
-                  onClick={enterEdit}
-                  className={cn(
-                    'w-full min-h-[2.5rem] cursor-text rounded-md border border-border/80 bg-background px-2 py-1.5 text-left text-[15px] font-normal leading-snug text-foreground shadow-none',
-                    'whitespace-pre-wrap break-words transition-colors hover:bg-muted/25',
-                    'dark:border-transparent dark:bg-transparent dark:hover:bg-muted/15',
-                  )}
-                >
-                  {item.guestQuestion}
-                </button>
+            <>
+              <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-2 md:items-start">
+                <div className="min-w-0">
+                  <button
+                    type="button"
+                    onClick={enterEdit}
+                    aria-label={t('guestQuestion')}
+                    className={cn(
+                      'w-full min-h-[2.5rem] cursor-text rounded-md border border-border/80 bg-background px-2 py-1.5 text-left text-[15px] font-normal leading-snug text-foreground shadow-none',
+                      'whitespace-pre-wrap break-words transition-colors hover:bg-muted/25',
+                      'dark:border-transparent dark:bg-transparent dark:hover:bg-muted/15',
+                    )}
+                  >
+                    {item.guestQuestion}
+                  </button>
+                </div>
+                <div className="min-w-0">
+                  <button
+                    type="button"
+                    onClick={enterEdit}
+                    aria-label={t('answerForAi')}
+                    className={cn(
+                      'w-full min-h-[2.5rem] cursor-text rounded-md border border-border/80 bg-background px-2 py-1.5 text-left text-sm leading-relaxed text-foreground shadow-none',
+                      'whitespace-pre-wrap break-words transition-colors hover:bg-muted/25',
+                      'dark:border-transparent dark:bg-transparent dark:hover:bg-muted/15',
+                    )}
+                  >
+                    {item.managerAnswer}
+                  </button>
+                </div>
               </div>
-              <div>
-                <div className="mb-1 text-[11px] font-medium text-muted-foreground">{t('answerForAi')}</div>
-                <button
-                  type="button"
-                  onClick={enterEdit}
-                  className={cn(
-                    'w-full min-h-[2.5rem] cursor-text rounded-md border border-border/80 bg-background px-2 py-1.5 text-left text-sm leading-relaxed text-foreground shadow-none',
-                    'whitespace-pre-wrap break-words transition-colors hover:bg-muted/25',
-                    'dark:border-transparent dark:bg-transparent dark:hover:bg-muted/15',
-                  )}
-                >
-                  {item.managerAnswer}
-                </button>
+              <div className="mt-2 flex min-h-[22px] items-center justify-end gap-2 pt-0.5" aria-hidden>
+                <span className="mr-auto hidden text-[10px] text-muted-foreground/70 sm:invisible sm:block">
+                  Esc — {tKb('form.cancel')} · ⌘↵ — {tKb('form.saveClose')}
+                </span>
               </div>
-            </div>
+            </>
           ) : (
-            <div onBlur={handleCardBlur} onKeyDown={handleKeyDown} className="mt-2 space-y-2">
-              <div>
-                <div className="mb-1 text-[11px] font-medium text-muted-foreground">{t('guestQuestion')}</div>
-                <textarea
-                  ref={questionRef}
-                  value={question}
-                  readOnly={status === 'saving'}
-                  onChange={(e) => {
-                    setQuestion(e.target.value);
-                    scheduleSave(e.target.value, answer);
-                    resizeQuestion();
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Tab' && !e.shiftKey) {
-                      e.preventDefault();
-                      focusTextareaAtEnd(answerRef.current);
-                    }
-                  }}
-                  rows={1}
-                  className={cn(
-                    'box-border w-full min-h-[2.5rem] max-h-[min(40vh,280px)] resize-none overflow-y-auto rounded-md border px-2 py-1.5 text-[15px] leading-snug text-foreground shadow-none',
-                    'border-border/80 bg-background dark:border-slate-600 dark:bg-slate-950/95',
-                    'whitespace-pre-wrap break-words placeholder:text-muted-foreground/40',
-                    'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/60 read-only:opacity-60',
-                  )}
-                  placeholder={t('guestQuestion')}
-                />
+            <div onBlur={handleCardBlur} onKeyDown={handleKeyDown} className="mt-2">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:items-start">
+                <div className="min-w-0">
+                  <textarea
+                    ref={questionRef}
+                    value={question}
+                    readOnly={status === 'saving'}
+                    aria-label={t('guestQuestion')}
+                    onChange={(e) => {
+                      setQuestion(e.target.value);
+                      scheduleSave(e.target.value, answer);
+                      resizeQuestion();
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Tab' && !e.shiftKey) {
+                        e.preventDefault();
+                        focusTextareaAtEnd(answerRef.current);
+                      }
+                    }}
+                    rows={1}
+                    className={cn(
+                      'box-border w-full min-h-[2.5rem] max-h-[min(40vh,280px)] resize-none overflow-y-auto rounded-md border px-2 py-1.5 text-[15px] leading-snug text-foreground shadow-none',
+                      'border-border/80 bg-background dark:border-slate-600 dark:bg-slate-950/95',
+                      'whitespace-pre-wrap break-words placeholder:text-muted-foreground/40',
+                      'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/60 read-only:opacity-60',
+                    )}
+                    placeholder={t('guestQuestion')}
+                  />
+                </div>
+
+                <div className="min-w-0">
+                  <textarea
+                    ref={answerRef}
+                    value={answer}
+                    readOnly={status === 'saving'}
+                    aria-label={t('answerForAi')}
+                    onChange={(e) => {
+                      setAnswer(e.target.value);
+                      scheduleSave(question, e.target.value);
+                      resizeAnswer();
+                    }}
+                    rows={1}
+                    className={cn(
+                      'box-border w-full min-h-[2.5rem] max-h-[min(45vh,320px)] resize-none overflow-y-auto rounded-md border px-2 py-1.5 text-sm leading-relaxed text-foreground shadow-none',
+                      'border-border/80 bg-background dark:border-slate-600 dark:bg-slate-950/95',
+                      'whitespace-pre-wrap break-words placeholder:text-muted-foreground/40',
+                      'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/60 read-only:opacity-60',
+                    )}
+                    placeholder={t('answerForAi')}
+                  />
+                </div>
               </div>
 
-              <div>
-                <div className="mb-1 text-[11px] font-medium text-muted-foreground">{t('answerForAi')}</div>
-                <textarea
-                  ref={answerRef}
-                  value={answer}
-                  readOnly={status === 'saving'}
-                  onChange={(e) => {
-                    setAnswer(e.target.value);
-                    scheduleSave(question, e.target.value);
-                    resizeAnswer();
-                  }}
-                  rows={1}
-                  className={cn(
-                    'box-border w-full min-h-[2.5rem] max-h-[min(45vh,320px)] resize-none overflow-y-auto rounded-md border px-2 py-1.5 text-sm leading-relaxed text-foreground shadow-none',
-                    'border-border/80 bg-background dark:border-slate-600 dark:bg-slate-950/95',
-                    'whitespace-pre-wrap break-words placeholder:text-muted-foreground/40',
-                    'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/60 read-only:opacity-60',
-                  )}
-                  placeholder={t('answerForAi')}
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-0.5">
+              <div className="mt-2 flex min-h-[22px] items-center justify-end gap-2 pt-0.5">
                 <span className="mr-auto hidden text-[10px] text-muted-foreground/70 sm:block">
                   Esc — {tKb('form.cancel')} · ⌘↵ — {tKb('form.saveClose')}
                 </span>

@@ -7,6 +7,10 @@ export const apiClient = axios.create({
 });
 
 apiClient.interceptors.request.use((config) => {
+  if (config.data instanceof FormData) {
+    config.headers.delete('Content-Type');
+  }
+  // SSR: same-origin URL so Next middleware can proxy to the API (cookies stay on :3013).
   if (typeof window === 'undefined') {
     const site = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3013';
     config.baseURL = `${site.replace(/\/$/, '')}/api/v1`;

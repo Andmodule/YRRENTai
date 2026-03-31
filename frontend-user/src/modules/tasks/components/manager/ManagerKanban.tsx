@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -26,6 +26,10 @@ import { KANBAN_COLUMNS } from '../../constants';
 import { KanbanColumn } from './KanbanColumn';
 import { TaskCard } from './TaskCard';
 import { TaskDetailDrawer } from '../shared/TaskDetailDrawer';
+import { useIncidents } from '@/modules/incidents/hooks/useIncidents';
+import type { Incident } from '@/modules/incidents/hooks/useIncidents';
+import { IncidentDetailDrawer } from '@/modules/incidents/components/IncidentDetailDrawer';
+import { TooltipProvider } from '@/components/ui/tooltip';
 
 export function ManagerKanban({
   filters,
@@ -36,11 +40,35 @@ export function ManagerKanban({
 }) {
   const t = useTranslations('tasks');
   const { data, isLoading, isError, refetch } = useTasks(filters);
+  const { data: incidentsRaw, isLoading: incidentsLoading } = useIncidents();
   const filtered = useTaskFilters(data?.tasks ?? [], filters);
   const { mutate: updateStatus } = useUpdateTaskStatus();
 
   const [detailTask, setDetailTask] = useState<Task | null>(null);
+  const [detailIncident, setDetailIncident] = useState<Incident | null>(null);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
+
+  const boardIncidents = useMemo(() => {
+    if (!incidentsRaw?.length) return [];
+    const start = new Date(filters.dateRange.start);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(filters.dateRange.end);
+    end.setHours(23, 59, 59, 999);
+    const q = filters.propertyQuery.trim().toLowerCase();
+    return incidentsRaw.filter((i) => {
+      if (i.status !== 'open' && i.status !== 'in_review') return false;
+      const t = new Date(i.createdAt).getTime();
+      if (t < start.getTime() || t > end.getTime()) return false;
+      if (q && !i.propertyTitle.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [incidentsRaw, filters.dateRange, filters.propertyQuery]);
+
+  useEffect(() => {
+    if (!detailIncident || !incidentsRaw) return;
+    const next = incidentsRaw.find((x) => x.uuid === detailIncident.uuid);
+    if (next) setDetailIncident(next);
+  }, [incidentsRaw, detailIncident?.uuid]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -186,7 +214,7 @@ export function ManagerKanban({
         </Alert>
       )}
 
-      {isLoading && (
+      {(isLoading || incidentsLoading) && (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {Array.from({ length: 4 }).map((_, i) => (
             <Skeleton key={i} className="h-24 w-full rounded-xl" />
@@ -201,16 +229,31 @@ export function ManagerKanban({
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
         >
-          <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto pb-2">
+          <TooltipProvider delayDuration={200}>
+            <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto pb-2">
             {KANBAN_COLUMNS.map((col) => (
               <KanbanColumn
                 key={col.status}
                 column={col}
                 tasks={byStatus[col.status]}
-                onOpenTask={setDetailTask}
+                onOpenTask={(t) => {
+                  setDetailIncident(null);
+                  setDetailTask(t);
+                }}
+                incidents={col.status === 'issue' ? boardIncidents : undefined}
+                onOpenIncident={
+                  col.status === 'issue'
+                    ? (i) => {
+                        setDetailTask(null);
+                        setDetailIncident(i);
+                      }
+                    : undefined
+                }
+                incidentColumnHint={col.status === 'issue'}
               />
             ))}
-          </div>
+            </div>
+          </TooltipProvider>
           <DragOverlay dropAnimation={null}>
             {activeTask ? (
               <div className="w-[260px] opacity-95">
@@ -222,6 +265,11 @@ export function ManagerKanban({
       )}
 
       <TaskDetailDrawer task={detailTask} open={!!detailTask} onOpenChange={(o) => !o && setDetailTask(null)} />
+      <IncidentDetailDrawer
+        incident={detailIncident}
+        open={!!detailIncident}
+        onOpenChange={(o) => !o && setDetailIncident(null)}
+      />
     </div>
   );
 }

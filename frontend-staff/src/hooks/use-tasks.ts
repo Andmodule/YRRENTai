@@ -29,6 +29,20 @@ export interface Task {
   unseenNotesCount: number;
   createdAt: string;
   completedAt: string | null;
+  checklistSummary?: {
+    total: number;
+    checked: number;
+    requiredUnchecked: number;
+  } | null;
+}
+
+export interface TaskChecklistItem {
+  uuid: string;
+  text: string;
+  required: boolean;
+  sortOrder: number;
+  checked: boolean;
+  checkedAt: string | null;
 }
 
 export interface TaskNote {
@@ -53,6 +67,79 @@ export function useTodayTasks() {
     },
     staleTime: 30_000,
     placeholderData: (prev) => prev,
+  });
+}
+
+export function useTaskChecklist(taskUuid: string | null, enabled: boolean) {
+  return useQuery<{ items: TaskChecklistItem[] }>({
+    queryKey: ['task-checklist', taskUuid],
+    queryFn: async () => {
+      const res = await apiClient.get<{ data: { items: TaskChecklistItem[] } }>(
+        `/tasks/${taskUuid}/checklist`,
+      );
+      return { items: res.data.data.items };
+    },
+    enabled: !!taskUuid && enabled,
+    staleTime: 15_000,
+  });
+}
+
+export function usePatchTaskChecklistItem() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      taskUuid,
+      itemId,
+      checked,
+    }: {
+      taskUuid: string;
+      itemId: string;
+      checked: boolean;
+    }) => {
+      const res = await apiClient.patch<{ data: { item: TaskChecklistItem } }>(
+        `/tasks/${taskUuid}/checklist/${itemId}`,
+        { checked },
+      );
+      return res.data.data.item;
+    },
+    onSuccess: (_, v) => {
+      queryClient.invalidateQueries({ queryKey: ['task-checklist', v.taskUuid] });
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    },
+  });
+}
+
+export function useUploadIncidentPhotos() {
+  return useMutation({
+    mutationFn: async (files: File[]) => {
+      const form = new FormData();
+      files.forEach((f) => form.append('files', f));
+      const res = await apiClient.post<{ data: { photoUrls: string[] } }>(
+        '/tasks/incidents/upload-photos',
+        form,
+      );
+      return res.data.data.photoUrls;
+    },
+  });
+}
+
+export function useCreateIncident() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: {
+      type: 'lost_item' | 'damage';
+      propertyId: string;
+      taskId: string | null;
+      description: string;
+      photoUrls: string[];
+      guestName?: string | null;
+      itemDescription?: string | null;
+      damageLocation?: string | null;
+    }) => {
+      const res = await apiClient.post<{ data: { incident: unknown } }>('/tasks/incidents', body);
+      return res.data.data.incident;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tasks'] }),
   });
 }
 
@@ -115,7 +202,6 @@ export function useUploadTaskPhotos() {
       const res = await apiClient.post<{ data: { photoUrls: string[] } }>(
         `/tasks/${uuid}/photos`,
         form,
-        { headers: { 'Content-Type': 'multipart/form-data' } },
       );
       return res.data.data.photoUrls;
     },
@@ -130,9 +216,7 @@ export function useAddTaskNote() {
       const form = new FormData();
       form.append('text', text);
       if (file) form.append('photo', file);
-      const res = await apiClient.post<{ data: { note: TaskNote } }>(`/tasks/${uuid}/notes`, form, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      const res = await apiClient.post<{ data: { note: TaskNote } }>(`/tasks/${uuid}/notes`, form);
       return res.data.data.note;
     },
     onSuccess: (_, v) => {

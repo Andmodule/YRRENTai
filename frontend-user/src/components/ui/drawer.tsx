@@ -17,7 +17,7 @@ export function DrawerOverlay({
   return (
     <DrawerPrimitive.Overlay
       className={cn(
-        'fixed inset-0 z-50 bg-black/50',
+        'fixed inset-0 z-[100] bg-black/50',
         'data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
         className,
       )}
@@ -37,7 +37,7 @@ export function DrawerContent({ title, description, children, className, ...prop
       <DrawerOverlay />
       <DrawerPrimitive.Content
         className={cn(
-          'fixed inset-x-0 bottom-0 z-50 flex max-h-[90vh] flex-col rounded-t-lg border bg-background shadow-lg',
+          'fixed inset-x-0 bottom-0 z-[100] flex max-h-[min(92dvh,92vh)] flex-col rounded-t-lg border bg-background shadow-lg',
           'data-[state=open]:animate-in data-[state=closed]:animate-out',
           'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
           'data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom',

@@ -21,7 +21,8 @@ interface ChecklistItemProps {
   deadlineUrgency: DeadlineUrgency;
   onMarkDone: (uuid: string) => void;
   onMarkIssue: (uuid: string) => void;
-  onOpen: (task: Task) => void;
+  /** Row tap (not checkbox): quick actions drawer */
+  onQuickOpen: (task: Task) => void;
 }
 
 const typeLabels: Record<string, string> = {
@@ -54,7 +55,7 @@ export const ChecklistItem = memo(function ChecklistItem({
   deadlineUrgency,
   onMarkDone,
   onMarkIssue,
-  onOpen,
+  onQuickOpen,
 }: ChecklistItemProps) {
   const isDone = task.status === 'done';
   const isIssue = task.status === 'issue';
@@ -115,7 +116,7 @@ export const ChecklistItem = memo(function ChecklistItem({
       e.preventDefault();
       triggerAction('issue');
     } else if (e.key === 'Enter') {
-      onOpen(task);
+      onQuickOpen(task);
     }
   };
 
@@ -142,7 +143,7 @@ export const ChecklistItem = memo(function ChecklistItem({
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
         onKeyDown={handleKeyDown}
-        onClick={() => onOpen(task)}
+        onClick={() => onQuickOpen(task)}
         className={`relative z-10 flex min-h-14 cursor-pointer select-none items-center gap-3 rounded-2xl border px-4 py-3 shadow-md shadow-slate-900/5 transition-all duration-200 hover:shadow-lg active:scale-[0.99] ${urgencyRing[deadlineUrgency]} ${
           isIssue
             ? 'border-amber-200/90 bg-amber-50/90 hover:border-amber-300/80'

@@ -54,6 +54,15 @@ export class BookingEntity {
   @Column({ nullable: true })
   cancelledBy?: string;
 
+  @Column({ type: 'varchar', length: 255, nullable: true, unique: true })
+  zodomusReservationId!: string | null;
+
+  @Column({ type: 'int', nullable: true })
+  zodomusChannelId!: number | null;
+
+  @Column({ type: 'boolean', default: false })
+  zodomusSynced!: boolean;
+
   @Column('uuid')
   createdBy!: string;
 

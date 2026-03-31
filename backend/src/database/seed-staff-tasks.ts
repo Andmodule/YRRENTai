@@ -6,6 +6,7 @@ import { AppModule } from '../app.module';
 import { UserEntity } from '../user/entities/user.entity';
 import { PropertyEntity } from '../property/entities/property.entity';
 import { TaskEntity } from '../tasks/entities/task.entity';
+import { ChecklistService } from '../tasks/checklist.service';
 
 const logger = new Logger('SeedStaffTasks');
 
@@ -21,6 +22,7 @@ async function run() {
     const userRepo = ds.getRepository(UserEntity);
     const propRepo = ds.getRepository(PropertyEntity);
     const taskRepo = ds.getRepository(TaskEntity);
+    const checklistService = app.get(ChecklistService);
 
     const email = (process.env.STAFF_EMAIL || 'cleaner@test.com').trim().toLowerCase();
     const staff = await userRepo.findOne({ where: { email: ILike(email) } });
@@ -120,7 +122,8 @@ async function run() {
     ];
 
     for (const r of rows) {
-      await taskRepo.save(taskRepo.create(r));
+      const saved = await taskRepo.save(taskRepo.create(r));
+      await checklistService.applyAutoTemplateIfAny(saved.id);
     }
 
     logger.log(
