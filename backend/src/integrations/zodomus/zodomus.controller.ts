@@ -53,4 +53,23 @@ export class ZodomusController {
     const result = await this.zodomusSync.syncAllForUser(user.sub, channelId, Boolean(body.force));
     return { data: result };
   }
+
+  /**
+   * GET /reservations-summary — импорт всех активных броней при онбординге объекта.
+   * Не зависит от очереди; полезен при первом подключении объекта к Zodomus.
+   */
+  @Post('import-summary')
+  @Roles('OWNER', 'MANAGER')
+  async importSummary(
+    @CurrentUser() user: JwtPayload,
+    @Body() body: { channelId: number; propertyId: string },
+  ) {
+    const channelId = Number(body.channelId);
+    const propertyId = body.propertyId?.trim();
+    if (!propertyId || !Number.isFinite(channelId)) {
+      throw new BadRequestException('channelId and propertyId are required');
+    }
+    const result = await this.zodomusSync.importSummaryForProperty(user.sub, propertyId, channelId);
+    return { data: result };
+  }
 }

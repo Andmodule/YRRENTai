@@ -2,10 +2,11 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConversationEntity } from './entities/conversation.entity';
-import type {
-  ConversationStatus,
-  ConversationChannel,
-  ConversationPublicDto,
+import {
+  CONVERSATION_CHANNEL,
+  type ConversationStatus,
+  type ConversationChannel,
+  type ConversationPublicDto,
 } from '@rentai/shared';
 
 @Injectable()
@@ -46,6 +47,15 @@ export class ConversationService {
     const conv = await this.repo.findOne({ where: { id } });
     if (!conv) throw new NotFoundException(`Conversation ${id} not found`);
     return conv;
+  }
+
+  /** Last active email inbox thread for a property — used when Telegram escalation lost conversationId. */
+  async findLatestEmailConversationIdForProperty(propertyId: string): Promise<string | null> {
+    const row = await this.repo.findOne({
+      where: { propertyId, channel: CONVERSATION_CHANNEL.EMAIL },
+      order: { lastActivityAt: 'DESC' },
+    });
+    return row?.id ?? null;
   }
 
   async setStatus(id: string, status: ConversationStatus): Promise<ConversationEntity> {

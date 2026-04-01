@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Get,
+  Logger,
   Param,
   Post,
   Query,
@@ -10,14 +11,13 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
-import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ChatService } from './chat.service';
+import { StaffReplyService } from './staff-reply.service';
 import { ConversationService } from './conversation.service';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { CurrentUser, JwtPayload } from '../common/decorators/current-user.decorator';
 import { PropertyService } from '../property/property.service';
-import { StaffRepliedEvent } from '../common/events/staff.events';
 import {
   listConversationsQuerySchema,
   managerReplySchema,
@@ -30,11 +30,13 @@ import type { ConversationStatus } from '@rentai/shared';
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 @Controller('chats')
 export class ChatController {
+  private readonly logger = new Logger(ChatController.name);
+
   constructor(
     private readonly chatService: ChatService,
     private readonly conversationService: ConversationService,
     private readonly propertyService: PropertyService,
-    private readonly eventEmitter: EventEmitter2,
+    private readonly staffReplyService: StaffReplyService,
   ) {}
 
   /** Static paths must be registered before `:propertyId/messages` so they are not captured as UUIDs. */
@@ -133,34 +135,18 @@ export class ChatController {
 
     await this.propertyService.findOne(conv.propertyId, user!.sub);
 
-    const savedMessage = await this.chatService.saveMessage({
+    const savedMessage = await this.staffReplyService.applyStaffReply({
       propertyId: conv.propertyId,
       conversationId: conv.id,
-      userId: user!.sub,
       content: parsed.content,
-      role: 'assistant',
-      source: 'staff',
+      userId: user!.sub,
     });
-
-    await this.conversationService.setStatus(conv.id, 'resolved');
-    await this.conversationService.touch(conv.id, parsed.content);
-
-    this.eventEmitter.emit(
-      'staff.replied',
-      new StaffRepliedEvent(
-        conv.propertyId,
-        savedMessage.id,
-        parsed.content,
-        savedMessage.createdAt.toISOString(),
-        conv.id,
-      ),
-    );
 
     return {
       data: {
         id: savedMessage.id,
         conversationId: conv.id,
-        content: parsed.content,
+        content: savedMessage.content,
         role: 'assistant',
         source: 'staff',
         createdAt: savedMessage.createdAt.toISOString(),

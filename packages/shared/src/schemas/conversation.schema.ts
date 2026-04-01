@@ -12,6 +12,7 @@ export const conversationChannelSchema = z.enum([
   CONVERSATION_CHANNEL.TELEGRAM,
   CONVERSATION_CHANNEL.BOOKING_COM,
   CONVERSATION_CHANNEL.WHATSAPP,
+  CONVERSATION_CHANNEL.EMAIL,
 ]);
 
 export const conversationPublicSchema = z.object({

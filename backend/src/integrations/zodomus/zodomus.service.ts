@@ -40,19 +40,21 @@ export class ZodomusService {
     return this.normalizeArray(res);
   }
 
-  /** Список моделей цен для канала — нужен `priceModelId` для POST /property-activation */
-  async getPriceModels(channelId: number): Promise<unknown> {
-    return this.ensureEnabled().get<unknown>('/price-model', {
-      channelId: String(channelId),
-    });
+  /**
+   * GET /price-model — No request payload per Zodomus docs.
+   * `channelId` is NOT sent as a query param.
+   */
+  async getPriceModels(): Promise<unknown> {
+    return this.ensureEnabled().get<unknown>('/price-model');
   }
 
   /** Комнаты и тарифы из OTA для объекта — источник корректных roomId/rateId для POST /rooms-activation */
   async getRoomRates(channelId: number, propertyId: string): Promise<unknown> {
-    return this.ensureEnabled().get<unknown>('/room-rates', {
+    const res = await this.ensureEnabled().get<unknown>('/room-rates', {
       channelId: String(channelId),
       propertyId,
     });
+    return this.normalizeArray(res);
   }
 
   async getReservationQueue(
@@ -66,7 +68,8 @@ export class ZodomusService {
     return this.normalizeArray(res);
   }
 
-  /** Zodomus requires `propertyId` on GET /reservations (same external id as for reservations-queue). */
+  /** Zodomus requires `propertyId` on GET /reservations (same external id as for reservations-queue).
+   *  Calling this endpoint automatically removes the reservation from the queue (no separate ACK needed). */
   async getReservation(
     channelId: number,
     reservationId: string,
@@ -81,19 +84,41 @@ export class ZodomusService {
   }
 
   /**
-   * Confirm queue item processed — path may differ; adjust per official Zodomus docs.
+   * GET /reservations-summary — returns all active future reservations for a property.
+   * Used for initial onboarding to populate historical/future bookings without waiting for queue events.
    */
-  async ackReservation(channelId: number, reservationId: string): Promise<void> {
-    await this.ensureEnabled().post('/reservations-queue/ack', { channelId, reservationId });
+  async getReservationSummary(
+    channelId: number,
+    propertyId: string,
+  ): Promise<ZodomusReservation[]> {
+    const raw = await this.ensureEnabled().get<unknown>('/reservations-summary', {
+      channelId: String(channelId),
+      propertyId,
+    });
+    const list = this.normalizeArray<unknown>(raw);
+    return list.map((item, i) => this.normalizeReservation(item, `summary-${i}`));
   }
 
+  /**
+   * POST /availability — set room availability for a date range.
+   * Correct format per Zodomus docs: dateFrom/dateTo/availability (not dates[]).
+   */
   async setAvailability(
     channelId: number,
     propertyId: string,
     roomId: string,
-    dates: Array<{ date: string; available: number }>,
+    dateFrom: string,
+    dateTo: string,
+    availability: number,
   ): Promise<void> {
-    await this.ensureEnabled().post('/availability', { channelId, propertyId, roomId, dates });
+    await this.ensureEnabled().post('/availability', {
+      channelId,
+      propertyId,
+      roomId,
+      dateFrom,
+      dateTo,
+      availability,
+    });
   }
 
   /**
@@ -111,18 +136,21 @@ export class ZodomusService {
     });
   }
 
+  /**
+   * Normalizes any Zodomus list response to a typed array.
+   * Handles: plain array, { channels[] }, { items[] }, { reservations[] }, { rooms[] }.
+   */
   private normalizeArray<T>(res: unknown): T[] {
     if (Array.isArray(res)) return res as T[];
-    if (res && typeof res === 'object' && 'channels' in res && Array.isArray((res as { channels: unknown }).channels)) {
-      return (res as { channels: T[] }).channels;
+    if (!res || typeof res !== 'object') {
+      this.logger.warn('Unexpected Zodomus list shape; returning empty array');
+      return [];
     }
-    if (res && typeof res === 'object' && 'items' in res && Array.isArray((res as { items: unknown }).items)) {
-      return (res as { items: T[] }).items;
+    const o = res as Record<string, unknown>;
+    for (const key of ['channels', 'items', 'reservations', 'rooms', 'rates', 'properties']) {
+      if (Array.isArray(o[key])) return o[key] as T[];
     }
-    if (res && typeof res === 'object' && 'reservations' in res && Array.isArray((res as { reservations: unknown }).reservations)) {
-      return (res as { reservations: T[] }).reservations;
-    }
-    this.logger.warn('Unexpected Zodomus list shape; returning empty array');
+    this.logger.warn(`Unexpected Zodomus list shape (keys: ${Object.keys(o).join(',')}); returning []`);
     return [];
   }
 
@@ -159,7 +187,6 @@ export class ZodomusService {
         this.isRecord(o.reservation) &&
         (Array.isArray(o.rooms) || this.isRecord(o.customer))
       ) {
-        /** Same block as under `reservations`, but top-level after `{ data: { ... } }` unwrap (no `reservations` key). */
         obj = this.flattenZodomusReservationsBlock({
           reservation: o.reservation,
           customer: this.isRecord(o.customer) ? o.customer : {},

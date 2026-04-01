@@ -7,10 +7,9 @@ import {
   ConnectedSocket,
   MessageBody,
 } from '@nestjs/websockets';
-import { Logger, UnauthorizedException } from '@nestjs/common';
+import { forwardRef, Inject, Logger, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { OnEvent } from '@nestjs/event-emitter';
 import { Server, Socket } from 'socket.io';
 import { ChatService } from './chat.service';
 import { ConversationService } from './conversation.service';
@@ -18,6 +17,7 @@ import { AgentService } from '../agent/agent.service';
 import { PropertyService } from '../property/property.service';
 import { KnowledgeBaseService } from '../knowledge-base/knowledge-base.service';
 import { TelegramService } from '../telegram/telegram.service';
+import { MessagingService } from '../messaging/messaging.service';
 import { StaffRepliedEvent } from '../common/events/staff.events';
 import { sendChatMessageSchema } from '@rentai/shared';
 import {
@@ -57,7 +57,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private readonly agentService: AgentService,
     private readonly propertyService: PropertyService,
     private readonly knowledgeBaseService: KnowledgeBaseService,
+    @Inject(forwardRef(() => TelegramService))
     private readonly telegramService: TelegramService,
+    @Inject(forwardRef(() => MessagingService))
+    private readonly messagingService: MessagingService,
   ) {}
 
   async handleConnection(client: AuthenticatedSocket) {
@@ -292,27 +295,37 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     );
   }
 
-  @OnEvent('staff.replied')
-  async handleStaffReplied(event: StaffRepliedEvent) {
-    this.server.to(`property:${event.propertyId}`).emit('agent:streamEnd', {
+  /**
+   * Только Socket.IO — состояние диалога уже обновил StaffReplyService (иначе дубль + риск ошибки до emit).
+   */
+  emitStaffReplyToSockets(event: StaffRepliedEvent): void {
+    const cid = event.conversationId ? event.conversationId.toLowerCase() : undefined;
+    const msgPayload = {
       id: event.messageId,
       propertyId: event.propertyId,
-      conversationId: event.conversationId,
+      conversationId: cid,
       content: event.content,
-      role: 'assistant',
-      source: 'staff',
+      role: 'assistant' as const,
+      source: 'staff' as const,
+      userId: null,
       createdAt: event.createdAt,
-    });
+    };
+
+    this.server.to(`property:${event.propertyId}`).emit('agent:streamEnd', msgPayload);
+    this.server.to(`property:${event.propertyId}`).emit('message:saved', msgPayload);
 
     if (event.conversationId) {
-      await this.conversationService.setStatus(event.conversationId, 'resolved');
-      await this.conversationService.touch(event.conversationId, event.content);
-      this.server.to(`inbox:${event.propertyId}`).emit('conversation:updated', {
-        conversationId: event.conversationId,
-        status: 'resolved',
+      const convUpd = {
+        conversationId: cid,
+        status: 'resolved' as const,
         lastMessagePreview: event.content.slice(0, 200),
         lastActivityAt: event.createdAt,
-      });
+      };
+
+      this.server.to(`inbox:${event.propertyId}`).emit('conversation:updated', convUpd);
+      this.server.to(`property:${event.propertyId}`).emit('conversation:updated', convUpd);
+
+      this.server.to(`inbox:${event.propertyId}`).emit('message:saved', msgPayload);
     }
   }
 
@@ -393,6 +406,27 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       await client.leave(room);
       this.logger.log(`Client ${client.id} left room ${room}`);
     }
+  }
+
+  @SubscribeMessage('join_messaging_thread')
+  async handleJoinMessagingThread(
+    @ConnectedSocket() client: AuthenticatedSocket,
+    @MessageBody() body: unknown,
+  ): Promise<void> {
+    const threadId =
+      typeof body === 'string' ? body : (body as { threadId?: string })?.threadId;
+    if (typeof threadId !== 'string' || !threadId) {
+      client.emit('error', { message: 'threadId is required' });
+      return;
+    }
+    try {
+      await this.messagingService.assertThreadOwnedBy(threadId, client.data.userId);
+    } catch {
+      client.emit('error', { message: 'Thread not found or access denied' });
+      return;
+    }
+    await client.join(`messaging:${threadId}`);
+    this.logger.log(`Client ${client.id} joined messaging:${threadId}`);
   }
 
   private extractToken(client: Socket): string | null {

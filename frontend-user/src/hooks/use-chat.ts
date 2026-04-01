@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Socket } from 'socket.io-client';
 import { connectChatSocket, getChatSocket } from '@/lib/socket/client';
+import { apiClient } from '@/lib/api/client';
 
 /** Mirrors backend `chat_messages.source` — staff = human reply from inbox. */
 export type ChatMessageSource = 'ai' | 'staff';
@@ -59,7 +60,7 @@ export function useChat(propertyId: string | null, opts?: UseChatOpts | null): U
     const cur = conversationIdRef.current;
     if (!cur) return true;
     if (!payload.conversationId) return false;
-    return payload.conversationId === cur;
+    return payload.conversationId.toLowerCase() === cur.toLowerCase();
   }, []);
 
   useEffect(() => {
@@ -101,7 +102,7 @@ export function useChat(propertyId: string | null, opts?: UseChatOpts | null): U
         function handleMessageSaved(msg: ChatMessage) {
           if (msg.propertyId !== currentPropertyId.current) return;
           if (!matchesConversation(msg)) return;
-          setMessages((prev) => [...prev, msg]);
+          setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
         }
 
         function handleStreamStart(data: StreamPayload) {
@@ -122,7 +123,7 @@ export function useChat(propertyId: string | null, opts?: UseChatOpts | null): U
           if (!matchesConversation(msg)) return;
           setIsStreaming(false);
           setStreamingText('');
-          setMessages((prev) => [...prev, msg]);
+          setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
         }
 
         function handleAgentError(data: StreamPayload) {
@@ -137,6 +138,65 @@ export function useChat(propertyId: string | null, opts?: UseChatOpts | null): U
           setError(data.message);
         }
 
+        async function refetchMessagesForOpenConversation(targetConversationId: string) {
+          if (cancelled || !propertyId) return;
+          try {
+            const res = await apiClient.get<{
+              data: Array<{
+                id: string;
+                propertyId: string;
+                conversationId?: string;
+                userId?: string | null;
+                content: string;
+                role: string;
+                source?: string;
+                createdAt: string;
+              }>;
+            }>(`/chats/conversations/${encodeURIComponent(targetConversationId)}/messages`, {
+              params: { page: 1, limit: 100 },
+            });
+            const rows = res.data.data;
+            if (!Array.isArray(rows)) return;
+            setMessages(
+              rows.map((m) => ({
+                id: m.id,
+                propertyId: m.propertyId,
+                conversationId: m.conversationId,
+                userId: m.userId,
+                content: m.content,
+                role: m.role as 'user' | 'assistant' | 'system',
+                source:
+                  m.source === 'staff' ? 'staff' : m.source === 'ai' ? 'ai' : undefined,
+                createdAt:
+                  typeof m.createdAt === 'string'
+                    ? m.createdAt
+                    : new Date(m.createdAt as unknown as string).toISOString(),
+              })),
+            );
+          } catch {
+            s.emit('chat:join', {
+              propertyId,
+              conversationId: targetConversationId,
+            });
+          }
+        }
+
+        /** Левая колонка уже обновилась по этому событию; правая подтягивает те же сообщения с API (надёжнее, чем только сокет). */
+        async function handleConversationUpdated(payload: { conversationId?: string }) {
+          if (cancelled) return;
+          if (!payload?.conversationId) return;
+          const cur = conversationIdRef.current;
+          if (!cur) return;
+          if (payload.conversationId.toLowerCase() !== cur.toLowerCase()) return;
+          await refetchMessagesForOpenConversation(payload.conversationId);
+        }
+
+        function onWindowFocus() {
+          const cur = conversationIdRef.current;
+          if (!cur || cancelled || !propertyId) return;
+          void refetchMessagesForOpenConversation(cur);
+        }
+
         s.on('connect', handleConnect);
         s.on('disconnect', handleDisconnect);
         s.on('chat:history', handleHistory);
@@ -146,8 +206,16 @@ export function useChat(propertyId: string | null, opts?: UseChatOpts | null): U
         s.on('agent:streamEnd', handleStreamEnd);
         s.on('agent:error', handleAgentError);
         s.on('error', handleError);
+        s.on('conversation:updated', handleConversationUpdated);
+
+        if (typeof window !== 'undefined') {
+          window.addEventListener('focus', onWindowFocus);
+        }
 
         detachListeners = () => {
+          if (typeof window !== 'undefined') {
+            window.removeEventListener('focus', onWindowFocus);
+          }
           s.emit('chat:leave', { propertyId });
           s.off('connect', handleConnect);
           s.off('disconnect', handleDisconnect);
@@ -158,6 +226,7 @@ export function useChat(propertyId: string | null, opts?: UseChatOpts | null): U
           s.off('agent:streamEnd', handleStreamEnd);
           s.off('agent:error', handleAgentError);
           s.off('error', handleError);
+          s.off('conversation:updated', handleConversationUpdated);
         };
 
         if (s.connected) {

@@ -82,10 +82,17 @@ export function useConversations(opts: UseConversationsOpts = {}) {
 
           void mutate(
             (current) => {
-              if (!current?.data) return current;
+              if (!current?.data) {
+                queueMicrotask(() => void mutate(undefined, { revalidate: true }));
+                return current;
+              }
               const idx = current.data.findIndex((c) => c.id === payload.conversationId);
-              /** Новый чат ещё не в кэше — только revalidate (ниже) подтянет строку */
+              /**
+               * Новый диалог (email и т.д.) ещё не в кэше: тот же `current` + revalidate:true
+               * в SWR часто не триггерит refetch — форсируем отдельный GET.
+               */
               if (idx < 0) {
+                queueMicrotask(() => void mutate(undefined, { revalidate: true }));
                 return current;
               }
               const row = current.data[idx];

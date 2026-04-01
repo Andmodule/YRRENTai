@@ -42,6 +42,13 @@ export class PropertyEntity {
   @Column({ type: 'varchar', length: 255, nullable: true, unique: true })
   zodomusPropertyId!: string | null;
 
+  /**
+   * List of external iCal feed URLs to import (Airbnb, VRBO, etc.).
+   * Stored as jsonb array of strings.
+   */
+  @Column({ type: 'jsonb', nullable: true, default: '[]' })
+  icalImportUrls!: string[];
+
   @Column('uuid')
   ownerId!: string;
 

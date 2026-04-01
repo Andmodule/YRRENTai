@@ -5,13 +5,15 @@ import { ZODOMUS_CLIENT } from './zodomus.tokens';
 import { ZodomusClient } from './zodomus.client';
 import { ZodomusService } from './zodomus.service';
 import { ZodomusSyncService } from './zodomus-sync.service';
+import { ZodomusCronService } from './zodomus-cron.service';
 import { ZodomusController } from './zodomus.controller';
+import { ZodomusWebhookController } from './zodomus-webhook.controller';
 import { BookingEntity } from '../../booking/entities/booking.entity';
 import { PropertyModule } from '../../property/property.module';
 
 @Module({
   imports: [ConfigModule, TypeOrmModule.forFeature([BookingEntity]), PropertyModule],
-  controllers: [ZodomusController],
+  controllers: [ZodomusController, ZodomusWebhookController],
   providers: [
     {
       provide: ZODOMUS_CLIENT,
@@ -25,6 +27,7 @@ import { PropertyModule } from '../../property/property.module';
     },
     ZodomusService,
     ZodomusSyncService,
+    ZodomusCronService,
   ],
   exports: [ZodomusService, ZodomusSyncService],
 })

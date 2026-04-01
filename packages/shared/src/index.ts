@@ -9,6 +9,7 @@ export * from './schemas/conversation.schema';
 export * from './constants/roles';
 export * from './constants/booking-states';
 export * from './constants/conversation';
+export * from './constants/escalation';
 
 export * from './utils/booking.utils';
 export * from './utils/task-notes';

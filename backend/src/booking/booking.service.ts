@@ -47,6 +47,27 @@ export class BookingService {
     return booking;
   }
 
+  /**
+   * Inbound mail (e.g. Booking.com) often carries the channel reservation id; we store it as `zodomusReservationId`.
+   * Resolves which property this booking belongs to for the given owner.
+   */
+  async findPropertyIdByZodomusReservationForOwner(
+    ownerId: string,
+    zodomusReservationId: string,
+  ): Promise<string | null> {
+    const zid = zodomusReservationId.trim();
+    if (!zid) return null;
+    const row = await this.bookingRepository
+      .createQueryBuilder('b')
+      .innerJoin('b.property', 'p')
+      .select('b.propertyId', 'propertyId')
+      .where('p.ownerId = :ownerId', { ownerId })
+      .andWhere('b.zodomusReservationId = :zid', { zid })
+      .orderBy('b.checkOut', 'DESC')
+      .getRawOne<{ propertyId: string }>();
+    return row?.propertyId ?? null;
+  }
+
   async transition(
     id: string,
     newStatus: string,

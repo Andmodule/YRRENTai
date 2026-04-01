@@ -12,6 +12,8 @@ export const CONVERSATION_CHANNEL = {
   TELEGRAM: 'telegram',
   BOOKING_COM: 'booking_com',
   WHATSAPP: 'whatsapp',
+  /** Inbound email (Resend) — one conversation per sender email per property */
+  EMAIL: 'email',
 } as const;
 
 export type ConversationChannel =

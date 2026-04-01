@@ -27,6 +27,8 @@ import { TasksModule } from './tasks/tasks.module';
 import { IncidentsModule } from './incidents/incidents.module';
 import { OperationsModule } from './operations/operations.module';
 import { ZodomusModule } from './integrations/zodomus/zodomus.module';
+import { ICalModule } from './integrations/ical/ical.module';
+import { MessagingModule } from './messaging/messaging.module';
 
 @Module({
   imports: [
@@ -75,6 +77,8 @@ import { ZodomusModule } from './integrations/zodomus/zodomus.module';
     IncidentsModule,
     OperationsModule,
     ZodomusModule,
+    ICalModule,
+    MessagingModule,
   ],
   providers: [
     {

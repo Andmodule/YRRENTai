@@ -1,16 +1,18 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsWhere, Repository } from 'typeorm';
 import { ChatMessageEntity, type MessageSource } from './entities/chat-message.entity';
 
 @Injectable()
 export class ChatService {
-  private readonly logger = new Logger(ChatService.name);
-
   constructor(
     @InjectRepository(ChatMessageEntity)
     private readonly messageRepository: Repository<ChatMessageEntity>,
   ) {}
+
+  async findMessageById(id: string): Promise<ChatMessageEntity | null> {
+    return this.messageRepository.findOne({ where: { id } });
+  }
 
   async saveMessage(data: {
     propertyId: string;

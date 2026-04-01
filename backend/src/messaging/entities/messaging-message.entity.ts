@@ -1,0 +1,41 @@
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  ManyToOne,
+  JoinColumn,
+  Index,
+} from 'typeorm';
+import { MessagingThreadEntity } from './messaging-thread.entity';
+
+export type MessagingMessageRole = 'guest' | 'ai_draft' | 'sent';
+
+@Entity('messaging_messages')
+@Index('idx_messaging_messages_thread', ['threadId'])
+export class MessagingMessageEntity {
+  @PrimaryGeneratedColumn('uuid')
+  id!: string;
+
+  @Column({ name: 'thread_id', type: 'uuid' })
+  threadId!: string;
+
+  @ManyToOne(() => MessagingThreadEntity, (t) => t.messages, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'thread_id' })
+  thread!: MessagingThreadEntity;
+
+  @Column({ type: 'varchar', length: 32 })
+  role!: MessagingMessageRole;
+
+  @Column({ type: 'text' })
+  text!: string;
+
+  @Column({ name: 'raw_email_id', type: 'varchar', nullable: true, unique: true })
+  rawEmailId!: string | null;
+
+  @Column({ name: 'sent_at', type: 'timestamptz', nullable: true })
+  sentAt!: Date | null;
+
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
+  createdAt!: Date;
+}

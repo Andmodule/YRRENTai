@@ -1,17 +1,18 @@
-import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { Repository, IsNull } from 'typeorm';
+import { Repository } from 'typeorm';
 import axios from 'axios';
 import { EscalationEntity } from './entities/escalation.entity';
 import { PropertyNotificationSettingsEntity } from './entities/property-notification-settings.entity';
-import { StaffRepliedEvent } from '../common/events/staff.events';
+import { IncidentManagerNoteEvent } from '../common/events/incident.events';
+import { StaffReplyService } from '../chat/staff-reply.service';
 import { ChatService } from '../chat/chat.service';
 import { ConversationService } from '../chat/conversation.service';
+import { MessagingService } from '../messaging/messaging.service';
 import { UserService } from '../user/user.service';
 import { IncidentEntity } from '../incidents/entities/incident.entity';
-import { TasksGateway } from '../tasks/tasks.gateway';
 import {
   TELEGRAM_INCIDENT_REPLY_CONFIRMED,
   TELEGRAM_INSTRUCTION_NO_THREAD,
@@ -59,8 +60,10 @@ export class TelegramService {
     private readonly settingsRepository: Repository<PropertyNotificationSettingsEntity>,
     @InjectRepository(IncidentEntity)
     private readonly incidentRepository: Repository<IncidentEntity>,
-    @Inject(forwardRef(() => TasksGateway))
-    private readonly tasksGateway: TasksGateway,
+    @Inject(forwardRef(() => MessagingService))
+    private readonly messagingService: MessagingService,
+    @Inject(forwardRef(() => StaffReplyService))
+    private readonly staffReplyService: StaffReplyService,
   ) {
     const token = configService.get<string>('TELEGRAM_BOT_TOKEN') ?? '';
     this.apiBase = `https://api.telegram.org/bot${token}`;
@@ -241,24 +244,62 @@ export class TelegramService {
 
     const replyToId = message.reply_to_message.message_id;
 
-    const escalation = await this.escalationRepository.findOne({
-      where: { tgBotMessageId: replyToId as unknown as number, resolvedAt: IsNull() },
-    });
+    this.logger.log(
+      `Telegram manager reply: chatId=${chatId} reply_to_message_id=${replyToId} len=${replyText.length}`,
+    );
+
+    const escalation = await this.escalationRepository
+      .createQueryBuilder('e')
+      .where(
+        '(e.tgBotMessageId = :mid OR CAST(e.tgBotMessageId AS TEXT) = :midStr)',
+        { mid: replyToId, midStr: String(replyToId) },
+      )
+      .andWhere('e.resolvedAt IS NULL')
+      .getOne();
 
     if (escalation) {
-      const convId = escalation.conversationId ?? undefined;
+      let convId = escalation.conversationId ?? undefined;
+      if (!convId && escalation.guestMessageId) {
+        const guestMsg = await this.chatService.findMessageById(escalation.guestMessageId);
+        if (guestMsg?.propertyId === escalation.propertyId) {
+          convId = guestMsg.conversationId ?? undefined;
+        }
+      }
+      if (!convId) {
+        convId =
+          (await this.messagingService.resolveConversationIdForEscalationFallback(escalation.propertyId)) ??
+          undefined;
+      }
+      if (!convId) {
+        convId =
+          (await this.conversationService.findLatestEmailConversationIdForProperty(escalation.propertyId)) ??
+          undefined;
+      }
+      if (!convId) {
+        this.logger.warn(
+          `Telegram escalation ${escalation.id}: cannot resolve conversationId (guestMessageId=${escalation.guestMessageId ?? 'null'})`,
+        );
+        await this.sendInstructionMessage(chatId, TELEGRAM_INSTRUCTION_NO_THREAD);
+        return;
+      }
 
-      const savedMessage = await this.chatService.saveMessage({
-        propertyId: escalation.propertyId,
-        conversationId: convId,
-        content: replyText,
-        role: 'assistant',
-        source: 'staff',
-      });
+      convId = convId.trim();
+      escalation.conversationId = convId;
 
-      if (convId) {
-        await this.conversationService.setStatus(convId, 'resolved');
-        await this.conversationService.touch(convId, replyText);
+      let savedMessage;
+      try {
+        savedMessage = await this.staffReplyService.applyStaffReply({
+          propertyId: escalation.propertyId,
+          conversationId: convId,
+          content: replyText,
+        });
+      } catch (err) {
+        this.logger.error(
+          `Telegram staff reply failed for escalation ${escalation.id} conv=${convId}`,
+          err as Error,
+        );
+        await this.sendInstructionMessage(chatId, TELEGRAM_INSTRUCTION_NO_THREAD);
+        return;
       }
 
       escalation.staffReply = replyText;
@@ -266,19 +307,8 @@ export class TelegramService {
       escalation.kbProcessingStatus = 'pending';
       await this.escalationRepository.save(escalation);
 
-      this.eventEmitter.emit(
-        'staff.replied',
-        new StaffRepliedEvent(
-          escalation.propertyId,
-          savedMessage.id,
-          replyText,
-          savedMessage.createdAt.toISOString(),
-          convId,
-        ),
-      );
-
       this.logger.log(
-        `Staff reply saved for escalation ${escalation.id}, property ${escalation.propertyId}`,
+        `Telegram staff reply OK: escalation=${escalation.id} conv=${convId} chatMessageId=${savedMessage.id}`,
       );
 
       await this.sendStaffReplyConfirmation(chatId, message.message_id);
@@ -287,7 +317,10 @@ export class TelegramService {
 
     const incident = await this.incidentRepository
       .createQueryBuilder('i')
-      .where('i.telegramNotifyMessageId = :mid', { mid: replyToId })
+      .where(
+        '(i.telegramNotifyMessageId = :mid OR CAST(i.telegramNotifyMessageId AS TEXT) = :midStr)',
+        { mid: replyToId, midStr: String(replyToId) },
+      )
       .getOne();
 
     if (incident) {
@@ -297,11 +330,10 @@ export class TelegramService {
         : `[Менеджер, Telegram] ${replyText}`;
       await this.incidentRepository.save(incident);
 
-      this.tasksGateway.emitIncidentManagerNote({
-        incidentId: incident.id,
-        text: replyText,
-        reportedByUserId: incident.reportedBy,
-      });
+      this.eventEmitter.emit(
+        'incident.manager_note',
+        new IncidentManagerNoteEvent(incident.id, replyText, incident.reportedBy),
+      );
 
       await this.sendIncidentReplyConfirmation(chatId, message.message_id);
       return;

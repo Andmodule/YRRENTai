@@ -2,6 +2,7 @@
 
 import { useLocale, useTranslations } from 'next-intl';
 import ReactMarkdown from 'react-markdown';
+import { stripEscalationForGuestDisplay } from '@rentai/shared';
 import { cn } from '@/lib/utils';
 import { formatBubbleTimestamp } from '@/lib/format/conversation-meta';
 import type { ChatMessage } from '@/hooks/use-chat';
@@ -16,6 +17,7 @@ export function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
   const isUser = message.role === 'user';
   const isStaffManual = message.role === 'assistant' && message.source === 'staff';
   const timeLabel = formatBubbleTimestamp(message.createdAt, locale);
+  const displayContent = stripEscalationForGuestDisplay(message.content);
 
   return (
     <div className={cn('flex w-full', isUser ? 'justify-start' : 'justify-end')}>
@@ -35,10 +37,10 @@ export function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
         )}
         <div className="min-w-0">
           {isUser ? (
-            <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{message.content}</p>
+            <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{displayContent}</p>
           ) : (
             <div className="prose prose-sm max-w-none dark:prose-invert [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
-              <ReactMarkdown>{message.content}</ReactMarkdown>
+              <ReactMarkdown>{displayContent}</ReactMarkdown>
             </div>
           )}
         </div>
@@ -64,12 +66,13 @@ interface StreamingBubbleProps {
 }
 
 export function StreamingBubble({ text }: StreamingBubbleProps) {
+  const displayText = stripEscalationForGuestDisplay(text);
   return (
     <div className="flex w-full justify-end">
       <div className="inline-flex min-w-0 max-w-[min(85%,32rem)] flex-col rounded-2xl rounded-tr-md bg-muted px-3 pb-1.5 pt-2 text-sm text-foreground dark:rounded-3xl dark:rounded-tr-lg dark:bg-slate-800/90 dark:border dark:border-slate-600/70 dark:text-slate-100">
-        {text ? (
+        {displayText ? (
           <div className="prose prose-sm max-w-none dark:prose-invert [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
-            <ReactMarkdown>{text}</ReactMarkdown>
+            <ReactMarkdown>{displayText}</ReactMarkdown>
           </div>
         ) : (
           <div className="space-y-1.5 py-0.5" aria-hidden>

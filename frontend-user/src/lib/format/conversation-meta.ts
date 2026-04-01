@@ -3,7 +3,8 @@ export function formatGuestAndProperty(
   externalGuestKey: string | null,
   propertyName: string,
 ): string {
-  const user = externalGuestKey?.trim() || '—';
+  const raw = externalGuestKey?.trim() || '—';
+  const user = raw.startsWith('email:') ? raw.slice('email:'.length) : raw;
   return `${user} · ${propertyName}`;
 }
 

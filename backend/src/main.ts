@@ -10,7 +10,9 @@ import { join } from 'path';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, {
+    rawBody: true,
+  });
   const configService = app.get(ConfigService);
   const logger = new Logger('Bootstrap');
 
@@ -38,9 +40,9 @@ async function bootstrap() {
   SwaggerModule.setup('api/docs', app, document);
 
   const port = configService.get<number>('PORT', 3000);
-  await app.listen(port);
-  logger.log(`Application running on port ${port}`);
-  logger.log(`Swagger docs available at http://localhost:${port}/api/docs`);
+  const host = configService.get<string>('HOST', '::');
+  await app.listen(port, host);
+  logger.log(`Listening on ${host}:${port} (e.g. http://127.0.0.1:${port}/api/docs)`);
 }
 
 bootstrap();

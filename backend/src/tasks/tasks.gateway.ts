@@ -1,5 +1,7 @@
 import { WebSocketGateway, WebSocketServer, OnGatewayConnection } from '@nestjs/websockets';
 import { Logger, UnauthorizedException } from '@nestjs/common';
+import { OnEvent } from '@nestjs/event-emitter';
+import { IncidentManagerNoteEvent } from '../common/events/incident.events';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { Server, Socket } from 'socket.io';
@@ -82,6 +84,15 @@ export class TasksGateway implements OnGatewayConnection {
     reportedByUserId: string;
   }) {
     this.server.emit('incident_manager_note', payload);
+  }
+
+  @OnEvent('incident.manager_note')
+  onIncidentManagerNoteFromTelegram(event: IncidentManagerNoteEvent): void {
+    this.emitIncidentManagerNote({
+      incidentId: event.incidentId,
+      text: event.text,
+      reportedByUserId: event.reportedByUserId,
+    });
   }
 
   private extractToken(client: Socket): string | null {

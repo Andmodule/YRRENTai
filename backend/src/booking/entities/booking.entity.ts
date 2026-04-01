@@ -57,6 +57,13 @@ export class BookingEntity {
   @Column({ type: 'varchar', length: 255, nullable: true, unique: true })
   zodomusReservationId!: string | null;
 
+  /**
+   * External UID from an iCal feed (RFC 5545 UID property).
+   * Used for deduplication when importing external calendars.
+   */
+  @Column({ type: 'varchar', length: 512, nullable: true })
+  icalUid!: string | null;
+
   @Column({ type: 'int', nullable: true })
   zodomusChannelId!: number | null;
 

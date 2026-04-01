@@ -12,12 +12,45 @@ const zodomusEnvFields = z.object({
   ZODOMUS_API_PASSWORD_CC: z.string().optional(),
   /** Zodomus property id for doc/zodomus/fetch-samples.mjs step 3 only (not used by Nest at runtime). */
   ZODOMUS_SAMPLE_PROPERTY_ID: z.string().optional(),
+  /**
+   * Webhook key from Zodomus backoffice (Development → Webhook Key).
+   * Sent in the POST body by Zodomus on every reservation event.
+   * If not set, webhook key validation is skipped (not recommended in production).
+   */
+  ZODOMUS_WEBHOOK_KEY: z.string().optional(),
+  /** How often (minutes) to poll reservations-queue as a backup to webhooks. Default: 15. */
+  ZODOMUS_POLL_INTERVAL_MINUTES: z.coerce.number().min(1).max(1440).default(15),
+});
+
+const icalEnvFields = z.object({
+  /** How often (minutes) to re-import all iCal URLs. Default: 60. */
+  ICAL_POLL_INTERVAL_MINUTES: z.coerce.number().min(1).max(1440).default(60),
+});
+
+const resendEnvFields = z.object({
+  RESEND_API_KEY: z.string().optional(),
+  /** Svix signing secret from Resend inbound webhook. Omit in dev to skip verification (not for production). */
+  RESEND_WEBHOOK_SECRET: z.string().optional(),
+  RESEND_FROM_EMAIL: z.string().optional(),
+  RESEND_INBOUND_DOMAIN: z.string().optional(),
+  /** Default owner (user UUID) for inbound email when not resolved from routing. Required for POST /webhooks/resend to work. */
+  RESEND_DEFAULT_OWNER_ID: z.string().uuid().optional(),
+  /**
+   * Property UUID for mirroring inbound email into the chat inbox (`conversations` / `chat_messages`).
+   * If unset, the first property owned by RESEND_DEFAULT_OWNER_ID is used.
+   */
+  RESEND_INBOUND_PROPERTY_ID: z.string().uuid().optional(),
 });
 
 export const envSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
     PORT: z.coerce.number().default(3000),
+    /**
+     * HTTP bind address. Default `::` (dual-stack: IPv4 + IPv6) so `localhost` → [::1] works with cloudflared on Windows.
+     * Use `0.0.0.0` only if you need IPv4-only and point cloudflared at `http://127.0.0.1:PORT` instead of `localhost`.
+     */
+    HOST: z.string().default('::'),
 
     DATABASE_URL: z.string().url(),
 
@@ -50,6 +83,8 @@ export const envSchema = z
     FF_REALTIME_CALLS_ENABLED: z.coerce.boolean().default(false),
   })
   .merge(zodomusEnvFields)
+  .merge(icalEnvFields)
+  .merge(resendEnvFields)
   .refine(
     (d) => !d.ZODOMUS_ENABLED || (!!d.ZODOMUS_API_USER && !!d.ZODOMUS_API_PASSWORD),
     {
