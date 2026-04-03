@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Socket } from 'socket.io-client';
 import { connectChatSocket, getChatSocket } from '@/lib/socket/client';
 import { apiClient } from '@/lib/api/client';
 
@@ -27,6 +26,8 @@ export interface UseChatOpts {
 
 interface UseChatReturn {
   messages: ChatMessage[];
+  /** Inbox: true until the first REST load finishes (or fails and falls back to socket). Hides socket chat:history races. */
+  isHistoryLoading: boolean;
   streamingText: string;
   isStreaming: boolean;
   isConnected: boolean;
@@ -42,6 +43,58 @@ interface StreamPayload {
   message?: string;
 }
 
+function mapApiRowsToMessages(
+  rows: Array<{
+    id: string;
+    propertyId: string;
+    conversationId?: string;
+    userId?: string | null;
+    content: string;
+    role: string;
+    source?: string;
+    createdAt: string;
+  }>,
+): ChatMessage[] {
+  return rows.map((m) => ({
+    id: m.id,
+    propertyId: m.propertyId,
+    conversationId: m.conversationId,
+    userId: m.userId,
+    content: m.content,
+    role: m.role as 'user' | 'assistant' | 'system',
+    source: m.source === 'staff' ? 'staff' : m.source === 'ai' ? 'ai' : undefined,
+    createdAt:
+      typeof m.createdAt === 'string'
+        ? m.createdAt
+        : new Date(m.createdAt as unknown as string).toISOString(),
+  }));
+}
+
+/**
+ * REST or `chat:history` can return a snapshot older than what we already have from the socket
+ * (ordering, Edge HTTP cache, reconnect). Blind `setMessages(server)` drops the newest rows.
+ * Keep client-only messages that are newer than the server's newest timestamp (same id → server wins).
+ */
+function mergeServerMessagesWithPrev(server: ChatMessage[], prev: ChatMessage[]): ChatMessage[] {
+  if (prev.length === 0) return server;
+  const serverById = new Map(server.map((m) => [m.id, m]));
+  let serverMaxMs = 0;
+  for (const m of server) {
+    const t = Date.parse(m.createdAt);
+    if (!Number.isNaN(t) && t > serverMaxMs) serverMaxMs = t;
+  }
+  const out = new Map<string, ChatMessage>(serverById);
+  for (const m of prev) {
+    if (out.has(m.id)) continue;
+    const t = Date.parse(m.createdAt);
+    /** `>=` so a message in the same ms as server max is not dropped (socket vs REST ordering). */
+    if (!Number.isNaN(t) && t >= serverMaxMs) {
+      out.set(m.id, m);
+    }
+  }
+  return [...out.values()].sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+}
+
 export function useChat(propertyId: string | null, opts?: UseChatOpts | null): UseChatReturn {
   const conversationId = opts?.conversationId ?? undefined;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -49,6 +102,9 @@ export function useChat(propertyId: string | null, opts?: UseChatOpts | null): U
   const [isStreaming, setIsStreaming] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Inbox: block chat:history until REST settles (socket join fires first and can carry a stale thread). */
+  const [isHistoryLoading, setIsHistoryLoading] = useState(() => !!opts?.conversationId);
+  const inboxRestInitialDoneRef = useRef(!opts?.conversationId);
   const currentPropertyId = useRef<string | null>(null);
   const conversationIdRef = useRef<string | undefined>(conversationId);
 
@@ -66,8 +122,78 @@ export function useChat(propertyId: string | null, opts?: UseChatOpts | null): U
   useEffect(() => {
     if (!propertyId) return;
 
+    setMessages([]);
+    setStreamingText('');
+    setIsStreaming(false);
+
+    if (conversationId) {
+      inboxRestInitialDoneRef.current = false;
+      setIsHistoryLoading(true);
+    } else {
+      inboxRestInitialDoneRef.current = true;
+      setIsHistoryLoading(false);
+    }
+
     let cancelled = false;
     let detachListeners: (() => void) | undefined;
+
+    function markInboxHistoryReady() {
+      inboxRestInitialDoneRef.current = true;
+      setIsHistoryLoading(false);
+    }
+
+    async function refetchMessagesForOpenConversation(targetConversationId: string) {
+      if (cancelled || !propertyId) return;
+      try {
+        const res = await apiClient.get<{
+          data: Array<{
+            id: string;
+            propertyId: string;
+            conversationId?: string;
+            userId?: string | null;
+            content: string;
+            role: string;
+            source?: string;
+            createdAt: string;
+          }>;
+        }>(`/chats/conversations/${encodeURIComponent(targetConversationId)}/messages`, {
+          params: { page: 1, limit: 100, _t: Date.now() },
+          headers: {
+            'Cache-Control': 'no-cache, no-store',
+            Pragma: 'no-cache',
+          },
+        });
+        if (cancelled) return;
+        if (conversationIdRef.current?.toLowerCase() !== targetConversationId.toLowerCase()) {
+          return;
+        }
+        const rows = res.data.data;
+        if (!Array.isArray(rows)) {
+          markInboxHistoryReady();
+          return;
+        }
+        markInboxHistoryReady();
+        setMessages((prev) => mergeServerMessagesWithPrev(mapApiRowsToMessages(rows), prev));
+      } catch {
+        if (cancelled) return;
+        if (conversationIdRef.current?.toLowerCase() !== targetConversationId.toLowerCase()) {
+          return;
+        }
+        markInboxHistoryReady();
+        const s = getChatSocket();
+        if (s?.connected) {
+          s.emit('chat:join', {
+            propertyId,
+            conversationId: targetConversationId,
+          });
+        }
+      }
+    }
+
+    /** Inbox: load from API as soon as the dialog opens — do not wait for the socket (fixes stale chat:history races). */
+    if (conversationId) {
+      void refetchMessagesForOpenConversation(conversationId);
+    }
 
     connectChatSocket()
       .then((s) => {
@@ -93,10 +219,20 @@ export function useChat(propertyId: string | null, opts?: UseChatOpts | null): U
 
         function handleHistory(data: {
           propertyId: string;
+          conversationId?: string;
           messages: ChatMessage[];
         }) {
           if (data.propertyId !== currentPropertyId.current) return;
-          setMessages(data.messages);
+          const cur = conversationIdRef.current;
+          if (cur) {
+            if (!inboxRestInitialDoneRef.current) {
+              return;
+            }
+            if (!data.conversationId || data.conversationId.toLowerCase() !== cur.toLowerCase()) {
+              return;
+            }
+          }
+          setMessages((prev) => mergeServerMessagesWithPrev(data.messages, prev));
         }
 
         function handleMessageSaved(msg: ChatMessage) {
@@ -138,49 +274,6 @@ export function useChat(propertyId: string | null, opts?: UseChatOpts | null): U
           setError(data.message);
         }
 
-        async function refetchMessagesForOpenConversation(targetConversationId: string) {
-          if (cancelled || !propertyId) return;
-          try {
-            const res = await apiClient.get<{
-              data: Array<{
-                id: string;
-                propertyId: string;
-                conversationId?: string;
-                userId?: string | null;
-                content: string;
-                role: string;
-                source?: string;
-                createdAt: string;
-              }>;
-            }>(`/chats/conversations/${encodeURIComponent(targetConversationId)}/messages`, {
-              params: { page: 1, limit: 100 },
-            });
-            const rows = res.data.data;
-            if (!Array.isArray(rows)) return;
-            setMessages(
-              rows.map((m) => ({
-                id: m.id,
-                propertyId: m.propertyId,
-                conversationId: m.conversationId,
-                userId: m.userId,
-                content: m.content,
-                role: m.role as 'user' | 'assistant' | 'system',
-                source:
-                  m.source === 'staff' ? 'staff' : m.source === 'ai' ? 'ai' : undefined,
-                createdAt:
-                  typeof m.createdAt === 'string'
-                    ? m.createdAt
-                    : new Date(m.createdAt as unknown as string).toISOString(),
-              })),
-            );
-          } catch {
-            s.emit('chat:join', {
-              propertyId,
-              conversationId: targetConversationId,
-            });
-          }
-        }
-
         /** Левая колонка уже обновилась по этому событию; правая подтягивает те же сообщения с API (надёжнее, чем только сокет). */
         async function handleConversationUpdated(payload: { conversationId?: string }) {
           if (cancelled) return;
@@ -197,6 +290,11 @@ export function useChat(propertyId: string | null, opts?: UseChatOpts | null): U
           void refetchMessagesForOpenConversation(cur);
         }
 
+        /** Edge / bfcache: focus alone may not run after back-forward restore. */
+        function onPageShow(e: PageTransitionEvent) {
+          if (e.persisted) onWindowFocus();
+        }
+
         s.on('connect', handleConnect);
         s.on('disconnect', handleDisconnect);
         s.on('chat:history', handleHistory);
@@ -210,11 +308,13 @@ export function useChat(propertyId: string | null, opts?: UseChatOpts | null): U
 
         if (typeof window !== 'undefined') {
           window.addEventListener('focus', onWindowFocus);
+          window.addEventListener('pageshow', onPageShow as (ev: Event) => void);
         }
 
         detachListeners = () => {
           if (typeof window !== 'undefined') {
             window.removeEventListener('focus', onWindowFocus);
+            window.removeEventListener('pageshow', onPageShow as (ev: Event) => void);
           }
           s.emit('chat:leave', { propertyId });
           s.off('connect', handleConnect);
@@ -271,5 +371,13 @@ export function useChat(propertyId: string | null, opts?: UseChatOpts | null): U
     [propertyId, conversationId],
   );
 
-  return { messages, streamingText, isStreaming, isConnected, error, sendMessage };
+  return {
+    messages,
+    isHistoryLoading,
+    streamingText,
+    isStreaming,
+    isConnected,
+    error,
+    sendMessage,
+  };
 }

@@ -4,25 +4,19 @@ import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { useTheme } from 'next-themes';
 import { Epg, Layout, useEpg } from 'planby';
 import type { Channel } from 'planby';
-import { addDays, eachDayOfInterval, format, parseISO, startOfDay } from 'date-fns';
-import { Copy } from 'lucide-react';
+import { addDays, eachDayOfInterval, format, startOfDay } from 'date-fns';
 import { toast } from 'sonner';
 import { useTranslations } from 'next-intl';
-import { Link } from '@/i18n/navigation';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Button } from '@/components/ui/button';
 import { ResponsiveModal, ResponsiveModalContent } from '@/components/ui/responsive-modal';
-import { Separator } from '@/components/ui/separator';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useDateLocale } from '@/hooks/useDateLocale';
 import { useIsMobile } from '@/hooks/useIsMobile';
-import { cn } from '@/lib/utils';
 import type { CalendarDateRange, CalendarFilters, Reservation } from './types';
 import { useCalendarData } from './hooks/useCalendarData';
 import { useCalendarFilters } from './hooks/useCalendarFilters';
 import { useZodomusCalendarSync } from './hooks/useZodomusCalendarSync';
-import { getPropertyMeta, countNights } from './lib/property-meta';
-import { calendarStatusClasses } from './lib/calendar-status-styles';
+import { getPropertyMeta } from './lib/property-meta';
 import { ProgramBlock } from './components/ProgramBlock';
 import { TimelineHeader } from './components/TimelineHeader';
 import { SidebarChannel } from './components/SidebarChannel';
@@ -32,23 +26,11 @@ import { CalendarError } from './components/CalendarError';
 import { FilterBar } from './components/FilterBar';
 import { TimelineNavBar } from './components/TimelineNavBar';
 import { NewBookingSheet } from './components/NewBookingSheet';
+import { ReservationDetailPanel, ReservationDetailPanelFooter } from './components/ReservationDetailPanel';
 import { getCalendarPlanbyTheme } from './lib/planby-app-theme';
+import { parseLocalCalendarDay } from './lib/calendar-api-dates';
 
 const ITEM_HEIGHT_PX = 64;
-
-const statusLabelKey: Record<Reservation['status'], string> = {
-  confirmed: 'statusConfirmed',
-  pending: 'statusPending',
-  cleaning: 'statusCleaning',
-  blocked: 'statusBlocked',
-};
-
-const channelLabelKeys: Record<Reservation['channel'], string> = {
-  booking: 'channelBooking',
-  airbnb: 'channelAirbnb',
-  direct: 'channelDirect',
-  other: 'channelOther',
-};
 
 export interface CalendarViewProps {
   dateRange: CalendarDateRange;
@@ -79,8 +61,25 @@ export function CalendarView({
   const reservations = data?.reservations ?? [];
   const { filteredProperties, filteredReservations } = useCalendarFilters(properties, reservations, filters);
 
-  const [selected, setSelected] = useState<Reservation | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selected = useMemo(() => {
+    if (!selectedId) return null;
+    return filteredReservations.find((r) => r.uuid === selectedId) ?? null;
+  }, [filteredReservations, selectedId]);
+
+  useEffect(() => {
+    if (selectedId && !filteredReservations.some((r) => r.uuid === selectedId)) {
+      setSelectedId(null);
+    }
+  }, [selectedId, filteredReservations]);
   const [newBookingOpen, setNewBookingOpen] = useState(false);
+  /** Row clicked on grid → preselect property in «Новая бронь» (null = first object). */
+  const [newBookingPropertyId, setNewBookingPropertyId] = useState<string | null>(null);
+  /** Column clicked on grid → check-in / check-out for that day (null = today/tomorrow from toolbar). */
+  const [newBookingGridDates, setNewBookingGridDates] = useState<{
+    checkIn: string;
+    checkOut: string;
+  } | null>(null);
 
   const numDays = useMemo(
     () => eachDayOfInterval({ start: startOfDay(dateRange.start), end: startOfDay(dateRange.end) }).length,
@@ -106,8 +105,8 @@ export function CalendarView({
         title: r.guestName,
         description: '',
         image: '',
-        since: format(startOfDay(parseISO(r.checkIn)), "yyyy-MM-dd'T'HH:mm:ss"),
-        till: format(startOfDay(parseISO(r.checkOut)), "yyyy-MM-dd'T'HH:mm:ss"),
+        since: format(parseLocalCalendarDay(r.checkIn), "yyyy-MM-dd'T'HH:mm:ss"),
+        till: format(parseLocalCalendarDay(r.checkOut), "yyyy-MM-dd'T'HH:mm:ss"),
         _reservation: r,
       })),
     [filteredReservations],
@@ -143,14 +142,29 @@ export function CalendarView({
       if (t.closest('[data-testid="sidebar"]')) return;
       if (t.closest('[data-testid="sidebar-item"]')) return;
       if (t.closest('[data-testid="calendar-timeline-header"]')) return;
-      if (!t.closest('[data-testid="content"]')) return;
+      const content = t.closest('[data-testid="content"]') as HTMLElement | null;
+      if (!content) return;
+      const rect = content.getBoundingClientRect();
+      const y = e.clientY - rect.top + el.scrollTop;
+      const rowIndex = Math.floor(Math.max(0, y) / ITEM_HEIGHT_PX);
+      const prop = filteredProperties[rowIndex];
+      setNewBookingPropertyId(prop?.uuid ?? null);
+      const x = e.clientX - rect.left + el.scrollLeft;
+      const w = dayColWidthPx > 0 ? dayColWidthPx : 1;
+      const dayIndex =
+        numDays > 0 ? Math.min(numDays - 1, Math.max(0, Math.floor(x / w))) : 0;
+      const rangeStart = startOfDay(dateRange.start);
+      setNewBookingGridDates({
+        checkIn: format(addDays(rangeStart, dayIndex), 'yyyy-MM-dd'),
+        checkOut: format(addDays(rangeStart, dayIndex + 1), 'yyyy-MM-dd'),
+      });
       setNewBookingOpen(true);
     };
     el.addEventListener('click', onClick);
     return () => el.removeEventListener('click', onClick);
-  }, [planbyScrollRef, filteredProperties.length]);
+  }, [planbyScrollRef, filteredProperties, dayColWidthPx, numDays, dateRange.start]);
 
-  const onSelectReservation = useCallback((r: Reservation) => setSelected(r), []);
+  const onSelectReservation = useCallback((r: Reservation) => setSelectedId(r.uuid), []);
 
   const renderProgram = useCallback(
     (props: {
@@ -303,7 +317,19 @@ export function CalendarView({
     [calendarScopeId, dayColWidthPx, layoutItemHeight],
   );
 
-  const openNewBooking = useCallback(() => setNewBookingOpen(true), []);
+  const openNewBooking = useCallback(() => {
+    setNewBookingPropertyId(null);
+    setNewBookingGridDates(null);
+    setNewBookingOpen(true);
+  }, []);
+
+  const onNewBookingSheetOpenChange = useCallback((o: boolean) => {
+    setNewBookingOpen(o);
+    if (!o) {
+      setNewBookingPropertyId(null);
+      setNewBookingGridDates(null);
+    }
+  }, []);
 
   /** Кнопка синка показывается при любых объектах; без Zodomus id тост подскажет. */
   const showSyncOta = useMemo(() => properties.length > 0, [properties]);
@@ -369,6 +395,7 @@ export function CalendarView({
           filters={filters}
           onFiltersChange={onFiltersChange}
           properties={properties}
+          reservations={reservations}
           filteredCount={filteredProperties.length}
           onNewBooking={openNewBooking}
           showSyncOta={showSyncOta}
@@ -376,7 +403,13 @@ export function CalendarView({
           isSyncingOta={zodomusSync.isPending}
         />
         <CalendarError onRetry={() => refetch()} />
-        <NewBookingSheet open={newBookingOpen} onOpenChange={setNewBookingOpen} properties={properties} />
+        <NewBookingSheet
+          open={newBookingOpen}
+          onOpenChange={onNewBookingSheetOpenChange}
+          properties={properties}
+          initialPropertyId={newBookingPropertyId}
+          initialGridDates={newBookingGridDates}
+        />
       </div>
     );
   }
@@ -388,6 +421,7 @@ export function CalendarView({
           filters={filters}
           onFiltersChange={onFiltersChange}
           properties={properties}
+          reservations={reservations}
           filteredCount={0}
           onNewBooking={openNewBooking}
           showSyncOta={showSyncOta}
@@ -395,7 +429,13 @@ export function CalendarView({
           isSyncingOta={zodomusSync.isPending}
         />
         <CalendarSkeleton />
-        <NewBookingSheet open={newBookingOpen} onOpenChange={setNewBookingOpen} properties={properties} />
+        <NewBookingSheet
+          open={newBookingOpen}
+          onOpenChange={onNewBookingSheetOpenChange}
+          properties={properties}
+          initialPropertyId={newBookingPropertyId}
+          initialGridDates={newBookingGridDates}
+        />
       </div>
     );
   }
@@ -407,12 +447,19 @@ export function CalendarView({
           filters={filters}
           onFiltersChange={onFiltersChange}
           properties={[]}
+          reservations={[]}
           filteredCount={0}
           onNewBooking={openNewBooking}
           showSyncOta={false}
         />
         <CalendarEmptyNoProperties />
-        <NewBookingSheet open={newBookingOpen} onOpenChange={setNewBookingOpen} properties={properties} />
+        <NewBookingSheet
+          open={newBookingOpen}
+          onOpenChange={onNewBookingSheetOpenChange}
+          properties={properties}
+          initialPropertyId={newBookingPropertyId}
+          initialGridDates={newBookingGridDates}
+        />
       </div>
     );
   }
@@ -424,6 +471,7 @@ export function CalendarView({
         filters={filters}
         onFiltersChange={onFiltersChange}
         properties={properties}
+        reservations={reservations}
         filteredCount={filteredProperties.length}
         onNewBooking={openNewBooking}
         showSyncOta={showSyncOta}
@@ -476,81 +524,25 @@ export function CalendarView({
         )}
       </div>
 
-      <ResponsiveModal open={!!selected} onOpenChange={(o) => !o && setSelected(null)}>
+      <ResponsiveModal open={!!selected} onOpenChange={(o) => !o && setSelectedId(null)}>
         {selected && (
-          <ResponsiveModalContent title={selected.guestName}>
-            <ReservationPanelContent reservation={selected} locale={locale} onCopy={() => toast.success(t('copied'))} />
+          <ResponsiveModalContent
+            title={selected.guestName}
+            footer={<ReservationDetailPanelFooter reservation={selected} />}
+          >
+            <ReservationDetailPanel reservation={selected} onCopy={() => toast.success(t('copied'))} />
           </ResponsiveModalContent>
         )}
       </ResponsiveModal>
 
-      <NewBookingSheet open={newBookingOpen} onOpenChange={setNewBookingOpen} properties={properties} />
+      <NewBookingSheet
+        open={newBookingOpen}
+        onOpenChange={onNewBookingSheetOpenChange}
+        properties={properties}
+        initialPropertyId={newBookingPropertyId}
+        initialGridDates={newBookingGridDates}
+      />
     </div>
     </TooltipProvider>
-  );
-}
-
-function ReservationPanelContent({
-  reservation,
-  locale,
-  onCopy,
-}: {
-  reservation: Reservation;
-  locale: import('date-fns').Locale;
-  onCopy: () => void;
-}) {
-  const t = useTranslations('calendar');
-  const nights = countNights(reservation.checkIn, reservation.checkOut);
-  const stClass = calendarStatusClasses[reservation.status];
-
-  return (
-    <div className="space-y-4">
-      <p className="text-lg font-semibold text-foreground">{reservation.guestName}</p>
-      <span className={cn('inline-flex rounded-full px-2 py-0.5 text-xs font-medium', stClass)}>
-        {t(statusLabelKey[reservation.status])}
-      </span>
-      <p className="text-sm text-muted-foreground">
-        {t(channelLabelKeys[reservation.channel])}
-        {reservation.fromOta ? (
-          <span className="ml-2 rounded-md bg-muted px-1.5 py-0.5 text-xs font-medium text-foreground">
-            {t('otaSyncedBadge')}
-          </span>
-        ) : null}
-      </p>
-      <p className="text-sm">
-        {format(parseISO(reservation.checkIn), 'dd MMM yyyy', { locale })} →{' '}
-        {format(parseISO(reservation.checkOut), 'dd MMM yyyy', { locale })}
-      </p>
-      <p className="text-sm text-muted-foreground">
-        {nights} {t('nights')}
-      </p>
-      <p className="text-base font-medium">
-        {new Intl.NumberFormat(undefined, { style: 'currency', currency: reservation.currency }).format(reservation.totalPrice)}
-      </p>
-      <Separator />
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <code className="truncate rounded bg-muted px-1.5 py-0.5 font-mono">{reservation.externalId}</code>
-        <button
-          type="button"
-          className="rounded p-1 hover:bg-muted"
-          aria-label={t('copyId')}
-          onClick={() => {
-            void navigator.clipboard.writeText(reservation.externalId);
-            onCopy();
-          }}
-        >
-          <Copy className="h-4 w-4" />
-        </button>
-      </div>
-      {reservation.chatThreadId ? (
-        <Button asChild className="w-full">
-          <Link href={`/chat?thread=${reservation.chatThreadId}`}>{t('openChat')}</Link>
-        </Button>
-      ) : (
-        <Button disabled className="w-full" title={t('chatUnavailable')}>
-          {t('openChat')}
-        </Button>
-      )}
-    </div>
   );
 }

@@ -7,7 +7,7 @@ const nextConfig: NextConfig = {
   /** Avoid broken webpack vendor-chunks for axios on the server (MODULE_NOT_FOUND ./vendor-chunks/axios@…). */
   serverExternalPackages: ['axios'],
   transpilePackages: ['@rentai/shared'],
-  // API proxy: src/app/api/[[...path]]/route.ts (Node fetch → Nest; avoids Turbopack rewrites issues).
+  // API: `app/api/[[...path]]/route.ts` + `app/api/socket.io/[[...path]]/route.ts` (Socket.IO path with a dot).
   async redirects() {
     return [
       {

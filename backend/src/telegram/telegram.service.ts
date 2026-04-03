@@ -302,6 +302,14 @@ export class TelegramService {
         return;
       }
 
+      /** Email relay — same pattern as AI draft: call directly on already-resolved MessagingService. */
+      try {
+        await this.messagingService.relayStaffReplyToEmailGuest(convId, savedMessage.content);
+        this.logger.log(`Telegram→email relay sent: conv=${convId}`);
+      } catch (emailErr) {
+        this.logger.error(`Telegram→email relay failed: conv=${convId}`, emailErr as Error);
+      }
+
       escalation.staffReply = replyText;
       escalation.resolvedAt = new Date();
       escalation.kbProcessingStatus = 'pending';

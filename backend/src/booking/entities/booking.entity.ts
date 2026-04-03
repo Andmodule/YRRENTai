@@ -8,6 +8,8 @@ import {
   JoinColumn,
 } from 'typeorm';
 import { PropertyEntity } from '../../property/entities/property.entity';
+import { GuestEntity } from '../../guest/entities/guest.entity';
+import type { DirectBookingSource } from '@rentai/shared';
 
 @Entity('bookings')
 export class BookingEntity {
@@ -20,6 +22,13 @@ export class BookingEntity {
   @ManyToOne(() => PropertyEntity)
   @JoinColumn({ name: 'propertyId' })
   property!: PropertyEntity;
+
+  @Column({ type: 'uuid', nullable: true })
+  guestId!: string | null;
+
+  @ManyToOne(() => GuestEntity, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'guestId' })
+  guest!: GuestEntity | null;
 
   @Column()
   guestName!: string;
@@ -45,8 +54,23 @@ export class BookingEntity {
   @Column({ nullable: true })
   guestsCount?: number;
 
+  /** From OTA room line when adults+children sum is used (Zodomus). */
+  @Column({ type: 'int', nullable: true })
+  guestsAdults?: number;
+
+  @Column({ type: 'int', nullable: true })
+  guestsChildren?: number;
+
   @Column({ type: 'text', nullable: true })
   notes?: string;
+
+  /** Team-only notes (not overwritten by OTA sync). */
+  @Column({ type: 'text', nullable: true })
+  internalNotes?: string | null;
+
+  /** Simple payment tracking for managers. */
+  @Column({ type: 'varchar', length: 16, default: 'unpaid' })
+  paymentStatus!: 'unpaid' | 'partial' | 'paid';
 
   @Column({ default: 'PENDING' })
   status!: string;
@@ -66,6 +90,10 @@ export class BookingEntity {
 
   @Column({ type: 'int', nullable: true })
   zodomusChannelId!: number | null;
+
+  /** Set for manual direct bookings only (zodomusChannelId is null). */
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  directSource!: DirectBookingSource | null;
 
   @Column({ type: 'boolean', default: false })
   zodomusSynced!: boolean;

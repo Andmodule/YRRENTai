@@ -49,7 +49,8 @@ export function PropertyListTable({ properties }: PropertyListTableProps) {
         p.address.toLowerCase().includes(q) ||
         p.currency.toLowerCase().includes(q) ||
         p.timezone.toLowerCase().includes(q) ||
-        (p.zodomusPropertyId?.toLowerCase().includes(q) ?? false)
+        (p.zodomusPropertyId?.toLowerCase().includes(q) ?? false) ||
+        (p.otaPlatform?.code?.toLowerCase().includes(q) ?? false)
       );
     });
 
@@ -185,9 +186,13 @@ export function PropertyListTable({ properties }: PropertyListTableProps) {
                     {property.zodomusPropertyId?.trim() ? (
                       <span
                         className="inline-flex rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-primary"
-                        title={property.zodomusPropertyId}
+                        title={
+                          property.otaPlatform?.code
+                            ? `${property.otaPlatform.code} · ${property.zodomusPropertyId}`
+                            : property.zodomusPropertyId
+                        }
                       >
-                        OTA
+                        <span className="capitalize">{property.otaPlatform?.code ?? 'OTA'}</span>
                       </span>
                     ) : (
                       <span className="text-muted-foreground/50">—</span>

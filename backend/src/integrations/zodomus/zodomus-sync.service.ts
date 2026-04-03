@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { addDays, isValid, parseISO } from 'date-fns';
@@ -7,6 +8,11 @@ import { BookingEntity } from '../../booking/entities/booking.entity';
 import type { PropertyEntity } from '../../property/entities/property.entity';
 import { PropertyService } from '../../property/property.service';
 import { ZodomusService } from './zodomus.service';
+import { ZodomusAvailabilityPushService } from './zodomus-availability-push.service';
+import {
+  formatZodomusHttpException,
+  isZodomusReservationDownloadLimitError,
+} from './zodomus-status.util';
 import type { ZodomusReservation, ZodomusReservationQueueItem } from './zodomus.types';
 
 /** Zodomus queue status codes per official docs */
@@ -23,6 +29,8 @@ export class ZodomusSyncService {
   constructor(
     private readonly zodomus: ZodomusService,
     private readonly propertyService: PropertyService,
+    private readonly config: ConfigService,
+    private readonly availabilityPush: ZodomusAvailabilityPushService,
     @InjectRepository(BookingEntity)
     private readonly bookingRepo: Repository<BookingEntity>,
   ) {}
@@ -62,10 +70,64 @@ export class ZodomusSyncService {
   /**
    * Синхронизация очереди для всех объектов в системе (используется cron-сервисом).
    */
-  async syncAllProperties(channelId: number): Promise<{ processed: number; skipped: number; failed: number; propertiesTouched: number }> {
+  async syncAllProperties(
+    channelId: number,
+    force = false,
+  ): Promise<{ processed: number; skipped: number; failed: number; propertiesTouched: number }> {
     if (!this.zodomus.isEnabled) return { processed: 0, skipped: 0, failed: 0, propertiesTouched: 0 };
     const list = await this.propertyService.findAllWithZodomus();
-    return this.aggregateSync(list, channelId, false);
+    return this.aggregateSync(list, channelId, force);
+  }
+
+  /** SUPERADMIN: same as syncQueueForProperty but without owner scope. */
+  async syncQueueForPropertyAdmin(
+    internalPropertyId: string,
+    channelId: number,
+    force = false,
+  ): Promise<{ processed: number; skipped: number; failed: number }> {
+    if (!this.zodomus.isEnabled) {
+      throw new BadRequestException('Zodomus is disabled');
+    }
+    const property = await this.propertyService.findByIdForAdmin(internalPropertyId);
+    return this.syncQueueRaw(property, channelId, force);
+  }
+
+  /** SUPERADMIN: import summary for any property by id. */
+  async importSummaryForPropertyAdmin(
+    internalPropertyId: string,
+    channelId: number,
+  ): Promise<{ imported: number; failed: number }> {
+    if (!this.zodomus.isEnabled) throw new BadRequestException('Zodomus is disabled');
+
+    const property = await this.propertyService.findByIdForAdmin(internalPropertyId);
+    const extId = property.zodomusPropertyId?.trim();
+    if (!extId) throw new BadRequestException('Set zodomusPropertyId on the property');
+
+    const reservations = await this.zodomus.getReservationSummary(channelId, extId);
+    let imported = 0;
+    let failed = 0;
+
+    for (const res of reservations) {
+      const rid = String(res.reservationId ?? res.id ?? '').trim();
+      if (!rid) continue;
+      try {
+        const existing = await this.bookingRepo.findOne({ where: { zodomusReservationId: rid } });
+        await this.upsertBooking(property, channelId, res, existing, rid);
+        const row = await this.bookingRepo.findOne({ where: { zodomusReservationId: rid } });
+        if (row) {
+          row.zodomusSynced = true;
+          await this.bookingRepo.save(row);
+        }
+        imported += 1;
+      } catch (e) {
+        failed += 1;
+        this.logger.warn(`importSummary failed for ${rid}: ${String(e)}`);
+      }
+    }
+
+    this.availabilityPush.scheduleAvailabilityPush(property.id);
+
+    return { imported, failed };
   }
 
   /**
@@ -89,6 +151,7 @@ export class ZodomusSyncService {
 
     if (reservationStatus === QUEUE_STATUS.CANCELLED) {
       await this.cancelBookingByReservationId(rid);
+      this.availabilityPush.scheduleAvailabilityPush(property.id);
       return;
     }
 
@@ -99,8 +162,23 @@ export class ZodomusSyncService {
       await this.upsertBooking(property, channelId, reservation, existing, rid);
       const row = await this.bookingRepo.findOne({ where: { zodomusReservationId: rid } });
       if (row) { row.zodomusSynced = true; await this.bookingRepo.save(row); }
+      this.availabilityPush.scheduleAvailabilityPush(property.id);
     } catch (e) {
-      this.logger.error(`Webhook upsert failed for reservation ${rid}: ${String(e)}`);
+      if (isZodomusReservationDownloadLimitError(e)) {
+        const row = await this.bookingRepo.findOne({ where: { zodomusReservationId: rid } });
+        if (row && row.propertyId === property.id) {
+          row.zodomusSynced = true;
+          await this.bookingRepo.save(row);
+          this.logger.log(
+            `Webhook: reservation ${rid} — GET limit (sandbox); local booking exists → marked synced.`,
+          );
+          this.availabilityPush.scheduleAvailabilityPush(property.id);
+          return;
+        }
+      }
+      this.logger.error(
+        `Webhook upsert failed for reservation ${rid}: ${formatZodomusHttpException(e)}`,
+      );
       throw e;
     }
   }
@@ -137,6 +215,8 @@ export class ZodomusSyncService {
         this.logger.warn(`importSummary failed for ${rid}: ${String(e)}`);
       }
     }
+
+    this.availabilityPush.scheduleAvailabilityPush(property.id);
 
     return { imported, failed };
   }
@@ -199,11 +279,13 @@ export class ZodomusSyncService {
           failed += 1;
           this.logger.warn(`Cancel failed for ${rid}: ${String(e)}`);
         }
+        await this.pauseAfterQueueItem();
         continue;
       }
 
       if (!force && existing?.zodomusSynced) {
         skipped += 1;
+        await this.pauseAfterQueueItem();
         continue;
       }
 
@@ -219,12 +301,41 @@ export class ZodomusSyncService {
         }
         processed += 1;
       } catch (e) {
-        failed += 1;
-        this.logger.warn(`Zodomus sync failed for reservation ${rid}: ${String(e)}`);
+        if (isZodomusReservationDownloadLimitError(e)) {
+          const row = await this.bookingRepo.findOne({ where: { zodomusReservationId: rid } });
+          if (row && row.propertyId === property.id) {
+            row.zodomusSynced = true;
+            await this.bookingRepo.save(row);
+            skipped += 1;
+            this.logger.log(
+              `Zodomus: reservation ${rid} — GET /reservations limit reached (sandbox); local booking exists → marked synced, skipping re-fetch.`,
+            );
+          } else {
+            skipped += 1;
+            this.logger.warn(
+              `Zodomus: reservation ${rid} — GET limit reached (sandbox) and no local booking for this property. Create new test reservations in Zodomus or use Import summary.`,
+            );
+          }
+        } else {
+          failed += 1;
+          this.logger.warn(
+            `Zodomus sync failed for reservation ${rid}: ${formatZodomusHttpException(e)}`,
+          );
+        }
       }
+      await this.pauseAfterQueueItem();
     }
 
+    this.availabilityPush.scheduleAvailabilityPush(property.id);
+
     return { processed, skipped, failed };
+  }
+
+  /** Throttle consecutive queue API calls (Zodomus / channel may reject bursts). */
+  private async pauseAfterQueueItem(): Promise<void> {
+    const ms = this.config.get<number>('ZODOMUS_QUEUE_ITEM_DELAY_MS') ?? 400;
+    if (ms <= 0) return;
+    await new Promise((r) => setTimeout(r, ms));
   }
 
   /** Returns true when the queue item signals a cancellation (numeric status=3 OR action string). */
@@ -287,6 +398,42 @@ export class ZodomusSyncService {
 
     row.guestName = guestName;
     if (raw.guestEmail) row.guestEmail = raw.guestEmail;
+
+    const phoneStr =
+      raw.guestPhone != null && String(raw.guestPhone).trim() !== ''
+        ? String(raw.guestPhone).trim()
+        : undefined;
+    if (raw.guestPhone !== undefined) {
+      row.guestPhone = phoneStr;
+    }
+
+    const gc = raw.guestsCount;
+    if (gc !== undefined && gc !== null) {
+      const n = Number(gc);
+      if (Number.isFinite(n) && n > 0) {
+        row.guestsCount = Math.min(999, Math.round(n));
+      }
+    }
+
+    if (raw.guestBreakdownFromRoom === true) {
+      const a = raw.guestAdults;
+      const c = raw.guestChildren;
+      if (a !== undefined && a !== null && Number.isFinite(Number(a))) {
+        row.guestsAdults = Math.min(999, Math.max(0, Math.round(Number(a))));
+      }
+      if (c !== undefined && c !== null && Number.isFinite(Number(c))) {
+        row.guestsChildren = Math.min(999, Math.max(0, Math.round(Number(c))));
+      }
+    } else if (raw.guestBreakdownFromRoom === false) {
+      row.guestsAdults = undefined;
+      row.guestsChildren = undefined;
+    }
+
+    if (raw.notes !== undefined) {
+      const nt = raw.notes == null ? '' : String(raw.notes).trim();
+      row.notes = nt.length > 0 ? nt : undefined;
+    }
+
     row.checkIn = checkIn;
     row.checkOut = checkOut;
     row.totalPriceMinor = Number.isFinite(totalMinor) ? totalMinor : 0;
@@ -297,6 +444,10 @@ export class ZodomusSyncService {
     row.status = mapZodomusReservationStatus(raw.status);
 
     await this.bookingRepo.save(row);
+
+    this.logger.debug(
+      `Zodomus upsert reservationId=${rid}: email=${Boolean(row.guestEmail?.trim())} phone=${Boolean(row.guestPhone?.trim())} guestsCount=${row.guestsCount ?? '—'} adults=${row.guestsAdults ?? '—'} children=${row.guestsChildren ?? '—'}`,
+    );
   }
 }
 

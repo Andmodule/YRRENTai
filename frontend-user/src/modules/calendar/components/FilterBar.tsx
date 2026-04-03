@@ -4,16 +4,21 @@ import { useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Filter, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Drawer, DrawerClose, DrawerContent } from '@/components/ui/drawer';
 import { cn } from '@/lib/utils';
-import type { BookingChannel, BookingStatus, CalendarFilters, Property } from '../types';
+import { filterPropertiesBySearch } from '../calendarSearch';
+import type { BookingChannel, BookingStatus, CalendarFilters, Property, Reservation } from '../types';
 import { useIsMobile } from '@/hooks/useIsMobile';
 
 interface FilterBarProps {
   filters: CalendarFilters;
   onFiltersChange: (f: CalendarFilters) => void;
   properties: Property[];
+  /** Для подсказок: поиск по имени гостя, email, номеру брони. */
+  reservations: Reservation[];
   filteredCount: number;
   onNewBooking: () => void;
   showSyncOta?: boolean;
@@ -53,22 +58,39 @@ function ChannelStatusRow({
   isSyncingOta?: boolean;
 }) {
   const t = useTranslations('calendar');
+  const [forceOtaSync, setForceOtaSync] = useState(false);
   return (
     <div className="flex flex-wrap items-center justify-end gap-2">
       {showSyncOta && onSyncOta && (
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="shrink-0 gap-1.5"
-          disabled={isSyncingOta}
-          title={t('syncOtaShiftHint')}
-          onClick={(e) => onSyncOta?.(e.shiftKey)}
-          aria-label={t('syncOta')}
+        <div
+          className="flex flex-wrap items-center gap-2 sm:gap-3"
+          title={t('syncOtaForceTooltip')}
         >
-          <RefreshCw className={cn('h-3.5 w-3.5', isSyncingOta && 'animate-spin')} />
-          {isSyncingOta ? t('syncOtaLoading') : t('syncOta')}
-        </Button>
+          <div className="flex items-center gap-1.5">
+            <Checkbox
+              id="cal-ota-force"
+              checked={forceOtaSync}
+              onCheckedChange={(v) => setForceOtaSync(v === true)}
+              disabled={isSyncingOta}
+              className="h-4 w-4"
+            />
+            <Label htmlFor="cal-ota-force" className="cursor-pointer text-[11px] font-normal text-muted-foreground">
+              {t('syncOtaForceLabel')}
+            </Label>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="shrink-0 gap-1.5"
+            disabled={isSyncingOta}
+            onClick={(e) => onSyncOta?.(forceOtaSync || e.shiftKey)}
+            aria-label={t('syncOta')}
+          >
+            <RefreshCw className={cn('h-3.5 w-3.5', isSyncingOta && 'animate-spin')} />
+            {isSyncingOta ? t('syncOtaLoading') : t('syncOta')}
+          </Button>
+        </div>
       )}
       <div className="flex flex-wrap gap-1">
         {CHANNELS.map(({ value, labelKey }) => (
@@ -115,6 +137,7 @@ export function FilterBar({
   filters,
   onFiltersChange,
   properties,
+  reservations,
   filteredCount,
   onNewBooking,
   showSyncOta,
@@ -128,10 +151,10 @@ export function FilterBar({
   const [showSuggestions, setShowSuggestions] = useState(false);
 
   const suggestions = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = query.trim();
     if (!q) return [];
-    return properties.filter((p) => p.title.toLowerCase().includes(q)).slice(0, 8);
-  }, [properties, query]);
+    return filterPropertiesBySearch(properties, reservations, q).slice(0, 8);
+  }, [properties, reservations, query]);
 
   const search = (
     <div className="relative w-full max-w-md">
@@ -147,12 +170,12 @@ export function FilterBar({
         onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
       />
       {showSuggestions && query.trim().length > 0 && suggestions.length > 0 && (
-        <ul className="absolute left-0 right-0 top-full z-50 mt-1 max-h-56 overflow-auto rounded-md border bg-popover text-popover-foreground shadow-md">
+        <ul className="absolute left-0 right-0 top-full z-50 mt-1 max-h-56 overflow-auto rounded-md border border-border bg-popover text-popover-foreground shadow-lg ring-1 ring-black/5 dark:ring-white/10">
           {suggestions.map((p) => (
             <li key={p.uuid}>
               <button
                 type="button"
-                className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
+                className="w-full px-3 py-2 text-left text-sm hover:bg-muted focus-visible:bg-muted focus-visible:outline-none active:bg-muted"
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => {
                   setQuery(p.title);

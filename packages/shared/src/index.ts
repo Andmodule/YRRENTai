@@ -8,10 +8,12 @@ export * from './schemas/conversation.schema';
 
 export * from './constants/roles';
 export * from './constants/booking-states';
+export * from './constants/direct-booking-source';
 export * from './constants/conversation';
 export * from './constants/escalation';
 
 export * from './utils/booking.utils';
+export * from './utils/guest';
 export * from './utils/task-notes';
 
 export * from './app-types';

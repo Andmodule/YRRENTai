@@ -4,6 +4,8 @@ import {
   Column,
   CreateDateColumn,
   UpdateDateColumn,
+  ManyToOne,
+  JoinColumn,
 } from 'typeorm';
 
 @Entity('users')
@@ -45,4 +47,15 @@ export class UserEntity {
   /** STAFF: last time shift was explicitly completed (for manager visibility). */
   @Column({ type: 'timestamptz', nullable: true })
   staffShiftCompletedAt!: Date | null;
+
+  /**
+   * For STAFF / MANAGER users: links them to the OWNER account they work under.
+   * Used to scope assignee lookups to the correct tenant.
+   */
+  @Column({ type: 'uuid', nullable: true })
+  employerOwnerId!: string | null;
+
+  @ManyToOne(() => UserEntity, { nullable: true })
+  @JoinColumn({ name: 'employerOwnerId' })
+  employerOwner!: UserEntity | null;
 }

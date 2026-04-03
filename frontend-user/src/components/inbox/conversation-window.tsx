@@ -6,6 +6,7 @@ import { Send, MessageSquare } from 'lucide-react';
 import { useChat } from '@/hooks/use-chat';
 import { ChatMessageBubble, StreamingBubble } from '@/components/chat';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import type { ConversationDto } from '@/hooks/use-conversations';
 import { ConversationStatusDot } from '@/components/inbox/conversation-status-dot';
@@ -21,7 +22,7 @@ interface ConversationWindowProps {
 
 export function ConversationWindow({ conversation, onStaffReplySuccess }: ConversationWindowProps) {
   const t = useTranslations('inbox');
-  const { messages, streamingText, isStreaming, isConnected, error } = useChat(
+  const { messages, isHistoryLoading, streamingText, isStreaming, isConnected, error } = useChat(
     conversation.propertyId,
     { conversationId: conversation.id },
   );
@@ -68,15 +69,25 @@ export function ConversationWindow({ conversation, onStaffReplySuccess }: Conver
         ref={scrollRef}
         className="min-h-0 w-full min-w-0 flex-1 space-y-4 overflow-y-auto overscroll-y-contain touch-pan-y [-webkit-overflow-scrolling:touch] bg-slate-50 px-4 py-4 max-lg:pb-[calc(6.5rem+env(safe-area-inset-bottom,0px))] dark:bg-slate-900/50"
       >
-        {messages.length === 0 && !isStreaming && (
+        {isHistoryLoading && (
+          <div className="space-y-4 py-2" aria-busy="true" aria-live="polite">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className={cn('flex', i % 2 === 0 ? 'justify-end' : 'justify-start')}>
+                <Skeleton className={cn('h-16 rounded-2xl', i % 2 === 0 ? 'w-[min(100%,280px)]' : 'w-[min(100%,320px)]')} />
+              </div>
+            ))}
+          </div>
+        )}
+        {!isHistoryLoading && messages.length === 0 && !isStreaming && (
           <div className="flex min-h-[min(280px,45dvh)] flex-col items-center justify-center py-12 text-center">
             <MessageSquare className="mb-3 h-10 w-10 text-muted-foreground/30" />
             <p className="text-sm text-muted-foreground">{t('noMessages')}</p>
           </div>
         )}
-        {messages.map((msg) => (
-          <ChatMessageBubble key={msg.id} message={msg} />
-        ))}
+        {!isHistoryLoading &&
+          messages.map((msg) => (
+            <ChatMessageBubble key={msg.id} message={msg} />
+          ))}
         {isStreaming && <StreamingBubble text={streamingText} />}
       </div>
 

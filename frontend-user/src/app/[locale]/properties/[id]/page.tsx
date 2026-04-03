@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { useProperty, useProperties } from '@/hooks/use-properties';
 import { useKnowledgeBase } from '@/hooks/use-knowledge-base';
-import { PropertyForm, DeletePropertyDialog } from '@/components/property';
+import { PropertyForm, DeletePropertyDialog, PropertyIntegrationsCard } from '@/components/property';
 import { KbBoard, KbImportDialog } from '@/components/knowledge-base';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
@@ -107,6 +107,13 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
       icon: Users,
       label: t('detail.maxGuests'),
       value: property.maxGuests ? String(property.maxGuests) : t('detail.notSpecified'),
+    },
+    {
+      icon: Link2,
+      label: t('detail.otaPlatform'),
+      value: property.otaPlatform?.code
+        ? property.otaPlatform.code
+        : t('detail.notSpecified'),
     },
     {
       icon: Link2,
@@ -242,6 +249,15 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
                   <p className="text-sm leading-relaxed whitespace-pre-wrap">{property.description}</p>
                 </div>
               )}
+
+              <PropertyIntegrationsCard
+                propertyId={property.id}
+                zodomusPropertyId={property.zodomusPropertyId}
+                otaPlatform={property.otaPlatform ?? null}
+                onSynced={async () => {
+                  await mutate();
+                }}
+              />
             </>
           )}
         </div>

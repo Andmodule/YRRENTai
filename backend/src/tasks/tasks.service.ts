@@ -3,17 +3,21 @@ import {
   NotFoundException,
   ForbiddenException,
   UnprocessableEntityException,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { format } from 'date-fns';
 import { TaskEntity } from './entities/task.entity';
+import { BookingEntity } from '../booking/entities/booking.entity';
+import { PropertyService } from '../property/property.service';
 import { TaskNoteEntity } from './entities/task-note.entity';
 import { TasksGateway } from './tasks.gateway';
 import { ChecklistService } from './checklist.service';
 
 export interface TaskDto {
   uuid: string;
+  title: string;
   type: string;
   status: string;
   priority: string;
@@ -63,8 +67,11 @@ export class TasksService {
     private readonly taskRepo: Repository<TaskEntity>,
     @InjectRepository(TaskNoteEntity)
     private readonly taskNoteRepo: Repository<TaskNoteEntity>,
+    @InjectRepository(BookingEntity)
+    private readonly bookingRepo: Repository<BookingEntity>,
     private readonly tasksGateway: TasksGateway,
     private readonly checklistService: ChecklistService,
+    private readonly propertyService: PropertyService,
   ) {}
 
   private toDto(
@@ -77,6 +84,7 @@ export class TasksService {
     const addr = [t.property.city, t.property.address].filter(Boolean).join(', ');
     return {
       uuid: t.id,
+      title: t.title ?? '',
       type: t.type,
       status: t.status,
       priority: t.priority,
@@ -357,6 +365,7 @@ export class TasksService {
     const today = format(new Date(), 'yyyy-MM-dd');
     const rows: Partial<TaskEntity>[] = [
       {
+        title: 'Уборка после выезда',
         type: 'checkout_cleaning',
         status: 'pending',
         priority: 'urgent',
@@ -375,6 +384,7 @@ export class TasksService {
         inProgressStartedAt: null,
       },
       {
+        title: 'Подготовка к заезду',
         type: 'checkin_prep',
         status: 'pending',
         priority: 'normal',
@@ -396,16 +406,17 @@ export class TasksService {
 
     if (props[1]) {
       rows.push({
-        type: 'manual',
+        title: 'Ручная задача',
+        type: 'other',
         status: 'in_progress',
-        priority: 'low',
+        priority: 'normal',
         propertyId: props[1].id,
         reservationId: null,
         contextLabel: null,
         assigneeId: null,
         dueDate: today,
         dueTime: null,
-        notes: 'Ручная задача',
+        notes: '',
         issueDescription: null,
         photoUrls: [],
         hasVerificationPhoto: false,
@@ -419,5 +430,64 @@ export class TasksService {
       const saved = await this.taskRepo.save(this.taskRepo.create(r));
       await this.checklistService.applyAutoTemplateIfAny(saved.id);
     }
+  }
+
+  async createForManager(
+    userId: string,
+    body: {
+      propertyId: string;
+      title: string;
+      type: string;
+      priority?: string;
+      assigneeId?: string | null;
+      dueDate?: string | null;
+      dueTime?: string | null;
+      reservationId?: string | null;
+      notes?: string;
+    },
+  ): Promise<TaskDto> {
+    await this.propertyService.findOne(body.propertyId, userId);
+
+    let resolvedDueDate = body.dueDate?.trim() || format(new Date(), 'yyyy-MM-dd');
+    let reservationId: string | null = null;
+    let contextLabel: string | null = null;
+
+    const rid = body.reservationId?.trim();
+    if (rid) {
+      const booking = await this.bookingRepo.findOne({ where: { id: rid } });
+      if (!booking || booking.propertyId !== body.propertyId) {
+        throw new BadRequestException('Invalid reservation for this property');
+      }
+      reservationId = booking.id;
+      contextLabel = `${booking.guestName}`;
+      // Auto-fill due date from booking if not explicitly provided
+      if (!body.dueDate) {
+        resolvedDueDate = format(booking.checkOut, 'yyyy-MM-dd');
+      }
+    }
+
+    const row = this.taskRepo.create({
+      title: body.title.trim(),
+      type: body.type || 'other',
+      status: 'pending',
+      priority: body.priority || 'normal',
+      propertyId: body.propertyId,
+      reservationId,
+      contextLabel,
+      assigneeId: body.assigneeId ?? null,
+      dueDate: resolvedDueDate,
+      dueTime: body.dueTime?.trim() || null,
+      notes: body.notes?.trim() ?? '',
+      issueDescription: null,
+      photoUrls: [],
+      hasVerificationPhoto: false,
+      completedAt: null,
+      lastManagerSeenAt: null,
+      inProgressStartedAt: null,
+    });
+
+    const saved = await this.taskRepo.save(row);
+    await this.checklistService.applyAutoTemplateIfAny(saved.id);
+    return this.toDtoForRole(await this.reloadTask(saved.id), 'MANAGER');
   }
 }

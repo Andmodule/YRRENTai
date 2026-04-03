@@ -68,6 +68,27 @@ export class TasksController {
     return { data: { tasks } };
   }
 
+  @Post()
+  @Roles('OWNER', 'MANAGER')
+  async create(
+    @CurrentUser() user: JwtPayload,
+    @Body()
+    body: {
+      propertyId: string;
+      title: string;
+      type: string;
+      priority?: string;
+      assigneeId?: string | null;
+      dueDate?: string | null;
+      dueTime?: string | null;
+      reservationId?: string | null;
+      notes?: string;
+    },
+  ) {
+    const task = await this.tasksService.createForManager(user.sub, body);
+    return { data: task };
+  }
+
   /** Staff: same handlers as POST /incidents (some dev setups never register IncidentsController). */
   @Post('incidents/upload-photos')
   @Roles('STAFF')

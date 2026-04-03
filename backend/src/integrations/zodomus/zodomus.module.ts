@@ -8,12 +8,15 @@ import { ZodomusSyncService } from './zodomus-sync.service';
 import { ZodomusCronService } from './zodomus-cron.service';
 import { ZodomusController } from './zodomus.controller';
 import { ZodomusWebhookController } from './zodomus-webhook.controller';
+import { ZodomusAdminController } from './zodomus-admin.controller';
 import { BookingEntity } from '../../booking/entities/booking.entity';
+import { PropertyEntity } from '../../property/entities/property.entity';
 import { PropertyModule } from '../../property/property.module';
+import { ZodomusAvailabilityPushService } from './zodomus-availability-push.service';
 
 @Module({
-  imports: [ConfigModule, TypeOrmModule.forFeature([BookingEntity]), PropertyModule],
-  controllers: [ZodomusController, ZodomusWebhookController],
+  imports: [ConfigModule, TypeOrmModule.forFeature([BookingEntity, PropertyEntity]), PropertyModule],
+  controllers: [ZodomusController, ZodomusWebhookController, ZodomusAdminController],
   providers: [
     {
       provide: ZODOMUS_CLIENT,
@@ -28,7 +31,8 @@ import { PropertyModule } from '../../property/property.module';
     ZodomusService,
     ZodomusSyncService,
     ZodomusCronService,
+    ZodomusAvailabilityPushService,
   ],
-  exports: [ZodomusService, ZodomusSyncService],
+  exports: [ZodomusService, ZodomusSyncService, ZodomusAvailabilityPushService],
 })
 export class ZodomusModule {}

@@ -5,7 +5,8 @@ export const TASK_TYPE_VALUES = [
   'checkout_cleaning',
   'checkin_prep',
   'mid_stay_cleaning',
-  'manual',
+  'maintenance',
+  'other',
 ] as const satisfies readonly TaskType[];
 
 export const checklistItemSchema = z.object({

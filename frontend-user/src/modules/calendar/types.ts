@@ -18,6 +18,17 @@ export interface Reservation {
   fromOta?: boolean;
   propertyId: string;
   guestName: string;
+  guestEmail?: string | null;
+  guestPhone?: string | null;
+  guestsCount?: number | null;
+  guestsAdults?: number | null;
+  guestsChildren?: number | null;
+  notes?: string | null;
+  /** Team-only; not overwritten by OTA sync. */
+  internalNotes?: string | null;
+  paymentStatus?: 'unpaid' | 'partial' | 'paid';
+  /** Manual direct booking source; only when channel is direct. */
+  directSource?: string | null;
   channel: BookingChannel;
   status: BookingStatus;
   totalPrice: number;

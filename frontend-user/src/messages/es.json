@@ -45,7 +45,8 @@
         "checkout_cleaning": "Cleaning (checkout)",
         "checkin_prep": "Check-in preparation",
         "mid_stay_cleaning": "Mid-stay cleaning",
-        "manual": "Manual task"
+        "maintenance": "Maintenance",
+        "other": "Other"
       }
     },
     "presets": {
@@ -60,8 +61,10 @@
       "checkinDesc": "Keys, Wi‑Fi, climate, linens, welcome-ready state.",
       "midStayTitle": "Mid-stay cleaning",
       "midStayDesc": "Light refresh during a stay — fast and focused.",
-      "manualTitle": "Manual task",
-      "manualDesc": "Short checklist for one-off work orders.",
+      "maintenanceTitle": "Maintenance",
+      "maintenanceDesc": "Repairs, inspections, and facility fixes.",
+      "otherTitle": "Other task",
+      "otherDesc": "Short checklist for one-off work orders.",
       "editorHint": "Preset loaded — adjust items and order anytime (drag handles)."
     }
   },

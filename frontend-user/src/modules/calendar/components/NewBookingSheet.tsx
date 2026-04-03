@@ -1,35 +1,63 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { format, parseISO, startOfDay } from 'date-fns';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { addDays, differenceInCalendarDays, format, parseISO, startOfDay } from 'date-fns';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
+import { isAxiosError } from 'axios';
+import { z } from 'zod';
+import { DIRECT_BOOKING_SOURCES } from '@rentai/shared';
 import { apiClient } from '@/lib/api/client';
 import { useProperties } from '@/hooks/use-properties';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Select } from '@/components/ui/select';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import type { Property as CalendarProperty } from '../types';
 
 type InitialStatus = 'PENDING' | 'CONFIRMED';
 
+type ConflictPreview = {
+  available: boolean;
+  reason?: 'MINIMUM_ONE_NIGHT';
+  conflictWith?: { guestName: string; checkIn: string; checkOut: string };
+};
+
 interface NewBookingSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** Objects from calendar payload (uuid = property id) */
   properties: CalendarProperty[];
+  /** When opening from a calendar row, preselect that property (otherwise first object). */
+  initialPropertyId?: string | null;
+  /** When opening from a grid cell, use these dates (otherwise today / tomorrow from toolbar). */
+  initialGridDates?: { checkIn: string; checkOut: string } | null;
 }
 
-export function NewBookingSheet({ open, onOpenChange, properties }: NewBookingSheetProps) {
+const fieldClass = 'h-9 text-sm';
+const labelClass = 'text-xs font-medium text-muted-foreground';
+
+export function NewBookingSheet({
+  open,
+  onOpenChange,
+  properties,
+  initialPropertyId = null,
+  initialGridDates = null,
+}: NewBookingSheetProps) {
   const t = useTranslations('calendar.newBookingForm');
   const queryClient = useQueryClient();
   const { properties: fullProperties } = useProperties();
 
   const [propertyId, setPropertyId] = useState('');
   const [guestName, setGuestName] = useState('');
+  const [guestPhone, setGuestPhone] = useState('');
+  const [guestEmail, setGuestEmail] = useState('');
+  const [notes, setNotes] = useState('');
+  const [directSource, setDirectSource] = useState<string>('');
   const [checkIn, setCheckIn] = useState('');
   const [checkOut, setCheckOut] = useState('');
   const [totalMajor, setTotalMajor] = useState('');
@@ -41,17 +69,30 @@ export function NewBookingSheet({ open, onOpenChange, properties }: NewBookingSh
 
   useEffect(() => {
     if (open) {
-      setPropertyId((id) => id || defaultPropertyId);
+      const preferred =
+        initialPropertyId && properties.some((p) => p.uuid === initialPropertyId)
+          ? initialPropertyId
+          : defaultPropertyId;
+      setPropertyId(preferred);
       setGuestName('');
-      const today = format(new Date(), 'yyyy-MM-dd');
-      const out = format(startOfDay(new Date(Date.now() + 86400000)), 'yyyy-MM-dd');
-      setCheckIn(today);
-      setCheckOut(out);
+      setGuestPhone('');
+      setGuestEmail('');
+      setNotes('');
+      setDirectSource('');
+      if (initialGridDates?.checkIn && initialGridDates?.checkOut) {
+        setCheckIn(initialGridDates.checkIn);
+        setCheckOut(initialGridDates.checkOut);
+      } else {
+        const today = format(new Date(), 'yyyy-MM-dd');
+        const out = format(addDays(startOfDay(new Date()), 1), 'yyyy-MM-dd');
+        setCheckIn(today);
+        setCheckOut(out);
+      }
       setTotalMajor('');
       setGuestsCount('');
       setInitialStatus('PENDING');
     }
-  }, [open, defaultPropertyId]);
+  }, [open, defaultPropertyId, initialPropertyId, properties, initialGridDates]);
 
   const currencyForProperty = useMemo(() => {
     const fp = fullProperties.find((p) => p.id === propertyId);
@@ -64,28 +105,109 @@ export function NewBookingSheet({ open, onOpenChange, properties }: NewBookingSh
     }
   }, [propertyId, currencyForProperty]);
 
+  const checkInIso = useMemo(() => {
+    if (!checkIn) return '';
+    return startOfDay(parseISO(`${checkIn}T12:00:00`)).toISOString();
+  }, [checkIn]);
+
+  const checkOutIso = useMemo(() => {
+    if (!checkOut) return '';
+    return startOfDay(parseISO(`${checkOut}T12:00:00`)).toISOString();
+  }, [checkOut]);
+
+  const nights = useMemo(() => {
+    if (!checkIn || !checkOut) return 0;
+    const ci = parseISO(`${checkIn}T12:00:00`);
+    const co = parseISO(`${checkOut}T12:00:00`);
+    return differenceInCalendarDays(co, ci);
+  }, [checkIn, checkOut]);
+
+  const conflictEnabled =
+    open &&
+    Boolean(propertyId) &&
+    Boolean(checkInIso) &&
+    Boolean(checkOutIso) &&
+    nights >= 1;
+
+  const { data: conflictPreview, isFetching: conflictLoading, isError: conflictQueryError } = useQuery({
+    queryKey: ['bookingConflictPreview', propertyId, checkInIso, checkOutIso],
+    queryFn: async () => {
+      const res = await apiClient.get<{ data: ConflictPreview }>('/bookings/conflict-preview', {
+        params: {
+          propertyId,
+          checkIn: checkInIso,
+          checkOut: checkOutIso,
+        },
+      });
+      return res.data.data;
+    },
+    enabled: conflictEnabled,
+    staleTime: 15_000,
+  });
+
+  const emailInvalid = useMemo(() => {
+    const e = guestEmail.trim();
+    if (!e) return false;
+    return !z.string().email().safeParse(e).success;
+  }, [guestEmail]);
+
+  const priceValid = useMemo(() => {
+    const major = parseFloat(totalMajor.replace(',', '.'));
+    return !Number.isNaN(major) && major >= 0;
+  }, [totalMajor]);
+
+  const availabilityOk =
+    conflictQueryError ||
+    (!conflictLoading && !conflictQueryError && conflictPreview?.available === true);
+
+  const canSubmit =
+    Boolean(propertyId.trim()) &&
+    Boolean(guestName.trim()) &&
+    !emailInvalid &&
+    Boolean(checkIn) &&
+    Boolean(checkOut) &&
+    nights >= 1 &&
+    priceValid &&
+    availabilityOk &&
+    !conflictLoading;
+
+  const onCheckInChange = useCallback((v: string) => {
+    setCheckIn(v);
+    if (!v) return;
+    const ci = startOfDay(parseISO(`${v}T12:00:00`));
+    const co = checkOut ? startOfDay(parseISO(`${checkOut}T12:00:00`)) : null;
+    if (!co || co.getTime() <= ci.getTime()) {
+      setCheckOut(format(addDays(ci, 1), 'yyyy-MM-dd'));
+    }
+  }, [checkOut]);
+
   const mutation = useMutation({
     mutationFn: async () => {
       if (!propertyId.trim()) throw new Error('VALIDATION');
       if (!guestName.trim()) throw new Error('VALIDATION');
+      if (emailInvalid) throw new Error('EMAIL');
       if (!checkIn || !checkOut) throw new Error('VALIDATION');
       const ci = startOfDay(parseISO(`${checkIn}T12:00:00`));
       const co = startOfDay(parseISO(`${checkOut}T12:00:00`));
-      if (co <= ci) throw new Error('RANGE');
+      if (differenceInCalendarDays(co, ci) < 1) throw new Error('RANGE');
 
       const major = parseFloat(totalMajor.replace(',', '.'));
       if (Number.isNaN(major) || major < 0) throw new Error('PRICE');
 
       const totalPriceMinor = Math.round(major * 100);
-      const checkInIso = ci.toISOString();
-      const checkOutIso = co.toISOString();
+      const ciIso = ci.toISOString();
+      const coIso = co.toISOString();
 
       const gc = guestsCount.trim() ? parseInt(guestsCount, 10) : undefined;
       const body = {
         propertyId,
         guestName: guestName.trim(),
-        checkIn: checkInIso,
-        checkOut: checkOutIso,
+        guestPhone: guestPhone.trim() || undefined,
+        guestEmail: guestEmail.trim() || undefined,
+        notes: notes.trim() || undefined,
+        directSource: directSource ? (directSource as (typeof DIRECT_BOOKING_SOURCES)[number]) : null,
+        checkIn: ciIso,
+        checkOut: coIso,
         totalPriceMinor,
         currency: currency.length === 3 ? currency.toUpperCase() : 'EUR',
         ...(gc !== undefined && !Number.isNaN(gc) && gc > 0 ? { guestsCount: gc } : {}),
@@ -106,10 +228,30 @@ export function NewBookingSheet({ open, onOpenChange, properties }: NewBookingSh
       onOpenChange(false);
     },
     onError: (err: unknown) => {
-      const msg = err instanceof Error ? err.message : '';
-      if (msg === 'RANGE') toast.error(t('validationRange'));
-      else if (msg === 'PRICE') toast.error(t('validationPrice'));
-      else if (msg === 'VALIDATION') toast.error(t('validationRequired'));
+      if (isAxiosError(err) && err.response?.status === 409) {
+        const data = err.response.data as { message?: { conflictWith?: ConflictPreview['conflictWith'] } };
+        const cw = data?.message && typeof data.message === 'object' ? data.message.conflictWith : undefined;
+        if (cw) {
+          const from = format(parseISO(cw.checkIn), 'd MMM');
+          const to = format(parseISO(cw.checkOut), 'd MMM');
+          toast.error(t('conflictToast', { guest: cw.guestName, from, to }));
+        } else toast.error(t('error'));
+        return;
+      }
+      if (isAxiosError(err) && err.response?.status === 400) {
+        const msg = err.response.data as { message?: string | string[] };
+        const m = msg?.message;
+        const s = Array.isArray(m) ? m[0] : m;
+        if (s === 'MINIMUM_ONE_NIGHT') {
+          toast.error(t('availabilityMinNight'));
+          return;
+        }
+      }
+      const emsg = err instanceof Error ? err.message : '';
+      if (emsg === 'RANGE') toast.error(t('validationRange'));
+      else if (emsg === 'PRICE') toast.error(t('validationPrice'));
+      else if (emsg === 'VALIDATION') toast.error(t('validationRequired'));
+      else if (emsg === 'EMAIL') toast.error(t('validationEmail'));
       else toast.error(t('error'));
     },
   });
@@ -118,107 +260,260 @@ export function NewBookingSheet({ open, onOpenChange, properties }: NewBookingSh
     mutation.mutate();
   }, [mutation]);
 
-  return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent title={t('title')} description={t('description')} className="max-w-md">
-        {properties.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{t('noPropertiesHint')}</p>
-        ) : (
-        <div className="flex flex-col gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="nb-property">{t('property')}</Label>
-            <Select
-              id="nb-property"
-              value={propertyId}
-              onChange={(e) => setPropertyId(e.target.value)}
-            >
-              {properties.map((p) => (
-                <option key={p.uuid} value={p.uuid}>
-                  {p.title}
-                </option>
-              ))}
-            </Select>
-          </div>
+  const availabilityCard = (() => {
+    if (!checkIn || !checkOut) return null;
 
-          <div className="space-y-2">
-            <Label htmlFor="nb-guest">{t('guest')}</Label>
+    if (nights < 1) {
+      return (
+        <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2">
+          <p className="text-xs text-amber-800 dark:text-amber-200">{t('availabilityMinNight')}</p>
+        </div>
+      );
+    }
+
+    let body: ReactNode = null;
+    if (conflictQueryError && conflictEnabled) {
+      body = <p className="text-xs text-amber-700 dark:text-amber-300">{t('availabilityCheckError')}</p>;
+    } else if (conflictLoading) {
+      body = <p className="text-xs text-muted-foreground">{t('availabilityChecking')}</p>;
+    } else if (conflictPreview?.reason === 'MINIMUM_ONE_NIGHT') {
+      body = <p className="text-xs text-amber-700 dark:text-amber-300">{t('availabilityMinNight')}</p>;
+    } else if (conflictPreview?.conflictWith) {
+      const cw = conflictPreview.conflictWith;
+      const from = format(parseISO(cw.checkIn), 'd MMM');
+      const to = format(parseISO(cw.checkOut), 'd MMM');
+      body = (
+        <p className="text-xs font-medium text-destructive">
+          {t('availabilityBlocked', { guest: cw.guestName, from, to })}
+        </p>
+      );
+    } else if (conflictPreview?.available) {
+      body = (
+        <p className="text-xs font-medium text-emerald-700 dark:text-emerald-300">
+          {t('availabilityFree', { count: nights })}
+        </p>
+      );
+    }
+
+    return (
+      <div className="rounded-lg border border-border bg-muted/50 px-3 py-2.5 shadow-sm dark:bg-muted/30">
+        <p className="text-xs text-muted-foreground">{t('nightsCount', { count: nights })}</p>
+        {body ? <div className="mt-1.5 border-t border-border/60 pt-1.5">{body}</div> : null}
+      </div>
+    );
+  })();
+
+  const formBody =
+    properties.length === 0 ? (
+      <p className="text-sm text-muted-foreground">{t('noPropertiesHint')}</p>
+    ) : (
+      <div className="flex flex-col gap-3">
+        <div className="space-y-1">
+          <Label htmlFor="nb-property" className={labelClass}>
+            {t('property')}
+          </Label>
+          <Select
+            id="nb-property"
+            className={fieldClass}
+            value={propertyId}
+            onChange={(e) => setPropertyId(e.target.value)}
+          >
+            {properties.map((p) => (
+              <option key={p.uuid} value={p.uuid}>
+                {p.title}
+              </option>
+            ))}
+          </Select>
+        </div>
+
+        <div className="space-y-1">
+          <Label htmlFor="nb-guest" className={labelClass}>
+            {t('guest')}
+          </Label>
+          <Input
+            id="nb-guest"
+            className={fieldClass}
+            value={guestName}
+            onChange={(e) => setGuestName(e.target.value)}
+            placeholder={t('guestPlaceholder')}
+            autoComplete="name"
+          />
+        </div>
+
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <div className="space-y-1">
+            <Label htmlFor="nb-phone" className={labelClass}>
+              {t('guestPhone')} <span className="font-normal text-muted-foreground/80">({t('optional')})</span>
+            </Label>
             <Input
-              id="nb-guest"
-              value={guestName}
-              onChange={(e) => setGuestName(e.target.value)}
-              placeholder={t('guestPlaceholder')}
-              autoComplete="off"
+              id="nb-phone"
+              type="tel"
+              className={fieldClass}
+              value={guestPhone}
+              onChange={(e) => setGuestPhone(e.target.value)}
+              placeholder={t('guestPhonePlaceholder')}
+              autoComplete="tel"
             />
           </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label htmlFor="nb-in">{t('checkIn')}</Label>
-              <Input id="nb-in" type="date" value={checkIn} onChange={(e) => setCheckIn(e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="nb-out">{t('checkOut')}</Label>
-              <Input id="nb-out" type="date" value={checkOut} onChange={(e) => setCheckOut(e.target.value)} />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label htmlFor="nb-price">{t('total')}</Label>
-              <Input
-                id="nb-price"
-                inputMode="decimal"
-                value={totalMajor}
-                onChange={(e) => setTotalMajor(e.target.value)}
-                placeholder="0.00"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="nb-currency">{t('currency')}</Label>
-              <Input
-                id="nb-currency"
-                value={currency}
-                onChange={(e) => setCurrency(e.target.value.slice(0, 3).toUpperCase())}
-                maxLength={3}
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label htmlFor="nb-guests">{t('guestsCount')}</Label>
-              <Input
-                id="nb-guests"
-                type="number"
-                min={1}
-                value={guestsCount}
-                onChange={(e) => setGuestsCount(e.target.value)}
-                placeholder="2"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="nb-status">{t('initialStatus')}</Label>
-              <Select
-                id="nb-status"
-                value={initialStatus}
-                onChange={(e) => setInitialStatus(e.target.value as InitialStatus)}
-              >
-                <option value="PENDING">{t('statusPending')}</option>
-                <option value="CONFIRMED">{t('statusConfirmed')}</option>
-              </Select>
-            </div>
-          </div>
-
-          <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              {t('cancel')}
-            </Button>
-            <Button type="button" onClick={submit} disabled={mutation.isPending}>
-              {mutation.isPending ? t('submitting') : t('submit')}
-            </Button>
+          <div className="space-y-1">
+            <Label htmlFor="nb-email" className={labelClass}>
+              {t('guestEmail')} <span className="font-normal text-muted-foreground/80">({t('optional')})</span>
+            </Label>
+            <Input
+              id="nb-email"
+              type="email"
+              className={fieldClass}
+              value={guestEmail}
+              onChange={(e) => setGuestEmail(e.target.value)}
+              placeholder={t('guestEmailPlaceholder')}
+              autoComplete="email"
+            />
+            {emailInvalid ? <p className="text-xs text-destructive">{t('validationEmail')}</p> : null}
           </div>
         </div>
-        )}
+
+        <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-1">
+            <Label htmlFor="nb-in" className={labelClass}>
+              {t('checkIn')}
+            </Label>
+            <Input
+              id="nb-in"
+              type="date"
+              className={fieldClass}
+              value={checkIn}
+              onChange={(e) => onCheckInChange(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="nb-out" className={labelClass}>
+              {t('checkOut')}
+            </Label>
+            <Input
+              id="nb-out"
+              type="date"
+              className={fieldClass}
+              value={checkOut}
+              onChange={(e) => setCheckOut(e.target.value)}
+            />
+          </div>
+        </div>
+
+        {availabilityCard}
+
+        <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-1">
+            <Label htmlFor="nb-price" className={labelClass}>
+              {t('total')}
+            </Label>
+            <Input
+              id="nb-price"
+              inputMode="decimal"
+              className={fieldClass}
+              value={totalMajor}
+              onChange={(e) => setTotalMajor(e.target.value)}
+              placeholder="0.00"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="nb-currency" className={labelClass}>
+              {t('currency')}
+            </Label>
+            <Select
+              id="nb-currency"
+              className={fieldClass}
+              value={currency}
+              onChange={(e) => setCurrency(e.target.value)}
+            >
+              <option value="USD">USD</option>
+              <option value="EUR">EUR</option>
+              <option value="BYN">BYN</option>
+              <option value="RUB">RUB</option>
+            </Select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-1">
+            <Label htmlFor="nb-guests" className={labelClass}>
+              {t('guestsCount')}
+            </Label>
+            <Input
+              id="nb-guests"
+              type="number"
+              min={1}
+              className={fieldClass}
+              value={guestsCount}
+              onChange={(e) => setGuestsCount(e.target.value)}
+              placeholder="1"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="nb-status" className={labelClass}>
+              {t('initialStatus')}
+            </Label>
+            <Select
+              id="nb-status"
+              className={fieldClass}
+              value={initialStatus}
+              onChange={(e) => setInitialStatus(e.target.value as InitialStatus)}
+            >
+              <option value="PENDING">{t('statusPending')}</option>
+              <option value="CONFIRMED">{t('statusConfirmed')}</option>
+            </Select>
+          </div>
+        </div>
+
+        <div className="space-y-1">
+          <Label htmlFor="nb-source" className={labelClass}>
+            {t('directSource')}
+          </Label>
+          <Select
+            id="nb-source"
+            className={fieldClass}
+            value={directSource}
+            onChange={(e) => setDirectSource(e.target.value)}
+          >
+            <option value="">{t('directSourceUnset')}</option>
+            {DIRECT_BOOKING_SOURCES.map((s) => (
+              <option key={s} value={s}>
+                {t(`directSource_${s}`)}
+              </option>
+            ))}
+          </Select>
+        </div>
+
+        <div className="space-y-1">
+          <Label htmlFor="nb-notes" className={labelClass}>
+            {t('notes')}
+          </Label>
+          <Textarea
+            id="nb-notes"
+            rows={2}
+            className="min-h-[2.5rem] resize-y text-sm"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder={t('notesPlaceholder')}
+          />
+        </div>
+      </div>
+    );
+
+  const footer = (
+    <div className="flex gap-2">
+      <Button type="button" variant="outline" className="h-10 flex-1" onClick={() => onOpenChange(false)}>
+        {t('cancel')}
+      </Button>
+      <Button type="button" className="h-10 flex-1" onClick={submit} disabled={mutation.isPending || !canSubmit}>
+        {mutation.isPending ? t('submitting') : t('submit')}
+      </Button>
+    </div>
+  );
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent title={t('title')} description={t('description')} className="max-w-md" footer={footer}>
+        {formBody}
       </SheetContent>
     </Sheet>
   );

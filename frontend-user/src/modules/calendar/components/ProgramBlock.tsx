@@ -46,7 +46,7 @@ interface ProgramBlockProps {
   isMobile: boolean;
 }
 
-export const ProgramBlock = memo(function ProgramBlock({ program, onSelect, isMobile }: ProgramBlockProps) {
+export const ProgramBlock = memo(function ProgramBlock({ program, onSelect, isMobile: _isMobile }: ProgramBlockProps) {
   const t = useTranslations('calendar');
   const locale = useDateLocale();
   const p = program.program;
@@ -104,7 +104,8 @@ export const ProgramBlock = memo(function ProgramBlock({ program, onSelect, isMo
     [onSelect, reservation],
   );
 
-  const showGuest = !isMobile && isMinWidth;
+  /** Always show guest name — narrow blocks truncate; mobile used to hide text and looked "empty". */
+  const showGuestName = Boolean(reservation);
 
   const blockInner = (
     <div
@@ -127,7 +128,7 @@ export const ProgramBlock = memo(function ProgramBlock({ program, onSelect, isMo
         onKeyDown={handleKeyDown}
       >
         <span className="shrink-0 text-current opacity-90">{channelIcon(reservation?.channel ?? 'direct')}</span>
-        {showGuest && reservation && (
+        {showGuestName && reservation && (
           <>
             <span className="min-w-0 flex-1 truncate">{reservation.guestName}</span>
             {showNights && (

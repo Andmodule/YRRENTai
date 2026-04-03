@@ -8,6 +8,7 @@ import { PropertyEntity } from '../../property/entities/property.entity';
 import { PropertyService } from '../../property/property.service';
 import { parseICal, type ICalEvent } from './ical-parse.util';
 import { generateICal } from './ical-generate.util';
+import { ZodomusAvailabilityPushService } from '../zodomus/zodomus-availability-push.service';
 
 export interface ICalImportResult {
   url: string;
@@ -24,6 +25,7 @@ export class ICalSyncService {
 
   constructor(
     private readonly propertyService: PropertyService,
+    private readonly zodomusAvailabilityPush: ZodomusAvailabilityPushService,
     @InjectRepository(BookingEntity)
     private readonly bookingRepo: Repository<BookingEntity>,
     @InjectRepository(PropertyEntity)
@@ -127,6 +129,7 @@ export class ICalSyncService {
     for (const url of urls) {
       results.push(await this.importUrlRaw(property, url));
     }
+    this.zodomusAvailabilityPush.scheduleAvailabilityPush(property.id);
     return results;
   }
 

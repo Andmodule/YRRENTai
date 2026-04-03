@@ -1,11 +1,25 @@
-import { BadRequestException, Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  HttpException,
+  Post,
+  Query,
+  ServiceUnavailableException,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { ZodomusService } from './zodomus.service';
 import { ZodomusSyncService } from './zodomus-sync.service';
+import { ZodomusAvailabilityPushService } from './zodomus-availability-push.service';
+import { PropertyService } from '../../property/property.service';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
+import { mapRoomRatesToPropertyPreview } from './zodomus-property-preview.util';
+import { formatZodomusHttpException } from './zodomus-status.util';
 
 @ApiTags('Zodomus')
 @ApiBearerAuth()
@@ -15,10 +29,47 @@ export class ZodomusController {
   constructor(
     private readonly zodomus: ZodomusService,
     private readonly zodomusSync: ZodomusSyncService,
+    private readonly availabilityPush: ZodomusAvailabilityPushService,
+    private readonly propertyService: PropertyService,
   ) {}
 
+  /**
+   * Превью листинга по внешнему property id Zodomus (до создания объекта в RentAI).
+   * GET /room-rates → название/адрес (если есть) + комнаты, тарифы по комнатам, выбор zodomusRoomId.
+   */
+  @Get('property-preview')
+  @Roles('OWNER', 'MANAGER', 'SUPERADMIN')
+  async propertyPreview(
+    @Query('channelId') channelIdParam: string,
+    @Query('externalPropertyId') externalPropertyId: string,
+  ) {
+    if (!this.zodomus.isEnabled) {
+      return { data: { status: 'disabled' as const } };
+    }
+    const channelId = Number(channelIdParam);
+    const ext = externalPropertyId?.trim();
+    if (!ext || !Number.isFinite(channelId)) {
+      throw new BadRequestException('channelId and externalPropertyId are required');
+    }
+    try {
+      const raw = await this.zodomus.getRoomRatesRaw(channelId, ext);
+      const preview = mapRoomRatesToPropertyPreview(raw, ext);
+      return { data: preview };
+    } catch (e: unknown) {
+      if (e instanceof HttpException) {
+        const hint = formatZodomusHttpException(e).toLowerCase();
+        if (hint.includes('invalid property')) {
+          throw new BadRequestException(
+            'ZODOMUS_INVALID_PROPERTY_ID: Use the external property id for this channel (not the room id). Check Zodomus backoffice or your OTA extranet.',
+          );
+        }
+      }
+      throw e;
+    }
+  }
+
   @Get('status')
-  @Roles('OWNER', 'MANAGER')
+  @Roles('OWNER', 'MANAGER', 'SUPERADMIN')
   async status() {
     if (!this.zodomus.isEnabled) {
       return { data: { status: 'disabled' as const } };
@@ -28,7 +79,7 @@ export class ZodomusController {
   }
 
   @Post('sync')
-  @Roles('OWNER', 'MANAGER')
+  @Roles('OWNER', 'MANAGER', 'SUPERADMIN')
   async sync(
     @CurrentUser() user: JwtPayload,
     @Body() body: { channelId: number; propertyId: string; force?: boolean },
@@ -38,19 +89,27 @@ export class ZodomusController {
     if (!propertyId || !Number.isFinite(channelId)) {
       throw new BadRequestException('channelId and propertyId are required');
     }
-    const result = await this.zodomusSync.syncQueueForProperty(user.sub, propertyId, channelId, Boolean(body.force));
+    const force = Boolean(body.force);
+    const result =
+      user.role === 'SUPERADMIN'
+        ? await this.zodomusSync.syncQueueForPropertyAdmin(propertyId, channelId, force)
+        : await this.zodomusSync.syncQueueForProperty(user.sub, propertyId, channelId, force);
     return { data: result };
   }
 
   /** Синхронизация очереди для всех объектов владельца с привязкой Zodomus. */
   @Post('sync-all')
-  @Roles('OWNER', 'MANAGER')
+  @Roles('OWNER', 'MANAGER', 'SUPERADMIN')
   async syncAll(@CurrentUser() user: JwtPayload, @Body() body: { channelId?: number; force?: boolean }) {
     const channelId = Number(body?.channelId ?? 1);
     if (!Number.isFinite(channelId)) {
       throw new BadRequestException('channelId must be a number');
     }
-    const result = await this.zodomusSync.syncAllForUser(user.sub, channelId, Boolean(body.force));
+    const force = Boolean(body.force);
+    const result =
+      user.role === 'SUPERADMIN'
+        ? await this.zodomusSync.syncAllProperties(channelId, force)
+        : await this.zodomusSync.syncAllForUser(user.sub, channelId, force);
     return { data: result };
   }
 
@@ -58,8 +117,37 @@ export class ZodomusController {
    * GET /reservations-summary — импорт всех активных броней при онбординге объекта.
    * Не зависит от очереди; полезен при первом подключении объекта к Zodomus.
    */
+  /**
+   * Recomputes availability from RentAI bookings and POSTs to Zodomus (manual retry / debugging).
+   */
+  @Post('push-availability')
+  @Roles('OWNER', 'MANAGER', 'SUPERADMIN')
+  async pushAvailability(
+    @CurrentUser() user: JwtPayload,
+    @Body() body: { propertyId: string },
+  ) {
+    const propertyId = body.propertyId?.trim();
+    if (!propertyId) {
+      throw new BadRequestException('propertyId is required');
+    }
+    if (user.role === 'SUPERADMIN') {
+      await this.propertyService.findByIdForAdmin(propertyId);
+    } else {
+      await this.propertyService.findOne(propertyId, user.sub);
+    }
+    try {
+      await this.availabilityPush.pushAvailabilityNow(propertyId, { ignoreAutoPushDisable: true });
+    } catch (e) {
+      if (e instanceof ServiceUnavailableException) throw e;
+      throw new ServiceUnavailableException(
+        `Zodomus availability push failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+    return { data: { ok: true as const } };
+  }
+
   @Post('import-summary')
-  @Roles('OWNER', 'MANAGER')
+  @Roles('OWNER', 'MANAGER', 'SUPERADMIN')
   async importSummary(
     @CurrentUser() user: JwtPayload,
     @Body() body: { channelId: number; propertyId: string },
@@ -69,7 +157,10 @@ export class ZodomusController {
     if (!propertyId || !Number.isFinite(channelId)) {
       throw new BadRequestException('channelId and propertyId are required');
     }
-    const result = await this.zodomusSync.importSummaryForProperty(user.sub, propertyId, channelId);
+    const result =
+      user.role === 'SUPERADMIN'
+        ? await this.zodomusSync.importSummaryForPropertyAdmin(propertyId, channelId)
+        : await this.zodomusSync.importSummaryForProperty(user.sub, propertyId, channelId);
     return { data: result };
   }
 }

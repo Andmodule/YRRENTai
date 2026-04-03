@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { BookingEntity } from '../../booking/entities/booking.entity';
 import { PropertyEntity } from '../../property/entities/property.entity';
 import { PropertyModule } from '../../property/property.module';
+import { ZodomusModule } from '../zodomus/zodomus.module';
 import { ICalSyncService } from './ical-sync.service';
 import { ICalCronService } from './ical-cron.service';
 import { ICalController } from './ical.controller';
@@ -13,6 +14,7 @@ import { ICalController } from './ical.controller';
     ConfigModule,
     TypeOrmModule.forFeature([BookingEntity, PropertyEntity]),
     PropertyModule,
+    ZodomusModule,
   ],
   controllers: [ICalController],
   providers: [ICalSyncService, ICalCronService],

@@ -53,6 +53,16 @@ export interface ZodomusReservation {
   guestLastName?: string;
   guestName?: string;
   guestEmail?: string;
+  /** Merged from `customer.phone` (+ country code when present). */
+  guestPhone?: string;
+  /** From first room: adults+children preferred, else `numberOfGuests`. */
+  guestsCount?: number;
+  /** Set when breakdown comes from room adults+children (not only numberOfGuests). */
+  guestBreakdownFromRoom?: boolean;
+  guestAdults?: number;
+  guestChildren?: number;
+  /** Remarks / meal plan lines from OTA payload. */
+  notes?: string;
   totalPrice?: number;
   currency?: string;
   status?: string;

@@ -45,20 +45,28 @@ interface ResponsiveModalContentProps {
   title: string;
   description?: string;
   children: React.ReactNode;
+  /** Pinned at bottom; scroll stays in the main body. */
+  footer?: React.ReactNode;
   className?: string;
 }
 
-export function ResponsiveModalContent({ title, description, children, className }: ResponsiveModalContentProps) {
+export function ResponsiveModalContent({
+  title,
+  description,
+  children,
+  footer,
+  className,
+}: ResponsiveModalContentProps) {
   const isDesktop = useMediaQuery(MD_UP);
   if (isDesktop) {
     return (
-      <DialogContent title={title} description={description} className={className}>
+      <DialogContent title={title} description={description} footer={footer} className={className}>
         {children}
       </DialogContent>
     );
   }
   return (
-    <DrawerContent title={title} description={description} className={className}>
+    <DrawerContent title={title} description={description} footer={footer} className={className}>
       {children}
     </DrawerContent>
   );

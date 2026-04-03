@@ -3,5 +3,7 @@ export { PropertyCardSkeleton } from './property-card-skeleton';
 export { PropertyListTable } from './property-list-table';
 export { PropertyTableSkeleton } from './property-table-skeleton';
 export { PropertyForm } from './property-form';
+export { PropertyChannelIntegrationSection } from './property-channel-integration-section';
 export { PropertyDraftCard } from './property-draft-card';
 export { DeletePropertyDialog } from './delete-property-dialog';
+export { PropertyIntegrationsCard } from './property-integrations-card';

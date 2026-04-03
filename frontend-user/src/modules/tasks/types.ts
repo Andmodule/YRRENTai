@@ -1,11 +1,17 @@
-export type TaskType = 'checkout_cleaning' | 'checkin_prep' | 'mid_stay_cleaning' | 'manual';
+export type TaskType =
+  | 'checkout_cleaning'
+  | 'mid_stay_cleaning'
+  | 'checkin_prep'
+  | 'maintenance'
+  | 'other';
 
 export type TaskStatus = 'pending' | 'in_progress' | 'done' | 'issue';
 
-export type TaskPriority = 'urgent' | 'normal' | 'low';
+export type TaskPriority = 'urgent' | 'normal' | 'critical';
 
 export interface Task {
   uuid: string;
+  title: string;
   type: TaskType;
   status: TaskStatus;
   priority: TaskPriority;
@@ -55,4 +61,10 @@ export interface TaskFilters {
   priorityFilter: TaskPriority | 'all';
   propertyQuery: string;
   assigneeId: string | 'all';
+}
+
+export interface StaffMember {
+  id: string;
+  displayName: string;
+  role: string;
 }

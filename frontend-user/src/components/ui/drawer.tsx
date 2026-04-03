@@ -29,9 +29,11 @@ export function DrawerOverlay({
 interface DrawerContentProps extends React.ComponentPropsWithoutRef<typeof DrawerPrimitive.Content> {
   title: string;
   description?: string;
+  /** Pinned below scroll area (e.g. action buttons). */
+  footer?: React.ReactNode;
 }
 
-export function DrawerContent({ title, description, children, className, ...props }: DrawerContentProps) {
+export function DrawerContent({ title, description, children, footer, className, ...props }: DrawerContentProps) {
   return (
     <DrawerPortal>
       <DrawerOverlay />
@@ -60,7 +62,12 @@ export function DrawerContent({ title, description, children, className, ...prop
             <span className="sr-only">Close</span>
           </DrawerPrimitive.Close>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-6 pt-4">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 pt-4 pb-4">{children}</div>
+        {footer ? (
+          <div className="shrink-0 border-t border-border bg-background px-6 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+            {footer}
+          </div>
+        ) : null}
       </DrawerPrimitive.Content>
     </DrawerPortal>
   );

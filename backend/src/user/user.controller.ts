@@ -5,6 +5,7 @@ import { UserService } from './user.service';
 import { CurrentUser, JwtPayload } from '../common/decorators/current-user.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
+import type { StaffMemberDto } from './interfaces/public-user.interface';
 
 @ApiTags('Users')
 @ApiBearerAuth()
@@ -12,6 +13,18 @@ import { Roles } from '../common/decorators/roles.decorator';
 @Controller('users')
 export class UserController {
   constructor(private readonly userService: UserService) {}
+
+  /**
+   * Returns STAFF/MANAGER users that belong to the calling owner's account.
+   * Used to populate the assignee selector when creating/editing tasks.
+   */
+  @Get('staff')
+  @UseGuards(RolesGuard)
+  @Roles('OWNER', 'MANAGER')
+  async getStaff(@CurrentUser() user: JwtPayload): Promise<{ data: StaffMemberDto[] }> {
+    const staff = await this.userService.findStaffByOwner(user.sub);
+    return { data: staff };
+  }
 
   @Get('me')
   async getProfile(@CurrentUser() user: JwtPayload) {

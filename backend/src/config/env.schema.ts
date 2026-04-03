@@ -20,6 +20,32 @@ const zodomusEnvFields = z.object({
   ZODOMUS_WEBHOOK_KEY: z.string().optional(),
   /** How often (minutes) to poll reservations-queue as a backup to webhooks. Default: 15. */
   ZODOMUS_POLL_INTERVAL_MINUTES: z.coerce.number().min(1).max(1440).default(15),
+  /** Default OTA channel id for queue sync and availability push (e.g. 1 = Booking.com). */
+  ZODOMUS_DEFAULT_CHANNEL_ID: z.coerce.number().int().positive().default(1),
+  /** Push computed availability to Zodomus after local booking changes. Default: true. */
+  ZODOMUS_AUTO_PUSH_AVAILABILITY: z
+    .enum(['true', 'false', '1', '0', 'yes', 'no'])
+    .default('true')
+    .transform((v) => v === 'true' || v === '1' || v === 'yes'),
+  /** How many future nights to send to POST /availability (max 730). Default: 366. */
+  ZODOMUS_AVAILABILITY_HORIZON_DAYS: z.coerce.number().int().min(1).max(730).default(366),
+  /** Coalesce rapid booking updates into one push per property (ms). 0 = no debounce. Default: 2000. */
+  ZODOMUS_AVAILABILITY_PUSH_DEBOUNCE_MS: z.coerce.number().int().min(0).max(60_000).default(2000),
+  /** Retry properties with zodomusAvailabilityDirty on this interval (minutes). Default: 15. */
+  ZODOMUS_AVAILABILITY_DIRTY_RETRY_MINUTES: z.coerce.number().int().min(1).max(1440).default(15),
+  /** Nightly full availability push for all Zodomus-linked properties (drift guard). Default: true. */
+  ZODOMUS_AVAILABILITY_NIGHTLY_FULL_PUSH: z
+    .enum(['true', 'false', '1', '0', 'yes', 'no'])
+    .default('true')
+    .transform((v) => v === 'true' || v === '1' || v === 'yes'),
+  /** UTC hour (0–23) to run nightly push. Default: 3. */
+  ZODOMUS_AVAILABILITY_NIGHTLY_HOUR_UTC: z.coerce.number().int().min(0).max(23).default(3),
+  /** Pause between properties during dirty retry / nightly (ms). Default: 1000. */
+  ZODOMUS_AVAILABILITY_BATCH_GAP_MS: z.coerce.number().int().min(0).max(60_000).default(1000),
+  /** Pause between GET /reservations calls when draining the queue (rate-limit / channel throttling). Default: 400. */
+  ZODOMUS_QUEUE_ITEM_DELAY_MS: z.coerce.number().int().min(0).max(30_000).default(400),
+  /** Per-attempt HTTP timeout for Zodomus upstream fetch (ms). Retries use a fresh timer each attempt. Default: 8000. */
+  ZODOMUS_FETCH_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(8000),
 });
 
 const icalEnvFields = z.object({

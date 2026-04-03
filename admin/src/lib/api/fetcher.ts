@@ -1,4 +1,6 @@
 import { apiClient } from './client';
 
-export const fetcher = <T>(url: string): Promise<T> =>
-  apiClient.get<{ data: T }>(url).then((res) => res.data.data);
+export async function swrFetcher<T>(url: string): Promise<T> {
+  const res = await apiClient.get<{ data: T }>(url);
+  return res.data.data;
+}

@@ -48,9 +48,10 @@ export default function ChatPage() {
       void mutateConversations(
         (current) => {
           if (!current?.data) return current;
+          const cid = conversationId.toLowerCase();
           const nextData = sortConversationsByActivity(
             current.data.map((c) =>
-              c.id === conversationId
+              c.id.toLowerCase() === cid
                 ? {
                     ...c,
                     status: 'resolved' as ConversationStatus,
@@ -73,12 +74,14 @@ export default function ChatPage() {
 
   const activeConversation = useMemo(() => {
     if (!activeId) return null;
-    return conversations.find((c) => c.id === activeId) ?? null;
+    const aid = activeId.toLowerCase();
+    return conversations.find((c) => c.id.toLowerCase() === aid) ?? null;
   }, [activeId, conversations]);
 
   useEffect(() => {
     if (!activeId || inboxLoading) return;
-    if (!conversations.some((c) => c.id === activeId)) {
+    const aid = activeId.toLowerCase();
+    if (!conversations.some((c) => c.id.toLowerCase() === aid)) {
       setActiveId(null);
     }
   }, [activeId, conversations, inboxLoading]);

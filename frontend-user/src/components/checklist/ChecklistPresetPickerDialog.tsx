@@ -7,6 +7,7 @@ import {
   LayoutGrid,
   Sparkles,
   Timer,
+  Wrench,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
@@ -16,8 +17,20 @@ import type { PresetChoice } from '@/modules/checklist-templates/presets/profess
 const cards: {
   choice: PresetChoice;
   icon: typeof Sparkles;
-  titleKey: 'checkoutTitle' | 'checkinTitle' | 'midStayTitle' | 'manualTitle' | 'blankTitle';
-  descKey: 'checkoutDesc' | 'checkinDesc' | 'midStayDesc' | 'manualDesc' | 'blankDesc';
+  titleKey:
+    | 'checkoutTitle'
+    | 'checkinTitle'
+    | 'midStayTitle'
+    | 'maintenanceTitle'
+    | 'otherTitle'
+    | 'blankTitle';
+  descKey:
+    | 'checkoutDesc'
+    | 'checkinDesc'
+    | 'midStayDesc'
+    | 'maintenanceDesc'
+    | 'otherDesc'
+    | 'blankDesc';
 }[] = [
   {
     choice: 'checkout_cleaning',
@@ -38,10 +51,16 @@ const cards: {
     descKey: 'midStayDesc',
   },
   {
-    choice: 'manual',
+    choice: 'maintenance',
+    icon: Wrench,
+    titleKey: 'maintenanceTitle',
+    descKey: 'maintenanceDesc',
+  },
+  {
+    choice: 'other',
     icon: FileEdit,
-    titleKey: 'manualTitle',
-    descKey: 'manualDesc',
+    titleKey: 'otherTitle',
+    descKey: 'otherDesc',
   },
   {
     choice: 'blank',

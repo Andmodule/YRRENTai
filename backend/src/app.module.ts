@@ -29,6 +29,7 @@ import { OperationsModule } from './operations/operations.module';
 import { ZodomusModule } from './integrations/zodomus/zodomus.module';
 import { ICalModule } from './integrations/ical/ical.module';
 import { MessagingModule } from './messaging/messaging.module';
+import { AdminModule } from './admin/admin.module';
 
 @Module({
   imports: [
@@ -79,6 +80,7 @@ import { MessagingModule } from './messaging/messaging.module';
     ZodomusModule,
     ICalModule,
     MessagingModule,
+    AdminModule,
   ],
   providers: [
     {

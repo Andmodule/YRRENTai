@@ -8,6 +8,7 @@ import {
   JoinColumn,
 } from 'typeorm';
 import { UserEntity } from '../../user/entities/user.entity';
+import { OtaPlatformEntity } from './ota-platform.entity';
 
 @Entity('properties')
 export class PropertyEntity {
@@ -43,11 +44,29 @@ export class PropertyEntity {
   zodomusPropertyId!: string | null;
 
   /**
+   * Zodomus room id for POST /availability.
+   * If unset, the first room from GET /room-rates is used — wrong when Zodomus exposes multiple rooms; set explicitly.
+   */
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  zodomusRoomId!: string | null;
+
+  /** True when last POST /availability failed or was partial — cron retries until success. */
+  @Column({ type: 'boolean', default: false })
+  zodomusAvailabilityDirty!: boolean;
+
+  /**
    * List of external iCal feed URLs to import (Airbnb, VRBO, etc.).
    * Stored as jsonb array of strings.
    */
   @Column({ type: 'jsonb', nullable: true, default: '[]' })
   icalImportUrls!: string[];
+
+  @Column({ type: 'uuid', nullable: true })
+  otaPlatformId!: string | null;
+
+  @ManyToOne(() => OtaPlatformEntity, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'otaPlatformId' })
+  otaPlatform!: OtaPlatformEntity | null;
 
   @Column('uuid')
   ownerId!: string;

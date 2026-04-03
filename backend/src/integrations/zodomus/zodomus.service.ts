@@ -48,12 +48,17 @@ export class ZodomusService {
     return this.ensureEnabled().get<unknown>('/price-model');
   }
 
+  /** Полное тело GET /room-rates (для превью объекта до сохранения в БД). */
+  async getRoomRatesRaw(channelId: number, propertyId: string): Promise<unknown> {
+    return this.ensureEnabled().get<unknown>('/room-rates', {
+      channelId: String(channelId),
+      propertyId: propertyId.trim(),
+    });
+  }
+
   /** Комнаты и тарифы из OTA для объекта — источник корректных roomId/rateId для POST /rooms-activation */
   async getRoomRates(channelId: number, propertyId: string): Promise<unknown> {
-    const res = await this.ensureEnabled().get<unknown>('/room-rates', {
-      channelId: String(channelId),
-      propertyId,
-    });
+    const res = await this.getRoomRatesRaw(channelId, propertyId);
     return this.normalizeArray(res);
   }
 
@@ -100,6 +105,23 @@ export class ZodomusService {
   }
 
   /**
+   * GET /availability — room availability for channel/property/date range (upstream query params).
+   */
+  async getAvailability(
+    channelId: number,
+    propertyId: string,
+    dateFrom: string,
+    dateTo: string,
+  ): Promise<unknown> {
+    return this.ensureEnabled().get<unknown>('/availability', {
+      channelId: String(channelId),
+      propertyId,
+      dateFrom,
+      dateTo,
+    });
+  }
+
+  /**
    * POST /availability — set room availability for a date range.
    * Correct format per Zodomus docs: dateFrom/dateTo/availability (not dates[]).
    */
@@ -134,6 +156,25 @@ export class ZodomusService {
       propertyId,
       rooms,
     });
+  }
+
+  /**
+   * POST /reservations-createtest — sandbox-only test reservation; triggers webhook if configured.
+   * Upstream body per Zodomus: channelId, propertyId (OTA string), status, optional reservationId.
+   */
+  async createTestReservation(
+    channelId: number,
+    propertyId: string,
+    opts: { status: string; reservationId?: string },
+  ): Promise<unknown> {
+    const body: Record<string, unknown> = {
+      channelId,
+      propertyId,
+      status: opts.status,
+    };
+    const rid = opts.reservationId?.trim();
+    if (rid) body.reservationId = rid;
+    return this.ensureEnabled().post('/reservations-createtest', body);
   }
 
   /**
@@ -206,12 +247,71 @@ export class ZodomusService {
     }
 
     const rid = String(obj.reservationId ?? obj.id ?? fid).trim();
-    const merged = { ...obj, reservationId: rid || fid } as ZodomusReservation;
+    let merged: ZodomusReservation = { ...obj, reservationId: rid || fid } as ZodomusReservation;
+    const m = merged as Record<string, unknown>;
+
+    /**
+     * GET /reservations-summary (and some alternate shapes) may return `customer` / `rooms` at the top level
+     * without going through the earlier flatten branches — then `guestEmail` never lands on the root and upsert skips it.
+     */
+    const hasNestedGuestShape =
+      this.isRecord(m.customer) ||
+      Array.isArray(m.rooms) ||
+      (this.isRecord(m.reservation) && (this.isRecord(m.customer) || Array.isArray(m.rooms)));
+
+    if (hasNestedGuestShape) {
+      const resForFlat = this.isRecord(m.reservation)
+        ? (m.reservation as Record<string, unknown>)
+        : (Object.fromEntries(
+            Object.entries(m).filter(([k]) => k !== 'customer' && k !== 'rooms'),
+          ) as Record<string, unknown>);
+      const flat = this.flattenZodomusReservationsBlock({
+        reservation: resForFlat,
+        customer: this.isRecord(m.customer) ? m.customer : {},
+        rooms: Array.isArray(m.rooms) ? m.rooms : [],
+      });
+      const rid2 = String(flat.reservationId ?? m.reservationId ?? m.id ?? fid).trim();
+      merged = { ...m, ...flat, reservationId: rid2 || fid } as ZodomusReservation;
+    }
+
     return merged;
   }
 
   private isRecord(v: unknown): v is Record<string, unknown> {
     return v !== null && typeof v === 'object' && !Array.isArray(v);
+  }
+
+  /**
+   * Booking / Airbnb may return `phone` as a string (with or without +) or as `{ countryCode, number }`.
+   * `phoneCountryCode` on the customer is often merged when the string has no leading +.
+   */
+  private normalizeCustomerPhone(cust: Record<string, unknown>): string {
+    const str = (v: unknown): string => {
+      if (v == null || v === '') return '';
+      return String(v).trim();
+    };
+
+    const rawPhone = cust.phone;
+    if (this.isRecord(rawPhone)) {
+      const o = rawPhone;
+      const cc = str(o.countryCode ?? o.phoneCountryCode);
+      const num = str(o.number ?? o.nationalNumber ?? o.phoneNumber ?? o.raw);
+      if (!num && !cc) return '';
+      if (num.startsWith('+')) return num;
+      const ccNorm = cc.replace(/^\+/, '');
+      if (ccNorm && num) return `+${ccNorm} ${num}`.replace(/^\++/, '+');
+      return num || `+${ccNorm}`;
+    }
+
+    const phoneRaw = str(rawPhone);
+    const ccExtra = str(cust.phoneCountryCode);
+    if (phoneRaw.length === 0) return '';
+    if (phoneRaw.startsWith('+')) return phoneRaw;
+    if (ccExtra.length > 0) {
+      const ccNoPlus = ccExtra.replace(/^\+/, '');
+      return `+${ccNoPlus} ${phoneRaw}`.trim();
+    }
+    return phoneRaw;
   }
 
   /** Live Zodomus: `reservations: { reservation, customer, rooms[] }` — merge into one flat shape for upsertBooking. */
@@ -227,11 +327,59 @@ export class ZodomusService {
       return Number.isFinite(x) ? x : undefined;
     };
 
+    const str = (v: unknown): string => {
+      if (v == null || v === '') return '';
+      return String(v).trim();
+    };
+
+    const guestPhone = this.normalizeCustomerPhone(cust) || undefined;
+
+    const adults = Number(firstRoom?.numberOfAdults ?? 0);
+    const childrenRaw = firstRoom?.numberOChildren ?? (firstRoom as Record<string, unknown>)?.numberOfChildren;
+    const children = Number(childrenRaw ?? 0);
+    const numGuests = Number(firstRoom?.numberOfGuests ?? 0);
+    const adultsN = Number.isFinite(adults) ? adults : 0;
+    const childrenN = Number.isFinite(children) ? children : 0;
+    const sumAC = adultsN + childrenN;
+    const numGuestsN = Number.isFinite(numGuests) && numGuests > 0 ? Math.round(numGuests) : 0;
+
+    let guestsCount: number | undefined;
+    let guestBreakdownFromRoom: boolean | undefined;
+    let guestAdults: number | undefined;
+    let guestChildren: number | undefined;
+
+    if (firstRoom && sumAC > 0) {
+      guestsCount = Math.min(999, sumAC);
+      guestBreakdownFromRoom = true;
+      guestAdults = Math.min(999, Math.round(adultsN));
+      guestChildren = Math.min(999, Math.round(childrenN));
+    } else if (firstRoom && numGuestsN > 0) {
+      guestsCount = numGuestsN;
+      guestBreakdownFromRoom = false;
+    }
+
+    const noteLines: string[] = [];
+    const cr = str(cust.remarks);
+    const rr = str(resObj.remarks);
+    const rmr = str(firstRoom?.remarks);
+    const meal = str(firstRoom?.mealPlan);
+    if (cr) noteLines.push(cr);
+    if (rr) noteLines.push(rr);
+    if (rmr) noteLines.push(rmr);
+    if (meal) noteLines.push(meal);
+    const notesMerged = noteLines.length > 0 ? noteLines.join('\n\n') : undefined;
+
     return {
       ...resObj,
       guestFirstName: cust.firstName,
       guestLastName: cust.lastName,
       guestEmail: cust.email,
+      guestPhone,
+      guestsCount,
+      guestBreakdownFromRoom,
+      guestAdults,
+      guestChildren,
+      notes: notesMerged,
       currency: (resObj.currencyCode ?? resObj.currency) as unknown,
       checkIn: (firstRoom?.arrivalDate ?? resObj.checkIn) as unknown,
       checkOut: (firstRoom?.departureDate ?? resObj.checkOut) as unknown,

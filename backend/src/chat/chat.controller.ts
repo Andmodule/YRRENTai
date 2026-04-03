@@ -14,6 +14,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { ChatService } from './chat.service';
 import { StaffReplyService } from './staff-reply.service';
 import { ConversationService } from './conversation.service';
+import { MessagingService } from '../messaging/messaging.service';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { CurrentUser, JwtPayload } from '../common/decorators/current-user.decorator';
@@ -37,6 +38,7 @@ export class ChatController {
     private readonly conversationService: ConversationService,
     private readonly propertyService: PropertyService,
     private readonly staffReplyService: StaffReplyService,
+    private readonly messagingService: MessagingService,
   ) {}
 
   /** Static paths must be registered before `:propertyId/messages` so they are not captured as UUIDs. */
@@ -141,6 +143,14 @@ export class ChatController {
       content: parsed.content,
       userId: user!.sub,
     });
+
+    /** Email relay — same pattern as AI draft: call directly on MessagingService (no forwardRef proxy). */
+    try {
+      await this.messagingService.relayStaffReplyToEmailGuest(conv.id, savedMessage.content);
+      this.logger.log(`Web inbox→email relay sent: conv=${conv.id}`);
+    } catch (emailErr) {
+      this.logger.error(`Web inbox→email relay failed: conv=${conv.id}`, emailErr as Error);
+    }
 
     return {
       data: {

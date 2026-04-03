@@ -27,6 +27,16 @@ export interface CalendarReservationDto {
   fromOta: boolean;
   propertyId: string;
   guestName: string;
+  guestEmail: string | null;
+  guestPhone: string | null;
+  guestsCount: number | null;
+  guestsAdults: number | null;
+  guestsChildren: number | null;
+  notes: string | null;
+  internalNotes: string | null;
+  paymentStatus: 'unpaid' | 'partial' | 'paid';
+  /** Manual direct booking only; null for OTA. */
+  directSource: string | null;
   channel: CalendarBookingChannel;
   status: CalendarBookingStatus;
   totalPrice: number;
@@ -72,6 +82,25 @@ export class CalendarService {
       fromOta: Boolean(b.zodomusReservationId?.trim()),
       propertyId: b.propertyId,
       guestName: b.guestName,
+      guestEmail: b.guestEmail?.trim() ? b.guestEmail.trim() : null,
+      guestPhone: b.guestPhone?.trim() ? b.guestPhone.trim() : null,
+      guestsCount:
+        b.guestsCount != null && Number.isFinite(Number(b.guestsCount)) && Number(b.guestsCount) > 0
+          ? Math.round(Number(b.guestsCount))
+          : null,
+      guestsAdults:
+        b.guestsAdults != null && Number.isFinite(Number(b.guestsAdults)) && Number(b.guestsAdults) >= 0
+          ? Math.round(Number(b.guestsAdults))
+          : null,
+      guestsChildren:
+        b.guestsChildren != null && Number.isFinite(Number(b.guestsChildren)) && Number(b.guestsChildren) >= 0
+          ? Math.round(Number(b.guestsChildren))
+          : null,
+      notes: b.notes?.trim() ? b.notes.trim() : null,
+      internalNotes: b.internalNotes?.trim() ? b.internalNotes.trim() : null,
+      paymentStatus:
+        b.paymentStatus === 'partial' || b.paymentStatus === 'paid' ? b.paymentStatus : 'unpaid',
+      directSource: b.directSource?.trim() ? b.directSource.trim() : null,
       channel: calendarChannelFromBooking(b),
       status: mapBookingStatus(b.status as SharedBookingStatus),
       totalPrice: b.totalPriceMinor / 100,

@@ -30,7 +30,7 @@ export const TaskCard = memo(function TaskCard({
     : undefined;
 
   const urgent = task.priority === 'urgent';
-  const normal = task.priority === 'normal';
+  const critical = task.priority === 'critical';
 
   return (
     <div
@@ -72,13 +72,16 @@ export const TaskCard = memo(function TaskCard({
           )}
         </div>
         <span className="flex items-center gap-1">
-          {urgent && <span className="h-2 w-2 rounded-full bg-red-500" title={t('priority.urgent')} />}
-          {normal && !urgent && <span className="h-2 w-2 rounded-full bg-gray-400" title={t('priority.normal')} />}
+          {critical && <span className="h-2 w-2 rounded-full bg-red-600" title={t('priority.critical')} />}
+          {urgent && !critical && <span className="h-2 w-2 rounded-full bg-amber-500" title={t('priority.urgent')} />}
         </span>
       </div>
-      <p className="mt-2 text-sm font-semibold text-foreground">{task.propertyTitle}</p>
+      <p className="mt-2 text-sm font-semibold text-foreground">
+        {task.title || task.propertyTitle}
+      </p>
+      <p className="mt-0.5 text-xs text-muted-foreground">{task.propertyTitle}</p>
       {task.contextLabel && (
-        <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{task.contextLabel}</p>
+        <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{task.contextLabel}</p>
       )}
       {task.dueTime && (
         <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">

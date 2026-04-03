@@ -44,7 +44,7 @@ export function InboxList({ conversations, isLoading, activeId, onSelect }: Inbo
         <InboxCard
           key={conv.id}
           conversation={conv}
-          isActive={conv.id === activeId}
+          isActive={activeId != null && conv.id.toLowerCase() === activeId.toLowerCase()}
           onClick={() => onSelect(conv)}
         />
       ))}

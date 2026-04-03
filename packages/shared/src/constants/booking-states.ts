@@ -34,3 +34,10 @@ export const TERMINAL_BOOKING_STATUSES: readonly BookingStatus[] = [
   BOOKING_STATUS.DECLINED,
   BOOKING_STATUS.NO_SHOW,
 ];
+
+/** Occupies the listing for overlap checks (new direct booking vs existing). */
+export const BOOKING_STATUSES_BLOCKING_AVAILABILITY: readonly BookingStatus[] = [
+  BOOKING_STATUS.PENDING,
+  BOOKING_STATUS.CONFIRMED,
+  BOOKING_STATUS.CHECKED_IN,
+];

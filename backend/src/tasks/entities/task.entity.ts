@@ -14,6 +14,9 @@ export class TaskEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
+  @Column({ type: 'varchar', length: 255, default: '' })
+  title!: string;
+
   @Column({ type: 'varchar', length: 32 })
   type!: string;
 

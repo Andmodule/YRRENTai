@@ -1,8 +1,8 @@
 import { Injectable, Logger, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { UserEntity } from './entities/user.entity';
-import type { PublicUser } from './interfaces/public-user.interface';
+import type { PublicUser, StaffMemberDto } from './interfaces/public-user.interface';
 
 export interface CreateUserInput {
   email: string;
@@ -19,6 +19,7 @@ export class UserService {
   constructor(
     @InjectRepository(UserEntity)
     private readonly userRepository: Repository<UserEntity>,
+    private readonly dataSource: DataSource,
   ) {}
 
   async create(input: CreateUserInput): Promise<UserEntity> {
@@ -50,12 +51,45 @@ export class UserService {
       role: user.role,
       language: user.language,
       telegramChatId: user.telegramChatId ?? null,
+      employerOwnerId: user.employerOwnerId ?? null,
       staffShiftCompletedAt: user.staffShiftCompletedAt
         ? user.staffShiftCompletedAt.toISOString()
         : null,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };
+  }
+
+  /**
+   * Returns all STAFF/MANAGER users that belong to the given owner account.
+   * Falls back to users who have ever been assigned a task on any of owner's properties
+   * (for backward compatibility with accounts created before tenant linking was introduced).
+   */
+  async findStaffByOwner(ownerId: string): Promise<StaffMemberDto[]> {
+    const rows = await this.dataSource.query<
+      { id: string; firstName: string; lastName: string; role: string }[]
+    >(
+      `SELECT DISTINCT u.id, u."firstName", u."lastName", u.role
+       FROM users u
+       WHERE u.role IN ('STAFF', 'MANAGER')
+         AND (
+           u."employerOwnerId" = $1
+           OR EXISTS (
+             SELECT 1 FROM tasks t
+             JOIN properties p ON t."propertyId" = p.id
+             WHERE t."assigneeId" = u.id
+               AND p."ownerId" = $1
+           )
+         )
+       ORDER BY u."firstName", u."lastName"`,
+      [ownerId],
+    );
+
+    return rows.map((r) => ({
+      id: r.id,
+      displayName: `${r.firstName} ${r.lastName}`.trim(),
+      role: r.role,
+    }));
   }
 
   async markStaffShiftComplete(userId: string): Promise<PublicUser> {

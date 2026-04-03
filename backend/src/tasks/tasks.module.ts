@@ -7,6 +7,8 @@ import { ChecklistTemplateEntity } from './entities/checklist-template.entity';
 import { ChecklistTemplateItemEntity } from './entities/checklist-template-item.entity';
 import { TaskChecklistItemEntity } from './entities/task-checklist-item.entity';
 import { PropertyEntity } from '../property/entities/property.entity';
+import { BookingEntity } from '../booking/entities/booking.entity';
+import { PropertyModule } from '../property/property.module';
 import { TasksController } from './tasks.controller';
 import { ChecklistTemplatesController } from './checklist-templates.controller';
 import { TasksService } from './tasks.service';
@@ -23,7 +25,9 @@ import { IncidentsModule } from '../incidents/incidents.module';
       ChecklistTemplateItemEntity,
       TaskChecklistItemEntity,
       PropertyEntity,
+      BookingEntity,
     ]),
+    PropertyModule,
     JwtModule.register({}),
     forwardRef(() => IncidentsModule),
   ],

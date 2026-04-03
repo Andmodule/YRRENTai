@@ -86,7 +86,9 @@ export function useConversations(opts: UseConversationsOpts = {}) {
                 queueMicrotask(() => void mutate(undefined, { revalidate: true }));
                 return current;
               }
-              const idx = current.data.findIndex((c) => c.id === payload.conversationId);
+              const idx = current.data.findIndex(
+                (c) => c.id.toLowerCase() === payload.conversationId.toLowerCase(),
+              );
               /**
                * Новый диалог (email и т.д.) ещё не в кэше: тот же `current` + revalidate:true
                * в SWR часто не триггерит refetch — форсируем отдельный GET.

@@ -3,22 +3,41 @@ import { apiClient } from '@/lib/api/client';
 
 /**
  * Where Socket.IO connects:
- * - `NEXT_PUBLIC_WS_URL` → that origin (explicit override).
- * - Development in the browser → **same origin** as the page (e.g. :3012) so requests hit Next.js rewrites
- *   (`/api/*` → backend). Direct `ws://localhost:3010` fails if the API process is not running; same-origin uses
- *   HTTP long-polling through the proxy first.
- * - Production cross-origin (e.g. Vercel → Render) → API origin + `/auth/ws-token` in handshake.
- * - Else same origin.
+ * - `NEXT_PUBLIC_SOCKET_SAME_ORIGIN=true` → page origin (always proxy through Next when API is same host).
+ * - **Browser + `NODE_ENV=development`** → page origin (Next dev proxies `/api/socket.io` → Nest). Must run **before**
+ *   `NEXT_PUBLIC_WS_URL` — otherwise `ws://localhost:3010` bypasses the proxy and the socket fails while the app is on :3012.
+ * - Same host `localhost` / `127.0.0.1` but different port as `NEXT_PUBLIC_API_URL` (e.g. `next start` on :3012, API :3010) → page origin.
+ * - `NEXT_PUBLIC_WS_URL` → explicit origin (production / special).
+ * - Production cross-origin (e.g. Vercel → Render) → `NEXT_PUBLIC_API_URL` origin when ≠ page origin.
+ * - Else page origin.
  */
-function resolveSocketBaseUrl(): string {
-  const wsOverride = process.env.NEXT_PUBLIC_WS_URL?.trim();
-  if (wsOverride) {
-    try {
-      return new URL(wsOverride).origin;
-    } catch {
-      return wsOverride.replace(/\/$/, '');
-    }
+function wsUrlToOrigin(raw: string): string {
+  const normalized = raw.startsWith('ws') ? `http${raw.slice(2)}` : raw;
+  try {
+    return new URL(normalized).origin;
+  } catch {
+    return raw.replace(/\/$/, '');
   }
+}
+
+/** True when Next (or similar) on this tab’s origin proxies `/api` to Nest on `NEXT_PUBLIC_API_URL`. */
+function shouldUseSameOriginSocketProxy(): boolean {
+  if (typeof window === 'undefined') return false;
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
+  if (!apiUrl) return false;
+  try {
+    const api = new URL(apiUrl);
+    const page = new URL(window.location.origin);
+    if (api.origin === page.origin) return false;
+    if (api.hostname !== page.hostname) return false;
+    if (api.hostname !== 'localhost' && api.hostname !== '127.0.0.1') return false;
+    return api.port !== page.port;
+  } catch {
+    return false;
+  }
+}
+
+function resolveSocketBaseUrl(): string {
   if (typeof window !== 'undefined') {
     if (process.env.NEXT_PUBLIC_SOCKET_SAME_ORIGIN === 'true') {
       return window.location.origin;
@@ -26,6 +45,17 @@ function resolveSocketBaseUrl(): string {
     if (process.env.NODE_ENV === 'development') {
       return window.location.origin;
     }
+    if (shouldUseSameOriginSocketProxy()) {
+      return window.location.origin;
+    }
+  }
+
+  const wsOverride = process.env.NEXT_PUBLIC_WS_URL?.trim();
+  if (wsOverride) {
+    return wsUrlToOrigin(wsOverride);
+  }
+
+  if (typeof window !== 'undefined') {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
     if (apiUrl) {
       try {

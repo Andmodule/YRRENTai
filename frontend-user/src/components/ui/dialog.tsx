@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import * as RadixDialog from '@radix-ui/react-dialog';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -11,9 +12,11 @@ export const DialogClose = RadixDialog.Close;
 interface DialogContentProps extends RadixDialog.DialogContentProps {
   title: string;
   description?: string;
+  /** Pinned below scroll area (e.g. action buttons). */
+  footer?: ReactNode;
 }
 
-export function DialogContent({ title, description, children, className, ...props }: DialogContentProps) {
+export function DialogContent({ title, description, children, footer, className, ...props }: DialogContentProps) {
   return (
     <RadixDialog.Portal>
       <RadixDialog.Overlay className="fixed inset-0 z-[100] bg-black/50 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
@@ -46,7 +49,12 @@ export function DialogContent({ title, description, children, className, ...prop
             <span className="sr-only">Close</span>
           </RadixDialog.Close>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 pb-6 pt-4">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 pt-4 pb-4">{children}</div>
+        {footer ? (
+          <div className="shrink-0 border-t border-border bg-background px-6 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+            {footer}
+          </div>
+        ) : null}
       </RadixDialog.Content>
     </RadixDialog.Portal>
   );

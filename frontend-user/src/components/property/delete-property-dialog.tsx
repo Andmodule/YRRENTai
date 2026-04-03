@@ -12,6 +12,20 @@ import {
 } from '@/components/ui/responsive-modal';
 import { Button } from '@/components/ui/button';
 
+function apiErrorMessage(e: unknown): string | undefined {
+  if (e && typeof e === 'object' && 'response' in e) {
+    const data = (e as { response?: { data?: unknown } }).response?.data;
+    if (data && typeof data === 'object' && data !== null) {
+      const d = data as Record<string, unknown>;
+      const m = d.message;
+      if (typeof m === 'string') return m;
+      if (Array.isArray(m)) return m.filter((x) => typeof x === 'string').join(', ');
+    }
+  }
+  if (e instanceof Error) return e.message;
+  return undefined;
+}
+
 interface DeletePropertyDialogProps {
   propertyName: string;
   onDelete: () => Promise<void>;
@@ -30,8 +44,8 @@ export function DeletePropertyDialog({ propertyName, onDelete, trigger }: Delete
       await onDelete();
       toast.success(t('deleteSuccess'));
       setOpen(false);
-    } catch {
-      toast.error(t('deleteError'));
+    } catch (e) {
+      toast.error(apiErrorMessage(e) ?? t('deleteError'));
     } finally {
       setIsDeleting(false);
     }

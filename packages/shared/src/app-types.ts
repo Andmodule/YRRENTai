@@ -34,6 +34,14 @@ export type ChangePasswordDto = z.infer<typeof changePasswordSchema>;
 export type CreatePropertyDto = z.infer<typeof createPropertySchema>;
 export type UpdatePropertyDto = z.infer<typeof updatePropertySchema>;
 
+/** Справочник OTA (из GET /ota-platforms). */
+export interface OtaPlatformRef {
+  id: string;
+  code: string;
+  zodomusChannelId: number;
+  sortOrder: number;
+}
+
 export interface Property {
   id: string;
   name: string;
@@ -44,8 +52,14 @@ export interface Property {
   timezone: string;
   currency: string;
   maxGuests?: number;
+  otaPlatformId?: string | null;
+  otaPlatform?: OtaPlatformRef | null;
   /** External property id in Zodomus (channel manager). */
   zodomusPropertyId?: string | null;
+  /** Zodomus room id for availability push (optional; otherwise first room from room-rates). */
+  zodomusRoomId?: string | null;
+  /** External iCal feed URLs for calendar import. */
+  icalImportUrls?: string[];
   ownerId: string;
   createdAt: string;
   updatedAt: string;

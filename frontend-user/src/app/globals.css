@@ -21,6 +21,8 @@
   --border: #e2e8f0;
   --card: #ffffff;
   --card-foreground: #0a0a0a;
+  --popover: #ffffff;
+  --popover-foreground: #0a0a0a;
   --input: #e2e8f0;
   --ring: #2563eb;
 
@@ -51,6 +53,9 @@ html.dark {
   --border: #334155;
   --card: #0f172a;
   --card-foreground: #f1f5f9;
+  /* Поповеры/тултипы: как карточка — непрозрачный; hover через bg-muted (#1e293b) заметен */
+  --popover: #0f172a;
+  --popover-foreground: #f1f5f9;
   --input: #334155;
   --ring: #3b82f6;
 
@@ -85,6 +90,8 @@ html:not(.dark) {
   --color-border: var(--border);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
   --color-input: var(--input);
   --color-ring: var(--ring);
 }

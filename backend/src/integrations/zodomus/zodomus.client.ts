@@ -1,18 +1,27 @@
-import { Injectable, Logger, HttpException } from '@nestjs/common';
+import {
+  HttpException,
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { assertZodomusSuccess } from './zodomus-status.util';
+
+const FETCH_MAX_ATTEMPTS = 3;
 
 @Injectable()
 export class ZodomusClient {
   private readonly logger = new Logger(ZodomusClient.name);
   private readonly baseUrl: string;
   private readonly authHeader: string;
+  private readonly fetchTimeoutMs: number;
 
   constructor(private readonly config: ConfigService) {
     this.baseUrl = this.config.getOrThrow<string>('ZODOMUS_BASE_URL').replace(/\/$/, '');
     const user = this.config.getOrThrow<string>('ZODOMUS_API_USER');
     const pass = this.config.getOrThrow<string>('ZODOMUS_API_PASSWORD');
     this.authHeader = `Basic ${Buffer.from(`${user}:${pass}`, 'utf8').toString('base64')}`;
+    this.fetchTimeoutMs = this.config.get<number>('ZODOMUS_FETCH_TIMEOUT_MS') ?? 8000;
   }
 
   async get<T>(path: string, params?: Record<string, string>): Promise<T> {
@@ -23,30 +32,107 @@ export class ZodomusClient {
       });
     }
 
-    const res = await fetch(url.toString(), {
-      method: 'GET',
-      headers: {
-        Authorization: this.authHeader,
-        Accept: 'application/json',
-      },
-    });
+    const label = `GET ${path}`;
+    const res = await this.fetchWithRetry(label, () =>
+      this.timedFetch(url.toString(), {
+        method: 'GET',
+        headers: {
+          Authorization: this.authHeader,
+          Accept: 'application/json',
+        },
+      }),
+    );
 
-    return this.handleResponse<T>(res, `GET ${path}`);
+    return this.handleResponse<T>(res, label);
   }
 
   async post<T>(path: string, body: unknown): Promise<T> {
     const p = path.startsWith('/') ? path : `/${path}`;
-    const res = await fetch(`${this.baseUrl}${p}`, {
-      method: 'POST',
-      headers: {
-        Authorization: this.authHeader,
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
-      body: JSON.stringify(body ?? {}),
-    });
+    const label = `POST ${path}`;
+    const res = await this.fetchWithRetry(label, () =>
+      this.timedFetch(`${this.baseUrl}${p}`, {
+        method: 'POST',
+        headers: {
+          Authorization: this.authHeader,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify(body ?? {}),
+      }),
+    );
 
-    return this.handleResponse<T>(res, `POST ${path}`);
+    return this.handleResponse<T>(res, label);
+  }
+
+  /** Single fetch with AbortController timeout (each retry gets a new timer). */
+  private async timedFetch(url: string, init: Omit<RequestInit, 'signal'>): Promise<Response> {
+    const controller = new AbortController();
+    let timedOut = false;
+    const t = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, this.fetchTimeoutMs);
+    try {
+      return await fetch(url, { ...init, signal: controller.signal });
+    } catch (e) {
+      if (timedOut && e instanceof Error && e.name === 'AbortError') {
+        throw new Error(`Zodomus fetch timed out after ${this.fetchTimeoutMs}ms`);
+      }
+      throw e;
+    } finally {
+      clearTimeout(t);
+    }
+  }
+
+  /**
+   * Retries only when fetch() throws (no Response) — transient DNS/TLS/network/timeout.
+   * Does not retry HTTP 4xx/5xx; those are handled in handleResponse.
+   */
+  private async fetchWithRetry(
+    label: string,
+    doFetch: () => Promise<Response>,
+  ): Promise<Response> {
+    let lastErr: unknown;
+    for (let attempt = 1; attempt <= FETCH_MAX_ATTEMPTS; attempt++) {
+      try {
+        return await doFetch();
+      } catch (e) {
+        lastErr = e;
+        const detail = this.describeFetchError(e);
+        if (attempt < FETCH_MAX_ATTEMPTS) {
+          this.logger.warn(
+            `Zodomus ${label}: fetch failed (${attempt}/${FETCH_MAX_ATTEMPTS}) — ${detail}; retrying in ${attempt}s`,
+          );
+          await new Promise((r) => setTimeout(r, attempt * 1000));
+          continue;
+        }
+        this.logger.error(
+          `Zodomus ${label}: fetch failed after ${FETCH_MAX_ATTEMPTS} attempts — ${detail}`,
+        );
+        throw new ServiceUnavailableException({
+          message: 'Zodomus API unreachable',
+          detail,
+        });
+      }
+    }
+    throw lastErr;
+  }
+
+  private describeFetchError(e: unknown): string {
+    if (e instanceof Error) {
+      const withCause = e as Error & { cause?: unknown };
+      const c = withCause.cause;
+      const causePart =
+        c instanceof Error
+          ? c.message
+          : c != null && typeof c === 'object' && 'code' in c
+            ? String((c as { code?: string }).code ?? c)
+            : c != null
+              ? String(c)
+              : '';
+      return causePart ? `${e.message} [cause: ${causePart}]` : e.message;
+    }
+    return String(e);
   }
 
   private async handleResponse<T>(res: Response, label: string): Promise<T> {

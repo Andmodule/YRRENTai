@@ -63,7 +63,7 @@ const midStay: { ru: string; en: string }[] = [
   { ru: 'Короткая проверка кровати и дивана', en: 'Quick check of bed and sofa' },
 ];
 
-const manualTask: { ru: string; en: string }[] = [
+const otherTask: { ru: string; en: string }[] = [
   { ru: 'Прочитать название задачи и заметки менеджера', en: 'Read task title and manager notes' },
   { ru: 'Фото «до» — если требуется по задаче', en: 'Before photos — if required by task' },
   { ru: 'Выполнить работу по согласованному объёму', en: 'Complete work per agreed scope' },
@@ -79,7 +79,16 @@ const requiredCheckout = [
 
 const requiredCheckin = [true, true, true, true, true, true, true, true, true, true, true, true];
 const requiredMid = [true, true, true, true, false, true, true, false];
-const requiredManual = [true, false, true, false, false];
+const requiredOther = [true, false, true, false, false];
+
+const maintenanceLines: { ru: string; en: string }[] = [
+  { ru: 'Оценить объём работ и безопасность доступа', en: 'Assess scope and safe access' },
+  { ru: 'Отключить питание/воду при необходимости по регламенту', en: 'Shut off power/water per policy if needed' },
+  { ru: 'Выполнить ремонт / замену по заданию', en: 'Complete repair / replacement per task' },
+  { ru: 'Проверить работоспособность после работ', en: 'Verify operation after work' },
+  { ru: 'Убрать инструменты и мусор', en: 'Remove tools and debris' },
+];
+const requiredMaintenance = [true, true, true, true, true];
 
 function buildRows(
   lines: { ru: string; en: string }[],
@@ -120,9 +129,13 @@ export function getProfessionalPresetForm(
       ru: 'Промежуточная уборка — стандарт 2026',
       en: 'Mid-stay cleaning — 2026 standard',
     },
-    manual: {
-      ru: 'Ручная задача — чеклист 2026',
-      en: 'Manual task — 2026 checklist',
+    other: {
+      ru: 'Прочая задача — чеклист 2026',
+      en: 'Other task — 2026 checklist',
+    },
+    maintenance: {
+      ru: 'Техобслуживание — чеклист 2026',
+      en: 'Maintenance — 2026 checklist',
     },
   };
 
@@ -142,9 +155,13 @@ export function getProfessionalPresetForm(
       type: 'mid_stay_cleaning',
       rows: buildRows(midStay, requiredMid),
     },
-    manual: {
-      type: 'manual',
-      rows: buildRows(manualTask, requiredManual),
+    maintenance: {
+      type: 'maintenance',
+      rows: buildRows(maintenanceLines, requiredMaintenance),
+    },
+    other: {
+      type: 'other',
+      rows: buildRows(otherTask, requiredOther),
     },
   };
 
