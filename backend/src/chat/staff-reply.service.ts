@@ -6,12 +6,11 @@ import { ChatGateway } from './chat.gateway';
 import { StaffRepliedEvent } from '../common/events/staff.events';
 import { resolveGuestEscalationFallback } from '../agent/constants/agent-prompts';
 import { ChatMessageEntity } from './entities/chat-message.entity';
+import { MessagingService } from '../messaging/messaging.service';
 
 /**
- * Saves manager reply to chat DB and pushes it to WebSocket clients.
- * Email relay is intentionally left to the caller (ChatController / TelegramService)
- * so that each entry-point can use its already-resolved MessagingService reference
- * without an extra forwardRef proxy layer.
+ * Saves manager reply to chat DB, pushes to WebSocket clients, and relays to guest email.
+ * MessagingService is injected via forwardRef (ChatModule ↔ MessagingModule mutual forwardRef).
  */
 @Injectable()
 export class StaffReplyService {
@@ -22,6 +21,8 @@ export class StaffReplyService {
     private readonly conversationService: ConversationService,
     @Inject(forwardRef(() => ChatGateway))
     private readonly chatGateway: ChatGateway,
+    @Inject(forwardRef(() => MessagingService))
+    private readonly messagingService: MessagingService,
   ) {}
 
   async applyStaffReply(params: {
@@ -61,6 +62,12 @@ export class StaffReplyService {
     );
 
     this.logger.log(`Staff reply saved: conv=${conv.id} messageId=${savedMessage.id}`);
+
+    // Fire-and-forget email relay — non-blocking, does not affect chat delivery
+    void this.messagingService.relayStaffReplyToEmailGuest(conv.id, savedMessage.content).catch((e) =>
+      this.logger.error(`Email relay failed for conv=${conv.id}`, e as Error),
+    );
+
     return savedMessage;
   }
 }

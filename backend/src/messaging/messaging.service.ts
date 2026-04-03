@@ -10,6 +10,7 @@ import { DataSource, EntityManager, IsNull, Not, QueryFailedError, Repository } 
 
 import {
   CONVERSATION_CHANNEL,
+  listPreviewForInbox,
   stripEscalationForGuestDisplay,
   type BookingComMessageMetadata,
 } from '@rentai/shared';
@@ -17,6 +18,7 @@ import {
 import { AgentService } from '../agent/agent.service';
 
 import {
+  assistantReplyIndicatesEscalationWithoutMarker,
   parseAssistantEscalation,
   resolveGuestEscalationFallback,
   shouldForceEscalationGuestReply,
@@ -400,7 +402,7 @@ export class MessagingService {
 
 
 
-    const chatGuestMessageId = await this.syncInboundToChatInbox(
+    const syncInbox = await this.syncInboundToChatInbox(
 
       ownerId,
 
@@ -416,7 +418,19 @@ export class MessagingService {
 
     );
 
-    await this.generateAndEmitDraft(thread, guestMessage.id, bodyForAgent, chatGuestMessageId);
+    await this.generateAndEmitDraft(
+
+      thread,
+
+      guestMessage.id,
+
+      bodyForAgent,
+
+      syncInbox?.chatGuestMessageId ?? null,
+
+      syncInbox?.listPreview ?? guestDisplayText,
+
+    );
 
   }
 
@@ -570,7 +584,7 @@ export class MessagingService {
 
     guestDisplayName?: string | null,
 
-  ): Promise<string | null> {
+  ): Promise<{ chatGuestMessageId: string; listPreview: string } | null> {
 
     try {
 
@@ -640,10 +654,7 @@ export class MessagingService {
         metadata: bookingMeta ?? undefined,
       });
 
-      const listPreview =
-        bookingMeta?.variant === 'followup' && bookingMeta.guestQuestion
-          ? bookingMeta.guestQuestion
-          : previewText;
+      const listPreview = listPreviewForInbox(previewText, bookingMeta);
 
       await this.conversationService.touch(conv.id, listPreview);
 
@@ -664,7 +675,7 @@ export class MessagingService {
 
       );
 
-      return saved.id;
+      return { chatGuestMessageId: saved.id, listPreview };
 
     } catch (err) {
 
@@ -740,6 +751,9 @@ export class MessagingService {
 
     chatGuestMessageId: string | null,
 
+    /** Same string as inbox list preview / web chat Telegram (Booking follow-up → parsed guest question). */
+    guestQuestionForTelegram: string,
+
   ): Promise<void> {
 
     try {
@@ -806,7 +820,16 @@ export class MessagingService {
 
       const forcedByForbidden = shouldForceEscalationGuestReply(textWithoutMarker);
 
-      const notifyStaff = kbEmpty || forcedByForbidden || kbWeakMatch || rawEndsEscalate;
+      const modelSaysEscalateWithoutMarker =
+        assistantReplyIndicatesEscalationWithoutMarker(textWithoutMarker);
+
+      /** Same as web chat `chat.gateway` — without this, Telegram stays silent when KB looks strong but the model omits [ESCALATE]. */
+      const notifyStaff =
+        kbEmpty ||
+        forcedByForbidden ||
+        kbWeakMatch ||
+        rawEndsEscalate ||
+        modelSaysEscalateWithoutMarker;
 
       const guestEscalationUi =
 
@@ -905,7 +928,7 @@ export class MessagingService {
 
             propertyName: property.name,
 
-            guestQuestion: userText,
+            guestQuestion: guestQuestionForTelegram,
 
             guestMessageId: chatGuestMessageId,
 
@@ -1080,7 +1103,10 @@ export class MessagingService {
     }
 
     if (!thread) {
-      this.logger.warn(`relayStaffReplyToEmailGuest: no messaging thread for conversation ${cid}`);
+      const conv = await this.conversationService.findById(cid).catch(() => null);
+      this.logger.warn(
+        `relayStaffReplyToEmailGuest: no messaging thread for conversation ${cid} (channel=${conv?.channel ?? 'unknown'}) — email relay skipped; only email-channel conversations have a messaging thread`,
+      );
       return;
     }
 
@@ -1126,8 +1152,6 @@ export class MessagingService {
     }
 
   }
-
-
 
   async sendReply(threadId: string, text: string, ownerId: string): Promise<void> {
 

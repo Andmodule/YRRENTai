@@ -20,7 +20,7 @@ import { KnowledgeBaseService } from '../knowledge-base/knowledge-base.service';
 import { TelegramService } from '../telegram/telegram.service';
 import { MessagingService } from '../messaging/messaging.service';
 import { StaffRepliedEvent } from '../common/events/staff.events';
-import { sendChatMessageSchema } from '@rentai/shared';
+import { sendChatMessageSchema, listPreviewForInbox } from '@rentai/shared';
 import {
   resolveGuestEscalationFallback,
   formatKnowledgeBaseEntriesForAgent,
@@ -150,10 +150,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       metadata: bookingMeta ?? undefined,
     });
 
-    const listPreview =
-      bookingMeta?.variant === 'followup' && bookingMeta.guestQuestion
-        ? bookingMeta.guestQuestion
-        : content;
+    const listPreview = listPreviewForInbox(content, bookingMeta);
 
     await this.conversationService.touch(conversation.id, listPreview);
 
@@ -262,7 +259,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
               propertyId,
               ownerId: property.ownerId,
               propertyName: property.name,
-              guestQuestion: content,
+              guestQuestion: listPreview,
               guestMessageId: userMessage.id,
               conversationId: conversation.id,
             });

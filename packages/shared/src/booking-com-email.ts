@@ -14,6 +14,20 @@ export const bookingComMessageMetadataSchema = z.object({
 
 export type BookingComMessageMetadata = z.infer<typeof bookingComMessageMetadataSchema>;
 
+/**
+ * Inbox list preview and Telegram escalation: on Booking.com follow-up threads, show only the parsed guest question.
+ * Same rule as email bridge and web chat.
+ */
+export function listPreviewForInbox(
+  content: string,
+  bookingMeta: BookingComMessageMetadata | null | undefined,
+): string {
+  if (bookingMeta?.variant === 'followup' && bookingMeta.guestQuestion) {
+    return bookingMeta.guestQuestion;
+  }
+  return content;
+}
+
 export interface BookingComParsed {
   bookingNumber: string;
   guestName?: string;

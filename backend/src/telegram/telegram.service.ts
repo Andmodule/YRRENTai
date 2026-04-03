@@ -325,13 +325,14 @@ export class TelegramService {
         }
       }
       if (!convId) {
+        /** Prefer email inbox conversation so staff reply + email relay match the guest thread (not a random web thread). */
         convId =
-          (await this.messagingService.resolveConversationIdForEscalationFallback(escalation.propertyId)) ??
+          (await this.conversationService.findLatestEmailConversationIdForProperty(escalation.propertyId)) ??
           undefined;
       }
       if (!convId) {
         convId =
-          (await this.conversationService.findLatestEmailConversationIdForProperty(escalation.propertyId)) ??
+          (await this.messagingService.resolveConversationIdForEscalationFallback(escalation.propertyId)) ??
           undefined;
       }
       if (!convId) {
@@ -359,14 +360,6 @@ export class TelegramService {
         );
         await this.sendInstructionMessage(chatId, TELEGRAM_INSTRUCTION_NO_THREAD);
         return;
-      }
-
-      /** Email relay — same pattern as AI draft: call directly on already-resolved MessagingService. */
-      try {
-        await this.messagingService.relayStaffReplyToEmailGuest(convId, savedMessage.content);
-        this.logger.log(`Telegram→email relay sent: conv=${convId}`);
-      } catch (emailErr) {
-        this.logger.error(`Telegram→email relay failed: conv=${convId}`, emailErr as Error);
       }
 
       escalation.staffReply = replyText;

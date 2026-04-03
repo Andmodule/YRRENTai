@@ -119,6 +119,8 @@ export function useChat(propertyId: string | null, opts?: UseChatOpts | null): U
     let cancelled = false;
     let detachListeners: (() => void) | undefined;
     const loadGeneration = ++loadGenerationRef.current;
+    /** Serial for REST tail fetches — ignore stale responses when initial load and `conversation:updated` overlap. */
+    let messagesFetchSeq = 0;
 
     function markInboxHistoryReady() {
       inboxRestInitialDoneRef.current = true;
@@ -131,6 +133,7 @@ export function useChat(propertyId: string | null, opts?: UseChatOpts | null): U
 
     async function refetchMessagesForOpenConversation(targetConversationId: string) {
       if (cancelled || !propertyId) return;
+      const seq = ++messagesFetchSeq;
       try {
         const res = await apiClient.get<{
           data: Array<{
@@ -152,6 +155,7 @@ export function useChat(propertyId: string | null, opts?: UseChatOpts | null): U
           },
         });
         if (isStaleLoad()) return;
+        if (seq !== messagesFetchSeq) return;
         if (conversationIdRef.current?.toLowerCase() !== targetConversationId.toLowerCase()) {
           return;
         }
@@ -165,6 +169,7 @@ export function useChat(propertyId: string | null, opts?: UseChatOpts | null): U
         setMessages(mapApiRowsToMessages(rows));
       } catch {
         if (isStaleLoad()) return;
+        if (seq !== messagesFetchSeq) return;
         if (conversationIdRef.current?.toLowerCase() !== targetConversationId.toLowerCase()) {
           return;
         }
