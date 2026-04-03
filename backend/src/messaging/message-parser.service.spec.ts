@@ -58,6 +58,7 @@ Message: "Добрый день!"`;
       propertyName: null,
       guestName: null,
       zodomusPropertyId: null,
+      bookingHotelId: null,
     };
     expect(service.resolveInboundReservationId('Other 9999999', 'x', hints)).toBe('4900703');
   });
@@ -66,5 +67,28 @@ Message: "Добрый день!"`;
     const body = 'Zodomus property id 10322630 есть ли подушки';
     const h = service.parseBookingStyleInboxHints(body);
     expect(h.zodomusPropertyId).toBe('10322630');
+  });
+
+  it('parseBookingStyleInboxHints extracts hotel_id from Booking admin URL', () => {
+    const src =
+      'https://admin.booking.com/hotel/hoteladmin/extranet_ng/manage/home.html?hotel_id=10322630';
+    const h = service.parseBookingStyleInboxHints(src);
+    expect(h.bookingHotelId).toBe('10322630');
+  });
+
+  it('extractGuestNameFromBookingSubject gets name after гостя (RU)', () => {
+    expect(
+      service.extractGuestNameFromBookingSubject(
+        'Мы получили это сообщение от гостя Tsveiuk Ihor',
+      ),
+    ).toBe('Tsveiuk Ihor');
+  });
+
+  it('extractGuestNameFromBookingSubject gets name after from the guest (EN)', () => {
+    expect(
+      service.extractGuestNameFromBookingSubject(
+        'We received a message from the guest Jane Doe - Booking.com',
+      ),
+    ).toBe('Jane Doe');
   });
 });

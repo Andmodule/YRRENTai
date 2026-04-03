@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsWhere, Repository } from 'typeorm';
+import type { BookingComMessageMetadata } from '@rentai/shared';
 import { ChatMessageEntity, type MessageSource } from './entities/chat-message.entity';
 
 @Injectable()
@@ -21,9 +22,51 @@ export class ChatService {
     content: string;
     role: string;
     source?: MessageSource;
+    metadata?: BookingComMessageMetadata | null;
   }): Promise<ChatMessageEntity> {
     const message = this.messageRepository.create({ source: 'ai', ...data });
     return this.messageRepository.save(message);
+  }
+
+  /**
+   * Guest user messages in this thread with the same Booking.com reservation id
+   * (excludes the message being inserted — call before save).
+   */
+  async countPriorBookingComUserMessages(
+    conversationId: string,
+    bookingNumber: string,
+  ): Promise<number> {
+    return this.messageRepository
+      .createQueryBuilder('m')
+      .where('m.conversationId = :cid', { cid: conversationId })
+      .andWhere('m.role = :role', { role: 'user' })
+      .andWhere(`m.metadata->>'channel' = 'booking_com'`)
+      .andWhere(`m.metadata->>'bookingNumber' = :bn`, { bn: bookingNumber })
+      .getCount();
+  }
+
+  toSocketPayload(m: ChatMessageEntity): {
+    id: string;
+    propertyId: string;
+    conversationId?: string;
+    userId: string | null;
+    content: string;
+    role: string;
+    source: MessageSource;
+    metadata?: BookingComMessageMetadata;
+    createdAt: string;
+  } {
+    return {
+      id: m.id,
+      propertyId: m.propertyId,
+      conversationId: m.conversationId,
+      userId: m.userId ?? null,
+      content: m.content,
+      role: m.role,
+      source: m.source,
+      ...(m.metadata ? { metadata: m.metadata } : {}),
+      createdAt: m.createdAt.toISOString(),
+    };
   }
 
   async getMessages(propertyId: string, page: number, limit: number, conversationId?: string) {

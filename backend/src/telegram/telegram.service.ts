@@ -5,7 +5,6 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Repository } from 'typeorm';
 import axios from 'axios';
 import { EscalationEntity } from './entities/escalation.entity';
-import { PropertyNotificationSettingsEntity } from './entities/property-notification-settings.entity';
 import { IncidentManagerNoteEvent } from '../common/events/incident.events';
 import { StaffReplyService } from '../chat/staff-reply.service';
 import { ChatService } from '../chat/chat.service';
@@ -20,6 +19,9 @@ import {
   TELEGRAM_INSTRUCTION_REPLY_REQUIRED,
   TELEGRAM_STAFF_REPLY_CONFIRMED,
 } from './constants/telegram-instruction.constants';
+import { TelegramDeliveryService } from './telegram-delivery.service';
+import { TelegramMetricsService } from './telegram-metrics.service';
+import { sleep } from './telegram-retries.util';
 
 interface TelegramSendMessageResponse {
   ok: boolean;
@@ -56,14 +58,14 @@ export class TelegramService {
     private readonly userService: UserService,
     @InjectRepository(EscalationEntity)
     private readonly escalationRepository: Repository<EscalationEntity>,
-    @InjectRepository(PropertyNotificationSettingsEntity)
-    private readonly settingsRepository: Repository<PropertyNotificationSettingsEntity>,
     @InjectRepository(IncidentEntity)
     private readonly incidentRepository: Repository<IncidentEntity>,
     @Inject(forwardRef(() => MessagingService))
     private readonly messagingService: MessagingService,
     @Inject(forwardRef(() => StaffReplyService))
     private readonly staffReplyService: StaffReplyService,
+    private readonly telegramDelivery: TelegramDeliveryService,
+    private readonly telegramMetrics: TelegramMetricsService,
   ) {
     const token = configService.get<string>('TELEGRAM_BOT_TOKEN') ?? '';
     this.apiBase = `https://api.telegram.org/bot${token}`;
@@ -74,59 +76,97 @@ export class TelegramService {
   }
 
   /**
-   * Resolves the effective Telegram chat ID for a property escalation.
-   * Priority: per-property override → account-level (owner) setting.
+   * Единый чат на аккаунт: `users.telegramChatId` владельца (настройки в UI «аккаунт»).
+   * Per-property Telegram не используется.
    */
   async resolveAlertChatId(
-    propertyId: string,
+    _propertyId: string,
     ownerId: string,
   ): Promise<string | null> {
-    const propSettings = await this.settingsRepository.findOne({ where: { propertyId } });
-    if (propSettings?.telegramChatId) return propSettings.telegramChatId;
+    return this.resolveOwnerTelegramChatId(ownerId);
+  }
 
+  /** Один чат на аккаунт: `users.telegramChatId`. */
+  private async resolveOwnerTelegramChatId(ownerId: string): Promise<string | null> {
     const owner = await this.userService.findById(ownerId);
-    return owner?.telegramChatId ?? null;
+    return owner?.telegramChatId?.trim() || null;
+  }
+
+  /**
+   * Единая точка для алертов эскалации (веб-сокет и email-поток): одинаковое разрешение chat_id и логирование.
+   */
+  async sendEscalationIfConfigured(params: {
+    propertyId: string;
+    ownerId: string;
+    propertyName: string;
+    guestQuestion: string;
+    guestMessageId: string | null;
+    conversationId?: string;
+  }): Promise<void> {
+    const {
+      propertyId,
+      ownerId,
+      propertyName,
+      guestQuestion,
+      guestMessageId,
+      conversationId,
+    } = params;
+    try {
+      const chatId = await this.resolveOwnerTelegramChatId(ownerId);
+      if (!chatId) {
+        this.logger.warn(
+          `Escalation Telegram skipped: no account telegramChatId for owner of property ${propertyId}`,
+        );
+        return;
+      }
+      await this.sendEscalationAlert(
+        propertyId,
+        propertyName,
+        guestQuestion,
+        guestMessageId,
+        chatId,
+        conversationId,
+      );
+    } catch (err) {
+      this.logger.error(`Escalation Telegram failed for property ${propertyId}`, err as Error);
+    }
   }
 
   async sendEscalationAlert(
     propertyId: string,
     propertyName: string,
     guestQuestion: string,
-    guestMessageId: string,
+    /** Chat inbox message id; optional if `conversationId` is set (email bridge edge cases). */
+    guestMessageId: string | null,
     telegramChatId: string,
     conversationId?: string,
   ): Promise<EscalationEntity> {
     const escalation = this.escalationRepository.create({
       propertyId,
       propertyName,
-      guestMessageId,
+      ...(guestMessageId ? { guestMessageId } : {}),
       guestQuestion,
       ...(conversationId ? { conversationId } : {}),
     });
     await this.escalationRepository.save(escalation);
 
     if (!this.isEnabled) {
+      this.logger.warn(
+        'Escalation saved but Telegram is disabled (TELEGRAM_BOT_TOKEN missing); alerts are not delivered.',
+      );
       return escalation;
     }
 
-    const shortCode = propertyId.slice(0, 8).toUpperCase();
-
-    const text =
-      `🔔 *Вопрос гостя*\n` +
-      `Объект: *${this.escape(propertyName)}* \\[${shortCode}\\]\n\n` +
-      `«${this.escape(guestQuestion)}»\n\n` +
-      `↩️ Ответьте _reply_ на это сообщение — ответ автоматически уйдёт гостю\\.`;
-
     try {
-      const response = await axios.post<TelegramSendMessageResponse>(
-        `${this.apiBase}/sendMessage`,
-        { chat_id: telegramChatId, text, parse_mode: 'MarkdownV2' },
-        { timeout: 10000 },
-      );
-      escalation.tgBotMessageId = response.data.result.message_id;
-      await this.escalationRepository.save(escalation);
+      await this.telegramDelivery.enqueueOrDeliver({
+        escalationId: escalation.id,
+        telegramChatId,
+      });
     } catch (err) {
-      this.logger.error(`Telegram alert failed: ${(err as Error).message}`);
+      this.logger.error(
+        `Telegram escalation delivery failed escalationId=${escalation.id}`,
+        err as Error,
+      );
     }
 
     return escalation;
@@ -143,7 +183,7 @@ export class TelegramService {
     text: string,
     photoUrls?: string[],
   ): Promise<number | null> {
-    const chatId = await this.resolveAlertChatId(propertyId, ownerId);
+    const chatId = await this.resolveOwnerTelegramChatId(ownerId);
     if (!chatId || !this.isEnabled) {
       if (!chatId) {
         this.logger.warn(`Incident notify: no Telegram chat for property ${propertyId}`);
@@ -160,6 +200,25 @@ export class TelegramService {
 
     const fullText = text + extra;
 
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const r = await this.notifyIncidentSendOnce(chatId, fullText, usable);
+      if (r !== null) {
+        this.telegramMetrics.incidentNotify.inc({ status: 'success' });
+        return r;
+      }
+      if (attempt < 2) {
+        await sleep(Math.min(2000 * 2 ** attempt, 20_000));
+      }
+    }
+    this.telegramMetrics.incidentNotify.inc({ status: 'failure' });
+    return null;
+  }
+
+  private async notifyIncidentSendOnce(
+    chatId: string,
+    fullText: string,
+    usable: string[],
+  ): Promise<number | null> {
     try {
       if (usable.length === 0) {
         const response = await axios.post<TelegramSendMessageResponse>(
@@ -396,24 +455,6 @@ export class TelegramService {
     }
   }
 
-  async getNotificationSettings(
-    propertyId: string,
-  ): Promise<PropertyNotificationSettingsEntity | null> {
-    return this.settingsRepository.findOne({ where: { propertyId } });
-  }
-
-  async upsertNotificationSettings(
-    propertyId: string,
-    telegramChatId: string | null,
-  ): Promise<PropertyNotificationSettingsEntity> {
-    let settings = await this.settingsRepository.findOne({ where: { propertyId } });
-    if (!settings) {
-      settings = this.settingsRepository.create({ propertyId });
-    }
-    settings.telegramChatId = telegramChatId ?? undefined;
-    return this.settingsRepository.save(settings);
-  }
-
   async getResolvedEscalations(propertyId: string, days: number): Promise<EscalationEntity[]> {
     const since = new Date();
     since.setDate(since.getDate() - days);
@@ -441,9 +482,5 @@ export class TelegramService {
         pending: 'pending',
       })
       .getCount();
-  }
-
-  private escape(text: string): string {
-    return text.replace(/[_*[\]()~`>#+\-=|{}.!]/g, '\\$&');
   }
 }

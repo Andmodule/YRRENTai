@@ -45,9 +45,7 @@ export function PropertyDraftCard({ onCreate, onDiscard }: PropertyDraftCardProp
       timezone: 'UTC',
       currency: 'USD',
       maxGuests: undefined,
-      otaPlatformId: undefined,
-      zodomusPropertyId: '',
-      zodomusRoomId: '',
+      channelListings: [],
       icalImportUrls: [],
     },
   });

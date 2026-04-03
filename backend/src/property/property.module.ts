@@ -5,10 +5,11 @@ import { OtaPlatformController } from './ota-platform.controller';
 import { PropertyService } from './property.service';
 import { OtaPlatformService } from './ota-platform.service';
 import { PropertyEntity } from './entities/property.entity';
+import { PropertyChannelListingEntity } from './entities/property-channel-listing.entity';
 import { OtaPlatformEntity } from './entities/ota-platform.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([PropertyEntity, OtaPlatformEntity])],
+  imports: [TypeOrmModule.forFeature([PropertyEntity, PropertyChannelListingEntity, OtaPlatformEntity])],
   controllers: [PropertyController, OtaPlatformController],
   providers: [PropertyService, OtaPlatformService],
   exports: [PropertyService, OtaPlatformService],

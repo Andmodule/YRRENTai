@@ -24,6 +24,8 @@ interface PropertyIntegrationsCardProps {
   propertyId: string;
   /** When set, Zodomus “import summary” is available. */
   zodomusPropertyId?: string | null;
+  /** Per-channel external ids (preferred over legacy single fields). */
+  channelListings?: Array<{ externalListingId: string; otaPlatform?: { zodomusChannelId: number } | null }>;
   /** From property.otaPlatform — default channel for Zodomus import. */
   otaPlatform?: { zodomusChannelId: number } | null;
   /** Refresh property + calendar after sync (e.g. SWR mutate). */
@@ -33,6 +35,7 @@ interface PropertyIntegrationsCardProps {
 export function PropertyIntegrationsCard({
   propertyId,
   zodomusPropertyId,
+  channelListings,
   otaPlatform,
   onSynced,
 }: PropertyIntegrationsCardProps) {
@@ -49,7 +52,9 @@ export function PropertyIntegrationsCard({
   const icalSync = useIcalSyncProperty();
   const zImport = useZodomusImportSummary();
   const zQueue = useZodomusQueueSync();
-  const hasZodomus = Boolean(zodomusPropertyId?.trim());
+  const hasZodomus =
+    Boolean(zodomusPropertyId?.trim()) ||
+    Boolean(channelListings?.some((c) => c.externalListingId?.trim()));
 
   async function copyIcs() {
     try {

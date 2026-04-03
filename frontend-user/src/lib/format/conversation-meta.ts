@@ -2,10 +2,12 @@
 export function formatGuestAndProperty(
   externalGuestKey: string | null,
   propertyName: string,
+  guestDisplayName?: string | null,
 ): string {
   const raw = externalGuestKey?.trim() || '—';
-  const user = raw.startsWith('email:') ? raw.slice('email:'.length) : raw;
-  return `${user} · ${propertyName}`;
+  const fallback = raw.startsWith('email:') ? raw.slice('email:'.length) : raw;
+  const label = guestDisplayName?.trim() || fallback;
+  return `${label} · ${propertyName}`;
 }
 
 /**

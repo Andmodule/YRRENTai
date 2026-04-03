@@ -46,11 +46,28 @@ export function PropertyForm({ defaultValues, onSubmit, onCancel, submitLabel }:
       timezone: defaultValues?.timezone ?? 'UTC',
       currency: defaultValues?.currency ?? 'USD',
       maxGuests: defaultValues?.maxGuests,
-      otaPlatformId: defaultValues?.id
-        ? (defaultValues?.otaPlatformId ?? defaultValues?.otaPlatform?.id ?? null)
-        : undefined,
-      zodomusPropertyId: defaultValues?.zodomusPropertyId ?? '',
-      zodomusRoomId: defaultValues?.zodomusRoomId ?? '',
+      channelListings: (() => {
+        const list = defaultValues?.channelListings;
+        if (list?.length) {
+          return list.map((l) => ({
+            otaPlatformId: l.otaPlatformId,
+            externalListingId: l.externalListingId,
+            zodomusRoomId: l.zodomusRoomId ?? null,
+          }));
+        }
+        const legacyOta = defaultValues?.otaPlatformId ?? defaultValues?.otaPlatform?.id;
+        const legacyZ = defaultValues?.zodomusPropertyId?.trim();
+        if (legacyOta && legacyZ) {
+          return [
+            {
+              otaPlatformId: legacyOta,
+              externalListingId: legacyZ,
+              zodomusRoomId: defaultValues?.zodomusRoomId?.trim() || null,
+            },
+          ];
+        }
+        return [];
+      })(),
       icalImportUrls: defaultValues?.icalImportUrls ?? [],
     },
   });
@@ -78,7 +95,6 @@ export function PropertyForm({ defaultValues, onSubmit, onCancel, submitLabel }:
         setValue={setValue}
         icalLines={icalLines}
         onIcalLinesChange={setIcalLines}
-        expandSyncDetailsInitially={Boolean(defaultValues?.id)}
       />
 
       <div className="space-y-3 border-t border-border/60 pt-4">

@@ -69,7 +69,7 @@ export const KanbanColumn = memo(function KanbanColumn({
     <div
       ref={setNodeRef}
       className={cn(
-        'flex min-h-[min(70vh,560px)] w-[min(100%,280px)] shrink-0 flex-col rounded-xl border border-border bg-muted/50 p-2 dark:bg-muted/30',
+        'flex min-h-[min(52dvh,380px)] w-full flex-col rounded-xl border border-border bg-muted/50 p-2 dark:bg-muted/30 md:min-h-[min(70vh,560px)] md:w-[min(100%,280px)] md:shrink-0',
         isOver && 'ring-2 ring-primary/40',
       )}
       aria-label={ariaCountLabel}

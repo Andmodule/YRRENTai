@@ -457,7 +457,28 @@
       "priority": "Priorität",
       "property": "Objekt",
       "propertyPlaceholder": "Suche nach Name…",
-      "all": "Alle"
+      "all": "Alle",
+      "mobileSummary": "Filter",
+      "mobileClose": "Filter schließen"
+    },
+    "viewModes": {
+      "list": "Liste",
+      "kanban": "Board",
+      "table": "Tabelle",
+      "hint": "Liste eignet sich für Smartphones; das Board für breite Bildschirme.",
+      "listEmpty": "Keine Aufgaben für diese Filter.",
+      "toolbarAria": "Ansichtsmodus",
+      "tableIncidentsHeading": "Vorfälle im Zeitraum",
+      "kanbanSwipeHint": "Wischen Sie horizontal oder tippen Sie eine Spalte — wie in modernen Task-Apps."
+    },
+    "viewTable": {
+      "type": "Typ",
+      "task": "Aufgabe",
+      "property": "Objekt",
+      "status": "Status",
+      "due": "Fällig",
+      "assignee": "Bearbeiter",
+      "statusChangeAria": "Status ändern: {title}"
     },
     "columns": {
       "pending": "Ausstehend",
@@ -517,6 +538,13 @@
     "guestAsUserHint": "Nachrichten gehen in diese Konversation wie eine Gastfrage.",
     "staffReply": "Antwort Manager",
     "operatorReplyBadge": "Antwort vom Operator",
+    "bookingComMessageTitle": "Nachricht von {name}",
+    "bookingComMoreToggleAria": "Mehr aus der E-Mail ein- oder ausblenden",
+    "bookingComGuest": "Gast",
+    "bookingComCheckIn": "Check-in",
+    "bookingComCheckOut": "Check-out",
+    "bookingComProperty": "Unterkunft",
+    "bookingComGuestQuestion": "Nachricht des Gastes",
     "dev": {
       "panelSummary": "Dev: Gast-Test",
       "newGuestThread": "Neuer Gast-Thread",

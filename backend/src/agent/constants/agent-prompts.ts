@@ -65,6 +65,19 @@ export function shouldForceEscalationGuestReply(text: string): boolean {
   return FORBIDDEN_GUEST_REPLY_PATTERNS.some((re) => re.test(t));
 }
 
+/**
+ * The model is instructed to end with [ESCALATE] but often omits it while still echoing the
+ * escalation phrase. Without this, `notifyStaff` stays false when KB looks "strong" and Telegram never fires.
+ */
+export function assistantReplyIndicatesEscalationWithoutMarker(text: string): boolean {
+  const t = text.trim();
+  if (!t) return false;
+  if (/\bcheck\s+(?:this\s+)?with\s+the\s+host\b/i.test(t)) return true;
+  if (/уточню\s+(?:это\s+)?у\s+хозяин/i.test(t)) return true;
+  if (/уточню\s+у\s+хозяин/i.test(t)) return true;
+  return false;
+}
+
 /** Short hints so the model maps each KB block to the right topic (reduces cross-topic number misuse). */
 const KB_CATEGORY_TOPIC_HINT: Record<string, string> = {
   checkin: 'check-in/check-out times and access windows — numbers here are times, NOT floor or flat number',

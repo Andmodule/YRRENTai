@@ -22,6 +22,7 @@ export const conversationPublicSchema = z.object({
   channel: conversationChannelSchema,
   status: conversationStatusSchema,
   externalGuestKey: z.string().nullable(),
+  guestDisplayName: z.string().nullable(),
   lastMessagePreview: z.string().nullable(),
   lastActivityAt: z.string(),
   createdAt: z.string(),

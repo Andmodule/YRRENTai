@@ -1,6 +1,9 @@
 import { z } from 'zod';
+import { bookingComMessageMetadataSchema } from '../booking-com-email';
 
 export const chatMessageRoleSchema = z.enum(['user', 'assistant', 'system']);
+
+export const chatMessageMetadataSchema = bookingComMessageMetadataSchema;
 
 export const sendChatMessageSchema = z
   .object({
@@ -22,6 +25,7 @@ export const chatMessageSchema = z.object({
   content: z.string(),
   role: chatMessageRoleSchema,
   createdAt: z.string(),
+  metadata: chatMessageMetadataSchema.nullable().optional(),
 });
 
 /** Query params for GET /chats/analytics/reply-stats (ISO 8601 datetimes). */

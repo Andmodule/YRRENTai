@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ChatController } from './chat.controller';
 import { ChatService } from './chat.service';
 import { ChatGateway } from './chat.gateway';
+import { BookingComMetadataService } from './booking-com-metadata.service';
 import { StaffReplyService } from './staff-reply.service';
 import { ChatMessageEntity } from './entities/chat-message.entity';
 import { ConversationEntity } from './entities/conversation.entity';
@@ -25,7 +26,7 @@ import { MessagingModule } from '../messaging/messaging.module';
     forwardRef(() => MessagingModule),
   ],
   controllers: [ChatController],
-  providers: [ChatService, ConversationService, ChatGateway, StaffReplyService],
-  exports: [ChatService, ConversationService, ChatGateway, StaffReplyService],
+  providers: [ChatService, ConversationService, ChatGateway, StaffReplyService, BookingComMetadataService],
+  exports: [ChatService, ConversationService, ChatGateway, StaffReplyService, BookingComMetadataService],
 })
 export class ChatModule {}

@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, Not, Repository } from 'typeorm';
+import { Brackets, Repository } from 'typeorm';
 import { addDays } from 'date-fns';
 import { formatInTimeZone, fromZonedTime } from 'date-fns-tz';
 import { BOOKING_STATUS } from '@rentai/shared';
@@ -81,13 +81,18 @@ export class ZodomusAvailabilityPushService implements OnModuleDestroy {
   /** Cron: retry all properties flagged after a failed push. */
   async retryDirtyProperties(): Promise<void> {
     if (!this.zodomus.isEnabled) return;
-    const rows = await this.propertyRepo.find({
-      where: {
-        zodomusAvailabilityDirty: true,
-        zodomusPropertyId: Not(IsNull()),
-      },
-      select: { id: true },
-    });
+    const rows = await this.propertyRepo
+      .createQueryBuilder('p')
+      .select('p.id')
+      .where('p.zodomusAvailabilityDirty = true')
+      .andWhere(
+        new Brackets((qb) =>
+          qb.where('p.zodomusPropertyId IS NOT NULL').orWhere(
+            'EXISTS (SELECT 1 FROM property_channel_listings pcl WHERE pcl.propertyId = p.id)',
+          ),
+        ),
+      )
+      .getMany();
     if (rows.length === 0) return;
     const gap = this.config.get<number>('ZODOMUS_AVAILABILITY_BATCH_GAP_MS') ?? 1000;
     this.logger.log(`Zodomus availability dirty retry: ${rows.length} property(ies)`);
@@ -105,10 +110,17 @@ export class ZodomusAvailabilityPushService implements OnModuleDestroy {
   async nightlyReconcileAll(): Promise<void> {
     const enabled = this.config.get<boolean>('ZODOMUS_AVAILABILITY_NIGHTLY_FULL_PUSH') ?? true;
     if (!enabled || !this.zodomus.isEnabled) return;
-    const rows = await this.propertyRepo.find({
-      where: { zodomusPropertyId: Not(IsNull()) },
-      select: { id: true },
-    });
+    const rows = await this.propertyRepo
+      .createQueryBuilder('p')
+      .select('p.id')
+      .where(
+        new Brackets((qb) =>
+          qb.where('p.zodomusPropertyId IS NOT NULL').orWhere(
+            'EXISTS (SELECT 1 FROM property_channel_listings pcl WHERE pcl.propertyId = p.id)',
+          ),
+        ),
+      )
+      .getMany();
     if (rows.length === 0) return;
     const gap = this.config.get<number>('ZODOMUS_AVAILABILITY_BATCH_GAP_MS') ?? 1000;
     this.logger.log(`Zodomus nightly availability reconcile: ${rows.length} property(ies)`);
@@ -132,28 +144,42 @@ export class ZodomusAvailabilityPushService implements OnModuleDestroy {
 
     const property = await this.propertyRepo.findOne({
       where: { id: propertyId },
-      relations: ['otaPlatform'],
+      relations: ['otaPlatform', 'channelListings', 'channelListings.otaPlatform'],
     });
     if (!property) return false;
-    const extProp = property.zodomusPropertyId?.trim();
-    if (!extProp) return false;
 
-    const channelId =
-      property.otaPlatform?.zodomusChannelId ??
-      this.config.get<number>('ZODOMUS_DEFAULT_CHANNEL_ID') ??
-      1;
+    type PushTarget = { channelId: number; extProp: string; storedRoomId: string | null };
+    const targets: PushTarget[] = [];
+    for (const row of property.channelListings ?? []) {
+      const ch = row.otaPlatform?.zodomusChannelId;
+      const ext = row.externalListingId?.trim();
+      if (ch == null || !ext) continue;
+      targets.push({
+        channelId: ch,
+        extProp: ext,
+        storedRoomId: row.zodomusRoomId?.trim() ? row.zodomusRoomId.trim() : null,
+      });
+    }
+    if (targets.length === 0) {
+      const leg = property.zodomusPropertyId?.trim();
+      const ch =
+        property.otaPlatform?.zodomusChannelId ??
+        this.config.get<number>('ZODOMUS_DEFAULT_CHANNEL_ID') ??
+        1;
+      if (leg) {
+        targets.push({
+          channelId: ch,
+          extProp: leg,
+          storedRoomId: property.zodomusRoomId?.trim() ? property.zodomusRoomId.trim() : null,
+        });
+      }
+    }
+    if (targets.length === 0) return false;
+
     const horizonDays = Math.min(
       730,
       Math.max(1, this.config.get<number>('ZODOMUS_AVAILABILITY_HORIZON_DAYS') ?? 366),
     );
-
-    const roomId = await this.resolveRoomId(property, channelId);
-    if (!roomId) {
-      this.logger.warn(
-        `Zodomus availability: no room id for property ${propertyId} — set zodomusRoomId or ensure GET /room-rates returns rooms`,
-      );
-      return false;
-    }
 
     const tz = property.timezone?.trim() || 'UTC';
     const now = new Date();
@@ -175,21 +201,31 @@ export class ZodomusAvailabilityPushService implements OnModuleDestroy {
       this.logger.warn(`Zodomus availability: ${segments.length} segments for ${propertyId}`);
     }
 
-    for (const seg of segments) {
-      await this.zodomus.setAvailability(
-        channelId,
-        extProp,
-        roomId,
-        seg.dateFrom,
-        seg.dateToExclusive,
-        seg.availability,
+    let anyPushed = false;
+    for (const t of targets) {
+      const roomId = await this.resolveRoomIdForTarget(property, t);
+      if (!roomId) {
+        this.logger.warn(
+          `Zodomus availability: no room id for property ${propertyId} channel ${t.channelId} — set room id on the channel row or ensure GET /room-rates returns rooms`,
+        );
+        continue;
+      }
+      for (const seg of segments) {
+        await this.zodomus.setAvailability(
+          t.channelId,
+          t.extProp,
+          roomId,
+          seg.dateFrom,
+          seg.dateToExclusive,
+          seg.availability,
+        );
+      }
+      anyPushed = true;
+      this.logger.log(
+        `Zodomus availability: property ${propertyId} channel ${t.channelId} — ${segments.length} range(s), ${horizonDays} nights`,
       );
     }
-
-    this.logger.log(
-      `Zodomus availability: property ${propertyId} — ${segments.length} range(s), ${horizonDays} nights`,
-    );
-    return true;
+    return anyPushed;
   }
 
   private async markDirty(propertyId: string): Promise<void> {
@@ -197,8 +233,11 @@ export class ZodomusAvailabilityPushService implements OnModuleDestroy {
       .createQueryBuilder()
       .update(PropertyEntity)
       .set({ zodomusAvailabilityDirty: true })
-      .where('id = :id', { id: propertyId })
-      .andWhere('zodomusPropertyId IS NOT NULL')
+      .where('id = :propertyId', { propertyId })
+      .andWhere(
+        '(zodomusPropertyId IS NOT NULL OR EXISTS (SELECT 1 FROM property_channel_listings pcl WHERE pcl.propertyId = :propertyId))',
+        { propertyId },
+      )
       .execute();
   }
 
@@ -207,8 +246,11 @@ export class ZodomusAvailabilityPushService implements OnModuleDestroy {
       .createQueryBuilder()
       .update(PropertyEntity)
       .set({ zodomusAvailabilityDirty: false })
-      .where('id = :id', { id: propertyId })
-      .andWhere('zodomusPropertyId IS NOT NULL')
+      .where('id = :propertyId', { propertyId })
+      .andWhere(
+        '(zodomusPropertyId IS NOT NULL OR EXISTS (SELECT 1 FROM property_channel_listings pcl WHERE pcl.propertyId = :propertyId))',
+        { propertyId },
+      )
       .execute();
   }
 
@@ -260,12 +302,16 @@ export class ZodomusAvailabilityPushService implements OnModuleDestroy {
     return formatInTimeZone(d, tz, 'yyyy-MM-dd');
   }
 
-  private async resolveRoomId(property: PropertyEntity, channelId: number): Promise<string | null> {
-    const stored = property.zodomusRoomId?.trim();
-    if (stored) return stored;
-    const ext = property.zodomusPropertyId?.trim();
+  private async resolveRoomIdForTarget(
+    property: PropertyEntity,
+    target: { channelId: number; extProp: string; storedRoomId: string | null },
+  ): Promise<string | null> {
+    const ext = target.extProp.trim();
     if (!ext) return null;
-    const raw = await this.zodomus.getRoomRates(channelId, ext);
+    const stored = target.storedRoomId?.trim();
+    /** UI stores Zodomus object id here after "Load"; room id differs — only use stored when it is not the same as external property id. */
+    if (stored && stored !== ext) return stored;
+    const raw = await this.zodomus.getRoomRates(target.channelId, ext);
     const list = Array.isArray(raw) ? raw : [];
     if (list.length === 0) return null;
 
@@ -280,11 +326,8 @@ export class ZodomusAvailabilityPushService implements OnModuleDestroy {
         })
         .join('; ');
       this.logger.warn(
-        `Zodomus availability: property ${property.id} — Zodomus returned ${list.length} rooms but zodomusRoomId is empty. ` +
-          `Availability will be pushed only for the first room (wrong for multi-room listings). ` +
-          `Set property.zodomusRoomId to the RentAI listing’s room. Rooms from API: ${summary}${
-            list.length > 12 ? ' …' : ''
-          }`,
+        `Zodomus availability: property ${property.id} channel ${target.channelId} — Zodomus returned ${list.length} rooms but no distinct room id is stored (same as property id or unset). ` +
+          `Availability will use the first room only — wrong for multi-room listings. Set a specific room id on the channel row or pick a room in the UI. Rooms from API: ${summary}${list.length > 12 ? ' …' : ''}`,
       );
     }
 

@@ -1,4 +1,4 @@
-import { Controller, Get, Patch, Param, Body, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { TelegramService } from './telegram.service';
@@ -11,26 +11,6 @@ import { RolesGuard } from '../common/guards/roles.guard';
 @Controller('telegram')
 export class TelegramController {
   constructor(private readonly telegramService: TelegramService) {}
-
-  @Get('properties/:propertyId/settings')
-  @Roles('OWNER', 'MANAGER')
-  async getSettings(@Param('propertyId') propertyId: string) {
-    const settings = await this.telegramService.getNotificationSettings(propertyId);
-    return { data: settings };
-  }
-
-  @Patch('properties/:propertyId/settings')
-  @Roles('OWNER', 'MANAGER')
-  async updateSettings(
-    @Param('propertyId') propertyId: string,
-    @Body() body: { telegramChatId: string | null },
-  ) {
-    const settings = await this.telegramService.upsertNotificationSettings(
-      propertyId,
-      body.telegramChatId,
-    );
-    return { data: settings };
-  }
 
   @Get('properties/:propertyId/escalations')
   @Roles('OWNER', 'MANAGER')

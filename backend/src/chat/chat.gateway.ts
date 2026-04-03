@@ -12,6 +12,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { Server, Socket } from 'socket.io';
 import { ChatService } from './chat.service';
+import { BookingComMetadataService } from './booking-com-metadata.service';
 import { ConversationService } from './conversation.service';
 import { AgentService } from '../agent/agent.service';
 import { PropertyService } from '../property/property.service';
@@ -25,6 +26,7 @@ import {
   formatKnowledgeBaseEntriesForAgent,
   parseAssistantEscalation,
   shouldForceEscalationGuestReply,
+  assistantReplyIndicatesEscalationWithoutMarker,
 } from '../agent/constants/agent-prompts';
 
 interface AuthenticatedSocket extends Socket {
@@ -53,6 +55,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly chatService: ChatService,
+    private readonly bookingComMetadataService: BookingComMetadataService,
     private readonly conversationService: ConversationService,
     private readonly agentService: AgentService,
     private readonly propertyService: PropertyService,
@@ -133,31 +136,36 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       conversation = await this.conversationService.findById(conversation.id);
     }
 
+    const bookingMeta = await this.bookingComMetadataService.buildForUserMessage(
+      conversation.id,
+      content,
+    );
+
     const userMessage = await this.chatService.saveMessage({
       propertyId,
       conversationId: conversation.id,
       userId,
       content,
       role: 'user',
+      metadata: bookingMeta ?? undefined,
     });
 
-    await this.conversationService.touch(conversation.id, content);
+    const listPreview =
+      bookingMeta?.variant === 'followup' && bookingMeta.guestQuestion
+        ? bookingMeta.guestQuestion
+        : content;
+
+    await this.conversationService.touch(conversation.id, listPreview);
 
     const msgPayload = {
-      id: userMessage.id,
-      propertyId,
+      ...this.chatService.toSocketPayload(userMessage),
       conversationId: conversation.id,
-      content,
-      role: 'user',
-      source: 'ai',
-      userId,
-      createdAt: userMessage.createdAt.toISOString(),
     };
 
     client.emit('message:saved', msgPayload);
     this.server.to(`inbox:${conversation.propertyId}`).emit('conversation:updated', {
       conversationId: conversation.id,
-      lastMessagePreview: content.slice(0, 200),
+      lastMessagePreview: listPreview.slice(0, 200),
       lastActivityAt: userMessage.createdAt.toISOString(),
       status: conversation.status,
     });
@@ -188,10 +196,16 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
           const kbEmpty = kbEntries.length === 0;
           const kbHasReliableMatch = kbEntries.length > 0 && !kbWeakMatch;
           const forcedByForbidden = shouldForceEscalationGuestReply(textWithoutMarker);
+          const modelSaysEscalateWithoutMarker =
+            assistantReplyIndicatesEscalationWithoutMarker(textWithoutMarker);
 
           /** Staff / Telegram: any explicit escalation or missing KB / weak KB / forbidden wording. */
           const notifyStaff =
-            kbEmpty || forcedByForbidden || kbWeakMatch || rawEndsEscalate;
+            kbEmpty ||
+            forcedByForbidden ||
+            kbWeakMatch ||
+            rawEndsEscalate ||
+            modelSaysEscalateWithoutMarker;
 
           /**
            * Guest-facing text: legacy rules — when the model escalated but KB still had a strong match,
@@ -244,9 +258,14 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
               lastMessagePreview: cleanText.slice(0, 200),
               lastActivityAt: agentMessage.createdAt.toISOString(),
             });
-            this.handleEscalation(propertyId, property.name, content, userMessage.id, property.ownerId, conversation.id).catch(
-              (err) => this.logger.error(`Escalation failed: ${(err as Error).message}`),
-            );
+            void this.telegramService.sendEscalationIfConfigured({
+              propertyId,
+              ownerId: property.ownerId,
+              propertyName: property.name,
+              guestQuestion: content,
+              guestMessageId: userMessage.id,
+              conversationId: conversation.id,
+            });
           } else {
             /** AI answered from KB / guest-facing reply without staff — thread is idle until the next guest message. */
             await this.conversationService.setStatus(conversation.id, 'resolved');
@@ -266,32 +285,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
           });
         },
       },
-    );
-  }
-
-  private async handleEscalation(
-    propertyId: string,
-    propertyName: string,
-    guestQuestion: string,
-    guestMessageId: string,
-    ownerId: string,
-    conversationId?: string,
-  ): Promise<void> {
-    const chatId = await this.telegramService.resolveAlertChatId(propertyId, ownerId);
-    if (!chatId) {
-      this.logger.warn(
-        `Escalation for property ${propertyId} but no Telegram chat configured (property or account)`,
-      );
-      return;
-    }
-
-    await this.telegramService.sendEscalationAlert(
-      propertyId,
-      propertyName,
-      guestQuestion,
-      guestMessageId,
-      chatId,
-      conversationId,
     );
   }
 
@@ -373,14 +366,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       conversationId: conversation.id,
       status: conversation.status,
       messages: data.map((m) => ({
-        id: m.id,
-        propertyId: m.propertyId,
+        ...this.chatService.toSocketPayload(m),
         conversationId: m.conversationId,
-        userId: m.userId,
-        content: m.content,
-        role: m.role,
-        source: m.source,
-        createdAt: m.createdAt.toISOString(),
       })),
     });
   }

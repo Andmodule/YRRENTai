@@ -105,6 +105,14 @@ export const envSchema = z
     TELEGRAM_BOT_TOKEN: z.string().optional(),
     TELEGRAM_WEBHOOK_SECRET: z.string().optional(),
 
+    /** Redis URL for BullMQ (Telegram escalation queue). If unset, escalations use inline retries only. */
+    REDIS_URL: z.string().optional(),
+    /** Expose GET /api/v1/metrics (Prometheus). Default false. */
+    METRICS_ENABLED: z
+      .enum(['true', 'false', '1', '0', 'yes', 'no'])
+      .default('false')
+      .transform((v) => v === 'true' || v === '1' || v === 'yes'),
+
     FF_VOICE_ENABLED: z.coerce.boolean().default(false),
     FF_REALTIME_CALLS_ENABLED: z.coerce.boolean().default(false),
   })

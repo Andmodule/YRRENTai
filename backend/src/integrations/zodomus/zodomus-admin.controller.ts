@@ -3,12 +3,14 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { ZodomusService } from './zodomus.service';
 import { CreateZodomusTestReservationDto } from './dto/create-zodomus-test-reservation.dto';
+import { ZodomusPropertyActivationDto } from './dto/zodomus-property-activation.dto';
+import { ZodomusPropertyCheckDto } from './dto/zodomus-property-check.dto';
 import { PropertyService } from '../../property/property.service';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
 
 /**
- * SUPERADMIN-only proxies to Zodomus upstream (room-rates, queue, createtest).
+ * SUPERADMIN-only proxies to Zodomus upstream (price-model, property-activation, room-rates, queue, createtest).
  * Uses internal RentAI property UUID; resolves zodomusPropertyId on the server.
  */
 @ApiTags('Zodomus Admin')
@@ -20,6 +22,59 @@ export class ZodomusAdminController {
     private readonly zodomus: ZodomusService,
     private readonly propertyService: PropertyService,
   ) {}
+
+  /** GET /price-model — list valid price model ids for activation (no property required). */
+  @Get('price-model')
+  @Roles('SUPERADMIN')
+  async priceModel(): Promise<{ data: unknown }> {
+    if (!this.zodomus.isEnabled) {
+      throw new BadRequestException('Zodomus is disabled');
+    }
+    const data = await this.zodomus.getPriceModels();
+    return { data };
+  }
+
+  /** POST /property-activation — OTA property id must already be saved on the RentAI property row. */
+  @Post('property-activation')
+  @Roles('SUPERADMIN')
+  async propertyActivation(@Body() dto: ZodomusPropertyActivationDto): Promise<{ data: unknown }> {
+    if (!this.zodomus.isEnabled) {
+      throw new BadRequestException('Zodomus is disabled');
+    }
+    const channel = Number(dto.channelId);
+    const pid = dto.propertyId?.trim();
+    if (!pid || !Number.isFinite(channel)) {
+      throw new BadRequestException('channelId and propertyId are required');
+    }
+    const prop = await this.propertyService.findByIdForAdmin(pid);
+    const ext = this.propertyService.getExternalListingIdForZodomusChannel(prop, channel);
+    if (!ext) {
+      throw new BadRequestException('Property has no external listing id for this channel');
+    }
+    const data = await this.zodomus.activateProperty(channel, ext, dto.priceModelId);
+    return { data };
+  }
+
+  /** POST /property-check */
+  @Post('property-check')
+  @Roles('SUPERADMIN')
+  async propertyCheck(@Body() dto: ZodomusPropertyCheckDto): Promise<{ data: unknown }> {
+    if (!this.zodomus.isEnabled) {
+      throw new BadRequestException('Zodomus is disabled');
+    }
+    const channel = Number(dto.channelId);
+    const pid = dto.propertyId?.trim();
+    if (!pid || !Number.isFinite(channel)) {
+      throw new BadRequestException('channelId and propertyId are required');
+    }
+    const prop = await this.propertyService.findByIdForAdmin(pid);
+    const ext = this.propertyService.getExternalListingIdForZodomusChannel(prop, channel);
+    if (!ext) {
+      throw new BadRequestException('Property has no external listing id for this channel');
+    }
+    const data = await this.zodomus.checkProperty(channel, ext);
+    return { data };
+  }
 
   @Get('room-rates')
   @Roles('SUPERADMIN')
@@ -36,9 +91,9 @@ export class ZodomusAdminController {
       throw new BadRequestException('channelId and propertyId are required');
     }
     const prop = await this.propertyService.findByIdForAdmin(pid);
-    const ext = prop.zodomusPropertyId?.trim();
+    const ext = this.propertyService.getExternalListingIdForZodomusChannel(prop, channel);
     if (!ext) {
-      throw new BadRequestException('Property has no zodomusPropertyId');
+      throw new BadRequestException('Property has no external listing id for this channel');
     }
     const data = await this.zodomus.getRoomRates(channel, ext);
     return { data };
@@ -66,9 +121,9 @@ export class ZodomusAdminController {
       throw new BadRequestException('dateFrom and dateTo are required (YYYY-MM-DD)');
     }
     const prop = await this.propertyService.findByIdForAdmin(pid);
-    const ext = prop.zodomusPropertyId?.trim();
+    const ext = this.propertyService.getExternalListingIdForZodomusChannel(prop, channel);
     if (!ext) {
-      throw new BadRequestException('Property has no zodomusPropertyId');
+      throw new BadRequestException('Property has no external listing id for this channel');
     }
     const data = await this.zodomus.getAvailability(channel, ext, df, dt);
     return { data };
@@ -89,9 +144,9 @@ export class ZodomusAdminController {
       throw new BadRequestException('channelId and propertyId are required');
     }
     const prop = await this.propertyService.findByIdForAdmin(pid);
-    const ext = prop.zodomusPropertyId?.trim();
+    const ext = this.propertyService.getExternalListingIdForZodomusChannel(prop, channel);
     if (!ext) {
-      throw new BadRequestException('Property has no zodomusPropertyId');
+      throw new BadRequestException('Property has no external listing id for this channel');
     }
     const data = await this.zodomus.getReservationQueue(channel, ext);
     return { data };
@@ -112,9 +167,9 @@ export class ZodomusAdminController {
       throw new BadRequestException('channelId and propertyId are required');
     }
     const prop = await this.propertyService.findByIdForAdmin(pid);
-    const ext = prop.zodomusPropertyId?.trim();
+    const ext = this.propertyService.getExternalListingIdForZodomusChannel(prop, channel);
     if (!ext) {
-      throw new BadRequestException('Property has no zodomusPropertyId');
+      throw new BadRequestException('Property has no external listing id for this channel');
     }
     const status = dto.status ?? 'new';
     const data = await this.zodomus.createTestReservation(channel, ext, {

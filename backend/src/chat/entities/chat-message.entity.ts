@@ -7,6 +7,7 @@ import {
   JoinColumn,
   Index,
 } from 'typeorm';
+import type { BookingComMessageMetadata } from '@rentai/shared';
 import { ConversationEntity } from './conversation.entity';
 
 export type MessageSource = 'ai' | 'staff';
@@ -32,6 +33,10 @@ export class ChatMessageEntity {
 
   @Column({ type: 'text' })
   content!: string;
+
+  /** Structured payload for OTA templates (e.g. Booking.com email parse). */
+  @Column({ type: 'jsonb', nullable: true })
+  metadata?: BookingComMessageMetadata | null;
 
   @Column()
   role!: string;

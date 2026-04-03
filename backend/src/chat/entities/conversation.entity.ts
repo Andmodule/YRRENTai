@@ -36,6 +36,10 @@ export class ConversationEntity {
   @Column({ type: 'varchar', nullable: true })
   externalGuestKey?: string;
 
+  /** Показ в инбоксе (имя из OTA-письма и т.п.); ключ гостя остаётся в externalGuestKey. */
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  guestDisplayName?: string | null;
+
   @Column({ type: 'text', nullable: true })
   lastMessagePreview?: string;
 

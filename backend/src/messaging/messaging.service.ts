@@ -8,7 +8,11 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 import { DataSource, EntityManager, IsNull, Not, QueryFailedError, Repository } from 'typeorm';
 
-import { CONVERSATION_CHANNEL, stripEscalationForGuestDisplay } from '@rentai/shared';
+import {
+  CONVERSATION_CHANNEL,
+  stripEscalationForGuestDisplay,
+  type BookingComMessageMetadata,
+} from '@rentai/shared';
 
 import { AgentService } from '../agent/agent.service';
 
@@ -22,7 +26,11 @@ import { ChatGateway } from '../chat/chat.gateway';
 
 import { ChatService } from '../chat/chat.service';
 
+import { BookingComMetadataService } from '../chat/booking-com-metadata.service';
+
 import { ConversationService } from '../chat/conversation.service';
+
+import type { ChatMessageEntity } from '../chat/entities/chat-message.entity';
 
 import { BookingService } from '../booking/booking.service';
 
@@ -108,6 +116,8 @@ export class MessagingService {
 
     private readonly chatService: ChatService,
 
+    private readonly bookingComMetadataService: BookingComMetadataService,
+
     @Inject(forwardRef(() => ChatGateway))
 
     private readonly chatGateway: ChatGateway,
@@ -182,30 +192,33 @@ export class MessagingService {
 
     const subjectTrim = subject?.trim() ?? '';
 
-    const bookingHints = this.parser.parseBookingStyleInboxHints(`${cleanText}\n${subjectTrim}`);
+    const htmlPlain = html
+      ? this.parser.decodeHtmlEntities(this.parser.stripHtmlToText(html))
+      : '';
+
+    const bookingHints = this.parser.parseBookingStyleInboxHints(
+      `${cleanText}\n${subjectTrim}\n${htmlPlain}`,
+    );
 
     const reservationId = this.parser.resolveInboundReservationId(subject, cleanText, bookingHints);
 
     const guestName =
-
-      bookingHints.guestName?.trim() ||
-
+      this.parser.extractGuestNameFromBookingSubject(subjectTrim) ??
+      bookingHints.guestName?.trim() ??
       this.parser.extractGuestName(from);
 
+    const propertyIdHint =
+      bookingHints.bookingHotelId ?? bookingHints.zodomusPropertyId;
+
     const resolvedPropertyId = await this.resolveInboundTargetPropertyId(
-
       ownerId,
-
-      bookingHints.zodomusPropertyId,
-
+      propertyIdHint,
       reservationId,
-
       bookingHints.propertyName,
-
     );
 
-    /** UI + chat_messages: body only; subject is stored on the thread (`lastInboundSubject`). */
-    const guestDisplayText = cleanText.trim() || '(empty message)';
+    /** UI + chat_messages: plain body first; if empty (HTML-only, delayed fetch), show subject — avoids "(empty message)" when subject carries the text. */
+    const guestDisplayText = cleanText.trim() || subjectTrim || '(empty message)';
 
     const bodyForAgent =
 
@@ -305,15 +318,21 @@ export class MessagingService {
 
         if (resolvedPropertyId) {
 
-          if (!thread.propertyId || bookingHints.zodomusPropertyId) {
-
+          if (
+            !thread.propertyId ||
+            bookingHints.zodomusPropertyId ||
+            bookingHints.bookingHotelId
+          ) {
             thread.propertyId = resolvedPropertyId;
-
           }
 
         }
 
         thread.lastInboundSubject = subjectTrim || null;
+
+        if (guestName?.trim()) {
+          thread.guestName = guestName.trim();
+        }
 
         await manager.save(thread);
 
@@ -393,6 +412,8 @@ export class MessagingService {
 
       thread.propertyId,
 
+      thread.guestName,
+
     );
 
     await this.generateAndEmitDraft(thread, guestMessage.id, bodyForAgent, chatGuestMessageId);
@@ -402,7 +423,8 @@ export class MessagingService {
 
 
   /**
-   * 1) Explicit Zodomus listing id in the message (`properties.zodomusPropertyId`)
+   * 1) `hotel_id` from Booking admin links or explicit Zodomus id in body — matched via
+   *    `property_channel_listings.externalListingId` then `properties.zodomusPropertyId`
    * 2) Booking row by reservation id
    * 3) Property name from OTA template
    * 4) `RESEND_INBOUND_PROPERTY_ID` / first property
@@ -411,6 +433,7 @@ export class MessagingService {
 
     ownerId: string,
 
+    /** Booking `hotel_id` or legacy Zodomus listing id string from guest message. */
     zodomusPropertyIdHint: string | null,
 
     reservationId: string | null,
@@ -433,7 +456,7 @@ export class MessagingService {
 
         this.logger.log(
 
-          `Inbound routing: Zodomus property id ${zodomusPropertyIdHint.trim()} → propertyId=${byZ}`,
+          `Inbound routing: listing id ${zodomusPropertyIdHint.trim()} → propertyId=${byZ}`,
 
         );
 
@@ -545,6 +568,8 @@ export class MessagingService {
 
     threadPropertyId?: string | null,
 
+    guestDisplayName?: string | null,
+
   ): Promise<string | null> {
 
     try {
@@ -597,40 +622,40 @@ export class MessagingService {
 
       await this.threadRepo.update(threadId, { conversationId: conv.id, propertyId });
 
-
+      let bookingMeta: BookingComMessageMetadata | null = null;
+      try {
+        bookingMeta = await this.bookingComMetadataService.buildForUserMessage(conv.id, previewText);
+      } catch (metaErr) {
+        this.logger.warn(
+          `Email→chat: booking metadata skipped for conv ${conv.id}: ${(metaErr as Error).message}`,
+        );
+      }
 
       const saved = await this.chatService.saveMessage({
-
         propertyId,
-
         conversationId: conv.id,
-
         content: previewText,
-
         role: 'user',
-
         source: 'ai',
-
+        metadata: bookingMeta ?? undefined,
       });
 
+      const listPreview =
+        bookingMeta?.variant === 'followup' && bookingMeta.guestQuestion
+          ? bookingMeta.guestQuestion
+          : previewText;
 
+      await this.conversationService.touch(conv.id, listPreview);
 
-      await this.conversationService.touch(conv.id, previewText);
-
-
+      await this.conversationService.setGuestDisplayName(conv.id, guestDisplayName);
 
       this.emitInboxMessageSaved(propertyId, saved);
 
       this.chatGateway.server.to(`inbox:${propertyId}`).emit('conversation:updated', {
-
         conversationId: conv.id,
-
-        lastMessagePreview: previewText.slice(0, 200),
-
+        lastMessagePreview: listPreview.slice(0, 200),
         lastActivityAt: saved.createdAt.toISOString(),
-
         status: conv.status,
-
       });
 
       this.logger.log(
@@ -653,52 +678,10 @@ export class MessagingService {
 
 
 
-  private emitInboxMessageSaved(
-
-    propertyId: string,
-
-    msg: {
-
-      id: string;
-
-      propertyId: string;
-
-      conversationId?: string;
-
-      content: string;
-
-      role: string;
-
-      source?: string;
-
-      userId?: string | null;
-
-      createdAt: Date;
-
-    },
-
-  ): void {
-
-    this.chatGateway.server.to(`inbox:${propertyId}`).emit('message:saved', {
-
-      id: msg.id,
-
-      propertyId,
-
-      conversationId: msg.conversationId,
-
-      content: msg.content,
-
-      role: msg.role,
-
-      source: msg.source ?? 'ai',
-
-      userId: msg.userId ?? null,
-
-      createdAt: msg.createdAt.toISOString(),
-
-    });
-
+  private emitInboxMessageSaved(propertyId: string, msg: ChatMessageEntity): void {
+    this.chatGateway.server
+      .to(`inbox:${propertyId}`)
+      .emit('message:saved', this.chatService.toSocketPayload(msg));
   }
 
 
@@ -905,83 +888,86 @@ export class MessagingService {
 
       const fresh = await this.threadRepo.findOne({ where: { id: thread.id } });
 
+      /** До сохранения assistant в чат: иначе ошибка saveMessage/inbox уводит в catch и Telegram не вызывается. */
+      const propertyIdForTg = fresh?.propertyId ?? thread.propertyId;
+
+      if (notifyStaff && propertyIdForTg) {
+
+        try {
+
+          const property = await this.propertyService.findOne(propertyIdForTg, thread.ownerId);
+
+          await this.telegramService.sendEscalationIfConfigured({
+
+            propertyId: propertyIdForTg,
+
+            ownerId: thread.ownerId,
+
+            propertyName: property.name,
+
+            guestQuestion: userText,
+
+            guestMessageId: chatGuestMessageId,
+
+            conversationId: fresh?.conversationId ?? undefined,
+
+          });
+
+        } catch (tgErr) {
+
+          this.logger.error(`Email→Telegram escalation failed for thread ${thread.id}`, tgErr as Error);
+
+        }
+
+      }
+
       if (fresh?.conversationId && fresh.propertyId) {
 
-        const cm = await this.chatService.saveMessage({
+        try {
 
-          propertyId: fresh.propertyId,
+          const cm = await this.chatService.saveMessage({
 
-          conversationId: fresh.conversationId,
+            propertyId: fresh.propertyId,
 
-          content: guestSafe,
+            conversationId: fresh.conversationId,
 
-          role: 'assistant',
+            content: guestSafe,
 
-          source: 'ai',
+            role: 'assistant',
 
-        });
+            source: 'ai',
 
-        const inboxStatus = notifyStaff ? 'needs_human' : 'resolved';
+          });
 
-        await this.conversationService.setStatus(fresh.conversationId, inboxStatus);
+          const inboxStatus = notifyStaff ? 'needs_human' : 'resolved';
 
-        await this.conversationService.touch(fresh.conversationId, guestSafe);
+          await this.conversationService.setStatus(fresh.conversationId, inboxStatus);
 
-        this.emitInboxMessageSaved(fresh.propertyId, cm);
+          await this.conversationService.touch(fresh.conversationId, guestSafe);
 
-        this.chatGateway.server.to(`inbox:${fresh.propertyId}`).emit('conversation:updated', {
+          this.emitInboxMessageSaved(fresh.propertyId, cm);
 
-          conversationId: fresh.conversationId,
+          this.chatGateway.server.to(`inbox:${fresh.propertyId}`).emit('conversation:updated', {
 
-          lastMessagePreview: guestSafe.slice(0, 200),
+            conversationId: fresh.conversationId,
 
-          lastActivityAt: cm.createdAt.toISOString(),
+            lastMessagePreview: guestSafe.slice(0, 200),
 
-          status: inboxStatus,
+            lastActivityAt: cm.createdAt.toISOString(),
 
-        });
+            status: inboxStatus,
 
-        if (notifyStaff && chatGuestMessageId) {
+          });
 
-          try {
+        } catch (inboxErr) {
 
-            const property = await this.propertyService.findOne(fresh.propertyId, thread.ownerId);
+          this.logger.error(
 
-            const chatId = await this.telegramService.resolveAlertChatId(fresh.propertyId, thread.ownerId);
+            `Email→chat: assistant message / inbox emit failed for thread ${thread.id}`,
 
-            if (chatId) {
+            inboxErr as Error,
 
-              await this.telegramService.sendEscalationAlert(
-
-                fresh.propertyId,
-
-                property.name,
-
-                userText,
-
-                chatGuestMessageId,
-
-                chatId,
-
-                fresh.conversationId,
-
-              );
-
-            } else {
-
-              this.logger.warn(
-
-                `Email→Telegram: escalation for property ${fresh.propertyId} but no Telegram chat configured`,
-
-              );
-
-            }
-
-          } catch (tgErr) {
-
-            this.logger.error(`Email→Telegram escalation failed for thread ${thread.id}`, tgErr as Error);
-
-          }
+          );
 
         }
 

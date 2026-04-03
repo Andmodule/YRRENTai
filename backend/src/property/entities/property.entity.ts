@@ -5,10 +5,12 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   ManyToOne,
+  OneToMany,
   JoinColumn,
 } from 'typeorm';
 import { UserEntity } from '../../user/entities/user.entity';
 import { OtaPlatformEntity } from './ota-platform.entity';
+import { PropertyChannelListingEntity } from './property-channel-listing.entity';
 
 @Entity('properties')
 export class PropertyEntity {
@@ -67,6 +69,9 @@ export class PropertyEntity {
   @ManyToOne(() => OtaPlatformEntity, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'otaPlatformId' })
   otaPlatform!: OtaPlatformEntity | null;
+
+  @OneToMany(() => PropertyChannelListingEntity, (l) => l.property)
+  channelListings!: PropertyChannelListingEntity[];
 
   @Column('uuid')
   ownerId!: string;

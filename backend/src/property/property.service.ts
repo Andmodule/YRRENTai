@@ -1,29 +1,44 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, IsNull, Not, QueryFailedError, Repository } from 'typeorm';
+import { Brackets, DataSource, QueryFailedError, Repository } from 'typeorm';
 import { PropertyEntity } from './entities/property.entity';
+import { PropertyChannelListingEntity } from './entities/property-channel-listing.entity';
 import type { CreatePropertyDto, UpdatePropertyDto } from '@rentai/shared';
 import { OtaPlatformService } from './ota-platform.service';
 
 @Injectable()
 export class PropertyService {
-  private readonly logger = new Logger(PropertyService.name);
-
   constructor(
     @InjectRepository(PropertyEntity)
     private readonly propertyRepository: Repository<PropertyEntity>,
+    @InjectRepository(PropertyChannelListingEntity)
+    private readonly channelListingRepository: Repository<PropertyChannelListingEntity>,
     private readonly otaPlatformService: OtaPlatformService,
     private readonly dataSource: DataSource,
   ) {}
 
   async create(dto: CreatePropertyDto, ownerId: string): Promise<PropertyEntity> {
-    await this.assertOtaPlatformIdValid(dto.otaPlatformId);
-    const property = this.propertyRepository.create({ ...dto, ownerId });
+    const channelListings = dto.channelListings ?? [];
+    await this.assertChannelListingsPlatformsValid(channelListings);
+    const property = this.propertyRepository.create({
+      name: dto.name,
+      country: dto.country,
+      city: dto.city,
+      address: dto.address,
+      description: dto.description,
+      timezone: dto.timezone,
+      currency: dto.currency ?? 'USD',
+      maxGuests: dto.maxGuests,
+      icalImportUrls: dto.icalImportUrls ?? [],
+      ownerId,
+    });
     try {
       const saved = await this.propertyRepository.save(property);
+      await this.replaceChannelListings(saved.id, channelListings);
+      await this.syncLegacyColumnsFromListings(saved.id);
       return this.findOne(saved.id, ownerId);
     } catch (e) {
-      this.rethrowIfDuplicateZodomusId(e);
+      this.rethrowIfDuplicateExternalListingId(e);
       throw e;
     }
   }
@@ -31,7 +46,7 @@ export class PropertyService {
   async findAllByOwner(ownerId: string): Promise<PropertyEntity[]> {
     return this.propertyRepository.find({
       where: { ownerId },
-      relations: ['otaPlatform'],
+      relations: ['otaPlatform', 'channelListings', 'channelListings.otaPlatform'],
       order: { name: 'ASC' },
     });
   }
@@ -63,16 +78,41 @@ export class PropertyService {
       .trim();
   }
 
-  /** Все объекты в системе у которых задан zodomusPropertyId (используется cron-сервисом). */
+  /** Все объекты с хотя бы одним внешним id Zodomus (cron / очередь). */
   async findAllWithZodomus(): Promise<PropertyEntity[]> {
-    return this.propertyRepository.find({
-      where: { zodomusPropertyId: Not(IsNull()) },
-    });
+    return this.propertyRepository
+      .createQueryBuilder('p')
+      .leftJoinAndSelect('p.channelListings', 'cl')
+      .leftJoinAndSelect('cl.otaPlatform', 'clp')
+      .leftJoinAndSelect('p.otaPlatform', 'op')
+      .where(
+        new Brackets((qb) =>
+          qb.where('p.zodomusPropertyId IS NOT NULL').orWhere(
+            'EXISTS (SELECT 1 FROM property_channel_listings pcl WHERE pcl.propertyId = p.id)',
+          ),
+        ),
+      )
+      .getMany();
   }
 
-  /** Найти объект по внешнему Zodomus property id (используется webhook-обработчиком). */
+  /** Найти объект по внешнему id в Zodomus (webhook). */
   async findByZodomusPropertyId(zodomusPropertyId: string): Promise<PropertyEntity | null> {
-    return this.propertyRepository.findOne({ where: { zodomusPropertyId } });
+    const z = zodomusPropertyId.trim();
+    if (!z) return null;
+    const listing = await this.channelListingRepository.findOne({
+      where: { externalListingId: z },
+      select: { propertyId: true },
+    });
+    if (listing?.propertyId) {
+      return this.propertyRepository.findOne({
+        where: { id: listing.propertyId },
+        relations: ['channelListings', 'channelListings.otaPlatform', 'otaPlatform'],
+      });
+    }
+    return this.propertyRepository.findOne({
+      where: { zodomusPropertyId: z },
+      relations: ['channelListings', 'channelListings.otaPlatform', 'otaPlatform'],
+    });
   }
 
   /** Match external Zodomus listing id for a specific owner (inbound routing). */
@@ -82,6 +122,13 @@ export class PropertyService {
   ): Promise<string | null> {
     const z = zodomusPropertyId.trim();
     if (!z) return null;
+    const byListing = await this.channelListingRepository
+      .createQueryBuilder('cl')
+      .innerJoinAndSelect('cl.property', 'p')
+      .where('cl.externalListingId = :z', { z })
+      .andWhere('p.ownerId = :ownerId', { ownerId })
+      .getOne();
+    if (byListing?.property) return byListing.property.id;
     const row = await this.propertyRepository.findOne({
       where: { ownerId, zodomusPropertyId: z },
       select: { id: true },
@@ -98,14 +145,34 @@ export class PropertyService {
     return row?.ownerId ?? null;
   }
 
+  /**
+   * Внешний id объекта в Zodomus для данного numeric channel id (Booking=1, Airbnb=3, …).
+   */
+  getExternalListingIdForZodomusChannel(property: PropertyEntity, zodomusChannelId: number): string | null {
+    const listings = property.channelListings ?? [];
+    for (const row of listings) {
+      const ch = row.otaPlatform?.zodomusChannelId;
+      if (ch === zodomusChannelId) {
+        const ext = row.externalListingId?.trim();
+        if (ext) return ext;
+      }
+    }
+    if (property.otaPlatform?.zodomusChannelId === zodomusChannelId) {
+      const leg = property.zodomusPropertyId?.trim();
+      if (leg) return leg;
+    }
+    return null;
+  }
+
   async findOne(id: string, ownerId: string): Promise<PropertyEntity> {
     const property = await this.propertyRepository.findOne({
       where: { id, ownerId },
-      relations: ['otaPlatform'],
+      relations: ['otaPlatform', 'channelListings', 'channelListings.otaPlatform'],
     });
     if (!property) {
       throw new NotFoundException('Property not found');
     }
+    this.sortChannelListingsInPlace(property);
     return property;
   }
 
@@ -113,11 +180,12 @@ export class PropertyService {
   async findByIdForAdmin(id: string): Promise<PropertyEntity> {
     const property = await this.propertyRepository.findOne({
       where: { id },
-      relations: ['owner'],
+      relations: ['owner', 'channelListings', 'channelListings.otaPlatform', 'otaPlatform'],
     });
     if (!property) {
       throw new NotFoundException('Property not found');
     }
+    this.sortChannelListingsInPlace(property);
     return property;
   }
 
@@ -145,33 +213,103 @@ export class PropertyService {
   }
 
   async update(id: string, dto: UpdatePropertyDto, ownerId: string): Promise<PropertyEntity> {
-    await this.assertOtaPlatformIdValid(dto.otaPlatformId);
     const property = await this.findOne(id, ownerId);
-    Object.assign(property, dto);
+    if (dto.channelListings !== undefined) {
+      await this.assertChannelListingsPlatformsValid(dto.channelListings);
+      await this.replaceChannelListings(id, dto.channelListings);
+    }
+    const { channelListings: _cl, ...scalar } = dto;
+    for (const key of Object.keys(scalar) as Array<keyof typeof scalar>) {
+      const v = scalar[key];
+      if (v !== undefined) {
+        (property as unknown as Record<string, unknown>)[key as string] = v as unknown;
+      }
+    }
     try {
       await this.propertyRepository.save(property);
+      if (dto.channelListings !== undefined) {
+        await this.syncLegacyColumnsFromListings(id);
+      }
       return this.findOne(id, ownerId);
     } catch (e) {
-      this.rethrowIfDuplicateZodomusId(e);
+      this.rethrowIfDuplicateExternalListingId(e);
       throw e;
     }
   }
 
-  private async assertOtaPlatformIdValid(otaPlatformId: string | null | undefined): Promise<void> {
-    if (otaPlatformId === undefined || otaPlatformId === null || otaPlatformId === '') return;
-    const plat = await this.otaPlatformService.findByIdOrNull(otaPlatformId);
-    if (!plat) {
-      throw new BadRequestException('Invalid ota platform id');
+  private sortChannelListingsInPlace(property: PropertyEntity): void {
+    if (!property.channelListings?.length) return;
+    property.channelListings.sort((a, b) => {
+      const ao = a.otaPlatform?.sortOrder ?? 0;
+      const bo = b.otaPlatform?.sortOrder ?? 0;
+      if (ao !== bo) return ao - bo;
+      return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
+    });
+  }
+
+  private async assertChannelListingsPlatformsValid(
+    rows: Array<{ otaPlatformId: string }>,
+  ): Promise<void> {
+    for (const row of rows) {
+      const plat = await this.otaPlatformService.findByIdOrNull(row.otaPlatformId);
+      if (!plat) {
+        throw new BadRequestException('Invalid ota platform id');
+      }
     }
   }
 
-  private rethrowIfDuplicateZodomusId(e: unknown): void {
+  private async replaceChannelListings(
+    propertyId: string,
+    rows: Array<{ otaPlatformId: string; externalListingId: string; zodomusRoomId?: string | null }>,
+  ): Promise<void> {
+    await this.channelListingRepository.delete({ propertyId });
+    let i = 0;
+    for (const row of rows) {
+      const ext = row.externalListingId.trim();
+      const room = row.zodomusRoomId?.trim() ? row.zodomusRoomId.trim() : null;
+      await this.channelListingRepository.save({
+        propertyId,
+        otaPlatformId: row.otaPlatformId,
+        externalListingId: ext,
+        zodomusRoomId: room,
+        sortOrder: i++,
+      });
+    }
+  }
+
+  /** Дублирует первый канал в legacy-колонки `properties` для совместимости. */
+  private async syncLegacyColumnsFromListings(propertyId: string): Promise<void> {
+    const listings = await this.channelListingRepository.find({
+      where: { propertyId },
+      relations: ['otaPlatform'],
+      order: { sortOrder: 'ASC' },
+    });
+    const first = listings[0];
+    if (!first) {
+      await this.propertyRepository.update(propertyId, {
+        otaPlatformId: null,
+        zodomusPropertyId: null,
+        zodomusRoomId: null,
+      });
+      return;
+    }
+    await this.propertyRepository.update(propertyId, {
+      otaPlatformId: first.otaPlatformId,
+      zodomusPropertyId: first.externalListingId.trim(),
+      zodomusRoomId: first.zodomusRoomId?.trim() ? first.zodomusRoomId.trim() : null,
+    });
+  }
+
+  private rethrowIfDuplicateExternalListingId(e: unknown): void {
     if (e instanceof QueryFailedError) {
       const err = e.driverError as { code?: string; constraint?: string } | undefined;
-      if (err?.code === '23505' && String(err?.constraint ?? '').includes('zodomus')) {
-        throw new BadRequestException(
-          'This Zodomus property id is already linked to another listing in RentAI.',
-        );
+      if (err?.code === '23505') {
+        const c = String(err?.constraint ?? '');
+        if (c.includes('externalListingId') || c.includes('zodomus')) {
+          throw new BadRequestException(
+            'This external listing id is already linked to another property in RentAI.',
+          );
+        }
       }
     }
   }
@@ -195,7 +333,6 @@ export class PropertyService {
       await manager.query(`DELETE FROM "knowledge_base_entries" WHERE "propertyId" = $1`, [pid]);
       await manager.query(`DELETE FROM "chat_messages" WHERE "propertyId" = $1`, [pid]);
       await manager.query(`DELETE FROM "escalations" WHERE "propertyId" = $1`, [pid]);
-      await manager.query(`DELETE FROM "property_notification_settings" WHERE "propertyId" = $1`, [pid]);
       await manager.query(`DELETE FROM "conversations" WHERE "propertyId" = $1`, [pid]);
       await manager.remove(property);
     });

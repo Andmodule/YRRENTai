@@ -7,6 +7,8 @@ export interface BookingInboxHints {
   guestName: string | null;
   /** Explicit Zodomus listing id typed by guest (e.g. "Zodomus property id 10322630"). */
   zodomusPropertyId: string | null;
+  /** Booking admin URL param `hotel_id` — store the same value in `property_channel_listings.externalListingId` for Booking. */
+  bookingHotelId: string | null;
 }
 
 @Injectable()
@@ -25,6 +27,33 @@ export class MessageParserService {
   extractGuestName(fromHeader: string): string | null {
     const m = fromHeader.match(/^([^<]+)</);
     return m?.[1]?.trim() ?? null;
+  }
+
+  /**
+   * Booking’s fixed-format subject lines: take the guest name after RU «гостя» / EN «from (the) guest».
+   */
+  extractGuestNameFromBookingSubject(subject: string): string | null {
+    const oneLine = subject.replace(/\r\n/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!oneLine) return null;
+    const noBracket = oneLine.replace(/^\[[^\]]{0,80}\]\s*/, '').trim();
+
+    const ru = noBracket.match(/гостя\s+(.+)$/i);
+    if (ru?.[1]) {
+      return this.trimInboxLabelLine(this.stripBookingSubjectSuffix(ru[1]));
+    }
+
+    const en = noBracket.match(/(?:from\s+the\s+guest|from\s+guest)\s+(.+)$/i);
+    if (en?.[1]) {
+      return this.trimInboxLabelLine(this.stripBookingSubjectSuffix(en[1]));
+    }
+
+    return null;
+  }
+
+  /** `hotel_id` in admin.booking.com links — same id as Booking object in channel settings. */
+  extractBookingHotelIdFromUrls(source: string): string | null {
+    const m = source.match(/[?&]hotel_id=(\d{4,12})\b/i);
+    return m?.[1] ?? null;
   }
 
   /** Parses bare email from a From header (RFC 5322 display name + angle-addr). */
@@ -148,7 +177,14 @@ export class MessageParserService {
     if (zPx?.[1]) {
       zodomusPropertyId = zPx[1];
     }
-    return { reservationId, propertyName, guestName, zodomusPropertyId };
+    const bookingHotelId = this.extractBookingHotelIdFromUrls(t);
+    return {
+      reservationId,
+      propertyName,
+      guestName,
+      zodomusPropertyId,
+      bookingHotelId,
+    };
   }
 
   /** Prefer body block, then digits in subject, then digits anywhere in body. */
@@ -162,6 +198,13 @@ export class MessageParserService {
       this.extractReservationId(subject) ??
       this.extractReservationId(bodyText)
     );
+  }
+
+  private stripBookingSubjectSuffix(s: string): string {
+    return s
+      .replace(/\s*[-—–|]\s*Booking\.com.*$/i, '')
+      .replace(/\s*[-—–|]\s*Бронирование.*$/i, '')
+      .trim();
   }
 
   private trimInboxLabelLine(s: string): string {

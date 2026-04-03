@@ -458,7 +458,28 @@
       "priority": "Prioridad",
       "property": "Propiedad",
       "propertyPlaceholder": "Buscar por nombre…",
-      "all": "Todas"
+      "all": "Todas",
+      "mobileSummary": "Filtros",
+      "mobileClose": "Cerrar filtros"
+    },
+    "viewModes": {
+      "list": "Lista",
+      "kanban": "Tablero",
+      "table": "Tabla",
+      "hint": "La lista va mejor en el móvil; el tablero en pantallas anchas.",
+      "listEmpty": "No hay tareas con estos filtros.",
+      "toolbarAria": "Modo de vista",
+      "tableIncidentsHeading": "Incidentes en el periodo",
+      "kanbanSwipeHint": "Desliza el tablero o toca una columna, como en las apps de tareas actuales."
+    },
+    "viewTable": {
+      "type": "Tipo",
+      "task": "Tarea",
+      "property": "Propiedad",
+      "status": "Estado",
+      "due": "Plazo",
+      "assignee": "Asignado",
+      "statusChangeAria": "Cambiar estado: {title}"
     },
     "columns": {
       "pending": "Pendiente",
@@ -560,6 +581,13 @@
     "guestAsUserHint": "Los mensajes van a esta conversación como pregunta del huésped.",
     "staffReply": "Respuesta del gestor",
     "operatorReplyBadge": "Respondió el operador",
+    "bookingComMessageTitle": "Mensaje de {name}",
+    "bookingComMoreToggleAria": "Mostrar u ocultar más del correo",
+    "bookingComGuest": "Huésped",
+    "bookingComCheckIn": "Entrada",
+    "bookingComCheckOut": "Salida",
+    "bookingComProperty": "Alojamiento",
+    "bookingComGuestQuestion": "Mensaje del huésped",
     "dev": {
       "panelSummary": "Dev: prueba de huésped",
       "newGuestThread": "Nuevo hilo de huésped",

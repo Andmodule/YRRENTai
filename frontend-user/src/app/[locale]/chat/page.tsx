@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Building2, Inbox } from 'lucide-react';
 import { useRouter } from '@/i18n/navigation';
@@ -27,6 +27,7 @@ import {
 } from '@/hooks/use-conversations';
 import { formatGuestAndProperty } from '@/lib/format/conversation-meta';
 import { ConversationStatusDot } from '@/components/inbox/conversation-status-dot';
+import { TooltipProvider } from '@/components/ui/tooltip';
 
 /** Временно всегда true — тест на проде; вернуть gate через NODE_ENV / NEXT_PUBLIC_ENABLE_GUEST_SIMULATOR когда не нужен. */
 const showGuestSimulator = true;
@@ -36,6 +37,11 @@ export default function ChatPage() {
   const tChat = useTranslations('chat');
   const router = useRouter();
   const { properties, isLoading, isError: propertiesError } = useProperties();
+  const propertiesRef = useRef(properties);
+  useEffect(() => {
+    propertiesRef.current = properties;
+  }, [properties]);
+
   const { conversations, isLoading: inboxLoading, mutate: mutateConversations } = useConversations({
     limit: 50,
   });
@@ -86,21 +92,38 @@ export default function ChatPage() {
     }
   }, [activeId, conversations, inboxLoading]);
 
+  /**
+   * Сервер шлёт `conversation:updated` / `message:saved` в комнаты `inbox:${propertyId}`.
+   * После reconnect Socket.IO клиент в них не состоит — подписываемся снова на connect/reconnect
+   * и при смене списка объектов (ref — актуальные id после загрузки properties).
+   */
   useEffect(() => {
-    let cancelled = false;
+    let alive = true;
+    let detach: (() => void) | undefined;
 
     connectChatSocket()
       .then((s) => {
-        if (cancelled) return;
-        const pids = properties.map((p) => p.id);
-        if (pids.length > 0) {
+        if (!alive) return;
+
+        const subscribeInboxRooms = () => {
+          const pids = propertiesRef.current.map((p) => p.id);
+          if (pids.length === 0) return;
           s.emit('inbox:subscribe', { propertyIds: pids });
-        }
+        };
+
+        subscribeInboxRooms();
+        s.on('connect', subscribeInboxRooms);
+        s.on('reconnect', subscribeInboxRooms);
+        detach = () => {
+          s.off('connect', subscribeInboxRooms);
+          s.off('reconnect', subscribeInboxRooms);
+        };
       })
       .catch(() => {});
 
     return () => {
-      cancelled = true;
+      alive = false;
+      detach?.();
     };
   }, [properties]);
 
@@ -172,7 +195,11 @@ export default function ChatPage() {
   const defaultPropertyId = properties[0]?.id ?? null;
 
   const mobileTitle = activeConversation
-    ? formatGuestAndProperty(activeConversation.externalGuestKey, activeConversation.propertyName)
+    ? formatGuestAndProperty(
+        activeConversation.externalGuestKey,
+        activeConversation.propertyName,
+        activeConversation.guestDisplayName,
+      )
     : t('title');
 
   const mobileRight = activeConversation ? (
@@ -180,6 +207,7 @@ export default function ChatPage() {
   ) : undefined;
 
   return (
+    <TooltipProvider delayDuration={280}>
     <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col gap-0 overflow-hidden lg:gap-3">
       <ChatMobileNav
         title={mobileTitle}
@@ -254,5 +282,6 @@ export default function ChatPage() {
         </div>
       </div>
     </div>
+    </TooltipProvider>
   );
 }

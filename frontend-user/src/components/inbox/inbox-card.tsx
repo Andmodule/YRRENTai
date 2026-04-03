@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import type { ConversationDto } from '@/hooks/use-conversations';
 import { ConversationStatusDot } from '@/components/inbox/conversation-status-dot';
 import { formatGuestAndProperty, formatTelegramStyleTime } from '@/lib/format/conversation-meta';
+import { TruncatedTooltipText } from '@/components/inbox/truncated-tooltip-text';
 
 interface InboxCardProps {
   conversation: ConversationDto;
@@ -15,6 +16,11 @@ interface InboxCardProps {
 export function InboxCard({ conversation, isActive, onClick }: InboxCardProps) {
   const locale = useLocale();
   const isUrgent = conversation.status === 'needs_human';
+  const titleLine = formatGuestAndProperty(
+    conversation.externalGuestKey,
+    conversation.propertyName,
+    conversation.guestDisplayName,
+  );
 
   return (
     <button
@@ -33,9 +39,10 @@ export function InboxCard({ conversation, isActive, onClick }: InboxCardProps) {
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="min-w-0 flex-1 truncate text-sm font-normal text-foreground dark:text-slate-200">
-              {formatGuestAndProperty(conversation.externalGuestKey, conversation.propertyName)}
-            </span>
+            <TruncatedTooltipText
+              text={titleLine}
+              className="min-w-0 flex-1 text-sm font-normal text-foreground dark:text-slate-200"
+            />
             <ConversationStatusDot status={conversation.status} />
           </div>
           {conversation.lastMessagePreview && (

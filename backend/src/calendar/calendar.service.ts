@@ -112,10 +112,11 @@ export class CalendarService {
 
     const propertyDtos: CalendarPropertyDto[] = properties.map((p) => {
       const zid = p.zodomusPropertyId?.trim() ?? null;
+      const hasChannels = (p.channelListings?.length ?? 0) > 0;
       return {
         uuid: p.id,
         title: p.name,
-        zodomusLinked: Boolean(zid),
+        zodomusLinked: Boolean(zid) || hasChannels,
         zodomusPropertyId: zid,
       };
     });

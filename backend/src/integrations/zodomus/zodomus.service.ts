@@ -177,6 +177,27 @@ export class ZodomusService {
     return this.ensureEnabled().post('/reservations-createtest', body);
   }
 
+  /** POST /property-activation — register the OTA property with Zodomus (sandbox often returns "awaiting approval"). */
+  async activateProperty(
+    channelId: number,
+    propertyId: string,
+    priceModelId: number,
+  ): Promise<unknown> {
+    return this.ensureEnabled().post('/property-activation', {
+      channelId,
+      propertyId,
+      priceModelId,
+    });
+  }
+
+  /** POST /property-check — verify property status after activation / rooms mapping. */
+  async checkProperty(channelId: number, propertyId: string): Promise<unknown> {
+    return this.ensureEnabled().post('/property-check', {
+      channelId,
+      propertyId,
+    });
+  }
+
   /**
    * Normalizes any Zodomus list response to a typed array.
    * Handles: plain array, { channels[] }, { items[] }, { reservations[] }, { rooms[] }.

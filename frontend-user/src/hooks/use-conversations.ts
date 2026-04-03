@@ -14,6 +14,8 @@ export interface ConversationDto {
   channel: string;
   status: ConversationStatus;
   externalGuestKey: string | null;
+  /** Имя для заголовка (OTA); может отсутствовать в старых ответах API. */
+  guestDisplayName?: string | null;
   lastMessagePreview: string | null;
   lastActivityAt: string;
   createdAt: string;

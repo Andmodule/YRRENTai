@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils';
 import type { ConversationDto } from '@/hooks/use-conversations';
 import { ConversationStatusDot } from '@/components/inbox/conversation-status-dot';
 import { formatGuestAndProperty } from '@/lib/format/conversation-meta';
+import { TruncatedTooltipText } from '@/components/inbox/truncated-tooltip-text';
 import { CHAT_FRAME } from '@/components/inbox/inbox-ui-tokens';
 import { apiClient } from '@/lib/api/client';
 
@@ -53,14 +54,20 @@ export function ConversationWindow({ conversation, onStaffReplySuccess }: Conver
   }, [replyText, replying, conversation.id, onStaffReplySuccess]);
 
   const isNeedsHuman = conversation.status === 'needs_human';
+  const headerTitle = formatGuestAndProperty(
+    conversation.externalGuestKey,
+    conversation.propertyName,
+    conversation.guestDisplayName,
+  );
 
   return (
     <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden">
       <div className={cn('hidden w-full min-w-0 items-center gap-3 px-4 py-3 lg:flex', CHAT_FRAME.b)}>
         <div className="flex min-w-0 flex-1 items-center gap-2">
-          <span className="truncate text-sm font-normal text-foreground">
-            {formatGuestAndProperty(conversation.externalGuestKey, conversation.propertyName)}
-          </span>
+          <TruncatedTooltipText
+            text={headerTitle}
+            className="min-w-0 flex-1 truncate text-sm font-normal text-foreground"
+          />
           <ConversationStatusDot status={conversation.status} />
         </div>
       </div>

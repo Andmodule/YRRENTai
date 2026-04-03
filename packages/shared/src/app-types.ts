@@ -42,6 +42,16 @@ export interface OtaPlatformRef {
   sortOrder: number;
 }
 
+/** Одна строка: объект в конкретном OTA с внешним id в этом канале. */
+export interface PropertyChannelListing {
+  id: string;
+  otaPlatformId: string;
+  otaPlatform?: OtaPlatformRef;
+  externalListingId: string;
+  zodomusRoomId?: string | null;
+  sortOrder?: number;
+}
+
 export interface Property {
   id: string;
   name: string;
@@ -52,11 +62,13 @@ export interface Property {
   timezone: string;
   currency: string;
   maxGuests?: number;
+  /** Каналы с внешними id (источник истины для интеграций). */
+  channelListings?: PropertyChannelListing[];
+  /** Legacy: первый канал / зеркало для совместимости. */
   otaPlatformId?: string | null;
   otaPlatform?: OtaPlatformRef | null;
-  /** External property id in Zodomus (channel manager). */
+  /** Legacy: внешний id Zodomus для первого канала. */
   zodomusPropertyId?: string | null;
-  /** Zodomus room id for availability push (optional; otherwise first room from room-rates). */
   zodomusRoomId?: string | null;
   /** External iCal feed URLs for calendar import. */
   icalImportUrls?: string[];

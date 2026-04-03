@@ -73,6 +73,13 @@ export class ConversationService {
     await this.repo.update(id, upd);
   }
 
+  /** Имя гостя из OTA (Booking и т.д.) для заголовка инбокса; ключ в `externalGuestKey` не меняем. */
+  async setGuestDisplayName(id: string, displayName: string | null | undefined): Promise<void> {
+    const t = displayName?.trim();
+    if (!t) return;
+    await this.repo.update(id, { guestDisplayName: t, updatedAt: new Date() });
+  }
+
   async listForOwner(
     ownerId: string,
     filters: { propertyId?: string; status?: ConversationStatus; page: number; limit: number },
@@ -106,6 +113,7 @@ export class ConversationService {
       channel: c.channel,
       status: c.status,
       externalGuestKey: c.externalGuestKey ?? null,
+      guestDisplayName: c.guestDisplayName?.trim() ? c.guestDisplayName.trim() : null,
       lastMessagePreview: c.lastMessagePreview ?? null,
       lastActivityAt: c.lastActivityAt.toISOString(),
       createdAt: c.createdAt.toISOString(),

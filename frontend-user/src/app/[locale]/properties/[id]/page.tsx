@@ -110,17 +110,18 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
     },
     {
       icon: Link2,
-      label: t('detail.otaPlatform'),
-      value: property.otaPlatform?.code
-        ? property.otaPlatform.code
-        : t('detail.notSpecified'),
-    },
-    {
-      icon: Link2,
-      label: t('detail.zodomusPropertyId'),
-      value: property.zodomusPropertyId?.trim()
-        ? property.zodomusPropertyId
-        : t('detail.notSpecified'),
+      label: t('detail.channels'),
+      value:
+        property.channelListings && property.channelListings.length > 0
+          ? property.channelListings
+              .map(
+                (c) =>
+                  `${c.otaPlatform?.code ?? '?'}: ${c.externalListingId}`,
+              )
+              .join(' · ')
+          : property.zodomusPropertyId?.trim()
+            ? `${property.otaPlatform?.code ?? 'OTA'} · ${property.zodomusPropertyId}`
+            : t('detail.notSpecified'),
     },
   ];
 
@@ -253,6 +254,7 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
               <PropertyIntegrationsCard
                 propertyId={property.id}
                 zodomusPropertyId={property.zodomusPropertyId}
+                channelListings={property.channelListings}
                 otaPlatform={property.otaPlatform ?? null}
                 onSynced={async () => {
                   await mutate();

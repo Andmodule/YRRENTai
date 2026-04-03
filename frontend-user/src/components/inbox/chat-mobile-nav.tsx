@@ -5,6 +5,7 @@ import { ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { CHAT_FRAME } from '@/components/inbox/inbox-ui-tokens';
+import { TruncatedTooltipText } from '@/components/inbox/truncated-tooltip-text';
 
 interface ChatMobileNavProps {
   title: string;
@@ -36,7 +37,10 @@ export function ChatMobileNav({ title, onBack, right, className }: ChatMobileNav
         <ArrowLeft className="h-5 w-5" />
       </Button>
       <div className="min-w-0 flex-1 pr-2">
-        <p className="truncate text-sm font-medium leading-tight">{title}</p>
+        <TruncatedTooltipText
+          text={title}
+          className="block w-full text-sm font-medium leading-tight"
+        />
       </div>
       {right != null ? <div className="shrink-0">{right}</div> : null}
     </header>

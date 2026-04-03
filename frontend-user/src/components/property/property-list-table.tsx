@@ -50,7 +50,13 @@ export function PropertyListTable({ properties }: PropertyListTableProps) {
         p.currency.toLowerCase().includes(q) ||
         p.timezone.toLowerCase().includes(q) ||
         (p.zodomusPropertyId?.toLowerCase().includes(q) ?? false) ||
-        (p.otaPlatform?.code?.toLowerCase().includes(q) ?? false)
+        (p.otaPlatform?.code?.toLowerCase().includes(q) ?? false) ||
+        (p.channelListings?.some(
+          (c) =>
+            c.externalListingId.toLowerCase().includes(q) ||
+            (c.otaPlatform?.code?.toLowerCase().includes(q) ?? false),
+        ) ??
+          false)
       );
     });
 
@@ -183,7 +189,19 @@ export function PropertyListTable({ properties }: PropertyListTableProps) {
                   <td className="px-2 py-3 tabular-nums text-muted-foreground">{property.currency}</td>
                   <td className="px-2 py-3 text-muted-foreground/90">{property.timezone}</td>
                   <td className="px-2 py-3">
-                    {property.zodomusPropertyId?.trim() ? (
+                    {property.channelListings && property.channelListings.length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
+                        {property.channelListings.map((cl) => (
+                          <span
+                            key={cl.id}
+                            className="inline-flex rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-primary"
+                            title={`${cl.otaPlatform?.code ?? '?'} · ${cl.externalListingId}`}
+                          >
+                            <span className="capitalize">{cl.otaPlatform?.code ?? 'OTA'}</span>
+                          </span>
+                        ))}
+                      </div>
+                    ) : property.zodomusPropertyId?.trim() ? (
                       <span
                         className="inline-flex rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-primary"
                         title={

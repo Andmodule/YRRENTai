@@ -57,11 +57,17 @@ export default function ZodomusDebugClient() {
   const [createTestReservationIdOpt, setCreateTestReservationIdOpt] = useState('');
   const [dateFrom, setDateFrom] = useState(() => format(new Date(), 'yyyy-MM-dd'));
   const [dateTo, setDateTo] = useState(() => format(addDays(new Date(), 30), 'yyyy-MM-dd'));
+  const [priceModelId, setPriceModelId] = useState('2');
 
   const selected = useMemo(
     () => properties.find((p) => p.id === propertyId),
     [properties, propertyId],
   );
+
+  const canUseZodomusProperty = Boolean(propertyId && selected?.zodomusPropertyId?.trim());
+  const priceModelIdNum = Number(priceModelId);
+  const priceModelOk =
+    Number.isFinite(priceModelIdNum) && priceModelIdNum >= 1 && priceModelIdNum <= 5;
 
   const pushLog = useCallback(
     (
@@ -255,6 +261,57 @@ export default function ZodomusDebugClient() {
             >
               POST push-availability
             </Btn>
+          </div>
+        </section>
+
+        <section className="rounded-xl border border-indigo-900/50 bg-indigo-950/20 p-4">
+          <h2 className="text-sm font-medium text-indigo-300/90">{t('zoneActivationTitle')}</h2>
+          <SectionHelp text={t('zoneActivationHelp')} />
+          <div className="mt-4 flex flex-col gap-3">
+            <div className="flex flex-wrap items-end gap-2">
+              <Btn onClick={() => void run('GET', '/admin/zodomus/price-model')}>
+                {t('btnPriceModel')}
+              </Btn>
+            </div>
+            <div className="flex max-w-md flex-col gap-1">
+              <label className="flex flex-col gap-1 text-xs">
+                <span className="text-zinc-400">{t('labelPriceModelId')}</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={5}
+                  value={priceModelId}
+                  onChange={(e) => setPriceModelId(e.target.value)}
+                  className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 font-mono text-sm"
+                />
+              </label>
+              <span className="text-[11px] leading-snug text-amber-500/90">{t('hintPriceModelId')}</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Btn
+                disabled={!canUseZodomusProperty || !priceModelOk}
+                onClick={() =>
+                  void run('POST', '/admin/zodomus/property-activation', {
+                    propertyId,
+                    channelId: Number(channelId),
+                    priceModelId: priceModelIdNum,
+                  })
+                }
+              >
+                {t('btnPropertyActivation')}
+              </Btn>
+              <Btn
+                disabled={!canUseZodomusProperty}
+                onClick={() =>
+                  void run('POST', '/admin/zodomus/property-check', {
+                    propertyId,
+                    channelId: Number(channelId),
+                  })
+                }
+              >
+                {t('btnPropertyCheck')}
+              </Btn>
+            </div>
           </div>
         </section>
 

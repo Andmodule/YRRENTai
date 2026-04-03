@@ -458,7 +458,28 @@
       "priority": "Priorytet",
       "property": "Obiekt",
       "propertyPlaceholder": "Szukaj po nazwie…",
-      "all": "Wszystkie"
+      "all": "Wszystkie",
+      "mobileSummary": "Filtry",
+      "mobileClose": "Zamknij filtry"
+    },
+    "viewModes": {
+      "list": "Lista",
+      "kanban": "Tablica",
+      "table": "Tabela",
+      "hint": "Na telefonie wygodniejsza jest lista; tablica na szerokim ekranie.",
+      "listEmpty": "Brak zadań dla wybranych filtrów.",
+      "toolbarAria": "Tryb widoku",
+      "tableIncidentsHeading": "Incydenty w okresie",
+      "kanbanSwipeHint": "Przesuwaj tablicę w poziomie lub dotknij kolumny — jak w nowoczesnych aplikacjach."
+    },
+    "viewTable": {
+      "type": "Typ",
+      "task": "Zadanie",
+      "property": "Obiekt",
+      "status": "Status",
+      "due": "Termin",
+      "assignee": "Osoba",
+      "statusChangeAria": "Zmień status: {title}"
     },
     "columns": {
       "pending": "Oczekuje",
@@ -560,6 +581,13 @@
     "guestAsUserHint": "Wiadomości trafiają do tej rozmowy jak pytanie gościa.",
     "staffReply": "Odpowiedź managera",
     "operatorReplyBadge": "Odpowiedź operatora",
+    "bookingComMessageTitle": "Wiadomość: {name}",
+    "bookingComMoreToggleAria": "Pokaż lub ukryj więcej z wiadomości",
+    "bookingComGuest": "Gość",
+    "bookingComCheckIn": "Zameldowanie",
+    "bookingComCheckOut": "Wymeldowanie",
+    "bookingComProperty": "Obiekt",
+    "bookingComGuestQuestion": "Wiadomość gościa",
     "dev": {
       "panelSummary": "Dev: test gościa",
       "newGuestThread": "Nowy wątek gościa",

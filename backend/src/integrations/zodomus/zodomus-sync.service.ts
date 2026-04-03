@@ -100,8 +100,8 @@ export class ZodomusSyncService {
     if (!this.zodomus.isEnabled) throw new BadRequestException('Zodomus is disabled');
 
     const property = await this.propertyService.findByIdForAdmin(internalPropertyId);
-    const extId = property.zodomusPropertyId?.trim();
-    if (!extId) throw new BadRequestException('Set zodomusPropertyId on the property');
+    const extId = this.propertyService.getExternalListingIdForZodomusChannel(property, channelId);
+    if (!extId) throw new BadRequestException('Set an external listing id for this channel on the property');
 
     const reservations = await this.zodomus.getReservationSummary(channelId, extId);
     let imported = 0;
@@ -194,8 +194,8 @@ export class ZodomusSyncService {
     if (!this.zodomus.isEnabled) throw new BadRequestException('Zodomus is disabled');
 
     const property = await this.propertyService.findOne(internalPropertyId, ownerUserId);
-    const extId = property.zodomusPropertyId?.trim();
-    if (!extId) throw new BadRequestException('Set zodomusPropertyId on the property');
+    const extId = this.propertyService.getExternalListingIdForZodomusChannel(property, channelId);
+    if (!extId) throw new BadRequestException('Set an external listing id for this channel on the property');
 
     const reservations = await this.zodomus.getReservationSummary(channelId, extId);
     let imported = 0;
@@ -233,7 +233,7 @@ export class ZodomusSyncService {
     let failed = 0;
     let propertiesTouched = 0;
     for (const p of list) {
-      if (!p.zodomusPropertyId?.trim()) continue;
+      if (!this.propertyService.getExternalListingIdForZodomusChannel(p, channelId)) continue;
       propertiesTouched += 1;
       try {
         const r = await this.syncQueueRaw(p, channelId, force);
@@ -254,9 +254,11 @@ export class ZodomusSyncService {
     channelId: number,
     force: boolean,
   ): Promise<{ processed: number; skipped: number; failed: number }> {
-    const extId = property.zodomusPropertyId?.trim();
+    const extId = this.propertyService.getExternalListingIdForZodomusChannel(property, channelId);
     if (!extId) {
-      throw new BadRequestException('Set zodomusPropertyId on the property (Zodomus external id)');
+      throw new BadRequestException(
+        'Set an external listing id for this channel on the property (Zodomus external id)',
+      );
     }
 
     const queue = await this.zodomus.getReservationQueue(channelId, extId);

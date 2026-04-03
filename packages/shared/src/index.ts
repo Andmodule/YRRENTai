@@ -4,6 +4,7 @@ export * from './schemas/booking.schema';
 export * from './schemas/user.schema';
 export * from './schemas/pagination.schema';
 export * from './schemas/chat.schema';
+export * from './booking-com-email';
 export * from './schemas/conversation.schema';
 
 export * from './constants/roles';

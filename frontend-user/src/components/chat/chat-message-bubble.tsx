@@ -6,6 +6,7 @@ import { stripEscalationForGuestDisplay } from '@rentai/shared';
 import { cn } from '@/lib/utils';
 import { formatBubbleTimestamp } from '@/lib/format/conversation-meta';
 import type { ChatMessage } from '@/hooks/use-chat';
+import { BookingComGuestMessage } from './booking-com-guest-message';
 
 interface ChatMessageBubbleProps {
   message: ChatMessage;
@@ -36,7 +37,9 @@ export function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
           </span>
         )}
         <div className="min-w-0">
-          {isUser ? (
+          {isUser && message.metadata?.channel === 'booking_com' ? (
+            <BookingComGuestMessage metadata={message.metadata} rawContent={displayContent} />
+          ) : isUser ? (
             <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{displayContent}</p>
           ) : (
             <div className="prose prose-sm max-w-none dark:prose-invert [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
