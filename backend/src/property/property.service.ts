@@ -89,6 +89,15 @@ export class PropertyService {
     return row?.id ?? null;
   }
 
+  /** For messaging / webhooks — resolve owner without requiring caller's user id. */
+  async getOwnerIdByPropertyId(propertyId: string): Promise<string | null> {
+    const row = await this.propertyRepository.findOne({
+      where: { id: propertyId },
+      select: ['ownerId'],
+    });
+    return row?.ownerId ?? null;
+  }
+
   async findOne(id: string, ownerId: string): Promise<PropertyEntity> {
     const property = await this.propertyRepository.findOne({
       where: { id, ownerId },

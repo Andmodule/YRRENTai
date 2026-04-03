@@ -44,6 +44,33 @@ export class ChatService {
     };
   }
 
+  /**
+   * Last `limit` messages in a conversation, chronological (ASC) — correct for inbox / guest chat UI
+   * (preview + body both refer to the “tail” of the thread). Contrasts with page-1 ASC = oldest slice only.
+   */
+  async getLastMessagesForConversation(
+    propertyId: string,
+    conversationId: string,
+    limit: number,
+  ): Promise<{
+    data: ChatMessageEntity[];
+    meta: { page: number; limit: number; total: number; totalPages: number };
+  }> {
+    const where: FindOptionsWhere<ChatMessageEntity> = { propertyId, conversationId };
+    const total = await this.messageRepository.count({ where });
+    const take = Math.min(Math.max(1, limit), 200);
+    const rows = await this.messageRepository.find({
+      where,
+      order: { createdAt: 'DESC' },
+      take,
+    });
+    const data = rows.slice().reverse();
+    return {
+      data,
+      meta: { page: 1, limit: take, total, totalPages: 1 },
+    };
+  }
+
   async getRecentHistory(
     propertyId: string,
     count = 20,

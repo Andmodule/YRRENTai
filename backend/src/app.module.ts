@@ -35,9 +35,15 @@ import { AdminModule } from './admin/admin.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      /**
+       * Monorepo: `pnpm dev:backend` runs with cwd `backend/`. A single `.env` at repo root must load
+       * (RESEND_*, PORT, etc.). Paths relative to `__dirname` only hit `backend/.env` from `dist/src`.
+       */
       envFilePath: [
+        join(process.cwd(), '..', '.env'),
+        join(process.cwd(), '.env'),
+        join(__dirname, '..', '..', '..', '.env'),
         join(__dirname, '..', '..', '.env'),
-        join(__dirname, '..', '.env'),
       ],
       validate: (config) => envSchema.parse(config),
     }),

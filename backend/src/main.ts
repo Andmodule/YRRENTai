@@ -5,9 +5,23 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { patchNestJsSwagger } from 'nestjs-zod';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
-import express from 'express';
+import express, { type Request, type Response, type NextFunction } from 'express';
 import { join } from 'path';
 import { AppModule } from './app.module';
+
+/**
+ * Engine.IO clients often use `/api/socket.io?EIO=…` (no slash before `?`). May still 404 if the adapter runs
+ * before this middleware — the Next.js proxy normalizes to `/api/socket.io/?…` for upstream fetch.
+ */
+function normalizeEngineIoUrl(req: Request, _res: Response, next: NextFunction): void {
+  const u = req.url ?? '';
+  const q = u.indexOf('?');
+  const pathOnly = q === -1 ? u : u.slice(0, q);
+  if (pathOnly === '/api/socket.io') {
+    req.url = '/api/socket.io/' + (q === -1 ? '' : u.slice(q));
+  }
+  next();
+}
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
@@ -15,6 +29,8 @@ async function bootstrap() {
   });
   const configService = app.get(ConfigService);
   const logger = new Logger('Bootstrap');
+
+  app.use(normalizeEngineIoUrl);
 
   app.use('/uploads', express.static(join(process.cwd(), 'uploads')));
 

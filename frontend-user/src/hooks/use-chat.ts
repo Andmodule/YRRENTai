@@ -70,31 +70,6 @@ function mapApiRowsToMessages(
   }));
 }
 
-/**
- * REST or `chat:history` can return a snapshot older than what we already have from the socket
- * (ordering, Edge HTTP cache, reconnect). Blind `setMessages(server)` drops the newest rows.
- * Keep client-only messages that are newer than the server's newest timestamp (same id → server wins).
- */
-function mergeServerMessagesWithPrev(server: ChatMessage[], prev: ChatMessage[]): ChatMessage[] {
-  if (prev.length === 0) return server;
-  const serverById = new Map(server.map((m) => [m.id, m]));
-  let serverMaxMs = 0;
-  for (const m of server) {
-    const t = Date.parse(m.createdAt);
-    if (!Number.isNaN(t) && t > serverMaxMs) serverMaxMs = t;
-  }
-  const out = new Map<string, ChatMessage>(serverById);
-  for (const m of prev) {
-    if (out.has(m.id)) continue;
-    const t = Date.parse(m.createdAt);
-    /** `>=` so a message in the same ms as server max is not dropped (socket vs REST ordering). */
-    if (!Number.isNaN(t) && t >= serverMaxMs) {
-      out.set(m.id, m);
-    }
-  }
-  return [...out.values()].sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
-}
-
 export function useChat(propertyId: string | null, opts?: UseChatOpts | null): UseChatReturn {
   const conversationId = opts?.conversationId ?? undefined;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -105,6 +80,8 @@ export function useChat(propertyId: string | null, opts?: UseChatOpts | null): U
   /** Inbox: block chat:history until REST settles (socket join fires first and can carry a stale thread). */
   const [isHistoryLoading, setIsHistoryLoading] = useState(() => !!opts?.conversationId);
   const inboxRestInitialDoneRef = useRef(!opts?.conversationId);
+  /** Bumps on each effect run so a stale in-flight REST response cannot apply after switching conversations. */
+  const loadGenerationRef = useRef(0);
   const currentPropertyId = useRef<string | null>(null);
   const conversationIdRef = useRef<string | undefined>(conversationId);
 
@@ -136,10 +113,15 @@ export function useChat(propertyId: string | null, opts?: UseChatOpts | null): U
 
     let cancelled = false;
     let detachListeners: (() => void) | undefined;
+    const loadGeneration = ++loadGenerationRef.current;
 
     function markInboxHistoryReady() {
       inboxRestInitialDoneRef.current = true;
       setIsHistoryLoading(false);
+    }
+
+    function isStaleLoad(): boolean {
+      return cancelled || loadGeneration !== loadGenerationRef.current;
     }
 
     async function refetchMessagesForOpenConversation(targetConversationId: string) {
@@ -163,7 +145,7 @@ export function useChat(propertyId: string | null, opts?: UseChatOpts | null): U
             Pragma: 'no-cache',
           },
         });
-        if (cancelled) return;
+        if (isStaleLoad()) return;
         if (conversationIdRef.current?.toLowerCase() !== targetConversationId.toLowerCase()) {
           return;
         }
@@ -173,9 +155,10 @@ export function useChat(propertyId: string | null, opts?: UseChatOpts | null): U
           return;
         }
         markInboxHistoryReady();
-        setMessages((prev) => mergeServerMessagesWithPrev(mapApiRowsToMessages(rows), prev));
+        /** Full replace — merge with `prev` caused wrong-thread bubbles when switching chats before React flushed `setMessages([])`. */
+        setMessages(mapApiRowsToMessages(rows));
       } catch {
-        if (cancelled) return;
+        if (isStaleLoad()) return;
         if (conversationIdRef.current?.toLowerCase() !== targetConversationId.toLowerCase()) {
           return;
         }
@@ -231,8 +214,19 @@ export function useChat(propertyId: string | null, opts?: UseChatOpts | null): U
             if (!data.conversationId || data.conversationId.toLowerCase() !== cur.toLowerCase()) {
               return;
             }
+            /**
+             * Inbox: REST is the source of truth after first load. `chat:history` uses the same tail query
+             * now, but must never replace a non-empty list with a shorter snapshot (reconnect / race).
+             */
+            setMessages((prev) => {
+              if (prev.length > 0) {
+                return prev;
+              }
+              return Array.isArray(data.messages) ? data.messages : [];
+            });
+            return;
           }
-          setMessages((prev) => mergeServerMessagesWithPrev(data.messages, prev));
+          setMessages(Array.isArray(data.messages) ? data.messages : []);
         }
 
         function handleMessageSaved(msg: ChatMessage) {
@@ -276,7 +270,7 @@ export function useChat(propertyId: string | null, opts?: UseChatOpts | null): U
 
         /** Левая колонка уже обновилась по этому событию; правая подтягивает те же сообщения с API (надёжнее, чем только сокет). */
         async function handleConversationUpdated(payload: { conversationId?: string }) {
-          if (cancelled) return;
+          if (isStaleLoad()) return;
           if (!payload?.conversationId) return;
           const cur = conversationIdRef.current;
           if (!cur) return;
@@ -286,7 +280,7 @@ export function useChat(propertyId: string | null, opts?: UseChatOpts | null): U
 
         function onWindowFocus() {
           const cur = conversationIdRef.current;
-          if (!cur || cancelled || !propertyId) return;
+          if (!cur || isStaleLoad() || !propertyId) return;
           void refetchMessagesForOpenConversation(cur);
         }
 

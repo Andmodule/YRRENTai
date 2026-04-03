@@ -363,7 +363,11 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       conversation = await this.conversationService.findOrCreate(body.propertyId, 'web_app');
     }
 
-    const { data } = await this.chatService.getMessages(body.propertyId, 1, 50, conversation.id);
+    const { data } = await this.chatService.getLastMessagesForConversation(
+      body.propertyId,
+      conversation.id,
+      100,
+    );
     client.emit('chat:history', {
       propertyId: body.propertyId,
       conversationId: conversation.id,

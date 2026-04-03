@@ -120,6 +120,16 @@ export class MessagingService {
     return to || null;
   }
 
+  /**
+   * From `conversations.externalGuestKey` (`email:user@host` or legacy). Rejects display names
+   * so we do not query `guest_email` with values like "john smith".
+   */
+  private normalizeGuestEmailFromExternalKey(externalGuestKey?: string | null): string | null {
+    const raw = externalGuestKey?.replace(/^email:/i, '').trim().toLowerCase() ?? '';
+    if (!raw || !raw.includes('@')) return null;
+    return raw;
+  }
+
   async processInbound(dto: ResendWebhookDto, ownerId: string): Promise<void> {
 
     const { from, subject, replyTo, headers, id: resendDataId, email_id: resendEmailId } = dto.data;
@@ -1026,12 +1036,12 @@ export class MessagingService {
     if (!thread) {
       try {
         const conv = await this.conversationService.findById(cid);
-        const guestEmail = conv.externalGuestKey?.replace(/^email:/i, '').trim().toLowerCase();
-        if (guestEmail && conv.propertyId) {
+        const guestEmailAddr = this.normalizeGuestEmailFromExternalKey(conv.externalGuestKey);
+        if (guestEmailAddr && conv.propertyId) {
           thread = await this.threadRepo
             .createQueryBuilder('t')
             .where('t.property_id = :pid', { pid: conv.propertyId })
-            .andWhere('LOWER(t.guest_email) = :email', { email: guestEmail })
+            .andWhere('LOWER(t.guest_email) = :email', { email: guestEmailAddr })
             .orderBy('t.updated_at', 'DESC')
             .getOne();
         }
@@ -1041,6 +1051,44 @@ export class MessagingService {
       } catch (e) {
         this.logger.warn(
           `relayStaffReplyToEmailGuest: resolve thread by guest email failed for ${cid}: ${(e as Error).message}`,
+        );
+      }
+    }
+
+    if (!thread) {
+      try {
+        const conv = await this.conversationService.findById(cid);
+        const guestEmailAddr = this.normalizeGuestEmailFromExternalKey(conv.externalGuestKey);
+        if (
+          conv.channel === CONVERSATION_CHANNEL.EMAIL &&
+          guestEmailAddr &&
+          conv.propertyId
+        ) {
+          const ownerId = await this.propertyService.getOwnerIdByPropertyId(conv.propertyId);
+          if (ownerId) {
+            thread = await this.threadRepo.save(
+              this.threadRepo.create({
+                channel: 'direct',
+                guestEmail: guestEmailAddr,
+                guestName: null,
+                replyTo: guestEmailAddr,
+                reservationId: null,
+                ownerId,
+                propertyId: conv.propertyId,
+                conversationId: cid,
+                status: 'open',
+                zodomusReservationId: null,
+                lastInboundSubject: null,
+              }),
+            );
+            this.logger.log(
+              `relayStaffReplyToEmailGuest: created messaging thread ${thread.id} for email conversation ${cid}`,
+            );
+          }
+        }
+      } catch (e) {
+        this.logger.warn(
+          `relayStaffReplyToEmailGuest: create thread for email conversation failed ${cid}: ${(e as Error).message}`,
         );
       }
     }

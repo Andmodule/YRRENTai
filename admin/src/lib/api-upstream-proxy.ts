@@ -1,11 +1,6 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
-/**
- * Nest origin (REST `/api/v1/…`, Socket.IO `/api/socket.io/…`).
- * Resolve per request so `.env.local` is always applied; prefer `API_URL` for server-only proxy target.
- * Default `127.0.0.1` avoids Windows/Node resolving `localhost` → IPv6 while Nest listens on IPv4-only.
- */
 function getBackendBase(): string {
   const raw =
     process.env.API_URL?.trim() ||
@@ -49,11 +44,6 @@ function upstreamUnreachableCode(error: unknown): string | undefined {
   return undefined;
 }
 
-/**
- * Undici/fetch decodes `Content-Encoding` into the body stream but does not strip the header.
- * Re-sending compressed metadata with an uncompressed body breaks clients (e.g. Socket.IO polling).
- * Stripping these is standard for application-level reverse proxies that buffer or transform the body.
- */
 const STRIP_FROM_PROXY_RESPONSE = new Set([
   'content-encoding',
   'content-length',

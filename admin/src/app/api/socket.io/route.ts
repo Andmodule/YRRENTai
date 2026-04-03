@@ -2,8 +2,8 @@ import type { NextRequest } from 'next/server';
 import { proxyApiToNest } from '@/lib/api-upstream-proxy';
 
 /**
- * Explicit handler for `/api/socket.io` — the generic `app/api/[[...path]]/route.ts` does not match this path
- * (segment `socket.io` with a dot) → 404 on Engine.IO polling. Rewrites alone are brittle across Next versions.
+ * Exact `/api/socket.io` — optional catch-all `[[...path]]` does not reliably match this pathname in App Router
+ * (Engine.IO uses `/api/socket.io?EIO=…` without a trailing slash before `?`).
  */
 export const runtime = 'nodejs';
 

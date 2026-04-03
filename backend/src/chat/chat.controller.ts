@@ -80,19 +80,14 @@ export class ChatController {
 
   @Get('conversations/:id/messages')
   @Roles('OWNER', 'MANAGER')
-  @ApiOperation({ summary: 'Get messages for a conversation' })
+  @ApiOperation({ summary: 'Get the last N messages for a conversation (chronological, tail of thread)' })
   async getConversationMessages(
     @Param('id') id: string,
-    @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
     const conv = await this.conversationService.findById(id);
-    return this.chatService.getMessages(
-      conv.propertyId,
-      Number(page) || 1,
-      Number(limit) || 50,
-      conv.id,
-    );
+    const lim = Number(limit) || 100;
+    return this.chatService.getLastMessagesForConversation(conv.propertyId, conv.id, lim);
   }
 
   @Get('analytics/reply-stats')
