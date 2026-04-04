@@ -20,8 +20,6 @@ export function useTasksSocket(staffUserId?: string) {
 
   useEffect(() => {
     const base = resolveSocketBaseUrl();
-    const sameOrigin =
-      typeof window !== 'undefined' && base === window.location.origin;
 
     const socket = io(`${base}/tasks`, {
       path: '/api/socket.io',
@@ -31,7 +29,7 @@ export function useTasksSocket(staffUserId?: string) {
           .then((token) => cb({ token }))
           .catch(() => cb({ token: '' }));
       },
-      transports: sameOrigin ? ['polling', 'websocket'] : ['websocket', 'polling'],
+      transports: ['websocket', 'polling'],
     });
 
     socket.on('checklist_item_updated', () => {

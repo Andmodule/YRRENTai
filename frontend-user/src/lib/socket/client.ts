@@ -19,8 +19,6 @@ export async function connectChatSocket(): Promise<Socket> {
     chatSocket = null;
   }
   const base = resolveSocketBaseUrl();
-  const useProxy =
-    typeof window !== 'undefined' && base === window.location.origin;
   chatSocket = io(`${base}/chat`, {
     path: '/api/socket.io',
     auth: (cb) => {
@@ -29,7 +27,7 @@ export async function connectChatSocket(): Promise<Socket> {
         .catch(() => cb({ token: '' }));
     },
     withCredentials: true,
-    transports: useProxy ? ['polling', 'websocket'] : ['websocket', 'polling'],
+    transports: ['websocket', 'polling'],
     autoConnect: false,
   });
   chatSocket.connect();

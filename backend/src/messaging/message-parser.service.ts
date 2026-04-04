@@ -52,8 +52,52 @@ export class MessageParserService {
 
   /** `hotel_id` in admin.booking.com links — same id as Booking object in channel settings. */
   extractBookingHotelIdFromUrls(source: string): string | null {
-    const m = source.match(/[?&]hotel_id=(\d{4,12})\b/i);
-    return m?.[1] ?? null;
+    let s = source.replace(/&amp;/gi, '&');
+    for (let i = 0; i < 8; i++) {
+      const plain = s.match(/[?&]hotel_id=(\d{4,12})\b/i);
+      if (plain?.[1]) return plain[1];
+      // Encoded `=` (e.g. inside utm_* or redirect chains): ...hotel_id%3D19191919...
+      const enc = s.match(/hotel_id(?:=|%3[Dd])(\d{4,12})\b/i);
+      if (enc?.[1]) return enc[1];
+      try {
+        const next = decodeURIComponent(s);
+        if (next === s) break;
+        s = next;
+      } catch {
+        break;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Booking emails often put `hotel_id` only in `<a href="...">` — `stripHtmlToText` drops the URL.
+   * 1) Search the raw HTML (Gmail redirects, encoded params).
+   * 2) Each quoted / unquoted `href` value.
+   */
+  extractBookingHotelIdFromHtml(html: string): string | null {
+    if (!html?.trim()) return null;
+    const fromDoc = this.extractBookingHotelIdFromUrls(html);
+    if (fromDoc) return fromDoc;
+
+    const hrefQuoted = /href\s*=\s*(["'])([^"']*)\1/gi;
+    let m: RegExpExecArray | null;
+    while ((m = hrefQuoted.exec(html)) !== null) {
+      const raw = m[2];
+      if (!raw) continue;
+      const id = this.extractBookingHotelIdFromUrls(raw);
+      if (id) return id;
+    }
+
+    const hrefBare = /href\s*=\s*([^\s"'=<>`]+)/gi;
+    while ((m = hrefBare.exec(html)) !== null) {
+      const raw = m[1];
+      if (!raw) continue;
+      const id = this.extractBookingHotelIdFromUrls(raw);
+      if (id) return id;
+    }
+
+    return null;
   }
 
   /** Parses bare email from a From header (RFC 5322 display name + angle-addr). */

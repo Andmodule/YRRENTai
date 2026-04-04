@@ -76,6 +76,24 @@ Message: "Добрый день!"`;
     expect(h.bookingHotelId).toBe('10322630');
   });
 
+  it('extractBookingHotelIdFromUrls matches URL-encoded hotel_id', () => {
+    const u =
+      'https://admin.booking.com/...?utm_content=property_name%26hotel_id%3D19191919%26...';
+    expect(service.extractBookingHotelIdFromUrls(u)).toBe('19191919');
+  });
+
+  it('extractBookingHotelIdFromUrls unwraps double-encoded Gmail-style redirect', () => {
+    const wrapped =
+      'https://www.google.com/url?q=https%3A%2F%2Fadmin.booking.com%2Fhotel%2Fhoteladmin%2Fextranet_ng%2Fmanage%2Fhome.html%253Fhotel_id%253D19191919';
+    expect(service.extractBookingHotelIdFromUrls(wrapped)).toBe('19191919');
+  });
+
+  it('extractBookingHotelIdFromHtml reads hotel_id from href only (tags would drop URL)', () => {
+    const html = `<table><tr><td><a href="https://admin.booking.com/hotel/hoteladmin/extranet_ng/manage/home.html?hotel_id=19191919&amp;lang=ru">Немига</a></td></tr></table>`;
+    expect(service.extractBookingHotelIdFromHtml(html)).toBe('19191919');
+    expect(service.stripHtmlToText(html)).not.toContain('19191919');
+  });
+
   it('extractGuestNameFromBookingSubject gets name after гостя (RU)', () => {
     expect(
       service.extractGuestNameFromBookingSubject(

@@ -7,7 +7,7 @@ const nextConfig: NextConfig = {
   /** Avoid broken webpack vendor-chunks for axios on the server (MODULE_NOT_FOUND ./vendor-chunks/axios@…). */
   serverExternalPackages: ['axios'],
   transpilePackages: ['@rentai/shared'],
-  // API: `app/api/[[...path]]/route.ts` + `app/api/socket.io/[[...path]]/route.ts` (Socket.IO path with a dot).
+  // API: `app/api/[[...path]]/route.ts` + `app/api/socket.io/route.ts` — REST only; Socket.IO client uses Nest origin (see resolve-socket-origin).
   async redirects() {
     return [
       {

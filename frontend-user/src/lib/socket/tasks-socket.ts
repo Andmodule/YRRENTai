@@ -12,7 +12,6 @@ async function fetchWsToken(): Promise<string> {
  */
 export function connectTasksSocket(): Socket {
   const base = resolveSocketBaseUrl();
-  const useProxy = typeof window !== 'undefined' && base === window.location.origin;
   return io(`${base}/tasks`, {
     path: '/api/socket.io',
     auth: (cb) => {
@@ -21,6 +20,6 @@ export function connectTasksSocket(): Socket {
         .catch(() => cb({ token: '' }));
     },
     withCredentials: true,
-    transports: useProxy ? ['polling', 'websocket'] : ['websocket', 'polling'],
+    transports: ['websocket', 'polling'],
   });
 }

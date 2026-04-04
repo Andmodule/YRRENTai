@@ -88,7 +88,7 @@ export class ZodomusAvailabilityPushService implements OnModuleDestroy {
       .andWhere(
         new Brackets((qb) =>
           qb.where('p.zodomusPropertyId IS NOT NULL').orWhere(
-            'EXISTS (SELECT 1 FROM property_channel_listings pcl WHERE pcl.propertyId = p.id)',
+            'EXISTS (SELECT 1 FROM property_channel_listings pcl WHERE pcl."propertyId" = p.id)',
           ),
         ),
       )
@@ -116,7 +116,7 @@ export class ZodomusAvailabilityPushService implements OnModuleDestroy {
       .where(
         new Brackets((qb) =>
           qb.where('p.zodomusPropertyId IS NOT NULL').orWhere(
-            'EXISTS (SELECT 1 FROM property_channel_listings pcl WHERE pcl.propertyId = p.id)',
+            'EXISTS (SELECT 1 FROM property_channel_listings pcl WHERE pcl."propertyId" = p.id)',
           ),
         ),
       )
@@ -235,7 +235,7 @@ export class ZodomusAvailabilityPushService implements OnModuleDestroy {
       .set({ zodomusAvailabilityDirty: true })
       .where('id = :propertyId', { propertyId })
       .andWhere(
-        '(zodomusPropertyId IS NOT NULL OR EXISTS (SELECT 1 FROM property_channel_listings pcl WHERE pcl.propertyId = :propertyId))',
+        '(zodomusPropertyId IS NOT NULL OR EXISTS (SELECT 1 FROM property_channel_listings pcl WHERE pcl."propertyId" = :propertyId))',
         { propertyId },
       )
       .execute();
@@ -248,7 +248,7 @@ export class ZodomusAvailabilityPushService implements OnModuleDestroy {
       .set({ zodomusAvailabilityDirty: false })
       .where('id = :propertyId', { propertyId })
       .andWhere(
-        '(zodomusPropertyId IS NOT NULL OR EXISTS (SELECT 1 FROM property_channel_listings pcl WHERE pcl.propertyId = :propertyId))',
+        '(zodomusPropertyId IS NOT NULL OR EXISTS (SELECT 1 FROM property_channel_listings pcl WHERE pcl."propertyId" = :propertyId))',
         { propertyId },
       )
       .execute();

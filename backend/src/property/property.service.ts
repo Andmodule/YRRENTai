@@ -88,7 +88,7 @@ export class PropertyService {
       .where(
         new Brackets((qb) =>
           qb.where('p.zodomusPropertyId IS NOT NULL').orWhere(
-            'EXISTS (SELECT 1 FROM property_channel_listings pcl WHERE pcl.propertyId = p.id)',
+            'EXISTS (SELECT 1 FROM property_channel_listings pcl WHERE pcl."propertyId" = p.id)',
           ),
         ),
       )

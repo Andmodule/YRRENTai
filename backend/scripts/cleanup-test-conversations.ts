@@ -19,16 +19,24 @@ async function main(): Promise<void> {
   await qr.startTransaction();
   try {
     const rows = (await qr.query(
-      `SELECT id FROM conversations
-       WHERE "channel" IN ('web_app', 'email')
+      `SELECT c.id FROM conversations c
+       WHERE c."channel" IN ('web_app', 'email')
          AND (
-           LOWER(TRIM(COALESCE("externalGuestKey", ''))) = ANY($1::text[])
-           OR LOWER(TRIM(COALESCE("externalGuestKey", ''))) LIKE '%compncc1@gmail.com%'
-           OR TRIM(COALESCE("externalGuestKey", '')) ILIKE 'John Smith'
-           OR TRIM(COALESCE("guestDisplayName", '')) ILIKE 'John Smith'
-           OR TRIM(COALESCE("guestDisplayName", '')) ILIKE '%compncc1@gmail.com%'
-           OR TRIM(COALESCE("guestDisplayName", '')) ILIKE '%Tsveiuk%'
-           OR TRIM(COALESCE("lastMessagePreview", '')) ILIKE '%уточню это у хозяина%'
+           LOWER(TRIM(COALESCE(c."externalGuestKey", ''))) = ANY($1::text[])
+           OR LOWER(TRIM(COALESCE(c."externalGuestKey", ''))) LIKE '%compncc1@gmail.com%'
+           OR TRIM(COALESCE(c."externalGuestKey", '')) ILIKE 'John Smith'
+           OR TRIM(COALESCE(c."guestDisplayName", '')) ILIKE 'John Smith'
+           OR TRIM(COALESCE(c."guestDisplayName", '')) ILIKE '%compncc1@gmail.com%'
+           OR TRIM(COALESCE(c."guestDisplayName", '')) ILIKE '%Tsveiuk%'
+           OR TRIM(COALESCE(c."lastMessagePreview", '')) ILIKE '%уточню это у хозяина%'
+           OR LOWER(TRIM(COALESCE(c."externalGuestKey", ''))) LIKE '%t_optima@mail.ru%'
+           OR TRIM(COALESCE(c."guestDisplayName", '')) ILIKE '%t_optima@mail.ru%'
+           OR TRIM(COALESCE(c."guestDisplayName", '')) ILIKE '%guest-a%'
+           OR TRIM(COALESCE(c."externalGuestKey", '')) ILIKE '%guest-a%'
+           OR EXISTS (
+             SELECT 1 FROM properties p
+             WHERE p.id = c."propertyId" AND p.name ILIKE '%zodomus 1test%'
+           )
          )`,
       [EXTRA_EMAIL_KEYS],
     )) as { id: string }[];
@@ -37,16 +45,28 @@ async function main(): Promise<void> {
 
     const threadRows = (await (convIds.length > 0
       ? qr.query(
-          `SELECT id FROM messaging_threads
-           WHERE conversation_id = ANY($1::uuid[])
-              OR TRIM(COALESCE(guest_name, '')) ILIKE '%Tsveiuk%'
-              OR LOWER(TRIM(COALESCE(guest_email, ''))) LIKE '%tsveiuk%'`,
+          `SELECT t.id FROM messaging_threads t
+           WHERE t.conversation_id = ANY($1::uuid[])
+              OR TRIM(COALESCE(t.guest_name, '')) ILIKE '%Tsveiuk%'
+              OR LOWER(TRIM(COALESCE(t.guest_email, ''))) LIKE '%tsveiuk%'
+              OR LOWER(TRIM(COALESCE(t.guest_email, ''))) LIKE '%t_optima@mail.ru%'
+              OR TRIM(COALESCE(t.guest_name, '')) ILIKE '%guest-a%'
+              OR EXISTS (
+                SELECT 1 FROM properties p
+                WHERE p.id = t.property_id AND p.name ILIKE '%zodomus 1test%'
+              )`,
           [convIds],
         )
       : qr.query(
-          `SELECT id FROM messaging_threads
-           WHERE TRIM(COALESCE(guest_name, '')) ILIKE '%Tsveiuk%'
-              OR LOWER(TRIM(COALESCE(guest_email, ''))) LIKE '%tsveiuk%'`,
+          `SELECT t.id FROM messaging_threads t
+           WHERE TRIM(COALESCE(t.guest_name, '')) ILIKE '%Tsveiuk%'
+              OR LOWER(TRIM(COALESCE(t.guest_email, ''))) LIKE '%tsveiuk%'
+              OR LOWER(TRIM(COALESCE(t.guest_email, ''))) LIKE '%t_optima@mail.ru%'
+              OR TRIM(COALESCE(t.guest_name, '')) ILIKE '%guest-a%'
+              OR EXISTS (
+                SELECT 1 FROM properties p
+                WHERE p.id = t.property_id AND p.name ILIKE '%zodomus 1test%'
+              )`,
         ))) as { id: string }[];
 
     const threadIds = threadRows.map((r) => r.id);

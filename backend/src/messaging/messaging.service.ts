@@ -184,7 +184,11 @@ export class MessagingService {
 
     let cleanText = this.parser.extractInboundBody(text, html ?? undefined);
 
-    if (!cleanText.trim()) {
+    /**
+     * Webhooks often omit `html` (metadata only); href with `hotel_id` lives in full HTML from API.
+     * Fetch when plain is empty OR when we have no HTML to parse for Booking routing.
+     */
+    if (!cleanText.trim() || !html?.trim()) {
 
       await ensureInboundBodyFromApi();
 
@@ -201,6 +205,13 @@ export class MessagingService {
     const bookingHints = this.parser.parseBookingStyleInboxHints(
       `${cleanText}\n${subjectTrim}\n${htmlPlain}`,
     );
+
+    if (html?.trim()) {
+      const hotelFromHref = this.parser.extractBookingHotelIdFromHtml(html);
+      if (hotelFromHref) {
+        bookingHints.bookingHotelId = hotelFromHref;
+      }
+    }
 
     const reservationId = this.parser.resolveInboundReservationId(subject, cleanText, bookingHints);
 

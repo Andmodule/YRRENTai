@@ -16,5 +16,6 @@ export * from './constants/escalation';
 export * from './utils/booking.utils';
 export * from './utils/guest';
 export * from './utils/task-notes';
+export * from './utils/resolve-socket-origin';
 
 export * from './app-types';
