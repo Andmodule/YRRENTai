@@ -597,7 +597,14 @@
       "propertyForGuest": "Propiedad para este huésped",
       "guestKey": "Clave de sesión",
       "guestKeyPlaceholder": "guest-a, guest-b…",
-      "messagePlaceholder": "Mensaje como huésped nuevo…"
+      "messagePlaceholder": "Mensaje como huésped nuevo…",
+      "clearAllChats": "Borrar todos los chats",
+      "clearAllChatsConfirm": "¿Eliminar de la base de datos todas las conversaciones, mensajes, hilos de email y escalaciones? No se puede deshacer.",
+      "clearAllChatsSuccess": "Chats borrados",
+      "clearAllChatsError": "No se pudo borrar (solo API dev; desactivado en producción)",
+      "clearing": "Borrando…",
+      "clearAllChatsIconAria": "Borrar todos los chats (dev — elimina filas en la base de datos)",
+      "clearAllChatsTooltipDb": "Elimina conversaciones, mensajes, hilos de correo y escalaciones en PostgreSQL."
     },
     "status": {
       "ai_handling": "IA procesando",

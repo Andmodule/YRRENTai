@@ -137,13 +137,23 @@ export class MessagingService {
   }
 
   /**
-   * From `conversations.externalGuestKey` (`email:user@host` or legacy). Rejects display names
+   * From `conversations.externalGuestKey` (`email:user@host` or `email:user@host|reservation:id`). Rejects display names
    * so we do not query `guest_email` with values like "john smith".
    */
   private normalizeGuestEmailFromExternalKey(externalGuestKey?: string | null): string | null {
-    const raw = externalGuestKey?.replace(/^email:/i, '').trim().toLowerCase() ?? '';
+    let raw = externalGuestKey?.replace(/^email:/i, '').trim().toLowerCase() ?? '';
+    const pipeIdx = raw.indexOf('|reservation:');
+    if (pipeIdx >= 0) {
+      raw = raw.slice(0, pipeIdx).trim();
+    }
     if (!raw || !raw.includes('@')) return null;
     return raw;
+  }
+
+  /** Parsed from `externalGuestKey` suffix when present. */
+  private parseReservationFromExternalKey(externalGuestKey?: string | null): string | null {
+    const m = externalGuestKey?.match(/\|reservation:([0-9]+)\s*$/i);
+    return m?.[1]?.trim() ?? null;
   }
 
   async processInbound(dto: ResendWebhookDto, ownerId: string): Promise<void> {
@@ -467,6 +477,8 @@ export class MessagingService {
 
       channel,
 
+      thread.reservationId,
+
     );
 
     await this.generateAndEmitDraft(
@@ -492,7 +504,9 @@ export class MessagingService {
    *
    * 1) External listing id (`hotel_id` / Zodomus id) → `property_channel_listings.externalListingId` / `properties.zodomusPropertyId`
    * 2) For **Booking**, if `hotel_id` was present in the email but no row matches → **stop** (do not guess via reservation/name/default).
-   * 3) Otherwise: reservation id → booking row; property name (loose); `RESEND_INBOUND_PROPERTY_ID` / first property.
+   * 3) Otherwise: reservation id → booking row; property name (loose).
+   * 4) **Booking / Airbnb:** if nothing matched → **null** (no default listing, no `RESEND_INBOUND_PROPERTY_ID`).
+   * 5) **Direct:** optional `RESEND_INBOUND_PROPERTY_ID` only — never “first property”.
    */
   private async resolveInboundTargetPropertyId(
 
@@ -594,52 +608,40 @@ export class MessagingService {
 
     }
 
+    if (channel === 'booking' || channel === 'airbnb') {
+      this.logger.warn(
+        `Inbound routing: no property match for ${channel} (listing/reservation/name); refusing default listing`,
+      );
+      return null;
+    }
+
     return this.resolveInboundPropertyId(ownerId);
 
   }
 
-
-
+  /**
+   * Direct / generic inbound only: explicit `RESEND_INBOUND_PROPERTY_ID` if set and owned.
+   * Does not pick the owner’s first property (avoids wrong assignment).
+   */
   private async resolveInboundPropertyId(ownerId: string): Promise<string | null> {
-
-    const explicit = this.config.get<string>('RESEND_INBOUND_PROPERTY_ID');
-
-    if (explicit) {
-
-      try {
-
-        await this.propertyService.findOne(explicit, ownerId);
-
-        return explicit;
-
-      } catch {
-
-        this.logger.warn(
-
-          `RESEND_INBOUND_PROPERTY_ID=${explicit} is missing or not owned by this user; falling back to first property`,
-
-        );
-
-      }
-
+    const explicit = this.config.get<string>('RESEND_INBOUND_PROPERTY_ID')?.trim();
+    if (!explicit) return null;
+    try {
+      await this.propertyService.findOne(explicit, ownerId);
+      return explicit;
+    } catch {
+      this.logger.warn(
+        `RESEND_INBOUND_PROPERTY_ID=${explicit} is missing or not owned by this user; no property fallback`,
+      );
+      return null;
     }
-
-    const props = await this.propertyService.findAllByOwner(ownerId);
-
-    if (props.length === 0) return null;
-
-    const sorted = [...props].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
-
-    const first = sorted[0];
-
-    return first ? first.id : null;
-
   }
 
 
 
   /**
-   * Mirror inbound mail into the property chat inbox. `guestEmail` keys the conversation only — it does not choose the listing.
+   * Mirror inbound mail into the property chat inbox. Conversation key = email, or email+reservation when known
+   * (same guest email, different OTA booking → separate inbox rows). Does not choose the listing.
    * For OTA channels, if no property was resolved for this message, do not fall back to the owner’s first property (avoids wrong assignment).
    */
 
@@ -658,6 +660,8 @@ export class MessagingService {
     guestDisplayName: string | null | undefined,
 
     channel: MessagingChannel,
+
+    reservationId: string | null,
 
   ): Promise<{ chatGuestMessageId: string; listPreview: string } | null> {
 
@@ -695,7 +699,7 @@ export class MessagingService {
 
         this.logger.warn(
 
-          'Email→chat: no property for owner; add a property or set RESEND_INBOUND_PROPERTY_ID.',
+          'Email→chat: no resolved property (OTA needs linked listing/reservation; direct may set RESEND_INBOUND_PROPERTY_ID).',
 
         );
 
@@ -705,7 +709,7 @@ export class MessagingService {
 
 
 
-      const guestKey = `email:${guestEmail.toLowerCase()}`;
+      const guestKey = this.conversationService.buildEmailExternalGuestKey(guestEmail, reservationId);
 
       let conv = await this.conversationService.findOrCreate(
 
@@ -1121,7 +1125,11 @@ export class MessagingService {
     }
     const email = t.guestEmail?.trim().toLowerCase();
     if (!email) return null;
-    let convId = await this.conversationService.findEmailConversationIdByGuestEmail(propertyId, email);
+    let convId = await this.conversationService.findEmailConversationIdByGuestEmail(
+      propertyId,
+      email,
+      t.reservationId,
+    );
     if (convId) {
       await this.threadRepo.update(threadId, { conversationId: convId });
       this.logger.log(
@@ -1133,7 +1141,7 @@ export class MessagingService {
     const conv = await this.conversationService.findOrCreate(
       propertyId,
       CONVERSATION_CHANNEL.EMAIL,
-      `email:${email}`,
+      this.conversationService.buildEmailExternalGuestKey(email, t.reservationId),
     );
     await this.threadRepo.update(threadId, { conversationId: conv.id });
     this.logger.log(
@@ -1178,12 +1186,15 @@ export class MessagingService {
         const conv = await this.conversationService.findById(cid);
         const guestEmailAddr = this.normalizeGuestEmailFromExternalKey(conv.externalGuestKey);
         if (guestEmailAddr && conv.propertyId) {
-          thread = await this.threadRepo
+          const resFromKey = this.parseReservationFromExternalKey(conv.externalGuestKey);
+          const qb = this.threadRepo
             .createQueryBuilder('t')
             .where('t.property_id = :pid', { pid: conv.propertyId })
-            .andWhere('LOWER(t.guest_email) = :email', { email: guestEmailAddr })
-            .orderBy('t.updated_at', 'DESC')
-            .getOne();
+            .andWhere('LOWER(t.guest_email) = :email', { email: guestEmailAddr });
+          if (resFromKey) {
+            qb.andWhere('t.reservation_id = :rid', { rid: resFromKey });
+          }
+          thread = await qb.orderBy('t.updated_at', 'DESC').getOne();
         }
         if (thread && !thread.conversationId) {
           await this.threadRepo.update(thread.id, { conversationId: cid });
@@ -1199,6 +1210,7 @@ export class MessagingService {
       try {
         const conv = await this.conversationService.findById(cid);
         const guestEmailAddr = this.normalizeGuestEmailFromExternalKey(conv.externalGuestKey);
+        const resFromKey = this.parseReservationFromExternalKey(conv.externalGuestKey);
         if (
           conv.channel === CONVERSATION_CHANNEL.EMAIL &&
           guestEmailAddr &&
@@ -1212,7 +1224,7 @@ export class MessagingService {
                 guestEmail: guestEmailAddr,
                 guestName: null,
                 replyTo: guestEmailAddr,
-                reservationId: null,
+                reservationId: resFromKey,
                 ownerId,
                 propertyId: conv.propertyId,
                 conversationId: cid,

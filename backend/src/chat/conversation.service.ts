@@ -17,6 +17,19 @@ export class ConversationService {
     private readonly repo: Repository<ConversationEntity>,
   ) {}
 
+  /**
+   * Inbox key for email mirroring: one conversation per (property, email) or per
+   * (property, email, reservation) when OTA reservation id is known — same email, different booking → different row.
+   */
+  buildEmailExternalGuestKey(guestEmail: string, reservationId: string | null | undefined): string {
+    const email = guestEmail.trim().toLowerCase();
+    const rid = reservationId?.trim();
+    if (rid) {
+      return `email:${email}|reservation:${rid}`;
+    }
+    return `email:${email}`;
+  }
+
   async findOrCreate(
     propertyId: string,
     channel: ConversationChannel = 'web_app',
@@ -43,11 +56,15 @@ export class ConversationService {
   }
 
   /**
-   * Inbox row for this guest (`externalGuestKey` = `email:user@host`).
+   * Inbox row for this guest — same key rules as {@link buildEmailExternalGuestKey}.
    * Channel is not filtered — legacy or edge rows may differ from `email` while keeping the same key.
    */
-  async findEmailConversationIdByGuestEmail(propertyId: string, guestEmailLower: string): Promise<string | null> {
-    const key = `email:${guestEmailLower.trim().toLowerCase()}`;
+  async findEmailConversationIdByGuestEmail(
+    propertyId: string,
+    guestEmailLower: string,
+    reservationId?: string | null,
+  ): Promise<string | null> {
+    const key = this.buildEmailExternalGuestKey(guestEmailLower, reservationId ?? null);
     const row = await this.repo.findOne({
       where: {
         propertyId,

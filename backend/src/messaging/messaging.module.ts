@@ -15,7 +15,6 @@ import { MessagingService } from './messaging.service';
 import { MessagingRestController, MessagingWebhookController } from './messaging.controller';
 import { ResendWebhookGuard } from './guards/resend-webhook.guard';
 import { InboundEmailDedupService } from './inbound-email-dedup.service';
-import { InboundEmailDeliveryService } from './inbound-email-delivery.service';
 
 @Module({
   imports: [
@@ -38,7 +37,6 @@ import { InboundEmailDeliveryService } from './inbound-email-delivery.service';
     ReplySenderService,
     ResendWebhookGuard,
     InboundEmailDedupService,
-    InboundEmailDeliveryService,
   ],
   exports: [MessagingService],
 })

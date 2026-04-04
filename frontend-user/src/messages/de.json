@@ -554,7 +554,14 @@
       "propertyForGuest": "Objekt für diesen Gast",
       "guestKey": "Gast-Session-Key",
       "guestKeyPlaceholder": "guest-a, guest-b…",
-      "messagePlaceholder": "Nachricht als neuer Gast…"
+      "messagePlaceholder": "Nachricht als neuer Gast…",
+      "clearAllChats": "Alle Chats löschen",
+      "clearAllChatsConfirm": "Alle Gespräche, Nachrichten, E-Mail-Threads und Eskalationen aus der DB löschen? Das kann nicht rückgängig gemacht werden.",
+      "clearAllChatsSuccess": "Alle Chats gelöscht",
+      "clearAllChatsError": "Löschen fehlgeschlagen (nur Dev-API; in Production deaktiviert)",
+      "clearing": "Löschen…",
+      "clearAllChatsIconAria": "Alle Chats leeren (Dev — löscht Datenbankzeilen)",
+      "clearAllChatsTooltipDb": "Entfernt Gespräche, Nachrichten, E-Mail-Threads und Eskalationen aus PostgreSQL."
     },
     "status": {
       "ai_handling": "KI bearbeitet",

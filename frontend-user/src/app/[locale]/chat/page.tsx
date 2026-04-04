@@ -78,6 +78,11 @@ export default function ChatPage() {
   /** id из списка SWR — активный чат всегда берётся из свежих данных, иначе точка статуса «застывает» */
   const [activeId, setActiveId] = useState<string | null>(null);
 
+  const handleDevChatsCleared = useCallback(() => {
+    setActiveId(null);
+    void mutateConversations(undefined, { revalidate: true });
+  }, [mutateConversations]);
+
   const activeConversation = useMemo(() => {
     if (!activeId) return null;
     const aid = activeId.toLowerCase();
@@ -228,6 +233,7 @@ export default function ChatPage() {
               properties={properties}
               syncedPropertyId={defaultPropertyId}
               activeConversation={activeConversation}
+              onChatsCleared={handleDevChatsCleared}
             />
           </div>
         )}

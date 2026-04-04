@@ -38,6 +38,41 @@ export function resolveGuestEscalationFallback(userMessage: string): string {
   return GUEST_ESCALATION_FALLBACK_MESSAGE;
 }
 
+const LATIN_WORD = /[a-zA-Z]{3,}/;
+
+/**
+ * True when the guest clearly wrote in one script and the reply body is clearly in the other
+ * (e.g. Russian guest, English-only assistant prose).
+ */
+export function guestReplyScriptMismatch(guestMessage: string, reply: string): boolean {
+  const g = guestMessage.trim();
+  const r = reply.trim();
+  if (!g || !r) return false;
+  const guestCyr = /[а-яА-ЯёЁ]/.test(g);
+  const replyCyr = /[а-яА-ЯёЁ]/.test(r);
+  const replyLatin = LATIN_WORD.test(r);
+  const guestLatin = LATIN_WORD.test(g);
+  if (guestCyr && replyLatin && !replyCyr) return true;
+  if (!guestCyr && guestLatin && replyCyr && !replyLatin) return true;
+  return false;
+}
+
+/** Short host-check phrases the model often returns in the wrong language. */
+export function isLikelyEscalationGuestReply(reply: string): boolean {
+  const t = reply.trim();
+  if (!t) return false;
+  if (assistantReplyIndicatesEscalationWithoutMarker(t)) return true;
+  if (/\bI(?:'ll| will)\s+check\s+(?:this\s+)?with\s+the\s+host\b/i.test(t)) return true;
+  if (/I'll\s+get\s+back\s+to\s+you\s+shortly/i.test(t)) return true;
+  if (/уточню\s+(?:это\s+)?у\s+хозяин/i.test(t)) return true;
+  if (/скоро\s+(?:отвечу|вернусь)/i.test(t) && /хозяин/i.test(t)) return true;
+  const enNorm = t.replace(/\s+/g, ' ').toLowerCase();
+  const ruNorm = t.replace(/\s+/g, ' ').toLowerCase();
+  if (enNorm.includes(GUEST_ESCALATION_FALLBACK_MESSAGE_EN.slice(0, 48).toLowerCase())) return true;
+  if (ruNorm.includes(GUEST_ESCALATION_FALLBACK_MESSAGE.slice(0, 36).toLowerCase())) return true;
+  return false;
+}
+
 const FORBIDDEN_GUEST_REPLY_PATTERNS: RegExp[] = [
   /свяжитесь\s+напрямую/i,
   /свяжитесь\s+с\s+хозяин/i,
@@ -112,6 +147,8 @@ export function formatKnowledgeBaseEntriesForAgent(
 export function buildSystemPrompt(propertyName: string, knowledgeBase: string): string {
   return [
     `You are a helpful AI assistant for the rental property "${propertyName}".`,
+    '',
+    'NON-NEGOTIABLE: Every character you write to the guest must be in the same language as their latest message. Wrong language is a failure — even if the knowledge base is in another language, translate facts into the guest\'s language only.',
     '',
     'LANGUAGE — MANDATORY (always):',
     '- Identify the language of the guest\'s latest message (the question you are answering).',

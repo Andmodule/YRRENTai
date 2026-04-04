@@ -854,7 +854,14 @@
       "propertyForGuest": "Объект для этого гостя",
       "guestKey": "Ключ сессии гостя",
       "guestKeyPlaceholder": "guest-a, guest-b…",
-      "messagePlaceholder": "Сообщение от нового гостя…"
+      "messagePlaceholder": "Сообщение от нового гостя…",
+      "clearAllChats": "Очистить все чаты",
+      "clearAllChatsConfirm": "Удалить из базы все диалоги, сообщения, email-треды и эскалации? Отменить это нельзя.",
+      "clearAllChatsSuccess": "Чаты удалены",
+      "clearAllChatsError": "Не удалось очистить (только dev API; в production отключено)",
+      "clearing": "Удаление…",
+      "clearAllChatsIconAria": "Очистить все чаты (dev — удаление из БД)",
+      "clearAllChatsTooltipDb": "Удаляет из PostgreSQL диалоги, сообщения, email-треды и эскалации."
     },
     "status": {
       "ai_handling": "AI обрабатывает",

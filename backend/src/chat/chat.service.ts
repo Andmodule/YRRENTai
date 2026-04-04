@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsWhere, Repository } from 'typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, FindOptionsWhere, Repository } from 'typeorm';
 import type { BookingComMessageMetadata } from '@rentai/shared';
 import { ChatMessageEntity, type MessageSource } from './entities/chat-message.entity';
 
@@ -9,7 +9,22 @@ export class ChatService {
   constructor(
     @InjectRepository(ChatMessageEntity)
     private readonly messageRepository: Repository<ChatMessageEntity>,
+    @InjectDataSource()
+    private readonly dataSource: DataSource,
   ) {}
+
+  /**
+   * DEV only: removes all inbox rows (conversations, chat_messages), email messaging threads,
+   * and escalations. Caller must guard with NODE_ENV !== production.
+   */
+  async clearAllChatsForDev(): Promise<void> {
+    await this.dataSource.transaction(async (manager) => {
+      await manager.query(`DELETE FROM "escalations"`);
+      await manager.query(`DELETE FROM "messaging_threads"`);
+      await manager.query(`DELETE FROM "chat_messages"`);
+      await manager.query(`DELETE FROM "conversations"`);
+    });
+  }
 
   async findMessageById(id: string): Promise<ChatMessageEntity | null> {
     return this.messageRepository.findOne({ where: { id } });

@@ -854,7 +854,14 @@
       "propertyForGuest": "Property for this guest",
       "guestKey": "Guest session key",
       "guestKeyPlaceholder": "guest-a, guest-b…",
-      "messagePlaceholder": "Message as a new guest…"
+      "messagePlaceholder": "Message as a new guest…",
+      "clearAllChats": "Clear all chats",
+      "clearAllChatsConfirm": "Delete all conversations, messages, email threads, and escalations from the database? This cannot be undone.",
+      "clearAllChatsSuccess": "All chats cleared",
+      "clearAllChatsError": "Could not clear chats (dev API only; disabled in production)",
+      "clearing": "Clearing…",
+      "clearAllChatsIconAria": "Clear all chats (dev — deletes rows in the database)",
+      "clearAllChatsTooltipDb": "Removes conversations, messages, email threads, and escalations from PostgreSQL."
     },
     "status": {
       "ai_handling": "AI handling",

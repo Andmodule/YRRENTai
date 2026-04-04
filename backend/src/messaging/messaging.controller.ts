@@ -5,9 +5,9 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Logger,
   Param,
   Post,
-  ServiceUnavailableException,
   UseGuards,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -19,17 +19,31 @@ import { SendReplyDto } from './dto/send-reply.dto';
 import { ResendWebhookGuard } from './guards/resend-webhook.guard';
 import { CurrentUser, JwtPayload } from '../common/decorators/current-user.decorator';
 import { InboundEmailDedupService } from './inbound-email-dedup.service';
-import { InboundEmailDeliveryService } from './inbound-email-delivery.service';
 import { extractResendWebhookEventId } from './resend-webhook.util';
+
+/** Domains whose email is forwarded by Booking.com on behalf of guests. */
+const SENDER_ALLOWLIST = ['guest.booking.com', 'mchat.booking.com'];
+
+/**
+ * Extract the host (lowercased) from a raw RFC 5322 From header.
+ * `"Name" <user@host>` → `host`; bare `user@host` → `host`.
+ */
+function senderHost(from: string): string {
+  const angle = from.match(/<([^>]+)>/);
+  const addr = angle?.[1]?.trim() ?? from.trim();
+  const at = addr.lastIndexOf('@');
+  return at >= 0 ? addr.slice(at + 1).toLowerCase() : '';
+}
 
 @ApiTags('Messaging')
 @Controller('webhooks')
 export class MessagingWebhookController {
+  private readonly logger = new Logger(MessagingWebhookController.name);
+
   constructor(
     private readonly messaging: MessagingService,
     private readonly config: ConfigService,
     private readonly inboundDedup: InboundEmailDedupService,
-    private readonly inboundDelivery: InboundEmailDeliveryService,
   ) {}
 
   @Post('resend')
@@ -41,30 +55,30 @@ export class MessagingWebhookController {
       throw new BadRequestException('RESEND_DEFAULT_OWNER_ID is not configured');
     }
 
+    const from = dto.data?.from ?? '';
+    const host = senderHost(from);
+
+    const allowGmail = process.env.INBOUND_ALLOW_GMAIL_TEST === 'true';
+    const allowed =
+      SENDER_ALLOWLIST.includes(host) ||
+      (allowGmail && (host === 'gmail.com' || host === 'googlemail.com'));
+
+    if (!allowed) {
+      this.logger.log(`Inbound drop: host=${host || '(empty)'} from=${from.slice(0, 120)}`);
+      return { ok: true };
+    }
+
+    this.logger.log(`Inbound accept: host=${host} from=${from.slice(0, 120)}`);
+
     const eventId = extractResendWebhookEventId(dto.data);
-    if (!eventId) {
-      await this.messaging.processInbound(dto, ownerId);
-      return { ok: true };
-    }
-
-    const inserted = await this.inboundDedup.tryInsertResendEvent(eventId);
-    if (!inserted) {
-      return { ok: true };
-    }
-
-    if (this.inboundDelivery.useQueue()) {
-      try {
-        await this.inboundDelivery.enqueueWithRetries(eventId, { ownerId, dto });
-      } catch (e) {
-        await this.inboundDedup.deleteResendEvent(eventId);
-        throw new ServiceUnavailableException(
-          'Failed to enqueue inbound email; Resend will retry',
-        );
+    if (eventId) {
+      const inserted = await this.inboundDedup.tryInsertResendEvent(eventId);
+      if (!inserted) {
+        return { ok: true };
       }
-    } else {
-      await this.messaging.processInbound(dto, ownerId);
     }
 
+    await this.messaging.processInbound(dto, ownerId);
     return { ok: true };
   }
 }

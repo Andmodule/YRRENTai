@@ -71,7 +71,7 @@ export class ReplySenderService implements OnModuleInit {
    */
   async fetchReceivedEmailBody(
     emailId: string,
-  ): Promise<{ text: string | null; html: string | null } | null> {
+  ): Promise<{ text: string | null; html: string | null; subject: string | null } | null> {
     const key = this.config.get<string>('RESEND_API_KEY');
     if (!key) {
       this.logger.warn('fetchReceivedEmailBody: RESEND_API_KEY missing');
@@ -94,9 +94,11 @@ export class ReplySenderService implements OnModuleInit {
           : json;
       const t = inner.text;
       const h = inner.html;
+      const sub = inner.subject;
       return {
         text: typeof t === 'string' ? t : null,
         html: typeof h === 'string' ? h : null,
+        subject: typeof sub === 'string' ? sub : null,
       };
     } catch (err) {
       this.logger.error(`fetchReceivedEmailBody failed for ${emailId}`, err as Error);

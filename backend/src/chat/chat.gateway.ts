@@ -172,7 +172,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const { entries: kbEntries, isWeakMatch: kbWeakMatch } = kbSearch;
     const knowledgeBase = kbWeakMatch ? '' : formatKnowledgeBaseEntriesForAgent(kbEntries);
     const kbContextForAgent = kbWeakMatch
-      ? '(No sufficiently relevant knowledge base match for this question — do not invent facts; you MUST escalate: short message to the guest, then [ESCALATE] on a new line.)'
+      ? '(No sufficiently relevant knowledge base match for this question — do not invent facts; you MUST escalate: one short message to the guest in the same language as their latest message, then [ESCALATE] on a new line.)'
       : knowledgeBase || 'No knowledge base entries yet.';
     const history = await this.chatService.getRecentHistory(propertyId, 20, conversation.id);
 
@@ -226,6 +226,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
           if (!cleanText.trim()) {
             cleanText = escalationFallback;
           }
+
+          cleanText = await this.agentService.ensureReplyMatchesGuestLanguage(content, cleanText);
 
           const agentMessage = await this.chatService.saveMessage({
             propertyId,

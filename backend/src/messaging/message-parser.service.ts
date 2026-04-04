@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { convert } from 'html-to-text';
 import type { MessagingChannel } from './entities/messaging-thread.entity';
+import { mailHeaderFirst } from './inbound-mail-headers.util';
 
 export interface BookingInboxHints {
   reservationId: string | null;
@@ -107,6 +108,31 @@ export class MessageParserService {
     if (angle?.[1]) return angle[1].trim().toLowerCase();
     const bare = fromHeader.match(/\b([^\s<>]+@[^\s<>]+)\b/);
     return bare?.[1]?.trim().toLowerCase() ?? fromHeader.trim().toLowerCase();
+  }
+
+  /**
+   * Mailbox addresses in `From` for L1:
+   * - If any `<…@…>` exists, use **only** those (avoids matching `x@gmail.com` inside a display name
+   *   before `Name <id@guest.booking.com>`).
+   * - Otherwise all bare `a@b` tokens (e.g. comma-separated list without angle brackets).
+   */
+  extractAllMailboxEmailsFromFrom(fromHeader: string): string[] {
+    const s = fromHeader?.trim() ?? '';
+    if (!s) return [];
+    const fromAngles: string[] = [];
+    for (const m of s.matchAll(/<([^>]+)>/g)) {
+      const inner = m[1]?.trim().toLowerCase() ?? '';
+      if (inner.includes('@')) fromAngles.push(inner);
+    }
+    if (fromAngles.length > 0) {
+      return [...new Set(fromAngles)];
+    }
+    const bare: string[] = [];
+    for (const m of s.matchAll(/\b([^\s<>]+@[^\s<>]+)\b/g)) {
+      const b = m[1]?.trim().toLowerCase() ?? '';
+      if (b) bare.push(b);
+    }
+    return [...new Set(bare)];
   }
 
   /** Minimal HTML → plain text for inbound mail that only has `html`. */
@@ -293,16 +319,43 @@ export class MessageParserService {
   }
 
   extractMessageId(headers: Record<string, string | string[] | undefined> = {}): string | null {
-    const pick = (k: string): string | undefined => {
-      const v = headers[k];
-      if (Array.isArray(v)) return v[0];
-      return typeof v === 'string' ? v : undefined;
-    };
     const raw =
-      pick('message-id') ??
-      pick('Message-Id') ??
-      pick('Message-ID') ??
-      pick('message_id');
+      mailHeaderFirst(headers, 'message-id') ??
+      mailHeaderFirst(headers, 'message_id');
     return raw?.trim() ? raw.trim() : null;
+  }
+
+  /** Subject from webhook `data.subject` or `Subject` header (use {@link normalizeMailHeaders} first). */
+  pickInboundSubject(
+    webhookSubject: string | undefined | null,
+    normHeaders: Record<string, string | string[] | undefined>,
+  ): string | undefined {
+    const w = webhookSubject?.trim();
+    if (w) return w;
+    return mailHeaderFirst(normHeaders, 'subject');
+  }
+
+  /**
+   * Optional webhook gate: only Booking-style “guest wrote” notification subjects.
+   * `extraRegexes` from env (semicolon-separated) extend the default RU/EN patterns.
+   */
+  isBookingInboundGuestChatSubject(
+    subject: string | undefined,
+    opts: { extraRegexes: RegExp[] },
+  ): boolean {
+    const s = subject?.trim() ?? '';
+    if (!s) return false;
+    const defaults: RegExp[] = [
+      /новое\s+сообщение\s+от\s+гостя/i,
+      /сообщение\s+от\s+гостя/i,
+      /new\s+message\s+from\s+the\s+guest/i,
+      /message\s+from\s+the\s+guest/i,
+      /from\s+the\s+guest\b/i,
+      /\bот\s+гостя\b/i,
+    ];
+    for (const re of [...defaults, ...opts.extraRegexes]) {
+      if (re.test(s)) return true;
+    }
+    return false;
   }
 }

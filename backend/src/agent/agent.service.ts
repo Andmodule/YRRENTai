@@ -1,7 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import OpenAI from 'openai';
-import { buildSystemPrompt } from './constants/agent-prompts';
+import {
+  buildSystemPrompt,
+  guestReplyScriptMismatch,
+  isLikelyEscalationGuestReply,
+  resolveGuestEscalationFallback,
+} from './constants/agent-prompts';
 
 export interface StreamCallbacks {
   onChunk: (text: string) => void;
@@ -104,5 +109,48 @@ export class AgentService {
     });
 
     return response.choices[0]?.message?.content ?? '';
+  }
+
+  /**
+   * If the model answered in the wrong script vs. the guest (e.g. Russian guest, English reply),
+   * replace escalation-style lines with the localized canned message or rewrite the full reply.
+   */
+  async ensureReplyMatchesGuestLanguage(guestMessage: string, reply: string): Promise<string> {
+    const t = reply.trim();
+    if (!t) return resolveGuestEscalationFallback(guestMessage);
+    if (!guestReplyScriptMismatch(guestMessage, t)) return t;
+    if (isLikelyEscalationGuestReply(t)) {
+      return resolveGuestEscalationFallback(guestMessage);
+    }
+    return this.rewriteReplyToGuestLanguage(guestMessage, t);
+  }
+
+  private async rewriteReplyToGuestLanguage(guestMessage: string, reply: string): Promise<string> {
+    const { client, model } = this.getClient();
+    try {
+      const out = await client.chat.completions.create({
+        model,
+        messages: [
+          {
+            role: 'system',
+            content:
+              'Rewrite the assistant reply so it is entirely in the same natural language as the guest message. ' +
+              'Preserve every fact, number, and meaning; do not add or remove information. ' +
+              'Output only the rewritten reply, no quotes or preamble.',
+          },
+          {
+            role: 'user',
+            content: `Guest message (match this language):\n${guestMessage}\n\nAssistant reply:\n${reply}`,
+          },
+        ],
+        max_tokens: 2048,
+        temperature: 0.2,
+      });
+      const rewritten = out.choices[0]?.message?.content?.trim();
+      if (rewritten) return rewritten;
+    } catch (e) {
+      this.logger.warn(`rewriteReplyToGuestLanguage failed: ${(e as Error).message}`);
+    }
+    return resolveGuestEscalationFallback(guestMessage);
   }
 }

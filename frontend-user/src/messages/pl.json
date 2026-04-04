@@ -597,7 +597,14 @@
       "propertyForGuest": "Obiekt dla tego gościa",
       "guestKey": "Klucz sesji gościa",
       "guestKeyPlaceholder": "guest-a, guest-b…",
-      "messagePlaceholder": "Wiadomość od nowego gościa…"
+      "messagePlaceholder": "Wiadomość od nowego gościa…",
+      "clearAllChats": "Wyczyść wszystkie czaty",
+      "clearAllChatsConfirm": "Usunąć z bazy wszystkie rozmowy, wiadomości, wątki e-mail i eskalacje? Tego nie cofniesz.",
+      "clearAllChatsSuccess": "Czaty usunięte",
+      "clearAllChatsError": "Nie udało się wyczyścić (tylko API dev; wyłączone na produkcji)",
+      "clearing": "Czyszczenie…",
+      "clearAllChatsIconAria": "Wyczyść wszystkie czaty (dev — usuwa wiersze w bazie)",
+      "clearAllChatsTooltipDb": "Usuwa z PostgreSQL rozmowy, wiadomości, wątki e-mail i eskalacje."
     },
     "status": {
       "ai_handling": "AI obsługuje",

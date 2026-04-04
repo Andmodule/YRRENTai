@@ -1,3 +1,12 @@
+/** Strip `email:` prefix and optional `|reservation:…` suffix from inbox key for display. */
+export function emailLikeFromExternalGuestKey(raw: string): string {
+  let s = raw.trim();
+  if (s.startsWith('email:')) s = s.slice('email:'.length);
+  const pipeIdx = s.indexOf('|reservation:');
+  if (pipeIdx >= 0) s = s.slice(0, pipeIdx).trim();
+  return s;
+}
+
 /** Title line without time — guest · property name (Telegram-style metadata). */
 export function formatGuestAndProperty(
   externalGuestKey: string | null,
@@ -5,7 +14,7 @@ export function formatGuestAndProperty(
   guestDisplayName?: string | null,
 ): string {
   const raw = externalGuestKey?.trim() || '—';
-  const fallback = raw.startsWith('email:') ? raw.slice('email:'.length) : raw;
+  const fallback = raw.startsWith('email:') ? emailLikeFromExternalGuestKey(raw) : raw;
   const label = guestDisplayName?.trim() || fallback;
   return `${label} · ${propertyName}`;
 }

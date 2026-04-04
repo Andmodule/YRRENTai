@@ -62,10 +62,18 @@ const resendEnvFields = z.object({
   /** Default owner (user UUID) for inbound email when not resolved from routing. Required for POST /webhooks/resend to work. */
   RESEND_DEFAULT_OWNER_ID: z.string().uuid().optional(),
   /**
-   * Property UUID for mirroring inbound email into the chat inbox (`conversations` / `chat_messages`).
-   * If unset, the first property owned by RESEND_DEFAULT_OWNER_ID is used.
+   * Property UUID for mirroring **direct** (non-OTA) inbound email into the chat inbox when routing gives no listing.
+   * Booking/Airbnb never use this as a fallback after failed hotel/reservation/name match — inbox sync is skipped instead.
    */
   RESEND_INBOUND_PROPERTY_ID: z.string().uuid().optional(),
+  /**
+   * Dev/test only: also allow @gmail.com / @googlemail.com through the sender allowlist.
+   * Default false. Never set true in production.
+   */
+  INBOUND_ALLOW_GMAIL_TEST: z
+    .enum(['true', 'false', '1', '0', 'yes', 'no'])
+    .default('false')
+    .transform((v) => v === 'true' || v === '1' || v === 'yes'),
 });
 
 export const envSchema = z

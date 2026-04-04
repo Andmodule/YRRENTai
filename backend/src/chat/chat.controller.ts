@@ -2,12 +2,14 @@ import {
   BadRequestException,
   Body,
   Controller,
+  ForbiddenException,
   Get,
   Param,
   Post,
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { ChatService } from './chat.service';
@@ -34,6 +36,7 @@ export class ChatController {
     private readonly conversationService: ConversationService,
     private readonly propertyService: PropertyService,
     private readonly staffReplyService: StaffReplyService,
+    private readonly config: ConfigService,
   ) {}
 
   /** Static paths must be registered before `:propertyId/messages` so they are not captured as UUIDs. */
@@ -113,6 +116,20 @@ export class ChatController {
         to: to.toISOString(),
       },
     };
+  }
+
+  /** Must stay above `:propertyId` routes. Disabled when NODE_ENV=production. */
+  @Post('dev/clear-all')
+  @Roles('OWNER', 'MANAGER')
+  @ApiOperation({
+    summary: 'DEV: delete all conversations, chat messages, messaging threads, and escalations',
+  })
+  async clearAllChatsDev() {
+    if (this.config.get<string>('NODE_ENV') === 'production') {
+      throw new ForbiddenException('Chat wipe is disabled in production');
+    }
+    await this.chatService.clearAllChatsForDev();
+    return { data: { ok: true } };
   }
 
   @Post('conversations/reply')
