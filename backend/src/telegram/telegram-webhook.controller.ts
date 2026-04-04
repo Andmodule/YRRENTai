@@ -1,17 +1,35 @@
-import { Controller, Post, Body, Headers, UnauthorizedException, Logger } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  Headers,
+  UnauthorizedException,
+  Logger,
+  OnModuleInit,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ApiTags, ApiExcludeEndpoint } from '@nestjs/swagger';
 import { TelegramService } from './telegram.service';
 
 @ApiTags('Telegram')
 @Controller('telegram')
-export class TelegramWebhookController {
+export class TelegramWebhookController implements OnModuleInit {
   private readonly logger = new Logger(TelegramWebhookController.name);
 
   constructor(
     private readonly telegramService: TelegramService,
     private readonly configService: ConfigService,
   ) {}
+
+  onModuleInit(): void {
+    const port = this.configService.get<number>('PORT') ?? 3000;
+    const publicBase =
+      this.configService.get<string>('API_PUBLIC_URL')?.replace(/\/$/, '') ?? `http://127.0.0.1:${port}`;
+    const path = '/api/v1/telegram/webhook';
+    this.logger.log(
+      `Telegram: setWebhook must POST to ${publicBase}${path} — until then, replies in Telegram never reach this server (only chat UI / API do). Use cloudflared/ngrok for local HTTPS or deploy.`,
+    );
+  }
 
   @ApiExcludeEndpoint()
   @Post('webhook')

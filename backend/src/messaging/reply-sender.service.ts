@@ -1,15 +1,31 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Resend } from 'resend';
 
 @Injectable()
-export class ReplySenderService {
+export class ReplySenderService implements OnModuleInit {
   private readonly logger = new Logger(ReplySenderService.name);
   private readonly resend: Resend | null;
 
   constructor(private readonly config: ConfigService) {
     const key = this.config.get<string>('RESEND_API_KEY');
     this.resend = key ? new Resend(key) : null;
+  }
+
+  onModuleInit(): void {
+    const key = this.config.get<string>('RESEND_API_KEY');
+    const from = this.config.get<string>('RESEND_FROM_EMAIL');
+    if (!key?.trim() || !from?.trim()) {
+      this.logger.warn(
+        'Outbound email disabled: set RESEND_API_KEY and RESEND_FROM_EMAIL (AI replies and staff relay will fail).',
+      );
+      return;
+    }
+    if (!this.resend) {
+      this.logger.warn('Outbound email: RESEND_API_KEY is set but Resend client did not initialize.');
+      return;
+    }
+    this.logger.log(`Outbound email ready (from: ${from})`);
   }
 
   async send(replyTo: string, text: string): Promise<void> {
@@ -32,7 +48,17 @@ export class ReplySenderService {
         this.logger.error(`Resend API error: ${result.error.message}`);
         throw new Error(result.error.message);
       }
-      this.logger.log(`Sent reply to ${replyTo}`);
+      const resendId =
+        result.data &&
+        typeof result.data === 'object' &&
+        result.data !== null &&
+        'id' in result.data &&
+        typeof (result.data as { id: unknown }).id === 'string'
+          ? (result.data as { id: string }).id
+          : null;
+      this.logger.log(
+        `Sent reply to ${replyTo}${resendId ? ` resendId=${resendId}` : ''} (search this id in Resend → Emails)`,
+      );
     } catch (err) {
       this.logger.error(`Resend send failed: ${(err as Error).message}`);
       throw err;

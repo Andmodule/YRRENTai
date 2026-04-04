@@ -36,6 +36,12 @@ export class BookingEntity {
   @Column({ nullable: true })
   guestEmail?: string;
 
+  /**
+   * Booking.com proxy address for this reservation (e.g. *@guest.booking.com) — inbound email routing.
+   */
+  @Column({ name: 'guest_email_alias', type: 'varchar', length: 255, nullable: true })
+  guestEmailAlias!: string | null;
+
   @Column({ nullable: true })
   guestPhone?: string;
 

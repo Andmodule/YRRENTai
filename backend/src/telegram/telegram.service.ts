@@ -14,6 +14,7 @@ import { UserService } from '../user/user.service';
 import { IncidentEntity } from '../incidents/entities/incident.entity';
 import {
   TELEGRAM_INCIDENT_REPLY_CONFIRMED,
+  TELEGRAM_INSTRUCTION_ESCALATION_NO_CONVERSATION,
   TELEGRAM_INSTRUCTION_NO_THREAD,
   TELEGRAM_INSTRUCTION_REPLY_NEEDS_TEXT,
   TELEGRAM_INSTRUCTION_REPLY_REQUIRED,
@@ -92,6 +93,18 @@ export class TelegramService {
     return owner?.telegramChatId?.trim() || null;
   }
 
+  /** Нужен хотя бы один якорь, иначе эскалацию в Telegram не создаём (нельзя надёжно связать ответ менеджера с гостем). */
+  private hasEscalationAnchor(
+    guestMessageId: string | null | undefined,
+    conversationId: string | undefined,
+    messagingThreadId?: string | null,
+  ): boolean {
+    const hasGuest = Boolean(guestMessageId?.trim());
+    const hasConv = Boolean(conversationId?.trim());
+    const hasThread = Boolean(messagingThreadId?.trim());
+    return hasGuest || hasConv || hasThread;
+  }
+
   /**
    * Единая точка для алертов эскалации (веб-сокет и email-поток): одинаковое разрешение chat_id и логирование.
    */
@@ -102,6 +115,8 @@ export class TelegramService {
     guestQuestion: string;
     guestMessageId: string | null;
     conversationId?: string;
+    /** Почтовый поток: привязка к `messaging_threads` до появления `conversationId` в инбоксе. */
+    messagingThreadId?: string | null;
   }): Promise<void> {
     const {
       propertyId,
@@ -110,7 +125,16 @@ export class TelegramService {
       guestQuestion,
       guestMessageId,
       conversationId,
+      messagingThreadId,
     } = params;
+    const convTrim = conversationId?.trim();
+    const threadTrim = messagingThreadId?.trim();
+    if (!this.hasEscalationAnchor(guestMessageId, convTrim, threadTrim)) {
+      this.logger.warn(
+        `Escalation skipped for property ${propertyId}: need guestMessageId, conversationId, or messagingThreadId (all missing)`,
+      );
+      return;
+    }
     try {
       const chatId = await this.resolveOwnerTelegramChatId(ownerId);
       if (!chatId) {
@@ -125,7 +149,8 @@ export class TelegramService {
         guestQuestion,
         guestMessageId,
         chatId,
-        conversationId,
+        convTrim,
+        threadTrim,
       );
     } catch (err) {
       this.logger.error(`Escalation Telegram failed for property ${propertyId}`, err as Error);
@@ -136,17 +161,27 @@ export class TelegramService {
     propertyId: string,
     propertyName: string,
     guestQuestion: string,
-    /** Chat inbox message id; optional if `conversationId` is set (email bridge edge cases). */
+    /** Хотя бы один якорь: guestMessageId, conversationId или messagingThreadId; см. `hasEscalationAnchor`. */
     guestMessageId: string | null,
     telegramChatId: string,
     conversationId?: string,
-  ): Promise<EscalationEntity> {
+    messagingThreadId?: string | null,
+  ): Promise<EscalationEntity | null> {
+    const convTrim = conversationId?.trim();
+    const threadTrim = messagingThreadId?.trim();
+    if (!this.hasEscalationAnchor(guestMessageId, convTrim, threadTrim)) {
+      this.logger.warn(
+        `sendEscalationAlert skipped for property ${propertyId}: need guestMessageId, conversationId, or messagingThreadId`,
+      );
+      return null;
+    }
     const escalation = this.escalationRepository.create({
       propertyId,
       propertyName,
-      ...(guestMessageId ? { guestMessageId } : {}),
+      ...(guestMessageId?.trim() ? { guestMessageId: guestMessageId.trim() } : {}),
       guestQuestion,
-      ...(conversationId ? { conversationId } : {}),
+      ...(convTrim ? { conversationId: convTrim } : {}),
+      ...(threadTrim ? { messagingThreadId: threadTrim } : {}),
     });
     await this.escalationRepository.save(escalation);
 
@@ -171,6 +206,7 @@ export class TelegramService {
 
     return escalation;
   }
+
 
   /**
    * Incident alert for managers. Optional photo URLs — Telegram servers must fetch them (HTTPS;
@@ -212,6 +248,25 @@ export class TelegramService {
     }
     this.telegramMetrics.incidentNotify.inc({ status: 'failure' });
     return null;
+  }
+
+  /**
+   * Короткий ops-алерт для владельца (тот же `users.telegramChatId`, что и эскалации).
+   * Используется при неожиданных ошибках inbound email pipeline.
+   */
+  async notifyOwnerOpsMessage(ownerId: string, text: string): Promise<void> {
+    const chatId = await this.resolveOwnerTelegramChatId(ownerId);
+    if (!chatId || !this.isEnabled) return;
+    const body = text.length > 4000 ? `${text.slice(0, 3997)}…` : text;
+    try {
+      await axios.post<TelegramSendMessageResponse>(
+        `${this.apiBase}/sendMessage`,
+        { chat_id: chatId, text: body },
+        { timeout: 15000 },
+      );
+    } catch (err) {
+      this.logger.error(`Telegram ops notify failed: ${(err as Error).message}`);
+    }
   }
 
   private async notifyIncidentSendOnce(
@@ -307,12 +362,10 @@ export class TelegramService {
       `Telegram manager reply: chatId=${chatId} reply_to_message_id=${replyToId} len=${replyText.length}`,
     );
 
+    /** `tgBotMessageId` — bigint; сравнение только через текст — стабильно в PG + TypeORM. */
     const escalation = await this.escalationRepository
       .createQueryBuilder('e')
-      .where(
-        '(e.tgBotMessageId = :mid OR CAST(e.tgBotMessageId AS TEXT) = :midStr)',
-        { mid: replyToId, midStr: String(replyToId) },
-      )
+      .where('CAST(e.tgBotMessageId AS TEXT) = :midStr', { midStr: String(replyToId) })
       .andWhere('e.resolvedAt IS NULL')
       .getOne();
 
@@ -324,34 +377,41 @@ export class TelegramService {
           convId = guestMsg.conversationId ?? undefined;
         }
       }
-      if (!convId) {
-        /** Prefer email inbox conversation so staff reply + email relay match the guest thread (not a random web thread). */
+      if (!convId && escalation.messagingThreadId) {
         convId =
-          (await this.conversationService.findLatestEmailConversationIdForProperty(escalation.propertyId)) ??
-          undefined;
+          (await this.messagingService.resolveConversationIdFromMessagingThread(
+            escalation.messagingThreadId,
+            escalation.propertyId,
+          )) ?? undefined;
       }
-      if (!convId) {
+      /**
+       * Без `messagingThreadId` — старый fallback «последний диалог с привязанным тредом».
+       * Если `messagingThreadId` есть, fallback отключён: иначе подставлялся чужой диалог, relay не находил тред и Resend не вызывался.
+       */
+      if (!convId && !escalation.messagingThreadId?.trim()) {
         convId =
           (await this.messagingService.resolveConversationIdForEscalationFallback(escalation.propertyId)) ??
           undefined;
       }
       if (!convId) {
         this.logger.warn(
-          `Telegram escalation ${escalation.id}: cannot resolve conversationId (guestMessageId=${escalation.guestMessageId ?? 'null'})`,
+          `Telegram escalation ${escalation.id}: cannot resolve conversationId (guestMessageId=${escalation.guestMessageId ?? 'null'}, storedConversationId=${escalation.conversationId ?? 'null'}, messagingThreadId=${escalation.messagingThreadId ?? 'null'})`,
         );
-        await this.sendInstructionMessage(chatId, TELEGRAM_INSTRUCTION_NO_THREAD);
+        await this.sendInstructionMessage(chatId, TELEGRAM_INSTRUCTION_ESCALATION_NO_CONVERSATION);
         return;
       }
 
       convId = convId.trim();
       escalation.conversationId = convId;
 
+      /** Same path as POST /conversations/reply: persist + sockets + relayStaffReplyToEmailGuest. */
       let savedMessage;
       try {
         savedMessage = await this.staffReplyService.applyStaffReply({
           propertyId: escalation.propertyId,
           conversationId: convId,
           content: replyText,
+          relayMessagingThreadId: escalation.messagingThreadId ?? null,
         });
       } catch (err) {
         this.logger.error(

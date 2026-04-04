@@ -11,6 +11,10 @@ export const TELEGRAM_INSTRUCTION_NO_OPEN_ESCALATION =
 export const TELEGRAM_INSTRUCTION_NO_THREAD =
   'Не найдена открытая тема для этого сообщения. Ответьте Reply на уведомление бота: «Вопрос гостя» или «инцидент» от персонала.';
 
+/** Эскалация есть, но в RentAI не удаётся сопоставить диалог гостя (ответ в чат не записан). */
+export const TELEGRAM_INSTRUCTION_ESCALATION_NO_CONVERSATION =
+  'Не удалось связать ответ с диалогом гостя в RentAI. Ответьте гостю из инбокса в приложении (тот же диалог, что и уведомление).';
+
 /** Подтверждение: ответ менеджера записан к инциденту. */
 export const TELEGRAM_INCIDENT_REPLY_CONFIRMED =
   '✅ Ответ добавлен к инциденту в RentAI. Сотрудник увидит уведомление в приложении.';

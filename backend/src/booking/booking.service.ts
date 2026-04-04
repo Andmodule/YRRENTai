@@ -14,6 +14,7 @@ import {
   isValidTransition,
   patchBookingSchema,
   BOOKING_STATUSES_BLOCKING_AVAILABILITY,
+  BOOKING_STATUS,
   normalizeGuestEmail,
   type BookingStatus,
   type CreateBookingDto,
@@ -252,6 +253,33 @@ export class BookingService {
       this.zodomusAvailabilityPush.scheduleAvailabilityPush(saved.propertyId);
     }
     return saved;
+  }
+
+  /**
+   * Booking.com guest proxy address (`guest_email_alias`) → booking for inbound email routing (doc/EMAILdeliveryTZ.md).
+   * Prefers CONFIRMED / CHECKED_IN, then latest check-in.
+   */
+  async findByGuestEmailAliasForOwner(
+    ownerId: string,
+    normalizedEmail: string,
+  ): Promise<BookingEntity | null> {
+    const q = normalizedEmail.trim().toLowerCase();
+    if (!q) return null;
+    const rows = await this.bookingRepository
+      .createQueryBuilder('b')
+      .innerJoin('b.property', 'p')
+      .where('p.ownerId = :ownerId', { ownerId })
+      .andWhere('LOWER(TRIM(b.guestEmailAlias)) = :q', { q })
+      .getMany();
+    const priority = (s: string) =>
+      s === BOOKING_STATUS.CONFIRMED || s === BOOKING_STATUS.CHECKED_IN ? 0 : 1;
+    rows.sort((a, b) => {
+      const pa = priority(a.status);
+      const pb = priority(b.status);
+      if (pa !== pb) return pa - pb;
+      return b.checkIn.getTime() - a.checkIn.getTime();
+    });
+    return rows[0] ?? null;
   }
 
   /**

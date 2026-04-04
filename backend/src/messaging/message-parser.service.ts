@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { convert } from 'html-to-text';
 import type { MessagingChannel } from './entities/messaging-thread.entity';
 
 export interface BookingInboxHints {
@@ -118,6 +119,15 @@ export class MessageParserService {
       .trim();
   }
 
+  /** Prefer html-to-text for OTA HTML bodies; fallback to tag stripping (doc/EMAILdeliveryTZ Phase 4). */
+  htmlToPlainForInbound(html: string): string {
+    try {
+      return convert(html, { wordwrap: false }).replace(/\u00a0/g, ' ');
+    } catch {
+      return this.stripHtmlToText(html);
+    }
+  }
+
   /** Decode a few entities so stripHtmlToText output is readable (Resend HTML often encodes spaces). */
   decodeHtmlEntities(text: string): string {
     return text
@@ -166,7 +176,7 @@ export class MessageParserService {
 
     let plain = this.cleanEmailBody(rawPlain);
     if (!plain.trim() && html?.trim()) {
-      const fromHtml = this.decodeHtmlEntities(this.stripHtmlToText(html));
+      const fromHtml = this.decodeHtmlEntities(this.htmlToPlainForInbound(html));
       plain = this.cleanEmailBody(fromHtml);
       if (!plain.trim()) {
         plain = fromHtml.trim();
@@ -178,10 +188,34 @@ export class MessageParserService {
     }
 
     if (!plain.trim() && html?.trim()) {
-      plain = this.decodeHtmlEntities(this.stripHtmlToText(html)).trim();
+      plain = this.decodeHtmlEntities(this.htmlToPlainForInbound(html)).trim();
     }
 
     return plain.trim();
+  }
+
+  /**
+   * After HTML/plain extraction: drop quoted thread tails and common Booking footers (no LLM).
+   */
+  stripInboundQuoteNoise(text: string): string {
+    let t = text.replace(/\r\n/g, '\n').trim();
+    if (!t) return t;
+    const cutPatterns = [
+      /\n-{3,}\s*Original Message\s*-{3,}\s*\n/i,
+      /\nOn .+ wrote:\s*\n/i,
+      /\nLe .+ a écrit\s*:\s*\n/i,
+      /\nAm .+ schrieb.+\s*:\s*\n/i,
+    ];
+    for (const re of cutPatterns) {
+      const idx = t.search(re);
+      if (idx > 0) {
+        t = t.slice(0, idx).trim();
+      }
+    }
+    t = t.split(/\n\s*This message was sent by Booking\.com/i)[0] ?? t;
+    t = t.split(/\n\s*Это сообщение (?:было )?отправлено через Booking\.com/i)[0] ?? t;
+    t = t.split(/\n\s*Get the Booking\.com app/i)[0] ?? t;
+    return t.trim();
   }
 
   /**

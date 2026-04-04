@@ -8,15 +8,22 @@ import { PropertyModule } from '../property/property.module';
 import { TelegramModule } from '../telegram/telegram.module';
 import { MessagingThreadEntity } from './entities/messaging-thread.entity';
 import { MessagingMessageEntity } from './entities/messaging-message.entity';
+import { InboundEmailDedupEntity } from './entities/inbound-email-dedup.entity';
 import { MessageParserService } from './message-parser.service';
 import { ReplySenderService } from './reply-sender.service';
 import { MessagingService } from './messaging.service';
 import { MessagingRestController, MessagingWebhookController } from './messaging.controller';
 import { ResendWebhookGuard } from './guards/resend-webhook.guard';
+import { InboundEmailDedupService } from './inbound-email-dedup.service';
+import { InboundEmailDeliveryService } from './inbound-email-delivery.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([MessagingThreadEntity, MessagingMessageEntity]),
+    TypeOrmModule.forFeature([
+      MessagingThreadEntity,
+      MessagingMessageEntity,
+      InboundEmailDedupEntity,
+    ]),
     forwardRef(() => ChatModule),
     forwardRef(() => TelegramModule),
     PropertyModule,
@@ -30,6 +37,8 @@ import { ResendWebhookGuard } from './guards/resend-webhook.guard';
     MessageParserService,
     ReplySenderService,
     ResendWebhookGuard,
+    InboundEmailDedupService,
+    InboundEmailDeliveryService,
   ],
   exports: [MessagingService],
 })

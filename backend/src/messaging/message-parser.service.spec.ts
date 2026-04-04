@@ -109,4 +109,14 @@ Message: "Добрый день!"`;
       ),
     ).toBe('Jane Doe');
   });
+
+  it('stripInboundQuoteNoise cuts On … wrote thread tail', () => {
+    const t = 'Thanks!\n\nOn Mon Jan 1, guest@x wrote:\n> old';
+    expect(service.stripInboundQuoteNoise(t)).toBe('Thanks!');
+  });
+
+  it('stripInboundQuoteNoise removes Booking footer line', () => {
+    const t = 'Hello\n\nThis message was sent by Booking.com';
+    expect(service.stripInboundQuoteNoise(t)).toBe('Hello');
+  });
 });

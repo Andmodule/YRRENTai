@@ -3,7 +3,6 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConversationEntity } from './entities/conversation.entity';
 import {
-  CONVERSATION_CHANNEL,
   type ConversationStatus,
   type ConversationChannel,
   type ConversationPublicDto,
@@ -43,19 +42,26 @@ export class ConversationService {
     return this.repo.save(conv);
   }
 
+  /**
+   * Inbox row for this guest (`externalGuestKey` = `email:user@host`).
+   * Channel is not filtered — legacy or edge rows may differ from `email` while keeping the same key.
+   */
+  async findEmailConversationIdByGuestEmail(propertyId: string, guestEmailLower: string): Promise<string | null> {
+    const key = `email:${guestEmailLower.trim().toLowerCase()}`;
+    const row = await this.repo.findOne({
+      where: {
+        propertyId,
+        externalGuestKey: key,
+      },
+      order: { lastActivityAt: 'DESC' },
+    });
+    return row?.id ?? null;
+  }
+
   async findById(id: string): Promise<ConversationEntity> {
     const conv = await this.repo.findOne({ where: { id } });
     if (!conv) throw new NotFoundException(`Conversation ${id} not found`);
     return conv;
-  }
-
-  /** Last active email inbox thread for a property — used when Telegram escalation lost conversationId. */
-  async findLatestEmailConversationIdForProperty(propertyId: string): Promise<string | null> {
-    const row = await this.repo.findOne({
-      where: { propertyId, channel: CONVERSATION_CHANNEL.EMAIL },
-      order: { lastActivityAt: 'DESC' },
-    });
-    return row?.id ?? null;
   }
 
   async setStatus(id: string, status: ConversationStatus): Promise<ConversationEntity> {

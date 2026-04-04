@@ -15,7 +15,11 @@ export class ResendWebhookGuard implements CanActivate {
 
   canActivate(context: ExecutionContext): boolean {
     const secret = this.config.get<string>('RESEND_WEBHOOK_SECRET');
-    if (!secret) {
+    const nodeEnv = this.config.get<string>('NODE_ENV', 'development');
+    if (!secret?.trim()) {
+      if (nodeEnv === 'production') {
+        throw new UnauthorizedException('RESEND_WEBHOOK_SECRET is required in production');
+      }
       return true;
     }
 

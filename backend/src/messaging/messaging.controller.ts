@@ -7,6 +7,7 @@ import {
   HttpStatus,
   Param,
   Post,
+  ServiceUnavailableException,
   UseGuards,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -17,6 +18,9 @@ import { ResendWebhookDto } from './dto/resend-webhook.dto';
 import { SendReplyDto } from './dto/send-reply.dto';
 import { ResendWebhookGuard } from './guards/resend-webhook.guard';
 import { CurrentUser, JwtPayload } from '../common/decorators/current-user.decorator';
+import { InboundEmailDedupService } from './inbound-email-dedup.service';
+import { InboundEmailDeliveryService } from './inbound-email-delivery.service';
+import { extractResendWebhookEventId } from './resend-webhook.util';
 
 @ApiTags('Messaging')
 @Controller('webhooks')
@@ -24,6 +28,8 @@ export class MessagingWebhookController {
   constructor(
     private readonly messaging: MessagingService,
     private readonly config: ConfigService,
+    private readonly inboundDedup: InboundEmailDedupService,
+    private readonly inboundDelivery: InboundEmailDeliveryService,
   ) {}
 
   @Post('resend')
@@ -34,7 +40,31 @@ export class MessagingWebhookController {
     if (!ownerId) {
       throw new BadRequestException('RESEND_DEFAULT_OWNER_ID is not configured');
     }
-    await this.messaging.processInbound(dto, ownerId);
+
+    const eventId = extractResendWebhookEventId(dto.data);
+    if (!eventId) {
+      await this.messaging.processInbound(dto, ownerId);
+      return { ok: true };
+    }
+
+    const inserted = await this.inboundDedup.tryInsertResendEvent(eventId);
+    if (!inserted) {
+      return { ok: true };
+    }
+
+    if (this.inboundDelivery.useQueue()) {
+      try {
+        await this.inboundDelivery.enqueueWithRetries(eventId, { ownerId, dto });
+      } catch (e) {
+        await this.inboundDedup.deleteResendEvent(eventId);
+        throw new ServiceUnavailableException(
+          'Failed to enqueue inbound email; Resend will retry',
+        );
+      }
+    } else {
+      await this.messaging.processInbound(dto, ownerId);
+    }
+
     return { ok: true };
   }
 }

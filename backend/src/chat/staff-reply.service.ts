@@ -30,6 +30,8 @@ export class StaffReplyService {
     conversationId: string;
     content: string;
     userId?: string | null;
+    /** Если задан (эскалация из почты), релей в email ищет `messaging_threads` даже при рассинхроне `conversation_id`. */
+    relayMessagingThreadId?: string | null;
   }): Promise<ChatMessageEntity> {
     const conv = await this.conversationService.findById(params.conversationId.trim());
     if (conv.propertyId !== params.propertyId) {
@@ -63,10 +65,20 @@ export class StaffReplyService {
 
     this.logger.log(`Staff reply saved: conv=${conv.id} messageId=${savedMessage.id}`);
 
-    // Fire-and-forget email relay — non-blocking, does not affect chat delivery
-    void this.messagingService.relayStaffReplyToEmailGuest(conv.id, savedMessage.content).catch((e) =>
-      this.logger.error(`Email relay failed for conv=${conv.id}`, e as Error),
-    );
+    const relay = this.messagingService.relayStaffReplyToEmailGuest(conv.id, savedMessage.content, {
+      messagingThreadId: params.relayMessagingThreadId ?? undefined,
+    });
+    /** Telegram escalation: дождаться Resend — иначе void мог «обогнать» подтверждение в TG и скрыть ошибку. */
+    if (params.relayMessagingThreadId?.trim()) {
+      try {
+        await relay;
+        this.logger.log(`Email relay OK (Telegram anchor) conv=${conv.id} thread=${params.relayMessagingThreadId}`);
+      } catch (e) {
+        this.logger.error(`Email relay failed for conv=${conv.id}`, e as Error);
+      }
+    } else {
+      void relay.catch((e) => this.logger.error(`Email relay failed for conv=${conv.id}`, e as Error));
+    }
 
     return savedMessage;
   }

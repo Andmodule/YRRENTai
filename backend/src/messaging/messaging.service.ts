@@ -44,13 +44,17 @@ import { TelegramService } from '../telegram/telegram.service';
 
 import { MessagingMessageEntity } from './entities/messaging-message.entity';
 
-import { MessagingThreadEntity } from './entities/messaging-thread.entity';
+import { MessagingThreadEntity, type MessagingChannel } from './entities/messaging-thread.entity';
 
 import { MessageParserService } from './message-parser.service';
 
 import { ReplySenderService } from './reply-sender.service';
 
 import type { ResendWebhookDto } from './dto/resend-webhook.dto';
+
+import { shouldDropInboundByMailHeaders } from './inbound-email-heuristics';
+
+import { extractResendWebhookEventId } from './resend-webhook.util';
 
 
 
@@ -143,6 +147,23 @@ export class MessagingService {
   }
 
   async processInbound(dto: ResendWebhookDto, ownerId: string): Promise<void> {
+    const eventId = extractResendWebhookEventId(dto.data);
+    try {
+      await this.processInboundCore(dto, ownerId);
+    } catch (e) {
+      const err = e instanceof Error ? e : new Error(String(e));
+      this.logger.error(`processInbound failed eventId=${eventId ?? 'n/a'}: ${err.message}`, err.stack);
+      await this.telegramService
+        .notifyOwnerOpsMessage(
+          ownerId,
+          `Inbound email pipeline error\nEvent: ${eventId ?? 'n/a'}\n${err.message.slice(0, 900)}`,
+        )
+        .catch(() => undefined);
+      throw err;
+    }
+  }
+
+  private async processInboundCore(dto: ResendWebhookDto, ownerId: string): Promise<void> {
 
     const { from, subject, replyTo, headers, id: resendDataId, email_id: resendEmailId } = dto.data;
 
@@ -172,6 +193,12 @@ export class MessagingService {
 
     const normHeaders = normalizeHeaders(headers as Record<string, string | string[]> | undefined);
 
+    const headerDrop = shouldDropInboundByMailHeaders(normHeaders);
+    if (headerDrop.drop) {
+      this.logger.log(`Inbound skipped (headers): ${headerDrop.reason ?? 'auto'}`);
+      return;
+    }
+
     const rawEmailId =
 
       this.parser.extractMessageId(normHeaders) ?? resendDataId?.trim() ?? resendEmailId?.trim() ?? null;
@@ -196,10 +223,12 @@ export class MessagingService {
 
     }
 
+    cleanText = this.parser.stripInboundQuoteNoise(cleanText);
+
     const subjectTrim = subject?.trim() ?? '';
 
     const htmlPlain = html
-      ? this.parser.decodeHtmlEntities(this.parser.stripHtmlToText(html))
+      ? this.parser.decodeHtmlEntities(this.parser.htmlToPlainForInbound(html))
       : '';
 
     const bookingHints = this.parser.parseBookingStyleInboxHints(
@@ -223,12 +252,29 @@ export class MessagingService {
     const propertyIdHint =
       bookingHints.bookingHotelId ?? bookingHints.zodomusPropertyId;
 
-    const resolvedPropertyId = await this.resolveInboundTargetPropertyId(
-      ownerId,
-      propertyIdHint,
-      reservationId,
-      bookingHints.propertyName,
-    );
+    let resolvedPropertyId: string | null = null;
+    if (channel === 'booking') {
+      const aliasBooking = await this.bookingService.findByGuestEmailAliasForOwner(
+        ownerId,
+        guestEmail,
+      );
+      if (aliasBooking) {
+        resolvedPropertyId = aliasBooking.propertyId;
+        this.logger.log(
+          `Inbound routing: guest_email_alias → propertyId=${aliasBooking.propertyId} bookingId=${aliasBooking.id}`,
+        );
+      }
+    }
+    if (resolvedPropertyId == null) {
+      resolvedPropertyId = await this.resolveInboundTargetPropertyId(
+        ownerId,
+        propertyIdHint,
+        reservationId,
+        bookingHints.propertyName,
+        channel,
+        bookingHints.bookingHotelId?.trim() ?? null,
+      );
+    }
 
     /** UI + chat_messages: plain body first; if empty (HTML-only, delayed fetch), show subject — avoids "(empty message)" when subject carries the text. */
     const guestDisplayText = cleanText.trim() || subjectTrim || '(empty message)';
@@ -330,15 +376,7 @@ export class MessagingService {
         }
 
         if (resolvedPropertyId) {
-
-          if (
-            !thread.propertyId ||
-            bookingHints.zodomusPropertyId ||
-            bookingHints.bookingHotelId
-          ) {
-            thread.propertyId = resolvedPropertyId;
-          }
-
+          thread.propertyId = resolvedPropertyId;
         }
 
         thread.lastInboundSubject = subjectTrim || null;
@@ -427,6 +465,8 @@ export class MessagingService {
 
       thread.guestName,
 
+      channel,
+
     );
 
     await this.generateAndEmitDraft(
@@ -448,22 +488,29 @@ export class MessagingService {
 
 
   /**
-   * 1) `hotel_id` from Booking admin links or explicit Zodomus id in body — matched via
-   *    `property_channel_listings.externalListingId` then `properties.zodomusPropertyId`
-   * 2) Booking row by reservation id
-   * 3) Property name from OTA template
-   * 4) `RESEND_INBOUND_PROPERTY_ID` / first property
+   * Listing resolution for inbound mail. Guest email is not used here — only OTA hints from the message.
+   *
+   * 1) External listing id (`hotel_id` / Zodomus id) → `property_channel_listings.externalListingId` / `properties.zodomusPropertyId`
+   * 2) For **Booking**, if `hotel_id` was present in the email but no row matches → **stop** (do not guess via reservation/name/default).
+   * 3) Otherwise: reservation id → booking row; property name (loose); `RESEND_INBOUND_PROPERTY_ID` / first property.
    */
   private async resolveInboundTargetPropertyId(
 
     ownerId: string,
 
-    /** Booking `hotel_id` or legacy Zodomus listing id string from guest message. */
+    /** Booking `hotel_id` or Zodomus listing id from the message body/links. */
     zodomusPropertyIdHint: string | null,
 
     reservationId: string | null,
 
     propertyNameHint: string | null,
+
+    channel: MessagingChannel,
+
+    /**
+     * Booking extranet `hotel_id` extracted from this email (links/HTML). When set, step (1) is authoritative for Booking.
+     */
+    bookingHotelIdFromEmail: string | null,
 
   ): Promise<string | null> {
 
@@ -486,6 +533,18 @@ export class MessagingService {
         );
 
         return byZ;
+
+      }
+
+      if (channel === 'booking' && bookingHotelIdFromEmail?.trim()) {
+
+        this.logger.warn(
+
+          `Inbound routing: Booking hotel_id=${bookingHotelIdFromEmail.trim()} not linked to any property for this owner; refusing reservation/name fallback`,
+
+        );
+
+        return null;
 
       }
 
@@ -579,7 +638,10 @@ export class MessagingService {
 
 
 
-  /** One inbox conversation per (property, email sender) — same `externalGuestKey` as long as email matches. */
+  /**
+   * Mirror inbound mail into the property chat inbox. `guestEmail` keys the conversation only — it does not choose the listing.
+   * For OTA channels, if no property was resolved for this message, do not fall back to the owner’s first property (avoids wrong assignment).
+   */
 
   private async syncInboundToChatInbox(
 
@@ -591,9 +653,11 @@ export class MessagingService {
 
     previewText: string,
 
-    threadPropertyId?: string | null,
+    threadPropertyId: string | null | undefined,
 
-    guestDisplayName?: string | null,
+    guestDisplayName: string | null | undefined,
+
+    channel: MessagingChannel,
 
   ): Promise<{ chatGuestMessageId: string; listPreview: string } | null> {
 
@@ -607,7 +671,25 @@ export class MessagingService {
 
       }
 
-      const propertyId = threadPropertyId ?? (await this.resolveInboundPropertyId(ownerId));
+      let propertyId: string | null = threadPropertyId?.trim() ? threadPropertyId.trim() : null;
+
+      if (!propertyId) {
+
+        if (channel === 'booking' || channel === 'airbnb') {
+
+          this.logger.warn(
+
+            'Email→chat: no propertyId on thread for OTA inbound; skip inbox sync (listing must come from message, not guest email).',
+
+          );
+
+          return null;
+
+        }
+
+        propertyId = await this.resolveInboundPropertyId(ownerId);
+
+      }
 
       if (!propertyId) {
 
@@ -945,6 +1027,8 @@ export class MessagingService {
 
             conversationId: fresh?.conversationId ?? undefined,
 
+            messagingThreadId: thread.id,
+
           });
 
         } catch (tgErr) {
@@ -1023,8 +1107,41 @@ export class MessagingService {
   }
 
   /**
-   * Last resort when `escalations.conversationId` is empty but email thread exists (single active guest per property is typical).
+   * Telegram escalation: получить `conversations.id` по `messaging_threads.id` (почтовый мост).
+   * Если `conversation_id` на треде ещё пустой, ищем инбокс по `email:${guestEmail}` и привязываем тред.
    */
+  async resolveConversationIdFromMessagingThread(
+    threadId: string,
+    propertyId: string,
+  ): Promise<string | null> {
+    const t = await this.threadRepo.findOne({ where: { id: threadId } });
+    if (!t || t.propertyId !== propertyId) return null;
+    if (t.conversationId?.trim()) {
+      return t.conversationId.trim();
+    }
+    const email = t.guestEmail?.trim().toLowerCase();
+    if (!email) return null;
+    let convId = await this.conversationService.findEmailConversationIdByGuestEmail(propertyId, email);
+    if (convId) {
+      await this.threadRepo.update(threadId, { conversationId: convId });
+      this.logger.log(
+        `Linked messaging thread ${threadId} to conversation ${convId} via guest email (Telegram bridge)`,
+      );
+      return convId;
+    }
+    /** Same as inbound email: ensure inbox row exists, then link thread (guest wrote only via email, no row yet). */
+    const conv = await this.conversationService.findOrCreate(
+      propertyId,
+      CONVERSATION_CHANNEL.EMAIL,
+      `email:${email}`,
+    );
+    await this.threadRepo.update(threadId, { conversationId: conv.id });
+    this.logger.log(
+      `Linked messaging thread ${threadId} to conversation ${conv.id} via findOrCreate(EMAIL) (Telegram bridge)`,
+    );
+    return conv.id;
+  }
+
   async resolveConversationIdForEscalationFallback(propertyId: string): Promise<string | null> {
     const row = await this.threadRepo.findOne({
       where: { propertyId, conversationId: Not(IsNull()) },
@@ -1043,15 +1160,18 @@ export class MessagingService {
 
    */
 
-  async relayStaffReplyToEmailGuest(conversationId: string, text: string): Promise<void> {
+  async relayStaffReplyToEmailGuest(
+    conversationId: string,
+    text: string,
+    opts?: { messagingThreadId?: string | null },
+  ): Promise<void> {
     const cid = conversationId.trim();
     this.logger.log(`relayStaffReplyToEmailGuest: start conversationId=${cid}`);
-    let thread =
-      (await this.threadRepo.findOne({ where: { conversationId: cid } })) ??
-      (await this.threadRepo
-        .createQueryBuilder('t')
-        .where('t.conversation_id = :cid', { cid })
-        .getOne());
+    /** Prefer raw column match — avoids edge cases with camelCase `findOne` + naming strategy. */
+    let thread = await this.threadRepo
+      .createQueryBuilder('t')
+      .where('t.conversation_id = :cid', { cid })
+      .getOne();
 
     if (!thread) {
       try {
@@ -1109,6 +1229,26 @@ export class MessagingService {
       } catch (e) {
         this.logger.warn(
           `relayStaffReplyToEmailGuest: create thread for email conversation failed ${cid}: ${(e as Error).message}`,
+        );
+      }
+    }
+
+    if (!thread && opts?.messagingThreadId?.trim()) {
+      try {
+        const conv = await this.conversationService.findById(cid);
+        const byId = await this.threadRepo.findOne({ where: { id: opts.messagingThreadId.trim() } });
+        if (byId && conv.propertyId === byId.propertyId) {
+          if (!byId.conversationId || byId.conversationId !== cid) {
+            await this.threadRepo.update(byId.id, { conversationId: cid });
+          }
+          thread = Object.assign(byId, { conversationId: cid });
+          this.logger.log(
+            `relayStaffReplyToEmailGuest: resolved thread by messagingThreadId=${byId.id} for email relay`,
+          );
+        }
+      } catch (e) {
+        this.logger.warn(
+          `relayStaffReplyToEmailGuest: messagingThreadId fallback failed for ${cid}: ${(e as Error).message}`,
         );
       }
     }

@@ -25,6 +25,10 @@ export class EscalationEntity {
   @Column('uuid', { nullable: true })
   guestMessageId?: string;
 
+  /** Email bridge: `messaging_threads.id` — надёжный якорь, если `conversationId` ещё не проставлен. */
+  @Column('uuid', { nullable: true })
+  messagingThreadId?: string | null;
+
   @Column({ type: 'text' })
   guestQuestion!: string;
 
