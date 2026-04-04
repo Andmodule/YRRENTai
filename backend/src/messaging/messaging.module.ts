@@ -9,12 +9,15 @@ import { TelegramModule } from '../telegram/telegram.module';
 import { MessagingThreadEntity } from './entities/messaging-thread.entity';
 import { MessagingMessageEntity } from './entities/messaging-message.entity';
 import { InboundEmailDedupEntity } from './entities/inbound-email-dedup.entity';
+import { InboundSenderFilterSettingsEntity } from './entities/inbound-sender-filter-settings.entity';
 import { MessageParserService } from './message-parser.service';
 import { ReplySenderService } from './reply-sender.service';
 import { MessagingService } from './messaging.service';
 import { MessagingRestController, MessagingWebhookController } from './messaging.controller';
 import { ResendWebhookGuard } from './guards/resend-webhook.guard';
 import { InboundEmailDedupService } from './inbound-email-dedup.service';
+import { InboundSenderFilterService } from './inbound-sender-filter.service';
+import { InboundSenderFilterSettingsController } from './inbound-sender-filter-settings.controller';
 
 @Module({
   imports: [
@@ -22,6 +25,7 @@ import { InboundEmailDedupService } from './inbound-email-dedup.service';
       MessagingThreadEntity,
       MessagingMessageEntity,
       InboundEmailDedupEntity,
+      InboundSenderFilterSettingsEntity,
     ]),
     forwardRef(() => ChatModule),
     forwardRef(() => TelegramModule),
@@ -30,13 +34,14 @@ import { InboundEmailDedupService } from './inbound-email-dedup.service';
     KnowledgeBaseModule,
     AgentModule,
   ],
-  controllers: [MessagingWebhookController, MessagingRestController],
+  controllers: [MessagingWebhookController, MessagingRestController, InboundSenderFilterSettingsController],
   providers: [
     MessagingService,
     MessageParserService,
     ReplySenderService,
     ResendWebhookGuard,
     InboundEmailDedupService,
+    InboundSenderFilterService,
   ],
   exports: [MessagingService],
 })

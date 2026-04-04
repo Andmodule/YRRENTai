@@ -9,4 +9,4 @@ export function normalizeRole(role: string | undefined): NormalizedRole {
 }
 
 /** Manager cannot open these path segments under /settings (redirect to profile). */
-export const SETTINGS_OWNER_ONLY_SEGMENTS = ['integrations', 'billing', 'team'] as const;
+export const SETTINGS_OWNER_ONLY_SEGMENTS = ['integrations', 'billing', 'team', 'inbound-email'] as const;

@@ -889,6 +889,7 @@
       "notifications": "Уведомления",
       "checklistTemplates": "Шаблоны чеклистов",
       "integrations": "Интеграции",
+      "inboundEmail": "Входящая почта",
       "ai": "ИИ-ассистент",
       "billing": "Тариф и оплата",
       "team": "Команда"
@@ -949,6 +950,20 @@
       "airbnbSubtitle": "Импорт бронирований и сообщений.",
       "locksTitle": "Смарт-замки (TTLock / August)",
       "locksSubtitle": "API-ключ и статус — заглушка v1."
+    },
+    "inboundSenderFilter": {
+      "pageTitle": "Фильтр входящей почты",
+      "pageSubtitle": "Вебхук Resend: в инбокс попадают только письма с разрешённых доменов в From. Остальные получают HTTP 200 без обработки.",
+      "allowedHostsLabel": "Разрешённые домены отправителя",
+      "allowedHostsHint": "По одному домену в строке (например guest.booking.com). Сообщения гостей Booking — guest.booking.com и mchat.booking.com. Остальные домены отбрасываются.",
+      "allowGmailLabel": "Разрешить Gmail / Googlemail (тест)",
+      "allowGmailHint": "Если включено, проходят адреса @gmail.com и @googlemail.com. В продакшене держите выключенным, если не принимаете личную почту.",
+      "updatedAt": "Сохранено: {at}",
+      "loading": "Загрузка…",
+      "reload": "Обновить",
+      "loadError": "Не удалось загрузить настройки фильтра.",
+      "saveSuccess": "Сохранено.",
+      "saveError": "Не удалось сохранить."
     },
     "ai": {
       "pageTitle": "ИИ-ассистент",

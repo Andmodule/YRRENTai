@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react';
-import { User, Shield, Bell, Plug, Bot, CreditCard, Users, ListChecks } from 'lucide-react';
+import { User, Shield, Bell, Plug, Bot, CreditCard, Users, ListChecks, Mail } from 'lucide-react';
 
 export type SettingsNavId =
   | 'profile'
@@ -7,6 +7,7 @@ export type SettingsNavId =
   | 'notifications'
   | 'checklistTemplates'
   | 'integrations'
+  | 'inboundEmail'
   | 'ai'
   | 'billing'
   | 'team';
@@ -61,6 +62,14 @@ export const settingsNavItems: SettingsNavItem[] = [
     messageKey: 'nav.integrations',
     icon: Plug,
     dev: true,
+    ownerOnly: true,
+  },
+  {
+    id: 'inboundEmail',
+    href: '/settings/inbound-email',
+    messageKey: 'nav.inboundEmail',
+    icon: Mail,
+    dev: false,
     ownerOnly: true,
   },
   {

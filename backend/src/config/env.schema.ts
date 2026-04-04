@@ -66,14 +66,6 @@ const resendEnvFields = z.object({
    * Booking/Airbnb never use this as a fallback after failed hotel/reservation/name match — inbox sync is skipped instead.
    */
   RESEND_INBOUND_PROPERTY_ID: z.string().uuid().optional(),
-  /**
-   * Dev/test only: also allow @gmail.com / @googlemail.com through the sender allowlist.
-   * Default false. Never set true in production.
-   */
-  INBOUND_ALLOW_GMAIL_TEST: z
-    .enum(['true', 'false', '1', '0', 'yes', 'no'])
-    .default('false')
-    .transform((v) => v === 'true' || v === '1' || v === 'yes'),
 });
 
 export const envSchema = z

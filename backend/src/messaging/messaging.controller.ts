@@ -19,10 +19,8 @@ import { SendReplyDto } from './dto/send-reply.dto';
 import { ResendWebhookGuard } from './guards/resend-webhook.guard';
 import { CurrentUser, JwtPayload } from '../common/decorators/current-user.decorator';
 import { InboundEmailDedupService } from './inbound-email-dedup.service';
+import { InboundSenderFilterService } from './inbound-sender-filter.service';
 import { extractResendWebhookEventId } from './resend-webhook.util';
-
-/** Domains whose email is forwarded by Booking.com on behalf of guests. */
-const SENDER_ALLOWLIST = ['guest.booking.com', 'mchat.booking.com'];
 
 /**
  * Extract the host (lowercased) from a raw RFC 5322 From header.
@@ -44,6 +42,7 @@ export class MessagingWebhookController {
     private readonly messaging: MessagingService,
     private readonly config: ConfigService,
     private readonly inboundDedup: InboundEmailDedupService,
+    private readonly inboundSenderFilter: InboundSenderFilterService,
   ) {}
 
   @Post('resend')
@@ -58,10 +57,7 @@ export class MessagingWebhookController {
     const from = dto.data?.from ?? '';
     const host = senderHost(from);
 
-    const allowGmail = process.env.INBOUND_ALLOW_GMAIL_TEST === 'true';
-    const allowed =
-      SENDER_ALLOWLIST.includes(host) ||
-      (allowGmail && (host === 'gmail.com' || host === 'googlemail.com'));
+    const allowed = await this.inboundSenderFilter.isSenderHostAllowed(host);
 
     if (!allowed) {
       this.logger.log(`Inbound drop: host=${host || '(empty)'} from=${from.slice(0, 120)}`);

@@ -889,6 +889,7 @@
       "notifications": "Notifications",
       "checklistTemplates": "Checklist templates",
       "integrations": "Integrations",
+      "inboundEmail": "Inbound email",
       "ai": "AI assistant",
       "billing": "Billing",
       "team": "Team"
@@ -949,6 +950,20 @@
       "airbnbSubtitle": "Bookings and messaging.",
       "locksTitle": "Smart locks (TTLock / August)",
       "locksSubtitle": "API key and status are placeholders in v1."
+    },
+    "inboundSenderFilter": {
+      "pageTitle": "Inbound email filter",
+      "pageSubtitle": "Resend webhook: only matching sender domains reach the inbox. Others get HTTP 200 with no processing.",
+      "allowedHostsLabel": "Allowed sender domains",
+      "allowedHostsHint": "One domain per line (e.g. guest.booking.com). Booking guest relay uses guest.booking.com and mchat.booking.com. All other domains are dropped.",
+      "allowGmailLabel": "Allow Gmail / Googlemail (testing)",
+      "allowGmailHint": "When enabled, addresses @gmail.com and @googlemail.com pass the filter. Turn off in production unless you intentionally accept personal mail.",
+      "updatedAt": "Last saved: {at}",
+      "loading": "Loading…",
+      "reload": "Reload",
+      "loadError": "Could not load filter settings.",
+      "saveSuccess": "Saved.",
+      "saveError": "Could not save settings."
     },
     "ai": {
       "pageTitle": "AI assistant",

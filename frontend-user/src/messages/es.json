@@ -632,6 +632,7 @@
       "notifications": "Notifications",
       "checklistTemplates": "Checklist templates",
       "integrations": "Integrations",
+      "inboundEmail": "Correo entrante",
       "ai": "AI assistant",
       "billing": "Billing",
       "team": "Team"
@@ -692,6 +693,20 @@
       "airbnbSubtitle": "Bookings and messaging.",
       "locksTitle": "Smart locks (TTLock / August)",
       "locksSubtitle": "API key and status are placeholders in v1."
+    },
+    "inboundSenderFilter": {
+      "pageTitle": "Filtro de correo entrante",
+      "pageSubtitle": "Webhook Resend: solo los dominios permitidos en From llegan al buzón. El resto recibe HTTP 200 sin procesar.",
+      "allowedHostsLabel": "Dominios de remitente permitidos",
+      "allowedHostsHint": "Un dominio por línea (p. ej. guest.booking.com). Relay de huésped Booking: guest.booking.com y mchat.booking.com. Cualquier otro se descarta.",
+      "allowGmailLabel": "Permitir Gmail / Googlemail (pruebas)",
+      "allowGmailHint": "Si está activo, se aceptan @gmail.com y @googlemail.com. Desactívelo en producción salvo que quiera correo personal.",
+      "updatedAt": "Último guardado: {at}",
+      "loading": "Cargando…",
+      "reload": "Recargar",
+      "loadError": "No se pudieron cargar los ajustes.",
+      "saveSuccess": "Guardado.",
+      "saveError": "No se pudo guardar."
     },
     "ai": {
       "pageTitle": "AI assistant",
