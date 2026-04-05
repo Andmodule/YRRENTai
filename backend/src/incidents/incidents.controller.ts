@@ -23,6 +23,7 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { CurrentUser, JwtPayload } from '../common/decorators/current-user.decorator';
 import { IncidentsService } from './incidents.service';
 import type { IncidentStatus, IncidentType } from './entities/incident.entity';
+import { UserService } from '../user/user.service';
 
 @ApiTags('Incidents')
 @ApiBearerAuth()
@@ -32,7 +33,12 @@ export class IncidentsController {
   constructor(
     private readonly incidentsService: IncidentsService,
     private readonly configService: ConfigService,
+    private readonly userService: UserService,
   ) {}
+
+  private async ownerScope(user: JwtPayload): Promise<string> {
+    return this.userService.resolveTenantOwnerId(user.sub, user.role);
+  }
 
   @Post('upload-photos')
   @Roles('STAFF')
@@ -86,6 +92,23 @@ export class IncidentsController {
     return { data: { incident } };
   }
 
+  @Post('manager')
+  @Roles('OWNER', 'MANAGER')
+  async createFromManager(
+    @CurrentUser() user: JwtPayload,
+    @Body()
+    body: {
+      type: IncidentType;
+      propertyId: string;
+      description: string;
+      estimatedCost?: string | null;
+      photoUrls?: string[];
+    },
+  ) {
+    const incident = await this.incidentsService.createForManager(user.sub, user.role, body);
+    return { data: { incident } };
+  }
+
   @Get()
   @Roles('OWNER', 'MANAGER')
   async list(
@@ -94,7 +117,8 @@ export class IncidentsController {
     @Query('type') type?: IncidentType,
     @Query('status') status?: IncidentStatus,
   ) {
-    const incidents = await this.incidentsService.listForOwner(user.sub, {
+    const ownerId = await this.ownerScope(user);
+    const incidents = await this.incidentsService.listForOwner(ownerId, {
       propertyId,
       type,
       status,
@@ -105,14 +129,32 @@ export class IncidentsController {
   @Get('open-count')
   @Roles('OWNER', 'MANAGER')
   async openCount(@CurrentUser() user: JwtPayload) {
-    const count = await this.incidentsService.countOpenForOwner(user.sub);
+    const ownerId = await this.ownerScope(user);
+    const count = await this.incidentsService.countOpenForOwner(ownerId);
     return { data: { count } };
+  }
+
+  @Post(':uuid/dispatch')
+  @Roles('OWNER', 'MANAGER')
+  async dispatch(
+    @Param('uuid') uuid: string,
+    @CurrentUser() user: JwtPayload,
+    @Body() body: { assigneeId: string },
+  ) {
+    const incident = await this.incidentsService.dispatchMaintenanceTask(
+      uuid,
+      user.sub,
+      user.role,
+      body.assigneeId,
+    );
+    return { data: { incident } };
   }
 
   @Get(':uuid')
   @Roles('OWNER', 'MANAGER')
   async one(@Param('uuid') uuid: string, @CurrentUser() user: JwtPayload) {
-    const incident = await this.incidentsService.findOneForOwner(uuid, user.sub);
+    const ownerId = await this.ownerScope(user);
+    const incident = await this.incidentsService.findOneForOwner(uuid, ownerId);
     return { data: { incident } };
   }
 
@@ -128,7 +170,8 @@ export class IncidentsController {
       estimatedCost: string | null;
     }>,
   ) {
-    const incident = await this.incidentsService.patchForOwner(uuid, user.sub, body);
+    const ownerId = await this.ownerScope(user);
+    const incident = await this.incidentsService.patchForOwner(uuid, ownerId, body);
     return { data: { incident } };
   }
 }

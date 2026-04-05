@@ -2,6 +2,7 @@
 
 import { memo } from 'react';
 import { useTranslations } from 'next-intl';
+import { Link2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Select } from '@/components/ui/select';
 import type { Task, TaskStatus } from '../../types';
@@ -21,6 +22,7 @@ export const TaskTableView = memo(function TaskTableView({
   const t = useTranslations('tasks');
   const tStatus = useTranslations('tasks.status');
   const tTable = useTranslations('tasks.viewTable');
+  const tKanban = useTranslations('tasks.kanban');
 
   if (tasks.length === 0) return null;
 
@@ -50,13 +52,24 @@ export const TaskTableView = memo(function TaskTableView({
                 <TaskTypeBadge type={task.type} />
               </td>
               <td className="px-3 py-2 align-middle">
-                <button
-                  type="button"
-                  className="max-w-[220px] truncate text-left font-medium text-primary hover:underline"
-                  onClick={() => onOpenTask(task)}
-                >
-                  {task.title || task.propertyTitle}
-                </button>
+                <div className="flex min-w-0 max-w-[260px] items-center gap-1.5">
+                  <button
+                    type="button"
+                    className="min-w-0 truncate text-left font-medium text-primary hover:underline"
+                    onClick={() => onOpenTask(task)}
+                  >
+                    {task.title || task.propertyTitle}
+                  </button>
+                  {task.incidentId ? (
+                    <span
+                      className="inline-flex shrink-0 text-muted-foreground"
+                      title={tKanban('taskFromIncidentBadge')}
+                      aria-label={tKanban('taskFromIncidentBadge')}
+                    >
+                      <Link2 className="h-3.5 w-3.5" aria-hidden />
+                    </span>
+                  ) : null}
+                </div>
               </td>
               <td className="max-w-[200px] truncate px-3 py-2 align-middle text-muted-foreground">
                 {task.propertyTitle}

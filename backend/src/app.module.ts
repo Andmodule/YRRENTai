@@ -4,6 +4,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { EventEmitterModule } from '@nestjs/event-emitter';
+import { ScheduleModule } from '@nestjs/schedule';
 import { APP_PIPE } from '@nestjs/core';
 import { ZodValidationPipe } from 'nestjs-zod';
 import { envSchema } from './config/env.schema';
@@ -64,6 +65,7 @@ import { AdminModule } from './admin/admin.module';
       },
     ]),
     EventEmitterModule.forRoot(),
+    ScheduleModule.forRoot(),
     DatabaseInitModule,
     EmbeddingModule,
     AuthModule,

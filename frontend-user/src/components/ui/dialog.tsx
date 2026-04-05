@@ -12,11 +12,24 @@ export const DialogClose = RadixDialog.Close;
 interface DialogContentProps extends RadixDialog.DialogContentProps {
   title: string;
   description?: string;
+  /** Rendered below the title row (e.g. badges); scrollable body starts after the header block. */
+  headerAdornment?: ReactNode;
   /** Pinned below scroll area (e.g. action buttons). */
   footer?: ReactNode;
+  /** Scrollable body padding (default px-6 pt-4 pb-4). */
+  bodyClassName?: string;
 }
 
-export function DialogContent({ title, description, children, footer, className, ...props }: DialogContentProps) {
+export function DialogContent({
+  title,
+  description,
+  headerAdornment,
+  children,
+  footer,
+  className,
+  bodyClassName,
+  ...props
+}: DialogContentProps) {
   return (
     <RadixDialog.Portal>
       <RadixDialog.Overlay className="fixed inset-0 z-[100] bg-black/50 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
@@ -35,21 +48,28 @@ export function DialogContent({ title, description, children, footer, className,
         )}
         {...props}
       >
-        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-border/60 p-6 pb-4">
-          <div className="min-w-0">
-            <RadixDialog.Title className="text-lg font-semibold">{title}</RadixDialog.Title>
-            {description && (
-              <RadixDialog.Description className="mt-1 text-sm text-muted-foreground">
-                {description}
-              </RadixDialog.Description>
-            )}
+        <div className="flex shrink-0 flex-col border-b border-border/60">
+          <div className="flex items-start justify-between gap-3 p-6 pb-3">
+            <div className="min-w-0">
+              <RadixDialog.Title className="text-lg font-semibold leading-tight">{title}</RadixDialog.Title>
+              {description && (
+                <RadixDialog.Description className="mt-1 text-sm text-muted-foreground">
+                  {description}
+                </RadixDialog.Description>
+              )}
+            </div>
+            <RadixDialog.Close className="ml-2 shrink-0 rounded-sm opacity-70 ring-offset-background transition-opacity duration-200 ease-in-out hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
+              <X className="h-4 w-4" />
+              <span className="sr-only">Close</span>
+            </RadixDialog.Close>
           </div>
-          <RadixDialog.Close className="ml-2 shrink-0 rounded-sm opacity-70 ring-offset-background transition-opacity duration-200 ease-in-out hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
-            <X className="h-4 w-4" />
-            <span className="sr-only">Close</span>
-          </RadixDialog.Close>
+          {headerAdornment ? <div className="px-6 pb-4">{headerAdornment}</div> : null}
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 pt-4 pb-4">{children}</div>
+        <div
+          className={cn('min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 pt-4 pb-4', bodyClassName)}
+        >
+          {children}
+        </div>
         {footer ? (
           <div className="shrink-0 border-t border-border bg-background px-6 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
             {footer}

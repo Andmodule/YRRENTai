@@ -1,5 +1,6 @@
 import {
   ConflictException,
+  ForbiddenException,
   Injectable,
   Logger,
   UnauthorizedException,
@@ -18,6 +19,7 @@ import {
   REFRESH_TOKEN_COOKIE,
 } from './constants/auth.constants';
 import { parseDurationToMs } from './utils/parse-duration-to-ms';
+import { validateTelegramWebAppInitData } from './utils/telegram-init-data';
 
 const BCRYPT_ROUNDS = 12;
 
@@ -25,6 +27,7 @@ interface AccessTokenPayload {
   sub: string;
   email: string;
   role: string;
+  companyId?: string | null;
 }
 
 interface RefreshTokenPayload {
@@ -43,6 +46,11 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterDtoType, res: Response) {
+    const registrationOpen = this.configService.get<boolean>('AUTH_PUBLIC_REGISTRATION_ENABLED') ?? true;
+    if (!registrationOpen) {
+      throw new ForbiddenException('Registration is disabled');
+    }
+
     const email = dto.email.trim().toLowerCase();
     const existing = await this.userService.findByEmail(email);
     if (existing) {
@@ -50,17 +58,18 @@ export class AuthService {
     }
 
     const passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
-    const user = await this.userService.create({
+    const user = await this.userService.registerOwnerWithCompany({
       email,
       passwordHash,
       firstName: dto.firstName.trim(),
       lastName: dto.lastName.trim(),
+      companyName: dto.companyName.trim(),
     });
 
     await this.setAuthCookiesForUser(res, user);
-    this.logger.log(`User registered: ${user.id}`);
+    this.logger.log(`User registered: ${user.id} (company ${user.companyId})`);
 
-    return { data: this.userService.toPublicUser(user) };
+    return { data: await this.userService.getPublicProfileById(user.id) };
   }
 
   async login(dto: LoginDtoType, res: Response) {
@@ -78,7 +87,7 @@ export class AuthService {
     await this.setAuthCookiesForUser(res, user);
     this.logger.log(`User logged in: ${user.id}`);
 
-    return { data: this.userService.toPublicUser(user) };
+    return { data: await this.userService.getPublicProfileById(user.id) };
   }
 
   async refresh(req: { cookies?: Record<string, string> }, res: Response) {
@@ -103,14 +112,40 @@ export class AuthService {
     if (!user) {
       throw new UnauthorizedException('User no longer exists');
     }
+    if (user.role !== 'SUPERADMIN' && !user.companyId) {
+      throw new UnauthorizedException('Session expired: invalid tenant context');
+    }
 
     await this.setAuthCookiesForUser(res, user);
-    return { data: this.userService.toPublicUser(user) };
+    return { data: await this.userService.getPublicProfileById(user.id) };
   }
 
   logout(res: Response) {
     this.clearAuthCookies(res);
     return { data: { ok: true as const } };
+  }
+
+  /**
+   * Telegram Mini App: validate `initData`, resolve STAFF user by `telegramChatId`, issue JWT cookies.
+   */
+  async loginWithTelegramMiniApp(initData: string, res: Response) {
+    const botToken = this.configService.get<string>('TELEGRAM_BOT_TOKEN')?.trim();
+    if (!botToken) {
+      throw new UnauthorizedException('Telegram bot is not configured');
+    }
+    const v = validateTelegramWebAppInitData(initData, botToken);
+    if (!v.ok) {
+      throw new UnauthorizedException('Invalid or expired Telegram initData');
+    }
+    const chatId = String(v.telegramUserId);
+    const user = await this.userService.findByTelegramChatId(chatId);
+    if (!user || user.role !== 'STAFF') {
+      throw new UnauthorizedException('Staff profile not linked to this Telegram account');
+    }
+
+    await this.setAuthCookiesForUser(res, user);
+    this.logger.log(`TMA login: user ${user.id}`);
+    return { data: await this.userService.getPublicProfileById(user.id) };
   }
 
   /**
@@ -123,6 +158,7 @@ export class AuthService {
       sub: user.sub,
       email: user.email,
       role: user.role,
+      companyId: user.companyId ?? null,
     };
     return this.jwtService.signAsync(payload, {
       secret,
@@ -164,6 +200,7 @@ export class AuthService {
       sub: user.id,
       email: user.email,
       role: user.role,
+      companyId: user.companyId ?? null,
     };
 
     const accessToken = await this.jwtService.signAsync(accessPayload, {

@@ -10,6 +10,8 @@ export const registerSchema = z.object({
   password: z.string().min(8).max(128),
   firstName: z.string().min(1).max(100),
   lastName: z.string().min(1).max(100),
+  /** Organization / company name (tenant) — first user becomes OWNER of this company. */
+  companyName: z.string().min(1).max(255),
 });
 
 export const refreshTokenSchema = z.object({

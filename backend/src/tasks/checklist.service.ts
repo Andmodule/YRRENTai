@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { UserService } from '../user/user.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, IsNull, Repository } from 'typeorm';
 import { ChecklistTemplateEntity } from './entities/checklist-template.entity';
@@ -40,6 +41,7 @@ export class ChecklistService {
     @InjectRepository(PropertyEntity)
     private readonly propertyRepo: Repository<PropertyEntity>,
     private readonly tasksGateway: TasksGateway,
+    private readonly userService: UserService,
   ) {}
 
   private async assertPropertyOwnedBy(ownerId: string, propertyId: string | null): Promise<void> {
@@ -237,11 +239,16 @@ export class ChecklistService {
     },
   ): Promise<ChecklistTemplateDto> {
     await this.assertPropertyOwnedBy(ownerId, body.propertyId);
+    const owner = await this.userService.findById(ownerId);
+    if (!owner?.companyId) {
+      throw new BadRequestException('Owner company not found');
+    }
     const t = this.templateRepo.create({
       name: body.name.trim(),
       autoApplyToType: body.autoApplyToType,
       propertyId: body.propertyId,
       ownerId,
+      companyId: owner.companyId,
     });
     const saved = await this.templateRepo.save(t);
     for (const it of body.items) {

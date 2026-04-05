@@ -3,16 +3,31 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { apiClient } from '@/lib/api/client';
-import type { Task, TaskFilters, TaskNote, TaskStatus, TasksApiResponse } from '../types';
+import type {
+  Task,
+  TaskChecklistItem,
+  TaskFilters,
+  TaskNote,
+  TaskPriority,
+  TaskStatus,
+  TasksApiResponse,
+} from '../types';
+
+const API_WIDE_FROM = '2000-01-01';
+const API_WIDE_TO = '2100-12-31';
 
 export function useTasks(filters: TaskFilters, options?: { enabled?: boolean }) {
-  const from = format(filters.dateRange.start, 'yyyy-MM-dd');
-  const to = format(filters.dateRange.end, 'yyyy-MM-dd');
+  const from = filters.dateRangeEnabled
+    ? format(filters.dateRange.start, 'yyyy-MM-dd')
+    : API_WIDE_FROM;
+  const to = filters.dateRangeEnabled
+    ? format(filters.dateRange.end, 'yyyy-MM-dd')
+    : API_WIDE_TO;
 
   const enabled = (options?.enabled ?? true) && filters.assigneeId !== 'none';
 
   return useQuery<TasksApiResponse>({
-    queryKey: ['tasks', from, to, filters.assigneeId],
+    queryKey: ['tasks', from, to, filters.assigneeId, filters.dateRangeEnabled],
     enabled,
     queryFn: async () => {
       const params = new URLSearchParams({ from, to });
@@ -52,7 +67,15 @@ export function useUpdateTaskStatus() {
         if (!old) return old;
         return {
           ...old,
-          tasks: old.tasks.map((t) => (t.uuid === uuid ? { ...t, status } : t)),
+          tasks: old.tasks.map((t) =>
+            t.uuid === uuid
+              ? {
+                  ...t,
+                  status,
+                  completedAt: status === 'done' ? new Date().toISOString() : null,
+                }
+              : t,
+          ),
         };
       });
       return { prev };
@@ -66,6 +89,9 @@ export function useUpdateTaskStatus() {
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      /** Linked incident may change (e.g. task → done → incident in_review); socket may be offline in dev. */
+      queryClient.invalidateQueries({ queryKey: ['incidents'] });
+      queryClient.invalidateQueries({ queryKey: ['incidents-open-count'] });
     },
   });
 }
@@ -78,6 +104,65 @@ export function useUpdateTaskNotes() {
       return res.data.data;
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    },
+  });
+}
+
+export type PatchTaskBody = Partial<{
+  title: string;
+  priority: TaskPriority;
+  propertyId: string;
+  assigneeId: string | null;
+}>;
+
+export function usePatchTask() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ uuid, ...body }: { uuid: string } & PatchTaskBody) => {
+      const res = await apiClient.patch<{ data: Task }>(`/tasks/${uuid}`, body);
+      return res.data.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    },
+  });
+}
+
+export function useTaskChecklist(taskUuid: string | null, enabled: boolean) {
+  return useQuery<{ items: TaskChecklistItem[] }>({
+    queryKey: ['task-checklist', taskUuid],
+    queryFn: async () => {
+      const res = await apiClient.get<{ data: { items: TaskChecklistItem[] } }>(
+        `/tasks/${taskUuid}/checklist`,
+      );
+      return { items: res.data.data.items };
+    },
+    enabled: !!taskUuid && enabled,
+    staleTime: 15_000,
+  });
+}
+
+export function usePatchTaskChecklistItem() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      taskUuid,
+      itemId,
+      checked,
+    }: {
+      taskUuid: string;
+      itemId: string;
+      checked: boolean;
+    }) => {
+      const res = await apiClient.patch<{ data: { item: TaskChecklistItem } }>(
+        `/tasks/${taskUuid}/checklist/${itemId}`,
+        { checked },
+      );
+      return res.data.data.item;
+    },
+    onSuccess: (_, v) => {
+      queryClient.invalidateQueries({ queryKey: ['task-checklist', v.taskUuid] });
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
     },
   });

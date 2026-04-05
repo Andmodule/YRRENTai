@@ -32,6 +32,7 @@ export function RegisterForm() {
       password: '',
       firstName: '',
       lastName: '',
+      companyName: '',
     },
   });
 
@@ -81,6 +82,22 @@ export function RegisterForm() {
             <p className="mt-1 text-xs text-red-400">{errors.lastName.message}</p>
           )}
         </div>
+      </div>
+      <div>
+        <label htmlFor="companyName" className="mb-1.5 block text-sm font-medium text-slate-200">
+          {t('companyName')}
+        </label>
+        <Input
+          id="companyName"
+          autoComplete="organization"
+          placeholder={t('companyNamePlaceholder')}
+          className={field(!!errors.companyName)}
+          aria-invalid={!!errors.companyName}
+          {...register('companyName')}
+        />
+        {errors.companyName && (
+          <p className="mt-1 text-xs text-red-400">{errors.companyName.message}</p>
+        )}
       </div>
       <div>
         <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-slate-200">

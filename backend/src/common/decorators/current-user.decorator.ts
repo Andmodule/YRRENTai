@@ -5,6 +5,8 @@ export interface JwtPayload {
   sub: string;
   email: string;
   role: string;
+  /** Set for tenant users; omitted or null for SUPERADMIN. */
+  companyId?: string | null;
 }
 
 export const CurrentUser = createParamDecorator(

@@ -3,6 +3,7 @@ import {
   Get,
   Patch,
   Post,
+  Delete,
   Param,
   Body,
   Query,
@@ -61,11 +62,18 @@ export class TasksController {
     }
 
     if (process.env.NODE_ENV === 'development') {
-      await this.tasksService.seedDemoIfEmpty(user.sub);
+      await this.tasksService.seedDemoIfEmpty(user.sub, user.role);
     }
 
-    const tasks = await this.tasksService.findForUser(user.sub, from, to, assigneeId);
+    const tasks = await this.tasksService.findForUser(user.sub, user.role, from, to, assigneeId);
     return { data: { tasks } };
+  }
+
+  @Get(':uuid')
+  @Roles('OWNER', 'MANAGER', 'STAFF')
+  async getOne(@Param('uuid') uuid: string, @CurrentUser() user: JwtPayload) {
+    const task = await this.tasksService.getOneForUser(uuid, user.sub, user.role);
+    return { data: { task } };
   }
 
   @Post()
@@ -74,7 +82,10 @@ export class TasksController {
     @CurrentUser() user: JwtPayload,
     @Body()
     body: {
-      propertyId: string;
+      /** Prefer: array of property UUIDs (empty = general task → one task on fallback property). */
+      propertyIds?: string[];
+      /** Legacy single property (same as `propertyIds: [propertyId]`). */
+      propertyId?: string;
       title: string;
       type: string;
       priority?: string;
@@ -83,10 +94,63 @@ export class TasksController {
       dueTime?: string | null;
       reservationId?: string | null;
       notes?: string;
+      /** Links the new task to an incident (single property only); sets task.incidentId and incident dispatch fields. */
+      incidentId?: string | null;
     },
   ) {
-    const task = await this.tasksService.createForManager(user.sub, body);
-    return { data: task };
+    let propertyIds: string[];
+    if (Array.isArray(body.propertyIds)) {
+      propertyIds = [...new Set(body.propertyIds.filter((id) => typeof id === 'string' && id.trim()))];
+    } else if (body.propertyId?.trim()) {
+      propertyIds = [body.propertyId.trim()];
+    } else {
+      throw new BadRequestException('propertyId or propertyIds is required');
+    }
+
+    const tasks = await this.tasksService.createTasksBulkForManager(user.sub, user.role, {
+      propertyIds,
+      title: body.title,
+      type: body.type,
+      priority: body.priority,
+      assigneeId: body.assigneeId,
+      dueDate: body.dueDate,
+      dueTime: body.dueTime,
+      reservationId: body.reservationId,
+      notes: body.notes,
+      incidentId: body.incidentId,
+    });
+    return { data: { tasks } };
+  }
+
+  /**
+   * Voice task: Groq Whisper STT → DeepSeek JSON extraction (`VoiceParseResultDto`).
+   */
+  @Post('voice-parse')
+  @Roles('OWNER', 'MANAGER')
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(
+    FileInterceptor('audio', {
+      storage: memoryStorage(),
+      limits: { fileSize: 15 * 1024 * 1024 },
+    }),
+  )
+  async voiceParse(
+    @CurrentUser() user: JwtPayload,
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @Body('contextPropertyId') contextPropertyId?: string,
+    @Body('language') language?: string,
+  ) {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('audio is required');
+    }
+    const data = await this.tasksService.voiceParse(
+      user.sub,
+      user.role,
+      file,
+      contextPropertyId?.trim(),
+      language?.trim(),
+    );
+    return { data };
   }
 
   /** Staff: same handlers as POST /incidents (some dev setups never register IncidentsController). */
@@ -217,6 +281,13 @@ export class TasksController {
     return { data: task };
   }
 
+  @Delete(':uuid')
+  @Roles('OWNER', 'MANAGER', 'STAFF')
+  async remove(@Param('uuid') uuid: string, @CurrentUser() user: JwtPayload) {
+    await this.tasksService.deleteForUser(uuid, user.sub, user.role);
+    return { data: { ok: true } };
+  }
+
   @Patch(':uuid')
   @Roles('OWNER', 'MANAGER', 'STAFF')
   async patch(
@@ -227,6 +298,11 @@ export class TasksController {
       assigneeId: string | null;
       notes: string;
       issueDescription: string | null;
+      title: string;
+      priority: string;
+      propertyId: string;
+      dueDate: string;
+      dueTime: string | null;
     }>,
     @Query('forceComplete') forceComplete: string | undefined,
     @CurrentUser() user: JwtPayload,

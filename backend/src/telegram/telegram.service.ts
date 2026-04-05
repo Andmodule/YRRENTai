@@ -23,6 +23,8 @@ import {
 import { TelegramDeliveryService } from './telegram-delivery.service';
 import { TelegramMetricsService } from './telegram-metrics.service';
 import { sleep } from './telegram-retries.util';
+import { StaffTelegramBotService } from './staff-telegram-bot.service';
+import { escapeTelegramHtml } from './utils/telegram-html.util';
 
 interface TelegramSendMessageResponse {
   ok: boolean;
@@ -67,6 +69,7 @@ export class TelegramService {
     private readonly staffReplyService: StaffReplyService,
     private readonly telegramDelivery: TelegramDeliveryService,
     private readonly telegramMetrics: TelegramMetricsService,
+    private readonly staffTelegramBot: StaffTelegramBotService,
   ) {
     const token = configService.get<string>('TELEGRAM_BOT_TOKEN') ?? '';
     this.apiBase = `https://api.telegram.org/bot${token}`;
@@ -209,22 +212,44 @@ export class TelegramService {
 
 
   /**
-   * Incident alert for managers. Optional photo URLs — Telegram servers must fetch them (HTTPS;
-   * localhost URLs are skipped and noted in text).
-   * Returns message_id of the first Telegram message (for reply threading).
+   * Urgent incident alert for the account owner (manager verification before any technician dispatch).
+   * Optional `MANAGER_WEB_APP_URL` adds an inline link to the web dashboard incident view.
    */
-  async notifyIncident(
-    propertyId: string,
-    ownerId: string,
-    text: string,
-    photoUrls?: string[],
-  ): Promise<number | null> {
+  async notifyIncident(params: {
+    incidentId: string;
+    ownerId: string;
+    reporterName: string;
+    propertyName: string;
+    description: string;
+    photoUrls?: string[];
+  }): Promise<number | null> {
+    const { incidentId, ownerId, reporterName, propertyName, description, photoUrls } = params;
     const chatId = await this.resolveOwnerTelegramChatId(ownerId);
     if (!chatId || !this.isEnabled) {
       if (!chatId) {
-        this.logger.warn(`Incident notify: no Telegram chat for property ${propertyId}`);
+        this.logger.warn(`Incident notify: no Telegram chat for owner ${ownerId}`);
       }
       return null;
+    }
+
+    const managerBase = this.configService.get<string>('MANAGER_WEB_APP_URL')?.trim().replace(/\/$/, '');
+    const keyboard =
+      managerBase && managerBase.startsWith('https://')
+        ? {
+            inline_keyboard: [
+              [
+                {
+                  text: '🔍 Проверить и назначить',
+                  url: `${managerBase}/incidents?incident=${encodeURIComponent(incidentId)}`,
+                },
+              ],
+            ],
+          }
+        : undefined;
+    if (!managerBase?.startsWith('https://')) {
+      this.logger.warn(
+        'MANAGER_WEB_APP_URL unset or not HTTPS — incident Telegram alert has no dashboard button.',
+      );
     }
 
     const usable = (photoUrls ?? []).filter((u) => this.isTelegramReachablePhotoUrl(u));
@@ -234,10 +259,15 @@ export class TelegramService {
         ? `\n\n📷 ${skipped} фото не отправлено в Telegram (нужен публичный HTTPS URL API, не localhost). Фото в RentAI.`
         : '';
 
-    const fullText = text + extra;
+    const bodyLines = [
+      `🚨 Новый инцидент от ${escapeTelegramHtml(reporterName)}`,
+      `📍 Объект: ${escapeTelegramHtml(propertyName)}`,
+      `📝 Описание: ${escapeTelegramHtml(description)}`,
+    ];
+    const fullText = bodyLines.join('\n') + extra;
 
     for (let attempt = 0; attempt < 3; attempt++) {
-      const r = await this.notifyIncidentSendOnce(chatId, fullText, usable);
+      const r = await this.notifyIncidentSendOnce(chatId, fullText, usable, keyboard);
       if (r !== null) {
         this.telegramMetrics.incidentNotify.inc({ status: 'success' });
         return r;
@@ -273,12 +303,18 @@ export class TelegramService {
     chatId: string,
     fullText: string,
     usable: string[],
+    replyMarkup?: { inline_keyboard: { text: string; url: string }[][] },
   ): Promise<number | null> {
     try {
       if (usable.length === 0) {
         const response = await axios.post<TelegramSendMessageResponse>(
           `${this.apiBase}/sendMessage`,
-          { chat_id: chatId, text: fullText },
+          {
+            chat_id: chatId,
+            text: fullText,
+            parse_mode: 'HTML',
+            ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
+          },
           { timeout: 30000 },
         );
         return response.data.result.message_id;
@@ -288,31 +324,63 @@ export class TelegramService {
         const cap = fullText.length > 1024 ? `${fullText.slice(0, 1021)}…` : fullText;
         const response = await axios.post<TelegramSendMessageResponse>(
           `${this.apiBase}/sendPhoto`,
-          { chat_id: chatId, photo: usable[0], caption: cap },
+          {
+            chat_id: chatId,
+            photo: usable[0],
+            caption: cap,
+            parse_mode: 'HTML',
+            ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
+          },
           { timeout: 30000 },
         );
         return response.data.result.message_id;
       }
 
       const cap = fullText.length > 1024 ? `${fullText.slice(0, 1021)}…` : fullText;
-      const media = usable.slice(0, 10).map((url, i) => ({
-        type: 'photo' as const,
-        media: url,
-        ...(i === 0 ? { caption: cap } : {}),
-      }));
+      const media = usable.slice(0, 10).map((url, i) =>
+        i === 0
+          ? {
+              type: 'photo' as const,
+              media: url,
+              caption: cap,
+              parse_mode: 'HTML' as const,
+            }
+          : {
+              type: 'photo' as const,
+              media: url,
+            },
+      );
       const response = await axios.post<TelegramSendMediaGroupResponse>(
         `${this.apiBase}/sendMediaGroup`,
         { chat_id: chatId, media },
         { timeout: 30000 },
       );
       const first = response.data.result?.[0];
-      return first?.message_id ?? null;
+      const mid = first?.message_id ?? null;
+      if (replyMarkup) {
+        await axios.post<TelegramSendMessageResponse>(
+          `${this.apiBase}/sendMessage`,
+          {
+            chat_id: chatId,
+            text: 'Назначьте исполнителя после проверки:',
+            parse_mode: 'HTML',
+            reply_markup: replyMarkup,
+          },
+          { timeout: 15000 },
+        );
+      }
+      return mid;
     } catch (err) {
       this.logger.error(`Telegram incident notify failed: ${(err as Error).message}`);
       try {
         const response = await axios.post<TelegramSendMessageResponse>(
           `${this.apiBase}/sendMessage`,
-          { chat_id: chatId, text: fullText },
+          {
+            chat_id: chatId,
+            text: fullText,
+            parse_mode: 'HTML',
+            ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
+          },
           { timeout: 10000 },
         );
         return response.data.result.message_id;
@@ -336,14 +404,23 @@ export class TelegramService {
   }
 
   async handleWebhookUpdate(update: TelegramUpdate): Promise<void> {
+    if (!this.isEnabled) {
+      return;
+    }
+
+    const firstTime = await this.staffTelegramBot.tryMarkProcessed(update.update_id);
+    if (!firstTime) {
+      return;
+    }
+
+    if (await this.staffTelegramBot.tryHandleStaffBranch(update)) {
+      return;
+    }
+
     const message = update.message;
     if (!message) return;
 
     const chatId = String(message.chat.id);
-
-    if (!this.isEnabled) {
-      return;
-    }
 
     if (!message.reply_to_message) {
       await this.sendInstructionMessage(chatId, TELEGRAM_INSTRUCTION_REPLY_REQUIRED);

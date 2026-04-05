@@ -18,6 +18,7 @@ import { ResendWebhookDto } from './dto/resend-webhook.dto';
 import { SendReplyDto } from './dto/send-reply.dto';
 import { ResendWebhookGuard } from './guards/resend-webhook.guard';
 import { CurrentUser, JwtPayload } from '../common/decorators/current-user.decorator';
+import { UserService } from '../user/user.service';
 import { InboundEmailDedupService } from './inbound-email-dedup.service';
 import { InboundSenderFilterService } from './inbound-sender-filter.service';
 import { extractResendWebhookEventId } from './resend-webhook.util';
@@ -84,11 +85,15 @@ export class MessagingWebhookController {
 @Controller('messages')
 @UseGuards(AuthGuard('jwt'))
 export class MessagingRestController {
-  constructor(private readonly messaging: MessagingService) {}
+  constructor(
+    private readonly messaging: MessagingService,
+    private readonly userService: UserService,
+  ) {}
 
   @Get('threads')
   async getThreads(@CurrentUser() user: JwtPayload) {
-    return this.messaging.getThreads(user.sub);
+    const ownerId = await this.userService.resolveTenantOwnerId(user.sub, user.role);
+    return this.messaging.getThreads(ownerId);
   }
 
   @Get('threads/:threadId')
@@ -96,7 +101,8 @@ export class MessagingRestController {
     @Param('threadId') threadId: string,
     @CurrentUser() user: JwtPayload,
   ) {
-    return this.messaging.getThreadWithMessages(threadId, user.sub);
+    const ownerId = await this.userService.resolveTenantOwnerId(user.sub, user.role);
+    return this.messaging.getThreadWithMessages(threadId, ownerId);
   }
 
   @Post('threads/:threadId/reply')
@@ -106,7 +112,8 @@ export class MessagingRestController {
     @Body() dto: SendReplyDto,
     @CurrentUser() user: JwtPayload,
   ): Promise<{ ok: true }> {
-    await this.messaging.sendReply(threadId, dto.text, user.sub);
+    const ownerId = await this.userService.resolveTenantOwnerId(user.sub, user.role);
+    await this.messaging.sendReply(threadId, dto.text, ownerId);
     return { ok: true };
   }
 }

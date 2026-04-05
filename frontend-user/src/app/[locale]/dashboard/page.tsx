@@ -3,7 +3,9 @@
 import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
 import { useProperties } from '@/hooks/use-properties';
-import { Building2, LayoutGrid, MessageSquare, ArrowRight, ChevronRight } from 'lucide-react';
+import { useAuth } from '@/hooks/use-auth';
+import { useUnmappedReportsCount } from '@/hooks/use-unmapped-reports';
+import { Building2, Inbox, LayoutGrid, MessageSquare, ArrowRight, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AiHoursSavedWidget } from '@/components/dashboard/ai-hours-saved-widget';
@@ -30,6 +32,25 @@ const STAT_ICONS = [
   },
 ];
 
+function DashboardUnmappedBanner() {
+  const { user } = useAuth();
+  const { data: count = 0 } = useUnmappedReportsCount();
+  const t = useTranslations('dashboard');
+  if (!user || (user.role !== 'OWNER' && user.role !== 'MANAGER')) return null;
+  if (!count) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-3 rounded-lg border border-amber-500/40 bg-amber-950/50 px-4 py-3 text-sm text-amber-100">
+      <Inbox className="h-5 w-5 shrink-0 text-amber-400" aria-hidden />
+      <p className="min-w-0 flex-1">
+        {t('unmappedBanner')} <span className="font-semibold tabular-nums">({count})</span>
+      </p>
+      <Button asChild variant="secondary" size="sm" className="shrink-0 border-amber-500/30 bg-amber-900/50 text-amber-50 hover:bg-amber-900/70">
+        <Link href="/dashboard/unmapped">{t('unmappedBannerCta')}</Link>
+      </Button>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const t = useTranslations('dashboard');
   const { properties, isLoading } = useProperties();
@@ -51,6 +72,8 @@ export default function DashboardPage() {
         <h1 className="text-xl font-bold tracking-tight text-white sm:text-2xl">{t('title')}</h1>
         <p className="mt-0.5 text-xs text-slate-400 sm:mt-1 sm:text-sm">{t('subtitle')}</p>
       </div>
+
+      <DashboardUnmappedBanner />
 
       {/* Stat cards — 3 compact columns on mobile */}
       <div className="grid grid-cols-3 gap-2 sm:gap-4">

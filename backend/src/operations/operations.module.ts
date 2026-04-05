@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { PropertyModule } from '../property/property.module';
+import { UserModule } from '../user/user.module';
 import { TaskEntity } from '../tasks/entities/task.entity';
 import { IncidentEntity } from '../incidents/entities/incident.entity';
 import { BookingEntity } from '../booking/entities/booking.entity';
@@ -15,6 +16,7 @@ import { OperationsController } from './operations.controller';
 @Module({
   imports: [
     PropertyModule,
+    UserModule,
     TypeOrmModule.forFeature([
       InventoryItemEntity,
       InventoryMovementEntity,

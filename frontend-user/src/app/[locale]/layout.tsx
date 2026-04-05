@@ -36,7 +36,7 @@ export default async function LocaleLayout({ children, params }: LayoutProps) {
           <QueryProvider>
             <NextIntlClientProvider locale={locale} messages={messages}>
               <Suspense fallback={null}>
-                <Toaster richColors position="top-center" />
+                <Toaster richColors theme="system" position="top-center" />
               </Suspense>
               {children}
             </NextIntlClientProvider>

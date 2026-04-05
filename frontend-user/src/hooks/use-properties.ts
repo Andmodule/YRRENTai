@@ -3,9 +3,10 @@ import { fetcher } from '@/lib/api/fetcher';
 import { apiClient } from '@/lib/api/client';
 import type { Property, CreatePropertyDto, UpdatePropertyDto } from '@/types';
 
-export function useProperties() {
+export function useProperties(options?: { enabled?: boolean }) {
+  const enabled = options?.enabled ?? true;
   const { data, error, isLoading, mutate } = useSWR<Property[]>(
-    '/properties',
+    enabled ? '/properties' : null,
     fetcher,
   );
 

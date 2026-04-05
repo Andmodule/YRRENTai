@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import type { Task, TaskStatus } from '../../types';
 import { KANBAN_COLUMNS } from '../../constants';
 import { KanbanColumn } from './KanbanColumn';
+import { KanbanIncidentsStrip } from './KanbanIncidentsStrip';
 import type { Incident } from '@/modules/incidents/hooks/useIncidents';
 
 export function KanbanBoardRail({
@@ -63,11 +64,7 @@ export function KanbanBoardRail({
     return () => rail.removeEventListener('scroll', onScroll);
   }, [isMd, updateActiveFromScroll]);
 
-  const columnCounts = KANBAN_COLUMNS.map((col) =>
-    col.status === 'issue'
-      ? byStatus.issue.length + boardIncidents.length
-      : byStatus[col.status].length,
-  );
+  const columnCounts = KANBAN_COLUMNS.map((col) => byStatus[col.status].length);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-1">
@@ -95,6 +92,8 @@ export function KanbanBoardRail({
         </>
       )}
 
+      <KanbanIncidentsStrip incidents={boardIncidents} onOpenIncident={onOpenIncident} />
+
       <div
         ref={boardRef}
         className={cn(
@@ -121,9 +120,6 @@ export function KanbanBoardRail({
               column={col}
               tasks={byStatus[col.status]}
               onOpenTask={onOpenTask}
-              incidents={col.status === 'issue' ? boardIncidents : undefined}
-              onOpenIncident={col.status === 'issue' ? onOpenIncident : undefined}
-              incidentColumnHint={col.status === 'issue'}
             />
           </div>
         ))}

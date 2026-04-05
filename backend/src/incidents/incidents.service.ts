@@ -3,15 +3,20 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { format } from 'date-fns';
 import { IncidentEntity, IncidentStatus, IncidentType } from './entities/incident.entity';
 import { TaskEntity } from '../tasks/entities/task.entity';
 import { PropertyEntity } from '../property/entities/property.entity';
 import { BookingEntity } from '../booking/entities/booking.entity';
 import { TelegramService } from '../telegram/telegram.service';
 import { TasksGateway } from '../tasks/tasks.gateway';
+import { UserService } from '../user/user.service';
+import { TasksService } from '../tasks/tasks.service';
 
 export interface IncidentDto {
   uuid: string;
@@ -36,6 +41,10 @@ export interface IncidentDto {
   lastStayGuestName: string | null;
   lastStayGuestPhone: string | null;
   lastStayCheckOut: string | null;
+  dispatchedTaskId: string | null;
+  /** Technician assigned to the dispatched maintenance task (when any). */
+  dispatchedAssigneeId: string | null;
+  dispatchedAssigneeName: string | null;
 }
 
 @Injectable()
@@ -49,8 +58,12 @@ export class IncidentsService {
     private readonly propertyRepo: Repository<PropertyEntity>,
     @InjectRepository(BookingEntity)
     private readonly bookingRepo: Repository<BookingEntity>,
+    @Inject(forwardRef(() => TelegramService))
     private readonly telegramService: TelegramService,
     private readonly tasksGateway: TasksGateway,
+    private readonly userService: UserService,
+    @Inject(forwardRef(() => TasksService))
+    private readonly tasksService: TasksService,
   ) {}
 
   /** Latest stay per property (by check-out), excluding cancelled/declined. */
@@ -97,7 +110,95 @@ export class IncidentsService {
       lastStayGuestName: lastStay?.guestName ?? null,
       lastStayGuestPhone: lastStay?.guestPhone?.trim() || null,
       lastStayCheckOut: lastStay?.checkOut ? lastStay.checkOut.toISOString() : null,
+      dispatchedTaskId: row.dispatchedTaskId ?? null,
+      dispatchedAssigneeId: row.dispatchedTask?.assigneeId ?? null,
+      dispatchedAssigneeName: row.dispatchedTask?.assignee
+        ? `${row.dispatchedTask.assignee.firstName} ${row.dispatchedTask.assignee.lastName}`.trim()
+        : null,
     };
+  }
+
+  /**
+   * Manager dashboard: create an incident without staff assignment checks.
+   * Reporter is the acting manager/owner user.
+   */
+  async createForManager(
+    actingUserId: string,
+    actingRole: string,
+    body: {
+      type: IncidentType;
+      propertyId: string;
+      description: string;
+      estimatedCost?: string | null;
+      photoUrls?: string[];
+    },
+  ): Promise<IncidentDto> {
+    const ownerId = await this.userService.resolveTenantOwnerId(actingUserId, actingRole);
+
+    const property = await this.propertyRepo.findOne({ where: { id: body.propertyId } });
+    if (!property) throw new NotFoundException('Property not found');
+    if (property.ownerId !== ownerId) throw new ForbiddenException();
+
+    let estimatedCost: string | null = null;
+    if (body.estimatedCost != null && String(body.estimatedCost).trim() !== '') {
+      const n = Number(String(body.estimatedCost).replace(',', '.').trim());
+      if (!Number.isFinite(n) || n < 0) {
+        throw new BadRequestException('Invalid estimatedCost');
+      }
+      estimatedCost = n.toFixed(2);
+    }
+
+    const row = this.incidentRepo.create({
+      type: body.type,
+      status: 'open',
+      propertyId: body.propertyId,
+      companyId: property.companyId,
+      taskId: null,
+      reservationId: null,
+      reportedBy: actingUserId,
+      description: body.description.trim(),
+      photoUrls: body.photoUrls?.length ? body.photoUrls : [],
+      guestName: null,
+      itemDescription: null,
+      damageLocation: null,
+      estimatedCost,
+      managerNote: null,
+      resolvedBy: null,
+      resolvedAt: null,
+    });
+    const saved = await this.incidentRepo.save(row);
+
+    const full = await this.incidentRepo.findOne({
+      where: { id: saved.id },
+      relations: ['property', 'reporter', 'dispatchedTask', 'dispatchedTask.assignee'],
+    });
+    if (!full) throw new NotFoundException();
+
+    const title = property.name;
+    const reporterLabel = full.reporter
+      ? `${full.reporter.firstName} ${full.reporter.lastName}`.trim()
+      : actingUserId;
+    const descriptionForManager = body.description.trim();
+
+    const tgMsgId = await this.telegramService.notifyIncident({
+      incidentId: saved.id,
+      ownerId: property.ownerId,
+      reporterName: reporterLabel,
+      propertyName: title,
+      description: descriptionForManager,
+      photoUrls: body.photoUrls?.length ? body.photoUrls : undefined,
+    });
+    if (tgMsgId != null) {
+      await this.incidentRepo.update(saved.id, { telegramNotifyMessageId: String(tgMsgId) });
+    }
+
+    this.tasksGateway.emitIncidentCreated({
+      incidentId: full.id,
+      propertyOwnerId: property.ownerId,
+    });
+
+    const lastByProp = await this.loadLastStayByPropertyIds([full.propertyId]);
+    return this.toDto(full, lastByProp.get(full.propertyId));
   }
 
   async createForStaff(
@@ -136,6 +237,7 @@ export class IncidentsService {
       type: body.type,
       status: 'open',
       propertyId: body.propertyId,
+      companyId: property.companyId,
       taskId: body.taskId,
       reservationId: body.reservationId ?? null,
       reportedBy: staffId,
@@ -161,29 +263,25 @@ export class IncidentsService {
     const reporterLabel = full.reporter
       ? `${full.reporter.firstName} ${full.reporter.lastName}`.trim()
       : staffId;
-    const lines =
+    const descriptionForManager =
       body.type === 'lost_item'
-        ? [
-            '🔑 Забытая вещь',
-            `Объект: ${title}`,
-            `Описание: ${body.itemDescription || body.description}`,
-            `Гость: ${body.guestName || 'не указан'}`,
-            `Сотрудник: ${reporterLabel}`,
-          ]
-        : [
-            '⚠️ Повреждение в объекте',
-            `Объект: ${title}`,
-            `Что: ${body.description}`,
-            `Где: ${body.damageLocation || '—'}`,
-            `Сотрудник: ${reporterLabel}`,
-          ];
+        ? [body.itemDescription, body.description, body.guestName ? `Гость: ${body.guestName}` : '']
+            .filter(Boolean)
+            .join('\n')
+            .trim() || body.description.trim()
+        : [body.description, body.damageLocation ? `Где: ${body.damageLocation}` : '']
+            .filter(Boolean)
+            .join('\n')
+            .trim();
 
-    const tgMsgId = await this.telegramService.notifyIncident(
-      body.propertyId,
-      property.ownerId,
-      lines.join('\n'),
-      body.photoUrls?.length ? body.photoUrls : undefined,
-    );
+    const tgMsgId = await this.telegramService.notifyIncident({
+      incidentId: saved.id,
+      ownerId: property.ownerId,
+      reporterName: reporterLabel,
+      propertyName: title,
+      description: descriptionForManager,
+      photoUrls: body.photoUrls?.length ? body.photoUrls : undefined,
+    });
     if (tgMsgId != null) {
       await this.incidentRepo.update(saved.id, { telegramNotifyMessageId: String(tgMsgId) });
     }
@@ -205,6 +303,8 @@ export class IncidentsService {
       .createQueryBuilder('i')
       .innerJoinAndSelect('i.property', 'p')
       .leftJoinAndSelect('i.reporter', 'r')
+      .leftJoinAndSelect('i.dispatchedTask', 'dispatchedTask')
+      .leftJoinAndSelect('dispatchedTask.assignee', 'dispatchedAssignee')
       .where('p.ownerId = :ownerId', { ownerId })
       .orderBy('i.createdAt', 'DESC');
 
@@ -220,7 +320,7 @@ export class IncidentsService {
   async findOneForOwner(incidentId: string, ownerId: string): Promise<IncidentDto> {
     const row = await this.incidentRepo.findOne({
       where: { id: incidentId },
-      relations: ['property', 'reporter'],
+      relations: ['property', 'reporter', 'dispatchedTask', 'dispatchedTask.assignee'],
     });
     if (!row || row.property.ownerId !== ownerId) throw new NotFoundException();
     const lastByProp = await this.loadLastStayByPropertyIds([row.propertyId]);
@@ -252,7 +352,51 @@ export class IncidentsService {
     await this.incidentRepo.save(row);
     const reloaded = await this.incidentRepo.findOne({
       where: { id: row.id },
+      relations: ['property', 'reporter', 'dispatchedTask', 'dispatchedTask.assignee'],
+    });
+    if (!reloaded) throw new NotFoundException();
+    const lastByProp = await this.loadLastStayByPropertyIds([reloaded.propertyId]);
+    return this.toDto(reloaded, lastByProp.get(reloaded.propertyId));
+  }
+
+  /**
+   * After manager verifies the incident in the dashboard: create a maintenance task and notify the technician.
+   */
+  async dispatchMaintenanceTask(
+    incidentId: string,
+    actingUserId: string,
+    actingRole: string,
+    assigneeId: string,
+  ): Promise<IncidentDto> {
+    const ownerId = await this.userService.resolveTenantOwnerId(actingUserId, actingRole);
+    const incident = await this.incidentRepo.findOne({
+      where: { id: incidentId },
       relations: ['property', 'reporter'],
+    });
+    if (!incident || incident.property.ownerId !== ownerId) {
+      throw new NotFoundException();
+    }
+    if (incident.dispatchedTaskId) {
+      throw new BadRequestException('Incident already has a dispatched task');
+    }
+    const assignee = await this.userService.findById(assigneeId);
+    if (!assignee || assignee.role !== 'STAFF' || assignee.employerOwnerId !== ownerId) {
+      throw new BadRequestException('Invalid assignee');
+    }
+
+    await this.tasksService.createTasksBulkForManager(actingUserId, actingRole, {
+      propertyIds: [incident.propertyId],
+      title: `Инцидент: ${incident.description.slice(0, 120)}`,
+      type: 'maintenance',
+      assigneeId,
+      dueDate: format(new Date(), 'yyyy-MM-dd'),
+      notes: incident.description,
+      incidentId: incident.id,
+    });
+
+    const reloaded = await this.incidentRepo.findOne({
+      where: { id: incidentId },
+      relations: ['property', 'reporter', 'dispatchedTask', 'dispatchedTask.assignee'],
     });
     if (!reloaded) throw new NotFoundException();
     const lastByProp = await this.loadLastStayByPropertyIds([reloaded.propertyId]);

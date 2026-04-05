@@ -9,8 +9,9 @@ import {
 import { PropertyEntity } from '../../property/entities/property.entity';
 import { TaskEntity } from '../../tasks/entities/task.entity';
 import { UserEntity } from '../../user/entities/user.entity';
+import { CompanyEntity } from '../../user/entities/company.entity';
 
-export type IncidentType = 'lost_item' | 'damage';
+export type IncidentType = 'lost_item' | 'damage' | 'rule_violation' | 'emergency';
 export type IncidentStatus = 'open' | 'in_review' | 'resolved' | 'closed';
 
 @Entity('incidents')
@@ -31,12 +32,27 @@ export class IncidentEntity {
   @JoinColumn({ name: 'propertyId' })
   property!: PropertyEntity;
 
+  @Column({ type: 'uuid' })
+  companyId!: string;
+
+  @ManyToOne(() => CompanyEntity, { onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'companyId' })
+  company!: CompanyEntity;
+
   @Column({ type: 'uuid', nullable: true })
   taskId!: string | null;
 
   @ManyToOne(() => TaskEntity, { nullable: true })
   @JoinColumn({ name: 'taskId' })
   task!: TaskEntity | null;
+
+  /** Maintenance task created after manager verified and dispatched (not auto-notified before this). */
+  @Column({ type: 'uuid', nullable: true })
+  dispatchedTaskId!: string | null;
+
+  @ManyToOne(() => TaskEntity, { nullable: true })
+  @JoinColumn({ name: 'dispatchedTaskId' })
+  dispatchedTask!: TaskEntity | null;
 
   @Column({ type: 'uuid', nullable: true })
   reservationId!: string | null;

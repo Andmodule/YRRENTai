@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -13,16 +13,14 @@ import {
   type DragStartEvent,
 } from '@dnd-kit/core';
 import { useTranslations } from 'next-intl';
-import { AlertCircle, ChevronDown, Kanban, LayoutList, Table2, X } from 'lucide-react';
+import { AlertCircle } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Select } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useTasks, useUpdateTaskStatus } from '../../hooks/useTasks';
 import { useTaskFilters } from '../../hooks/useTaskFilters';
 import { useTasksViewMode } from '../../hooks/useTasksViewMode';
-import type { Task, TaskFilters, TaskPriority, TaskStatus } from '../../types';
+import type { Task, TaskFilters, TaskStatus } from '../../types';
 import { KANBAN_COLUMNS } from '../../constants';
 import { TaskCard } from './TaskCard';
 import { TaskListView } from './TaskListView';
@@ -33,9 +31,11 @@ import type { Incident } from '@/modules/incidents/hooks/useIncidents';
 import { IncidentDetailDrawer } from '@/modules/incidents/components/IncidentDetailDrawer';
 import { IncidentKanbanCard } from '@/modules/incidents/components/IncidentKanbanCard';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { useMatchMedia } from '@/hooks/use-match-media';
-import { cn } from '@/lib/utils';
 import { KanbanBoardRail } from './KanbanBoardRail';
+import { TasksFiltersBar } from './TasksFiltersBar';
+import { usePendingTaskDelete } from '../../hooks/usePendingTaskDelete';
+import { usePendingTaskMarkDone } from '../../hooks/usePendingTaskMarkDone';
+import { usePendingIncidentClose } from '@/modules/incidents/hooks/usePendingIncidentClose';
 
 export function ManagerKanban({
   filters,
@@ -45,7 +45,23 @@ export function ManagerKanban({
   onFiltersChange: (f: TaskFilters | ((prev: TaskFilters) => TaskFilters)) => void;
 }) {
   const t = useTranslations('tasks');
-  const { view, setView } = useTasksViewMode();
+  const tTma = useTranslations('tma');
+  const { enqueueDeleteAfterSwipe } = usePendingTaskDelete({
+    taskDeletedMessage: tTma('taskDeletedToast'),
+    undoLabel: tTma('undoDelete'),
+    deleteErrorMessage: tTma('taskDeleteError'),
+  });
+  const { enqueueMarkDoneAfterSwipe } = usePendingTaskMarkDone({
+    taskMarkedMessage: tTma('taskMarkedDoneToast'),
+    undoLabel: tTma('undoDelete'),
+    markDoneErrorMessage: tTma('taskMarkDoneError'),
+  });
+  const { enqueueCloseAfterSwipe } = usePendingIncidentClose({
+    incidentClosedMessage: tTma('incidentClosedToast'),
+    undoLabel: tTma('undoDelete'),
+    closeErrorMessage: tTma('incidentCloseError'),
+  });
+  const { view } = useTasksViewMode();
   const { data, isLoading, isError, refetch } = useTasks(filters);
   const { data: incidentsRaw, isLoading: incidentsLoading } = useIncidents();
   const filtered = useTaskFilters(data?.tasks ?? [], filters);
@@ -64,12 +80,14 @@ export function ManagerKanban({
     const q = filters.propertyQuery.trim().toLowerCase();
     return incidentsRaw.filter((i) => {
       if (i.status !== 'open' && i.status !== 'in_review') return false;
-      const t0 = new Date(i.createdAt).getTime();
-      if (t0 < start.getTime() || t0 > end.getTime()) return false;
+      if (filters.dateRangeEnabled) {
+        const t0 = new Date(i.createdAt).getTime();
+        if (t0 < start.getTime() || t0 > end.getTime()) return false;
+      }
       if (q && !i.propertyTitle.toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [incidentsRaw, filters.dateRange, filters.propertyQuery]);
+  }, [incidentsRaw, filters.dateRange, filters.dateRangeEnabled, filters.propertyQuery]);
 
   const tableTasks = useMemo(() => {
     return [...filtered].sort((a, b) => {
@@ -145,180 +163,27 @@ export function ManagerKanban({
     setDetailIncident(incident);
   };
 
-  const patchStatus = (uuid: string, status: TaskStatus) => {
-    const task = findTask(uuid);
-    if (task && task.status !== status) {
+  const patchStatus = useCallback(
+    (uuid: string, status: TaskStatus) => {
+      const task =
+        filtered.find((x) => x.uuid === uuid) ?? data?.tasks?.find((x) => x.uuid === uuid);
+      if (!task) return;
+      if (task.status === status) return;
       updateStatus({ uuid, status });
-    }
-  };
-
-  const fromStr = filters.dateRange.start.toISOString().slice(0, 10);
-  const toStr = filters.dateRange.end.toISOString().slice(0, 10);
+    },
+    [filtered, data?.tasks, updateStatus],
+  );
 
   const isEmptyBoard = filtered.length === 0 && boardIncidents.length === 0;
 
-  const isMd = useMatchMedia('(min-width: 768px)');
-  const [filtersOpen, setFiltersOpen] = useState(false);
-  const wasMdRef = useRef(false);
-  useEffect(() => {
-    if (wasMdRef.current && !isMd) setFiltersOpen(false);
-    wasMdRef.current = isMd;
-  }, [isMd]);
-
-  const filterGrid = (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-x-3 sm:gap-y-2 lg:flex lg:flex-wrap lg:items-end">
-      <div className="grid grid-cols-2 gap-2 sm:contents lg:flex lg:items-center lg:gap-2">
-        <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
-          {t('filters.from')}
-          <Input
-            type="date"
-            value={fromStr}
-            onChange={(e) => {
-              const v = e.target.value;
-              if (!v) return;
-              onFiltersChange((prev) => ({
-                ...prev,
-                dateRange: { ...prev.dateRange, start: new Date(v + 'T12:00:00') },
-              }));
-            }}
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
-          {t('filters.to')}
-          <Input
-            type="date"
-            value={toStr}
-            onChange={(e) => {
-              const v = e.target.value;
-              if (!v) return;
-              onFiltersChange((prev) => ({
-                ...prev,
-                dateRange: { ...prev.dateRange, end: new Date(v + 'T12:00:00') },
-              }));
-            }}
-          />
-        </label>
-      </div>
-      <label className="flex min-w-0 flex-col gap-1 text-xs font-medium text-muted-foreground sm:min-w-[140px]">
-        {t('filters.status')}
-        <Select
-          value={filters.statusFilter}
-          onChange={(e) =>
-            onFiltersChange((prev) => ({
-              ...prev,
-              statusFilter: e.target.value as TaskFilters['statusFilter'],
-            }))
-          }
-        >
-          <option value="all">{t('filters.all')}</option>
-          <option value="pending">{t('status.pending')}</option>
-          <option value="in_progress">{t('status.in_progress')}</option>
-          <option value="done">{t('status.done')}</option>
-          <option value="issue">{t('status.issue')}</option>
-        </Select>
-      </label>
-      <label className="flex min-w-0 flex-col gap-1 text-xs font-medium text-muted-foreground sm:min-w-[140px]">
-        {t('filters.priority')}
-        <Select
-          value={filters.priorityFilter}
-          onChange={(e) =>
-            onFiltersChange((prev) => ({
-              ...prev,
-              priorityFilter: e.target.value as TaskPriority | 'all',
-            }))
-          }
-        >
-          <option value="all">{t('filters.all')}</option>
-          <option value="urgent">{t('priority.urgent')}</option>
-          <option value="normal">{t('priority.normal')}</option>
-          <option value="low">{t('priority.low')}</option>
-        </Select>
-      </label>
-      <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs font-medium text-muted-foreground sm:min-w-[180px]">
-        {t('filters.property')}
-        <Input
-          value={filters.propertyQuery}
-          onChange={(e) => onFiltersChange((prev) => ({ ...prev, propertyQuery: e.target.value }))}
-          placeholder={t('filters.propertyPlaceholder')}
-        />
-      </label>
-    </div>
-  );
-
-  const viewButtons = (
-    <div
-      className="flex w-full min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
-      role="toolbar"
-      aria-label={t('viewModes.toolbarAria')}
-    >
-      <div className="flex flex-wrap gap-1 rounded-lg border border-border bg-muted/30 p-1">
-        {(
-          [
-            { id: 'list' as const, icon: LayoutList },
-            { id: 'kanban' as const, icon: Kanban },
-            { id: 'table' as const, icon: Table2 },
-          ] as const
-        ).map(({ id, icon: Icon }) => (
-          <Button
-            key={id}
-            type="button"
-            variant={view === id ? 'secondary' : 'ghost'}
-            size="sm"
-            className={cn(
-              'gap-1.5 rounded-md px-2.5 sm:px-3',
-              view === id && 'bg-background shadow-sm',
-            )}
-            onClick={() => setView(id)}
-            aria-pressed={view === id}
-          >
-            <Icon className="h-4 w-4 shrink-0" aria-hidden />
-            <span className="text-xs font-medium sm:text-sm">{t(`viewModes.${id}`)}</span>
-          </Button>
-        ))}
-      </div>
-      <p className="hidden max-w-sm text-xs leading-snug text-muted-foreground lg:block lg:text-right">
-        {t('viewModes.hint')}
-      </p>
-    </div>
-  );
-
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4">
-      {viewButtons}
-
-      {isMd ? (
-        filterGrid
-      ) : filtersOpen ? (
-        <div className="rounded-lg border border-border bg-muted/15 p-3">
-          <div className="mb-3 flex items-center justify-between gap-2">
-            <span className="text-sm font-medium">{t('filters.mobileSummary')}</span>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 shrink-0"
-              onClick={() => setFiltersOpen(false)}
-              aria-label={t('filters.mobileClose')}
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
-          {filterGrid}
-        </div>
-      ) : (
-        <Button
-          type="button"
-          variant="outline"
-          className="h-11 w-full justify-between gap-2 px-3"
-          onClick={() => setFiltersOpen(true)}
-        >
-          <span className="text-sm font-medium">{t('filters.mobileSummary')}</span>
-          <ChevronDown className="h-4 w-4 shrink-0 opacity-70" />
-        </Button>
-      )}
+    <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden md:gap-3">
+      <div className="shrink-0 max-md:-mx-2">
+        <TasksFiltersBar filters={filters} onFiltersChange={onFiltersChange} />
+      </div>
 
       {isError && (
-        <Alert variant="destructive">
+        <Alert variant="destructive" className="shrink-0">
           <AlertCircle className="h-4 w-4" />
           <AlertDescription className="flex flex-wrap items-center gap-2">
             {t('loadError')}
@@ -330,36 +195,41 @@ export function ManagerKanban({
       )}
 
       {(isLoading || incidentsLoading) && (
-        <div className="flex flex-col gap-3">
-          <Skeleton className="h-10 w-full max-w-md rounded-lg" />
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
+          <Skeleton className="h-10 w-full max-w-md shrink-0 rounded-lg" />
           {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-20 w-full rounded-xl" />
+            <Skeleton key={i} className="h-20 w-full shrink-0 rounded-xl" />
           ))}
         </div>
       )}
 
       {!isLoading && !isError && view === 'list' && (
-        <>
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           {isEmptyBoard ? (
-            <p className="rounded-xl border border-dashed border-border bg-muted/20 px-4 py-10 text-center text-sm text-muted-foreground">
+            <p className="shrink-0 rounded-lg border border-dashed border-border/40 bg-muted/15 px-2 py-6 text-center text-sm text-muted-foreground md:rounded-xl md:px-4 md:py-10">
               {t('viewModes.listEmpty')}
             </p>
           ) : (
-            <TaskListView
-              byStatus={byStatus}
-              boardIncidents={boardIncidents}
-              onOpenTask={openTask}
-              onOpenIncident={openIncident}
-              onStatusChange={patchStatus}
-            />
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch]">
+              <TaskListView
+                tasks={filtered}
+                boardIncidents={boardIncidents}
+                onOpenTask={openTask}
+                onOpenIncident={openIncident}
+                onStatusChange={patchStatus}
+                onSwipeDeleteTask={enqueueDeleteAfterSwipe}
+                onSwipeMarkDone={enqueueMarkDoneAfterSwipe}
+                onSwipeCloseIncident={enqueueCloseAfterSwipe}
+              />
+            </div>
           )}
-        </>
+        </div>
       )}
 
       {!isLoading && !isError && view === 'table' && (
-        <div className="flex flex-col gap-4">
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
           {filtered.length === 0 && boardIncidents.length === 0 ? (
-            <p className="rounded-xl border border-dashed border-border bg-muted/20 px-4 py-10 text-center text-sm text-muted-foreground">
+            <p className="rounded-lg border border-dashed border-border/40 bg-muted/15 px-2 py-6 text-center text-sm text-muted-foreground md:rounded-xl md:px-4 md:py-10">
               {t('viewModes.listEmpty')}
             </p>
           ) : (
@@ -385,28 +255,30 @@ export function ManagerKanban({
       )}
 
       {!isLoading && !isError && view === 'kanban' && (
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCorners}
-          onDragStart={handleDragStart}
-          onDragEnd={handleDragEnd}
-        >
-          <TooltipProvider delayDuration={200}>
-            <KanbanBoardRail
-              byStatus={byStatus}
-              boardIncidents={boardIncidents}
-              onOpenTask={openTask}
-              onOpenIncident={openIncident}
-            />
-          </TooltipProvider>
-          <DragOverlay dropAnimation={null}>
-            {activeTask ? (
-              <div className="w-[260px] opacity-95">
-                <TaskCard task={activeTask} onOpen={() => {}} />
-              </div>
-            ) : null}
-          </DragOverlay>
-        </DndContext>
+        <div className="min-h-0 flex-1 overflow-auto">
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCorners}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+          >
+            <TooltipProvider delayDuration={200}>
+              <KanbanBoardRail
+                byStatus={byStatus}
+                boardIncidents={boardIncidents}
+                onOpenTask={openTask}
+                onOpenIncident={openIncident}
+              />
+            </TooltipProvider>
+            <DragOverlay dropAnimation={null}>
+              {activeTask ? (
+                <div className="w-[260px] opacity-95">
+                  <TaskCard task={activeTask} onOpen={() => {}} />
+                </div>
+              ) : null}
+            </DragOverlay>
+          </DndContext>
+        </div>
       )}
 
       <TaskDetailDrawer task={detailTask} open={!!detailTask} onOpenChange={(o) => !o && setDetailTask(null)} />

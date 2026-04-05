@@ -15,7 +15,10 @@ export interface Task {
   type: TaskType;
   status: TaskStatus;
   priority: TaskPriority;
-  propertyId: string;
+  /** Nullable when the API returns no property (rare); empty string also treated as unassigned in list grouping. */
+  propertyId: string | null;
+  /** Task applies to all listings; list groups under "General tasks" (API may still send a fallback propertyId). */
+  isGeneralTask?: boolean;
   propertyTitle: string;
   propertyAddress: string;
   streetAddress?: string;
@@ -23,6 +26,9 @@ export interface Task {
   contextLabel: string | null;
   assigneeId: string | null;
   assigneeName: string | null;
+  /** Present when task was created after creator tracking; manager who created the task. */
+  creatorId?: string | null;
+  creatorName?: string | null;
   dueDate: string;
   dueTime: string | null;
   notes: string;
@@ -39,6 +45,17 @@ export interface Task {
     checked: number;
     requiredUnchecked: number;
   } | null;
+  /** Present when this task was created from an incident (dispatch / drawer). */
+  incidentId?: string | null;
+}
+
+export interface TaskChecklistItem {
+  uuid: string;
+  text: string;
+  required: boolean;
+  sortOrder: number;
+  checked: boolean;
+  checkedAt: string | null;
 }
 
 export interface TaskNote {
@@ -56,6 +73,8 @@ export interface TasksApiResponse {
 }
 
 export interface TaskFilters {
+  /** When false, API uses a wide due-date window; list shows all non-done tasks when status is "all". */
+  dateRangeEnabled: boolean;
   dateRange: { start: Date; end: Date };
   statusFilter: TaskStatus | 'all';
   priorityFilter: TaskPriority | 'all';
@@ -67,4 +86,22 @@ export interface StaffMember {
   id: string;
   displayName: string;
   role: string;
+}
+
+/** POST /tasks/voice-parse — STT + LLM extraction (backend mock until Whisper + LLM). */
+export interface VoiceParseResult {
+  entityType: 'task' | 'incident';
+  transcript: string;
+  /** Task */
+  isGeneralTask?: boolean;
+  propertyIds?: string[];
+  title?: string;
+  type?: TaskType;
+  assigneeId?: string | null;
+  dueDate?: string;
+  priority?: TaskPriority;
+  /** Incident */
+  incidentType?: 'damage' | 'lost_item' | 'rule_violation' | 'emergency';
+  propertyId?: string | null;
+  estimatedCost?: number | null;
 }

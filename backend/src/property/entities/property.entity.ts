@@ -9,6 +9,7 @@ import {
   JoinColumn,
 } from 'typeorm';
 import { UserEntity } from '../../user/entities/user.entity';
+import { CompanyEntity } from '../../user/entities/company.entity';
 import { OtaPlatformEntity } from './ota-platform.entity';
 import { PropertyChannelListingEntity } from './property-channel-listing.entity';
 
@@ -79,6 +80,13 @@ export class PropertyEntity {
   @ManyToOne(() => UserEntity)
   @JoinColumn({ name: 'ownerId' })
   owner!: UserEntity;
+
+  @Column({ type: 'uuid' })
+  companyId!: string;
+
+  @ManyToOne(() => CompanyEntity, { onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'companyId' })
+  company!: CompanyEntity;
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;

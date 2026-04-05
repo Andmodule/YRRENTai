@@ -11,6 +11,7 @@ import { ConversationEntity } from './entities/conversation.entity';
 import { ConversationService } from './conversation.service';
 import { AgentModule } from '../agent/agent.module';
 import { PropertyModule } from '../property/property.module';
+import { UserModule } from '../user/user.module';
 import { KnowledgeBaseModule } from '../knowledge-base/knowledge-base.module';
 import { TelegramModule } from '../telegram/telegram.module';
 import { MessagingModule } from '../messaging/messaging.module';
@@ -21,6 +22,7 @@ import { MessagingModule } from '../messaging/messaging.module';
     JwtModule.register({}),
     AgentModule,
     PropertyModule,
+    UserModule,
     KnowledgeBaseModule,
     forwardRef(() => TelegramModule),
     forwardRef(() => MessagingModule),

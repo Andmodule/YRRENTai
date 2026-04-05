@@ -18,6 +18,7 @@ import { PropertyService } from '../../property/property.service';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
+import { UserService } from '../../user/user.service';
 import { mapRoomRatesToPropertyPreview } from './zodomus-property-preview.util';
 import { formatZodomusHttpException } from './zodomus-status.util';
 
@@ -31,6 +32,7 @@ export class ZodomusController {
     private readonly zodomusSync: ZodomusSyncService,
     private readonly availabilityPush: ZodomusAvailabilityPushService,
     private readonly propertyService: PropertyService,
+    private readonly userService: UserService,
   ) {}
 
   /**
@@ -93,7 +95,12 @@ export class ZodomusController {
     const result =
       user.role === 'SUPERADMIN'
         ? await this.zodomusSync.syncQueueForPropertyAdmin(propertyId, channelId, force)
-        : await this.zodomusSync.syncQueueForProperty(user.sub, propertyId, channelId, force);
+        : await this.zodomusSync.syncQueueForProperty(
+            await this.userService.resolveTenantOwnerId(user.sub, user.role),
+            propertyId,
+            channelId,
+            force,
+          );
     return { data: result };
   }
 
@@ -109,7 +116,11 @@ export class ZodomusController {
     const result =
       user.role === 'SUPERADMIN'
         ? await this.zodomusSync.syncAllProperties(channelId, force)
-        : await this.zodomusSync.syncAllForUser(user.sub, channelId, force);
+        : await this.zodomusSync.syncAllForUser(
+            await this.userService.resolveTenantOwnerId(user.sub, user.role),
+            channelId,
+            force,
+          );
     return { data: result };
   }
 
@@ -133,7 +144,7 @@ export class ZodomusController {
     if (user.role === 'SUPERADMIN') {
       await this.propertyService.findByIdForAdmin(propertyId);
     } else {
-      await this.propertyService.findOne(propertyId, user.sub);
+      await this.propertyService.findOneForUser(propertyId, user.sub, user.role);
     }
     try {
       await this.availabilityPush.pushAvailabilityNow(propertyId, { ignoreAutoPushDisable: true });
@@ -160,7 +171,11 @@ export class ZodomusController {
     const result =
       user.role === 'SUPERADMIN'
         ? await this.zodomusSync.importSummaryForPropertyAdmin(propertyId, channelId)
-        : await this.zodomusSync.importSummaryForProperty(user.sub, propertyId, channelId);
+        : await this.zodomusSync.importSummaryForProperty(
+            await this.userService.resolveTenantOwnerId(user.sub, user.role),
+            propertyId,
+            channelId,
+          );
     return { data: result };
   }
 }

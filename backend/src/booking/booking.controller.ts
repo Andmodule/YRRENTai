@@ -27,14 +27,14 @@ export class BookingController {
   @Post()
   @Roles('OWNER', 'MANAGER')
   async create(@Body() dto: CreateBookingDto, @CurrentUser() user: JwtPayload) {
-    const booking = await this.bookingService.create(dto, user.sub);
+    const booking = await this.bookingService.create(dto, user.sub, user.role);
     return { data: booking };
   }
 
   @Get()
   @Roles('OWNER', 'MANAGER')
   async findAll(@Query('propertyId') propertyId: string, @CurrentUser() user: JwtPayload) {
-    const rows = await this.bookingService.findAllByProperty(propertyId, user.sub);
+    const rows = await this.bookingService.findAllByProperty(propertyId, user.sub, user.role);
     return { data: rows };
   }
 
@@ -50,14 +50,20 @@ export class BookingController {
     if (!propertyId?.trim() || !checkIn?.trim() || !checkOut?.trim()) {
       throw new BadRequestException('propertyId, checkIn, checkOut are required');
     }
-    const data = await this.bookingService.previewConflict(propertyId, checkIn, checkOut, user.sub);
+    const data = await this.bookingService.previewConflict(
+      propertyId,
+      checkIn,
+      checkOut,
+      user.sub,
+      user.role,
+    );
     return { data };
   }
 
   @Get(':id')
   @Roles('OWNER', 'MANAGER')
   async findOne(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
-    const booking = await this.bookingService.findOne(id, user.sub);
+    const booking = await this.bookingService.findOne(id, user.sub, user.role);
     return { data: booking };
   }
 
@@ -68,7 +74,7 @@ export class BookingController {
     @Body() dto: PatchBookingDto,
     @CurrentUser() user: JwtPayload,
   ) {
-    const booking = await this.bookingService.patch(id, dto, user.sub);
+    const booking = await this.bookingService.patch(id, dto, user.sub, user.role);
     return { data: booking };
   }
 
@@ -79,7 +85,13 @@ export class BookingController {
     @Body() dto: { status: string; cancelledBy?: string },
     @CurrentUser() user: JwtPayload,
   ) {
-    const booking = await this.bookingService.transition(id, dto.status, user.sub, dto.cancelledBy);
+    const booking = await this.bookingService.transition(
+      id,
+      dto.status,
+      user.sub,
+      dto.cancelledBy,
+      user.role,
+    );
     return { data: booking };
   }
 }

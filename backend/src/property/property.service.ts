@@ -5,6 +5,7 @@ import { PropertyEntity } from './entities/property.entity';
 import { PropertyChannelListingEntity } from './entities/property-channel-listing.entity';
 import type { CreatePropertyDto, UpdatePropertyDto } from '@rentai/shared';
 import { OtaPlatformService } from './ota-platform.service';
+import { UserService } from '../user/user.service';
 
 @Injectable()
 export class PropertyService {
@@ -15,11 +16,16 @@ export class PropertyService {
     private readonly channelListingRepository: Repository<PropertyChannelListingEntity>,
     private readonly otaPlatformService: OtaPlatformService,
     private readonly dataSource: DataSource,
+    private readonly userService: UserService,
   ) {}
 
   async create(dto: CreatePropertyDto, ownerId: string): Promise<PropertyEntity> {
     const channelListings = dto.channelListings ?? [];
     await this.assertChannelListingsPlatformsValid(channelListings);
+    const owner = await this.userService.findById(ownerId);
+    if (!owner?.companyId) {
+      throw new BadRequestException('Owner company not found');
+    }
     const property = this.propertyRepository.create({
       name: dto.name,
       country: dto.country,
@@ -31,6 +37,7 @@ export class PropertyService {
       maxGuests: dto.maxGuests,
       icalImportUrls: dto.icalImportUrls ?? [],
       ownerId,
+      companyId: owner.companyId,
     });
     try {
       const saved = await this.propertyRepository.save(property);
@@ -174,6 +181,15 @@ export class PropertyService {
     }
     this.sortChannelListingsInPlace(property);
     return property;
+  }
+
+  /** Resolves tenant owner for OWNER/MANAGER; SUPERADMIN sees any property. */
+  async findOneForUser(id: string, userId: string, role: string): Promise<PropertyEntity> {
+    if (role === 'SUPERADMIN') {
+      return this.findByIdForAdmin(id);
+    }
+    const ownerId = await this.userService.resolveTenantOwnerId(userId, role);
+    return this.findOne(id, ownerId);
   }
 
   /** SUPERADMIN: load any property by id (ownership not checked). */

@@ -21,6 +21,7 @@ import { ListingTranslationsService } from './listing-translations.service';
 import { ManagerReportsService } from './manager-reports.service';
 import type { InventoryCategory } from './entities/inventory-item.entity';
 import type { InventoryMovementReason } from './entities/inventory-movement.entity';
+import { UserService } from '../user/user.service';
 
 @ApiTags('Operations')
 @ApiBearerAuth()
@@ -31,6 +32,7 @@ export class OperationsController {
     private readonly inventoryService: InventoryService,
     private readonly listingTranslationsService: ListingTranslationsService,
     private readonly managerReportsService: ManagerReportsService,
+    private readonly userService: UserService,
   ) {}
 
   @Get('reports/summary')
@@ -42,7 +44,8 @@ export class OperationsController {
   ) {
     const from = fromParam?.trim() || format(addDays(new Date(), -30), 'yyyy-MM-dd');
     const to = toParam?.trim() || format(new Date(), 'yyyy-MM-dd');
-    const summary = await this.managerReportsService.getSummary(user.sub, from, to);
+    const ownerId = await this.userService.resolveTenantOwnerId(user.sub, user.role);
+    const summary = await this.managerReportsService.getSummary(ownerId, from, to);
     return { data: summary };
   }
 
@@ -52,7 +55,8 @@ export class OperationsController {
     @CurrentUser() user: JwtPayload,
     @Query('propertyId') propertyId: string | undefined,
   ) {
-    const items = await this.inventoryService.listItems(user.sub, propertyId?.trim());
+    const ownerId = await this.userService.resolveTenantOwnerId(user.sub, user.role);
+    const items = await this.inventoryService.listItems(ownerId, propertyId?.trim());
     return { data: { items } };
   }
 
@@ -72,7 +76,8 @@ export class OperationsController {
       notes?: string | null;
     },
   ) {
-    const item = await this.inventoryService.createItem(user.sub, body);
+    const ownerId = await this.userService.resolveTenantOwnerId(user.sub, user.role);
+    const item = await this.inventoryService.createItem(ownerId, body);
     return { data: { item } };
   }
 
@@ -91,14 +96,16 @@ export class OperationsController {
       notes: string | null;
     }>,
   ) {
-    const item = await this.inventoryService.updateItem(user.sub, id, body);
+    const ownerId = await this.userService.resolveTenantOwnerId(user.sub, user.role);
+    const item = await this.inventoryService.updateItem(ownerId, id, body);
     return { data: { item } };
   }
 
   @Delete('inventory/:id')
   @Roles('OWNER', 'MANAGER')
   async deleteInventory(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
-    await this.inventoryService.deleteItem(user.sub, id);
+    const ownerId = await this.userService.resolveTenantOwnerId(user.sub, user.role);
+    await this.inventoryService.deleteItem(ownerId, id);
     return { data: null };
   }
 
@@ -115,7 +122,8 @@ export class OperationsController {
       note?: string | null;
     },
   ) {
-    const result = await this.inventoryService.addMovement(user.sub, user.sub, id, body);
+    const ownerId = await this.userService.resolveTenantOwnerId(user.sub, user.role);
+    const result = await this.inventoryService.addMovement(ownerId, user.sub, id, body);
     return { data: result };
   }
 
@@ -126,8 +134,9 @@ export class OperationsController {
     @Param('id') id: string,
     @Query('limit') limit: string | undefined,
   ) {
+    const ownerId = await this.userService.resolveTenantOwnerId(user.sub, user.role);
     const movements = await this.inventoryService.listMovements(
-      user.sub,
+      ownerId,
       id,
       limit ? Number(limit) : 50,
     );
@@ -140,7 +149,8 @@ export class OperationsController {
     @CurrentUser() user: JwtPayload,
     @Param('propertyId') propertyId: string,
   ) {
-    const translations = await this.listingTranslationsService.listForProperty(user.sub, propertyId);
+    const ownerId = await this.userService.resolveTenantOwnerId(user.sub, user.role);
+    const translations = await this.listingTranslationsService.listForProperty(ownerId, propertyId);
     return { data: { translations } };
   }
 
@@ -157,7 +167,8 @@ export class OperationsController {
       longDescription?: string | null;
     },
   ) {
-    const translation = await this.listingTranslationsService.upsert(user.sub, propertyId, locale, body);
+    const ownerId = await this.userService.resolveTenantOwnerId(user.sub, user.role);
+    const translation = await this.listingTranslationsService.upsert(ownerId, propertyId, locale, body);
     return { data: { translation } };
   }
 
@@ -168,7 +179,8 @@ export class OperationsController {
     @Param('propertyId') propertyId: string,
     @Param('locale') locale: string,
   ) {
-    await this.listingTranslationsService.delete(user.sub, propertyId, locale);
+    const ownerId = await this.userService.resolveTenantOwnerId(user.sub, user.role);
+    await this.listingTranslationsService.delete(ownerId, propertyId, locale);
     return { data: null };
   }
 }

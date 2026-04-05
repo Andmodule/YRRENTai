@@ -4,7 +4,7 @@ import { memo } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import { useTranslations } from 'next-intl';
-import { Clock, User, MessageCircle, BadgeCheck } from 'lucide-react';
+import { Clock, User, MessageCircle, BadgeCheck, Link2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Task } from '../../types';
 import { TaskTypeBadge } from '../shared/TaskTypeBadge';
@@ -17,6 +17,7 @@ export const TaskCard = memo(function TaskCard({
   onOpen: (t: Task) => void;
 }) {
   const t = useTranslations('tasks');
+  const tKanban = useTranslations('tasks.kanban');
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: task.uuid,
     data: { task },
@@ -70,6 +71,15 @@ export const TaskCard = memo(function TaskCard({
               {task.unseenNotesCount}
             </span>
           )}
+          {task.incidentId ? (
+            <span
+              className="inline-flex max-w-[9rem] items-center gap-0.5 truncate rounded-md border border-border/70 bg-muted/40 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground"
+              title={tKanban('taskFromIncidentBadge')}
+            >
+              <Link2 className="h-3 w-3 shrink-0 opacity-80" aria-hidden />
+              <span className="truncate">{tKanban('taskFromIncidentBadge')}</span>
+            </span>
+          ) : null}
         </div>
         <span className="flex items-center gap-1">
           {critical && <span className="h-2 w-2 rounded-full bg-red-600" title={t('priority.critical')} />}

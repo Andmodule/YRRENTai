@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { connectTasksSocket } from '@/lib/socket/tasks-socket';
 
@@ -11,6 +12,7 @@ import { connectTasksSocket } from '@/lib/socket/tasks-socket';
  */
 export function TasksSocketProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
+  const t = useTranslations('tasks');
 
   useEffect(() => {
     const socket = connectTasksSocket();
@@ -26,14 +28,18 @@ export function TasksSocketProvider({ children }: { children: React.ReactNode })
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
     });
     socket.on('incident_created', () => {
-      toast.info('Новый инцидент', { description: 'Откройте раздел «Инциденты».' });
+      toast.info(t('incidentSocketToastTitle'));
+      queryClient.invalidateQueries({ queryKey: ['incidents'] });
+      queryClient.invalidateQueries({ queryKey: ['incidents-open-count'] });
+    });
+    socket.on('incident_updated', () => {
       queryClient.invalidateQueries({ queryKey: ['incidents'] });
       queryClient.invalidateQueries({ queryKey: ['incidents-open-count'] });
     });
     return () => {
       socket.disconnect();
     };
-  }, [queryClient]);
+  }, [queryClient, t]);
 
   return <>{children}</>;
 }

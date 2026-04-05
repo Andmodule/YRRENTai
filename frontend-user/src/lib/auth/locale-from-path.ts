@@ -11,3 +11,8 @@ export function getLocaleFromPathname(pathname: string): string {
 export function isAuthPath(pathname: string): boolean {
   return pathname.includes('/login') || pathname.includes('/register');
 }
+
+/** Telegram Mini App routes: opened inside Telegram WebView; auth uses `initData` instead of password. */
+export function isTmaPath(pathname: string): boolean {
+  return pathname.includes('/tma');
+}

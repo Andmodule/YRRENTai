@@ -32,6 +32,7 @@
     "@nestjs/passport": "^10.0.3",
     "@nestjs/platform-express": "^10.4.15",
     "@nestjs/platform-socket.io": "^10.4.15",
+    "@nestjs/schedule": "^6.1.1",
     "@nestjs/swagger": "^8.1.0",
     "@nestjs/throttler": "^6.3.0",
     "@nestjs/typeorm": "^10.0.2",
@@ -61,6 +62,7 @@
     "rxjs": "^7.8.1",
     "socket.io": "^4.8.1",
     "svix": "^1.89.0",
+    "telegraf": "^4.16.3",
     "typeorm": "^0.3.20",
     "uuid": "^11.0.5",
     "zod": "^3.24.2"

@@ -6,6 +6,7 @@
 /* ─── Semantic design tokens ─────────────────────────────────────────────── */
 /* Light theme */
 :root {
+  --space-4: 1rem;
   --background: #fafafa;
   --foreground: #0a0a0a;
   --primary: #2563eb;
@@ -34,6 +35,10 @@
   --color-slate-800: #f1f5f9;
   --color-slate-900: #f8fafc;
   --color-slate-950: #ffffff;
+
+  /* Portaled task detail modal: accent source (bound via inline style on shell) */
+  --task-detail-accent: #0891b2;
+  --task-detail-accent-fg: #ffffff;
 }
 
 /* Dark theme — чуть светлее чистого чёрного (slate-900), меньше «колодца» */
@@ -67,10 +72,26 @@ html.dark {
   --color-slate-950: oklch(12.9% 0.042 264.695);
 
   color-scheme: dark;
+
+  --task-detail-accent: #00d4ff;
+  --task-detail-accent-fg: #0a1628;
 }
 
 html:not(.dark) {
   color-scheme: light;
+}
+
+/* Tasks board: cyan/teal accent (voice FAB, filters, kanban) — scoped to .tasks-theme */
+.tasks-theme {
+  --primary: #0891b2;
+  --primary-foreground: #ffffff;
+  --ring: #0891b2;
+}
+
+html.dark .tasks-theme {
+  --primary: #00d4ff;
+  --primary-foreground: #0a1628;
+  --ring: #00d4ff;
 }
 
 /* Wire Tailwind utility classes to dynamic CSS variables */
@@ -201,6 +222,11 @@ body {
   }
 }
 
+/* Modal/drawer scroll bodies: tab focus keeps a little air above/below the target */
+.detail-scroll-body :where(input, textarea, select, button, a, h2) {
+  scroll-margin-block: 0.75rem;
+}
+
 /* ─── Light theme: тёмный текст на «светлых» slate-карточках (инверсия палитры) ─ */
 /* Важно: не трогать узлы с классами dark:* — иначе подстрока «text-white» в
    «dark:text-white» ломает контраст в светлой теме (наследование серого на синие пузыри). */
@@ -223,3 +249,13 @@ html:not(.dark) textarea::placeholder {
   color: #4b5563;
   opacity: 1;
 }
+
+/* Horizontal scroll strips without visible scrollbar (filters, chips) */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+

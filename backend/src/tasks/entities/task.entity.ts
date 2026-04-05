@@ -8,6 +8,7 @@ import {
 } from 'typeorm';
 import { PropertyEntity } from '../../property/entities/property.entity';
 import { UserEntity } from '../../user/entities/user.entity';
+import { CompanyEntity } from '../../user/entities/company.entity';
 
 @Entity('tasks')
 export class TaskEntity {
@@ -29,9 +30,20 @@ export class TaskEntity {
   @Column({ type: 'uuid' })
   propertyId!: string;
 
+  /** True when the task applies to all listings (UI: "general"); DB still stores a fallback propertyId. */
+  @Column({ type: 'boolean', default: false })
+  isGeneralTask!: boolean;
+
   @ManyToOne(() => PropertyEntity)
   @JoinColumn({ name: 'propertyId' })
   property!: PropertyEntity;
+
+  @Column({ type: 'uuid' })
+  companyId!: string;
+
+  @ManyToOne(() => CompanyEntity, { onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'companyId' })
+  company!: CompanyEntity;
 
   @Column({ type: 'uuid', nullable: true })
   reservationId!: string | null;
@@ -45,6 +57,13 @@ export class TaskEntity {
   @ManyToOne(() => UserEntity, { nullable: true })
   @JoinColumn({ name: 'assigneeId' })
   assignee!: UserEntity | null;
+
+  @Column({ type: 'uuid', nullable: true })
+  createdById!: string | null;
+
+  @ManyToOne(() => UserEntity, { nullable: true })
+  @JoinColumn({ name: 'createdById' })
+  createdBy!: UserEntity | null;
 
   @Column({ type: 'varchar', length: 10 })
   dueDate!: string;
@@ -75,4 +94,8 @@ export class TaskEntity {
 
   @Column({ type: 'timestamptz', nullable: true })
   completedAt!: Date | null;
+
+  /** Parent incident when this task was created from Smart Dispatch (maintenance follow-up). */
+  @Column({ type: 'uuid', nullable: true })
+  incidentId!: string | null;
 }

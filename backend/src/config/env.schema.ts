@@ -87,10 +87,36 @@ export const envSchema = z
     /** When true (production): httpOnly cookies use SameSite=None; Secure — required for SPA on another origin (e.g. Vercel) talking to API on Render. */
     AUTH_COOKIE_CROSS_SITE: z.coerce.boolean().default(false),
 
+    /**
+     * When false, `POST /auth/register` returns 403. Use in production to close public sign-up
+     * (invite-only / admin-provisioned tenants).
+     */
+    AUTH_PUBLIC_REGISTRATION_ENABLED: z
+      .enum(['true', 'false', '1', '0', 'yes', 'no'])
+      .default('true')
+      .transform((v) => v === 'true' || v === '1' || v === 'yes'),
+
     AI_PROVIDER: z.enum(['deepseek', 'openai']).default('deepseek'),
     DEEPSEEK_API_KEY: z.string().optional(),
     DEEPSEEK_BASE_URL: z.string().url().default('https://api.deepseek.com'),
     OPENAI_API_KEY: z.string().optional(),
+
+    /** Whisper STT: default language hint (ISO 639-1). Client may override via multipart `language`. */
+    VOICE_PARSE_LANGUAGE: z.string().optional().default('ru'),
+    VOICE_PARSE_WHISPER_MODEL: z.string().optional().default('whisper-1'),
+    /** LLM for voice JSON extraction (defaults: gpt-4o-mini / deepseek-chat). */
+    VOICE_PARSE_LLM_MODEL: z.string().optional(),
+    /**
+     * OpenAI-compatible speech-to-text (Whisper) base URL, e.g. https://api.openai.com/v1 or https://api.groq.com/openai/v1.
+     * Use with `VOICE_PARSE_STT_API_KEY`. DeepSeek chat API does not include STT — point this at a Whisper host.
+     */
+    VOICE_PARSE_STT_BASE_URL: z.string().url().optional(),
+    /** API key for `VOICE_PARSE_STT_BASE_URL` only. */
+    VOICE_PARSE_STT_API_KEY: z.string().optional(),
+    /** Groq Cloud — `whisper-large-v3` STT for `POST /tasks/voice-parse` (OpenAI-compatible client). */
+    GROQ_API_KEY: z.string().optional(),
+    /** Groq transcription model (default: whisper-large-v3). */
+    VOICE_PARSE_GROQ_WHISPER_MODEL: z.string().optional().default('whisper-large-v3'),
 
     VOICE_PROVIDER: z.enum(['google', 'yandex', 'openai']).default('google'),
     GOOGLE_TTS_KEY: z.string().optional(),
@@ -103,6 +129,15 @@ export const envSchema = z
       .default('http://localhost:3001,http://localhost:3012,http://localhost:3013'),
 
     TELEGRAM_BOT_TOKEN: z.string().optional(),
+    /** Bot @username without "t.me/" — used for staff invite deep links `https://t.me/<username>?start=`. */
+    TELEGRAM_BOT_USERNAME: z.string().optional(),
+    /** Public HTTPS URL of the Telegram Mini App (e.g. https://app.example.com/ru/tma/tasks). */
+    TELEGRAM_MINI_APP_URL: z.string().url().optional(),
+    /**
+     * Manager web dashboard base URL for Telegram incident buttons (e.g. https://app.example.com/en/dashboard).
+     * Must be HTTPS in production. Path `/incidents?incident=<uuid>` is appended.
+     */
+    MANAGER_WEB_APP_URL: z.string().url().optional(),
     TELEGRAM_WEBHOOK_SECRET: z.string().optional(),
 
     /** Redis URL for BullMQ (Telegram escalation queue). If unset, escalations use inline retries only. */

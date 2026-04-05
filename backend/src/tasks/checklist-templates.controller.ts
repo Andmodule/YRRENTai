@@ -16,18 +16,23 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { CurrentUser, JwtPayload } from '../common/decorators/current-user.decorator';
 import { ChecklistService } from './checklist.service';
+import { UserService } from '../user/user.service';
 
 @ApiTags('Checklist templates')
 @ApiBearerAuth()
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 @Controller('checklist-templates')
 export class ChecklistTemplatesController {
-  constructor(private readonly checklistService: ChecklistService) {}
+  constructor(
+    private readonly checklistService: ChecklistService,
+    private readonly userService: UserService,
+  ) {}
 
   @Get()
   @Roles('OWNER', 'MANAGER')
   async list(@CurrentUser() user: JwtPayload) {
-    const templates = await this.checklistService.listTemplates(user.sub);
+    const ownerId = await this.userService.resolveTenantOwnerId(user.sub, user.role);
+    const templates = await this.checklistService.listTemplates(ownerId);
     return { data: { templates } };
   }
 
@@ -43,7 +48,8 @@ export class ChecklistTemplatesController {
       items: { text: string; required: boolean; sortOrder: number }[];
     },
   ) {
-    const template = await this.checklistService.createTemplate(user.sub, body);
+    const ownerId = await this.userService.resolveTenantOwnerId(user.sub, user.role);
+    const template = await this.checklistService.createTemplate(ownerId, body);
     return { data: { template } };
   }
 
@@ -59,7 +65,8 @@ export class ChecklistTemplatesController {
       propertyId?: string | null;
     },
   ) {
-    const template = await this.checklistService.updateTemplate(user.sub, uuid, body);
+    const ownerId = await this.userService.resolveTenantOwnerId(user.sub, user.role);
+    const template = await this.checklistService.updateTemplate(ownerId, uuid, body);
     return { data: { template } };
   }
 
@@ -70,7 +77,8 @@ export class ChecklistTemplatesController {
     @CurrentUser() user: JwtPayload,
     @Body() body: { text: string; required: boolean; sortOrder: number },
   ) {
-    const template = await this.checklistService.addTemplateItem(user.sub, uuid, body);
+    const ownerId = await this.userService.resolveTenantOwnerId(user.sub, user.role);
+    const template = await this.checklistService.addTemplateItem(ownerId, uuid, body);
     return { data: { template } };
   }
 
@@ -82,7 +90,8 @@ export class ChecklistTemplatesController {
     @CurrentUser() user: JwtPayload,
     @Body() body: { text?: string; required?: boolean; sortOrder?: number },
   ) {
-    const template = await this.checklistService.updateTemplateItem(user.sub, uuid, itemId, body);
+    const ownerId = await this.userService.resolveTenantOwnerId(user.sub, user.role);
+    const template = await this.checklistService.updateTemplateItem(ownerId, uuid, itemId, body);
     return { data: { template } };
   }
 
@@ -94,13 +103,15 @@ export class ChecklistTemplatesController {
     @Param('itemId') itemId: string,
     @CurrentUser() user: JwtPayload,
   ) {
-    await this.checklistService.deleteTemplateItem(user.sub, uuid, itemId);
+    const ownerId = await this.userService.resolveTenantOwnerId(user.sub, user.role);
+    await this.checklistService.deleteTemplateItem(ownerId, uuid, itemId);
   }
 
   @Delete(':uuid')
   @Roles('OWNER', 'MANAGER')
   async remove(@Param('uuid') uuid: string, @CurrentUser() user: JwtPayload) {
-    await this.checklistService.deleteTemplate(user.sub, uuid);
+    const ownerId = await this.userService.resolveTenantOwnerId(user.sub, user.role);
+    await this.checklistService.deleteTemplate(ownerId, uuid);
     return { data: { ok: true } };
   }
 }

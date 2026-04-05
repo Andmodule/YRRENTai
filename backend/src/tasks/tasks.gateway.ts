@@ -77,6 +77,10 @@ export class TasksGateway implements OnGatewayConnection {
     this.server.emit('incident_created', payload);
   }
 
+  emitIncidentUpdated(payload: { incidentId: string; propertyOwnerId: string }) {
+    this.server.emit('incident_updated', payload);
+  }
+
   /** Manager replied in Telegram (thread on incident alert) — staff app shows toast if reportedBy matches. */
   emitIncidentManagerNote(payload: {
     incidentId: string;

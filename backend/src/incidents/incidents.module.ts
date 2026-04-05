@@ -8,12 +8,14 @@ import { PropertyEntity } from '../property/entities/property.entity';
 import { BookingEntity } from '../booking/entities/booking.entity';
 import { TelegramModule } from '../telegram/telegram.module';
 import { TasksModule } from '../tasks/tasks.module';
+import { UserModule } from '../user/user.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([IncidentEntity, TaskEntity, PropertyEntity, BookingEntity]),
     forwardRef(() => TelegramModule),
     forwardRef(() => TasksModule),
+    UserModule,
   ],
   controllers: [IncidentsController],
   providers: [IncidentsService],

@@ -5,6 +5,7 @@ import { BookingModule } from '../booking/booking.module';
 import { ChatModule } from '../chat/chat.module';
 import { KnowledgeBaseModule } from '../knowledge-base/knowledge-base.module';
 import { PropertyModule } from '../property/property.module';
+import { UserModule } from '../user/user.module';
 import { TelegramModule } from '../telegram/telegram.module';
 import { MessagingThreadEntity } from './entities/messaging-thread.entity';
 import { MessagingMessageEntity } from './entities/messaging-message.entity';
@@ -30,6 +31,7 @@ import { InboundSenderFilterSettingsController } from './inbound-sender-filter-s
     forwardRef(() => ChatModule),
     forwardRef(() => TelegramModule),
     PropertyModule,
+    UserModule,
     BookingModule,
     KnowledgeBaseModule,
     AgentModule,

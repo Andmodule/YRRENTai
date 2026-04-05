@@ -14,6 +14,10 @@ export interface AuthUser {
   role: string;
   language: string;
   telegramChatId: string | null;
+  companyId?: string | null;
+  companyName?: string | null;
+  staffJobType?: string | null;
+  telegramUsername?: string | null;
   createdAt: string;
   updatedAt: string;
 }

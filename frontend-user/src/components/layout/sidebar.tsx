@@ -7,19 +7,24 @@ import { cn } from '@/lib/utils';
 import {
   LayoutDashboard,
   Building2,
+  Inbox,
   LayoutGrid,
   ListTodo,
   MessageSquare,
   Settings,
   Sparkles,
+  Users,
   Warehouse,
 } from 'lucide-react';
 import { useOpenIncidentsCount } from '@/modules/incidents/hooks/useIncidents';
+import { useUnmappedReportsCount } from '@/hooks/use-unmapped-reports';
 
 const navItems = [
   { href: '/dashboard',      icon: LayoutDashboard, key: 'dashboard' },
   { href: '/properties',     icon: Building2,        key: 'properties' },
   { href: '/dashboard/tasks', icon: ListTodo,        key: 'tasks' },
+  { href: '/dashboard/unmapped', icon: Inbox,        key: 'unmappedInbox' },
+  { href: '/dashboard/staff', icon: Users,           key: 'staff' },
   { href: '/dashboard/operations', icon: Warehouse,  key: 'operations' },
   { href: '/dashboard/calendar', icon: LayoutGrid, key: 'calendar' },
   { href: '/chat',           icon: MessageSquare,    key: 'chat' },
@@ -33,6 +38,7 @@ export function Sidebar() {
   const { sidebarOpen, setSidebarOpen } = useUiStore();
   const pathname = usePathname();
   const { data: openIncidents = 0 } = useOpenIncidentsCount();
+  const { data: unmappedCount = 0 } = useUnmappedReportsCount();
 
   return (
     <>
@@ -69,15 +75,21 @@ export function Sidebar() {
                   ? pathname.includes('/settings')
                   : href === '/dashboard/tasks'
                     ? pathname.includes('/dashboard/tasks')
-                    : href === '/dashboard/operations'
-                      ? pathname.includes('/dashboard/operations')
-                      : href === '/dashboard'
-                        ? pathname.includes('/dashboard') &&
-                          !pathname.includes('/dashboard/tasks') &&
-                          !pathname.includes('/dashboard/calendar') &&
-                          !pathname.includes('/dashboard/operations') &&
-                          !pathname.match(/\/dashboard\/incidents/)
-                        : pathname.includes(href);
+                    : href === '/dashboard/unmapped'
+                      ? pathname.includes('/dashboard/unmapped')
+                      : href === '/dashboard/staff'
+                        ? pathname.includes('/dashboard/staff')
+                        : href === '/dashboard/operations'
+                          ? pathname.includes('/dashboard/operations')
+                          : href === '/dashboard'
+                            ? pathname.includes('/dashboard') &&
+                              !pathname.includes('/dashboard/tasks') &&
+                              !pathname.includes('/dashboard/calendar') &&
+                              !pathname.includes('/dashboard/operations') &&
+                              !pathname.includes('/dashboard/staff') &&
+                              !pathname.includes('/dashboard/unmapped') &&
+                              !pathname.match(/\/dashboard\/incidents/)
+                            : pathname.includes(href);
 
               return (
                 <li key={href}>
@@ -107,6 +119,15 @@ export function Sidebar() {
                         title={t('tasksIncidentsHint')}
                         aria-label={t('tasksIncidentsHint')}
                       />
+                    )}
+                    {key === 'unmappedInbox' && unmappedCount > 0 && (
+                      <span
+                        className="min-w-[1.25rem] shrink-0 rounded-full bg-amber-500/90 px-1.5 py-0 text-center text-[10px] font-semibold leading-none text-slate-950 tabular-nums"
+                        title={t('unmappedInboxBadgeHint')}
+                        aria-label={t('unmappedInboxBadgeHint')}
+                      >
+                        {unmappedCount > 99 ? '99+' : unmappedCount}
+                      </span>
                     )}
                   </Link>
                 </li>

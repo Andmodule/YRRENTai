@@ -8,6 +8,7 @@ import { KnowledgeBaseImportService } from './knowledge-base-import.service';
 import { KnowledgeBaseEntryEntity } from './entities/knowledge-base-entry.entity';
 import { EmbeddingModule } from '../embedding/embedding.module';
 import { PropertyModule } from '../property/property.module';
+import { UserModule } from '../user/user.module';
 import { EscalationEntity } from '../telegram/entities/escalation.entity';
 import { KbController } from './kb.controller';
 import { KbImprovementService } from './kb-improvement.service';
@@ -18,6 +19,7 @@ import { KbImprovementService } from './kb-improvement.service';
     MulterModule.register({ storage: undefined }),
     EmbeddingModule,
     PropertyModule,
+    UserModule,
   ],
   controllers: [KnowledgeBaseController, KnowledgeBaseImportController, KbController],
   providers: [KnowledgeBaseService, KnowledgeBaseImportService, KbImprovementService],

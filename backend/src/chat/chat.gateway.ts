@@ -113,7 +113,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const userId = client.data.userId;
 
     try {
-      await this.propertyService.findOne(propertyId, userId);
+      await this.propertyService.findOneForUser(propertyId, userId, client.data.role);
     } catch {
       client.emit('error', { message: 'Property not found or access denied' });
       return;
@@ -167,7 +167,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       status: conversation.status,
     });
 
-    const property = await this.propertyService.findOne(propertyId, userId);
+    const property = await this.propertyService.findOneForUser(propertyId, userId, client.data.role);
     const kbSearch = await this.knowledgeBaseService.searchRelevant(propertyId, content, 8);
     const { entries: kbEntries, isWeakMatch: kbWeakMatch } = kbSearch;
     const knowledgeBase = kbWeakMatch ? '' : formatKnowledgeBaseEntriesForAgent(kbEntries);
@@ -332,7 +332,11 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
 
     try {
-      await this.propertyService.findOne(body.propertyId, client.data.userId);
+      await this.propertyService.findOneForUser(
+        body.propertyId,
+        client.data.userId,
+        client.data.role,
+      );
     } catch {
       client.emit('error', { message: 'Property not found or access denied' });
       return;

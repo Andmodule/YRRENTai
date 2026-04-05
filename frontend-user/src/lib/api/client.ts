@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { getLocaleFromPathname, isAuthPath } from '@/lib/auth/locale-from-path';
+import { getLocaleFromPathname, isAuthPath, isTmaPath } from '@/lib/auth/locale-from-path';
 
 export const apiClient = axios.create({
   baseURL: '/api/v1',
@@ -23,7 +23,7 @@ apiClient.interceptors.response.use(
     if (error.response?.status === 401) {
       if (typeof window !== 'undefined') {
         const path = window.location.pathname;
-        if (isAuthPath(path)) {
+        if (isAuthPath(path) || isTmaPath(path)) {
           return Promise.reject(error);
         }
         const locale = getLocaleFromPathname(path);

@@ -10,7 +10,7 @@ export const KANBAN_COLUMNS = [
   {
     status: 'in_progress',
     headerKey: 'in_progress',
-    headerClass: 'text-blue-600 dark:text-blue-400',
+    headerClass: 'text-cyan-600 dark:text-cyan-400',
     emptyKey: 'emptyProgress',
   },
   {

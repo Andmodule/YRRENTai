@@ -58,7 +58,7 @@ export class ICalController {
     if (!body.propertyId || !Array.isArray(body.urls)) {
       throw new BadRequestException('propertyId and urls[] are required');
     }
-    const saved = await this.icalSync.setImportUrls(user.sub, body.propertyId, body.urls);
+    const saved = await this.icalSync.setImportUrls(user.sub, user.role, body.propertyId, body.urls);
     return { data: { urls: saved } };
   }
 
@@ -78,7 +78,7 @@ export class ICalController {
     if (!body.propertyId || !body.url?.trim()) {
       throw new BadRequestException('propertyId and url are required');
     }
-    const result = await this.icalSync.importUrl(user.sub, body.propertyId, body.url.trim());
+    const result = await this.icalSync.importUrl(user.sub, user.role, body.propertyId, body.url.trim());
     return { data: result };
   }
 
@@ -98,7 +98,7 @@ export class ICalController {
     if (!body.propertyId) {
       throw new BadRequestException('propertyId is required');
     }
-    const results = await this.icalSync.syncProperty(user.sub, body.propertyId);
+    const results = await this.icalSync.syncProperty(user.sub, user.role, body.propertyId);
     return { data: { results } };
   }
 }

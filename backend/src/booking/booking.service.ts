@@ -38,8 +38,8 @@ export class BookingService {
     private readonly guestService: GuestService,
   ) {}
 
-  async create(dto: CreateBookingDto, userId: string): Promise<BookingEntity> {
-    const property = await this.propertyService.findOne(dto.propertyId, userId);
+  async create(dto: CreateBookingDto, userId: string, role: string): Promise<BookingEntity> {
+    const property = await this.propertyService.findOneForUser(dto.propertyId, userId, role);
     const checkIn = new Date(dto.checkIn);
     const checkOut = new Date(dto.checkOut);
 
@@ -103,12 +103,13 @@ export class BookingService {
     checkInIso: string,
     checkOutIso: string,
     userId: string,
+    role: string,
   ): Promise<{
     available: boolean;
     reason?: 'MINIMUM_ONE_NIGHT';
     conflictWith?: { guestName: string; checkIn: string; checkOut: string };
   }> {
-    const property = await this.propertyService.findOne(propertyId, userId);
+    const property = await this.propertyService.findOneForUser(propertyId, userId, role);
     const checkIn = new Date(checkInIso);
     const checkOut = new Date(checkOutIso);
     const nights = nightsBetweenInPropertyTimezone(checkIn, checkOut, property.timezone);
@@ -149,24 +150,24 @@ export class BookingService {
     return qb.getOne();
   }
 
-  async findAllByProperty(propertyId: string, userId: string): Promise<BookingEntity[]> {
+  async findAllByProperty(propertyId: string, userId: string, role: string): Promise<BookingEntity[]> {
     const pid = propertyId?.trim();
     if (!pid) {
       throw new BadRequestException('Query parameter propertyId is required');
     }
-    await this.propertyService.findOne(pid, userId);
+    await this.propertyService.findOneForUser(pid, userId, role);
     return this.bookingRepository.find({
       where: { propertyId: pid },
       order: { checkIn: 'DESC' },
     });
   }
 
-  async findOne(id: string, userId: string): Promise<BookingEntity> {
+  async findOne(id: string, userId: string, role: string): Promise<BookingEntity> {
     const booking = await this.bookingRepository.findOne({ where: { id } });
     if (!booking) {
       throw new NotFoundException('Booking not found');
     }
-    await this.propertyService.findOne(booking.propertyId, userId);
+    await this.propertyService.findOneForUser(booking.propertyId, userId, role);
     return booking;
   }
 
@@ -174,9 +175,10 @@ export class BookingService {
     id: string,
     dto: z.infer<typeof patchBookingSchema>,
     userId: string,
+    role: string,
   ): Promise<BookingEntity> {
-    const booking = await this.findOne(id, userId);
-    const property = await this.propertyService.findOne(booking.propertyId, userId);
+    const booking = await this.findOne(id, userId, role);
+    const property = await this.propertyService.findOneForUser(booking.propertyId, userId, role);
 
     if (dto.checkIn !== undefined || dto.checkOut !== undefined) {
       const nextCheckIn = dto.checkIn !== undefined ? new Date(dto.checkIn) : booking.checkIn;
@@ -307,9 +309,10 @@ export class BookingService {
     id: string,
     newStatus: string,
     userId: string,
-    cancelledBy?: string,
+    cancelledBy: string | undefined,
+    role: string,
   ): Promise<BookingEntity> {
-    const booking = await this.findOne(id, userId);
+    const booking = await this.findOne(id, userId, role);
     const previous = booking.status as BookingStatus;
     const next = newStatus as BookingStatus;
 

@@ -45,15 +45,18 @@ async function bootstrap() {
 
   app.setGlobalPrefix('api/v1');
 
-  patchNestJsSwagger();
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('RentAI API')
-    .setDescription('API for RentAI short-term rental management platform')
-    .setVersion('1.0')
-    .addBearerAuth()
-    .build();
-  const document = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup('api/docs', app, document);
+  const nodeEnv = configService.get<string>('NODE_ENV', 'development');
+  if (nodeEnv !== 'production') {
+    patchNestJsSwagger();
+    const swaggerConfig = new DocumentBuilder()
+      .setTitle('RentAI API')
+      .setDescription('API for RentAI short-term rental management platform')
+      .setVersion('1.0')
+      .addBearerAuth()
+      .build();
+    const document = SwaggerModule.createDocument(app, swaggerConfig);
+    SwaggerModule.setup('api/docs', app, document);
+  }
 
   const port = configService.get<number>('PORT', 3000);
   const host = configService.get<string>('HOST', '::');

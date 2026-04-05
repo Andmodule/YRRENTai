@@ -12,10 +12,16 @@ import { ZodomusAdminController } from './zodomus-admin.controller';
 import { BookingEntity } from '../../booking/entities/booking.entity';
 import { PropertyEntity } from '../../property/entities/property.entity';
 import { PropertyModule } from '../../property/property.module';
+import { UserModule } from '../../user/user.module';
 import { ZodomusAvailabilityPushService } from './zodomus-availability-push.service';
 
 @Module({
-  imports: [ConfigModule, TypeOrmModule.forFeature([BookingEntity, PropertyEntity]), PropertyModule],
+  imports: [
+    ConfigModule,
+    TypeOrmModule.forFeature([BookingEntity, PropertyEntity]),
+    PropertyModule,
+    UserModule,
+  ],
   controllers: [ZodomusController, ZodomusWebhookController, ZodomusAdminController],
   providers: [
     {

@@ -35,11 +35,12 @@ export class ICalSyncService {
   // ── URL management ────────────────────────────────────────────────────────
 
   async setImportUrls(
-    ownerUserId: string,
+    userId: string,
+    role: string,
     propertyId: string,
     urls: string[],
   ): Promise<string[]> {
-    const property = await this.propertyService.findOne(propertyId, ownerUserId);
+    const property = await this.propertyService.findOneForUser(propertyId, userId, role);
     const sanitised = urls
       .map((u) => u.trim())
       .filter((u) => u.startsWith('http://') || u.startsWith('https://') || u.startsWith('webcal://'));
@@ -55,11 +56,12 @@ export class ICalSyncService {
    * Import a single iCal URL for a property (fetch → parse → upsert bookings).
    */
   async importUrl(
-    ownerUserId: string,
+    userId: string,
+    role: string,
     propertyId: string,
     url: string,
   ): Promise<ICalImportResult> {
-    const property = await this.propertyService.findOne(propertyId, ownerUserId);
+    const property = await this.propertyService.findOneForUser(propertyId, userId, role);
     return this.importUrlRaw(property, url);
   }
 
@@ -67,10 +69,11 @@ export class ICalSyncService {
    * Import all saved iCal URLs for a property.
    */
   async syncProperty(
-    ownerUserId: string,
+    userId: string,
+    role: string,
     propertyId: string,
   ): Promise<ICalImportResult[]> {
-    const property = await this.propertyService.findOne(propertyId, ownerUserId);
+    const property = await this.propertyService.findOneForUser(propertyId, userId, role);
     return this.syncPropertyEntity(property);
   }
 

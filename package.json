@@ -23,6 +23,8 @@
     "lint": "pnpm -r lint",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md}\"",
-    "zodomus:fetch-samples": "node doc/zodomus/fetch-samples.mjs"
+    "zodomus:fetch-samples": "node doc/zodomus/fetch-samples.mjs",
+    "migration:run": "pnpm --filter backend run migration:run",
+    "migration:revert": "pnpm --filter backend run migration:revert"
   }
 }

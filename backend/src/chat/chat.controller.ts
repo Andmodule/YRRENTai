@@ -19,6 +19,7 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { CurrentUser, JwtPayload } from '../common/decorators/current-user.decorator';
 import { PropertyService } from '../property/property.service';
+import { UserService } from '../user/user.service';
 import {
   listConversationsQuerySchema,
   managerReplySchema,
@@ -37,6 +38,7 @@ export class ChatController {
     private readonly propertyService: PropertyService,
     private readonly staffReplyService: StaffReplyService,
     private readonly config: ConfigService,
+    private readonly userService: UserService,
   ) {}
 
   /** Static paths must be registered before `:propertyId/messages` so they are not captured as UUIDs. */
@@ -59,7 +61,8 @@ export class ChatController {
 
     const q = parsed.success ? parsed.data : { page: 1, limit: 20 };
 
-    const result = await this.conversationService.listForOwner(user!.sub, {
+    const ownerId = await this.userService.resolveTenantOwnerId(user!.sub, user!.role);
+    const result = await this.conversationService.listForOwner(ownerId, {
       page: q.page,
       limit: q.limit,
       status: q.status as ConversationStatus | undefined,
@@ -101,7 +104,8 @@ export class ChatController {
       throw new BadRequestException('Invalid or missing from/to (use ISO 8601 datetimes)');
     }
     const { from, to } = parsed.data;
-    const properties = await this.propertyService.findAllByOwner(user!.sub);
+    const ownerId = await this.userService.resolveTenantOwnerId(user!.sub, user!.role);
+    const properties = await this.propertyService.findAllByOwner(ownerId);
     const propertyIds = properties.map((p) => p.id);
     const { ai, staff } = await this.chatService.getReplyStats(propertyIds, from, to);
     const total = ai + staff;
@@ -142,7 +146,7 @@ export class ChatController {
     const parsed = managerReplySchema.parse(body);
     const conv = await this.conversationService.findById(parsed.conversationId);
 
-    await this.propertyService.findOne(conv.propertyId, user!.sub);
+    await this.propertyService.findOneForUser(conv.propertyId, user!.sub, user!.role);
 
     const savedMessage = await this.staffReplyService.applyStaffReply({
       propertyId: conv.propertyId,
@@ -172,7 +176,7 @@ export class ChatController {
     @CurrentUser() user?: JwtPayload,
   ) {
     if (user) {
-      await this.propertyService.findOne(propertyId, user.sub);
+      await this.propertyService.findOneForUser(propertyId, user.sub, user.role);
     }
     return this.chatService.getMessages(propertyId, Number(page) || 1, Number(limit) || 50);
   }
