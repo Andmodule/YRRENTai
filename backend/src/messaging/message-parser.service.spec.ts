@@ -119,4 +119,47 @@ Message: "Добрый день!"`;
     const t = 'Hello\n\nThis message was sent by Booking.com';
     expect(service.stripInboundQuoteNoise(t)).toBe('Hello');
   });
+
+  it('extractBookingGuestInquiryForAgent keeps only guest question (RU Booking template)', () => {
+    const body = `Booking.com
+Номер бронирования: 5758080834
+
+У вас новое сообщение от гостя
+
+Tsveiuk Ihor:
+
+Я хочу запросить заезд в 14:00 - 15:00. Это возможно?
+
+Принять (бесплатно)
+Принять (за доплату)
+При наличии возможности
+Не принято
+
+Данные бронирования
+Имя гостя: Tsveiuk Ihor
+Заезд: пятница, 3 апреля 2026 г.
+© Copyright 2026 Booking.com`;
+    const out = service.extractBookingGuestInquiryForAgent(body);
+    expect(out).toContain('Я хочу запросить заезд в 14:00 - 15:00');
+    expect(out).not.toContain('Данные бронирования');
+    expect(out).not.toContain('Принять');
+    expect(out).not.toContain('5758080834');
+  });
+
+  it('extractBookingGuestInquiryForAgent uses Message: block when present', () => {
+    const body = `Header noise
+
+Message: Can we check in at 14:00?
+
+Reservation details
+Reservation: 12345`;
+    const out = service.extractBookingGuestInquiryForAgent(body);
+    expect(out).toContain('check in at 14:00');
+    expect(out).not.toContain('Reservation details');
+  });
+
+  it('extractBookingGuestInquiryForAgent falls back to full text when extraction empty', () => {
+    const tiny = 'OK';
+    expect(service.extractBookingGuestInquiryForAgent(tiny)).toBe('OK');
+  });
 });

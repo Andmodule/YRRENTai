@@ -61,7 +61,9 @@ export class MessagingWebhookController {
     const allowed = await this.inboundSenderFilter.isSenderHostAllowed(host);
 
     if (!allowed) {
-      this.logger.log(`Inbound drop: host=${host || '(empty)'} from=${from.slice(0, 120)}`);
+      this.logger.warn(
+        `Inbound skipped: reason=sender_host_not_allowed host=${host || '(empty)'} from=${from.slice(0, 120)}`,
+      );
       return { ok: true };
     }
 
@@ -71,6 +73,7 @@ export class MessagingWebhookController {
     if (eventId) {
       const inserted = await this.inboundDedup.tryInsertResendEvent(eventId);
       if (!inserted) {
+        this.logger.warn(`Inbound skipped: reason=duplicate_resend_event_id eventId=${eventId}`);
         return { ok: true };
       }
     }

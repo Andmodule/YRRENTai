@@ -1,6 +1,10 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Resend } from 'resend';
+import {
+  type InboundAttachmentMeta,
+  parseResendInboundAttachments,
+} from './inbound-attachments.util';
 
 @Injectable()
 export class ReplySenderService implements OnModuleInit {
@@ -71,7 +75,12 @@ export class ReplySenderService implements OnModuleInit {
    */
   async fetchReceivedEmailBody(
     emailId: string,
-  ): Promise<{ text: string | null; html: string | null; subject: string | null } | null> {
+  ): Promise<{
+    text: string | null;
+    html: string | null;
+    subject: string | null;
+    attachments: InboundAttachmentMeta[];
+  } | null> {
     const key = this.config.get<string>('RESEND_API_KEY');
     if (!key) {
       this.logger.warn('fetchReceivedEmailBody: RESEND_API_KEY missing');
@@ -95,10 +104,12 @@ export class ReplySenderService implements OnModuleInit {
       const t = inner.text;
       const h = inner.html;
       const sub = inner.subject;
+      const attachments = parseResendInboundAttachments(inner.attachments);
       return {
         text: typeof t === 'string' ? t : null,
         html: typeof h === 'string' ? h : null,
         subject: typeof sub === 'string' ? sub : null,
+        attachments,
       };
     } catch (err) {
       this.logger.error(`fetchReceivedEmailBody failed for ${emailId}`, err as Error);

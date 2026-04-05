@@ -1,5 +1,12 @@
 import { z } from 'zod';
 
+/** `.env` often has `KEY=` (empty); that is not `undefined`, so `z.string().url().optional()` would fail. */
+const optionalUrlEnv = () =>
+  z.preprocess(
+    (v) => (v === '' || v === null || v === undefined ? undefined : v),
+    z.string().url().optional(),
+  );
+
 const zodomusEnvFields = z.object({
   /** Explicit string enum — avoid z.coerce.boolean() on env strings (Boolean("false") === true). */
   ZODOMUS_ENABLED: z
@@ -110,7 +117,7 @@ export const envSchema = z
      * OpenAI-compatible speech-to-text (Whisper) base URL, e.g. https://api.openai.com/v1 or https://api.groq.com/openai/v1.
      * Use with `VOICE_PARSE_STT_API_KEY`. DeepSeek chat API does not include STT — point this at a Whisper host.
      */
-    VOICE_PARSE_STT_BASE_URL: z.string().url().optional(),
+    VOICE_PARSE_STT_BASE_URL: optionalUrlEnv(),
     /** API key for `VOICE_PARSE_STT_BASE_URL` only. */
     VOICE_PARSE_STT_API_KEY: z.string().optional(),
     /** Groq Cloud — `whisper-large-v3` STT for `POST /tasks/voice-parse` (OpenAI-compatible client). */
@@ -132,12 +139,12 @@ export const envSchema = z
     /** Bot @username without "t.me/" — used for staff invite deep links `https://t.me/<username>?start=`. */
     TELEGRAM_BOT_USERNAME: z.string().optional(),
     /** Public HTTPS URL of the Telegram Mini App (e.g. https://app.example.com/ru/tma/tasks). */
-    TELEGRAM_MINI_APP_URL: z.string().url().optional(),
+    TELEGRAM_MINI_APP_URL: optionalUrlEnv(),
     /**
      * Manager web dashboard base URL for Telegram incident buttons (e.g. https://app.example.com/en/dashboard).
      * Must be HTTPS in production. Path `/incidents?incident=<uuid>` is appended.
      */
-    MANAGER_WEB_APP_URL: z.string().url().optional(),
+    MANAGER_WEB_APP_URL: optionalUrlEnv(),
     TELEGRAM_WEBHOOK_SECRET: z.string().optional(),
 
     /** Redis URL for BullMQ (Telegram escalation queue). If unset, escalations use inline retries only. */

@@ -1,5 +1,7 @@
 /**
- * Cheap inbound-mail filters (no LLM). See doc/EMAILdeliveryTZ.md Phase 4–5 (without verifyHumanIntent).
+ * Cheap inbound-mail filters (no LLM). Aligns with common 2026 practice: drop obvious machine traffic
+ * (RFC 3834 Auto-Submitted, vacation X-Autoreply, list/bulk Precedence) before storing as guest chat.
+ * Does not replace SPF/DKIM/DMARC (Resend / your MX should enforce those upstream).
  */
 
 export type NormalizedHeaders = Record<string, string | string[] | undefined>;

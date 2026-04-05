@@ -2,16 +2,21 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { InboundSenderFilterSettingsEntity } from './entities/inbound-sender-filter-settings.entity';
+import { isInboundSenderHostAllowed } from './inbound-sender-host.util';
 
 const DEFAULT_ID = 'default';
 
+/** Legacy defaults; any `*.booking.com` / `*.airbnb.com` is also accepted via {@link isInboundSenderHostAllowed}. */
 const DEFAULT_HOSTS = ['guest.booking.com', 'mchat.booking.com'];
 
 @Injectable()
 export class InboundSenderFilterService {
   private readonly logger = new Logger(InboundSenderFilterService.name);
-  private cache: { expires: number; allowedHosts: Set<string>; allowGmailGooglemail: boolean } | null =
-    null;
+  private cache: {
+    expires: number;
+    allowedEntries: string[];
+    allowGmailGooglemail: boolean;
+  } | null = null;
   private readonly cacheTtlMs = 10_000;
 
   constructor(
@@ -59,32 +64,17 @@ export class InboundSenderFilterService {
 
     const now = Date.now();
     if (this.cache && this.cache.expires > now) {
-      return this.matchHost(h, this.cache.allowedHosts, this.cache.allowGmailGooglemail);
+      return isInboundSenderHostAllowed(h, this.cache.allowedEntries, this.cache.allowGmailGooglemail);
     }
 
     const row = await this.ensureRow();
-    const allowedHosts = new Set(row.allowedHosts.map((x) => x.trim().toLowerCase()).filter(Boolean));
+    const allowedEntries = row.allowedHosts.map((x) => x.trim().toLowerCase()).filter(Boolean);
     this.cache = {
       expires: now + this.cacheTtlMs,
-      allowedHosts,
+      allowedEntries,
       allowGmailGooglemail: row.allowGmailGooglemail,
     };
-    return this.matchHost(h, allowedHosts, row.allowGmailGooglemail);
-  }
-
-  private matchHost(
-    host: string,
-    allowedHosts: Set<string>,
-    allowGmailGooglemail: boolean,
-  ): boolean {
-    if (allowedHosts.has(host)) return true;
-    if (
-      allowGmailGooglemail &&
-      (host === 'gmail.com' || host === 'googlemail.com' || host.endsWith('.gmail.com') || host.endsWith('.googlemail.com'))
-    ) {
-      return true;
-    }
-    return false;
+    return isInboundSenderHostAllowed(h, allowedEntries, row.allowGmailGooglemail);
   }
 
   private async ensureRow(): Promise<InboundSenderFilterSettingsEntity> {

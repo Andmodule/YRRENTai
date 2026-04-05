@@ -19,6 +19,7 @@ import { AgentService } from '../agent/agent.service';
 
 import {
   assistantReplyIndicatesEscalationWithoutMarker,
+  formatKnowledgeBaseEntriesForAgent,
   parseAssistantEscalation,
   resolveGuestEscalationFallback,
   shouldForceEscalationGuestReply,
@@ -55,6 +56,8 @@ import type { ResendWebhookDto } from './dto/resend-webhook.dto';
 import { shouldDropInboundByMailHeaders } from './inbound-email-heuristics';
 
 import { extractResendWebhookEventId } from './resend-webhook.util';
+
+import { buildGuestAgentText, parseResendInboundAttachments } from './inbound-attachments.util';
 
 
 
@@ -185,6 +188,10 @@ export class MessagingService {
 
     let didFetchInboundBody = false;
 
+    let inboundAttachments = parseResendInboundAttachments(
+      (dto.data as Record<string, unknown> | undefined)?.attachments,
+    );
+
     const ensureInboundBodyFromApi = async (): Promise<void> => {
 
       if (!resendInboundId || didFetchInboundBody) return;
@@ -199,13 +206,17 @@ export class MessagingService {
 
       if (fetched.html != null) html = fetched.html;
 
+      if (fetched.attachments.length > 0) {
+        inboundAttachments = fetched.attachments;
+      }
+
     };
 
     const normHeaders = normalizeHeaders(headers as Record<string, string | string[]> | undefined);
 
     const headerDrop = shouldDropInboundByMailHeaders(normHeaders);
     if (headerDrop.drop) {
-      this.logger.log(`Inbound skipped (headers): ${headerDrop.reason ?? 'auto'}`);
+      this.logger.warn(`Inbound skipped: reason=mail_headers ${headerDrop.reason ?? 'auto'}`);
       return;
     }
 
@@ -224,6 +235,7 @@ export class MessagingService {
     /**
      * Webhooks often omit `html` (metadata only); href with `hotel_id` lives in full HTML from API.
      * Fetch when plain is empty OR when we have no HTML to parse for Booking routing.
+     * When fetch runs, `attachments` from the receiving API override webhook metadata.
      */
     if (!cleanText.trim() || !html?.trim()) {
 
@@ -287,11 +299,22 @@ export class MessagingService {
     }
 
     /** UI + chat_messages: plain body first; if empty (HTML-only, delayed fetch), show subject — avoids "(empty message)" when subject carries the text. */
-    const guestDisplayText = cleanText.trim() || subjectTrim || '(empty message)';
+    const guestDisplayBase = cleanText.trim() || subjectTrim || '(empty message)';
+    const guestDisplayText =
+      inboundAttachments.length > 0
+        ? `${guestDisplayBase}\n\n[Attachments: ${inboundAttachments.map((a) => a.filename).join(', ')}]`
+        : guestDisplayBase;
 
-    const bodyForAgent =
+    /** Normalized for LLM / KB (Booking strip + attachment placeholders). Stored as `agent_text`. */
+    const guestAgentText = buildGuestAgentText(
+      channel,
+      cleanText,
+      subjectTrim,
+      inboundAttachments,
+      (t) => this.parser.extractBookingGuestInquiryForAgent(t),
+    );
 
-      cleanText.trim() || subjectTrim || 'The guest sent an empty or non-text message.';
+    const bodyForAgent = guestAgentText;
 
     const replyAddr = replyTo?.trim() || guestEmail;
 
@@ -414,6 +437,8 @@ export class MessagingService {
             role: 'guest',
 
             text: guestDisplayText,
+
+            agentText: guestAgentText,
 
             rawEmailId,
 
@@ -869,33 +894,33 @@ export class MessagingService {
 
         role: (m.role === 'guest' ? 'user' : 'assistant') as 'user' | 'assistant',
 
-        content: m.text,
+        content: (m.agentText?.trim() || m.text) ?? '',
 
       }));
 
-
-
-      const rawDraft = await this.agentService.processMessage(
-
-        `Property (${thread.channel})`,
-
-        '',
-
-        userText,
-
-        chatHistory,
-
-      );
-
-      const { rawEndsEscalate, textWithoutMarker } = parseAssistantEscalation(rawDraft);
+      const freshEarly = await this.threadRepo.findOne({ where: { id: thread.id } });
 
       let kbEmpty = true;
 
       let kbWeakMatch = true;
 
-      const freshEarly = await this.threadRepo.findOne({ where: { id: thread.id } });
+      let kbContextForAgent = 'No knowledge base entries yet.';
+
+      let propertyLabel = `Property (${thread.channel})`;
 
       if (freshEarly?.propertyId) {
+
+        try {
+
+          const property = await this.propertyService.findOne(freshEarly.propertyId, thread.ownerId);
+
+          propertyLabel = property.name;
+
+        } catch {
+
+          /* keep generic label */
+
+        }
 
         const kbSearch = await this.knowledgeBaseService.searchRelevant(
 
@@ -911,7 +936,19 @@ export class MessagingService {
 
         kbWeakMatch = kbSearch.isWeakMatch;
 
+        const knowledgeBase = kbWeakMatch ? '' : formatKnowledgeBaseEntriesForAgent(kbSearch.entries);
+
+        kbContextForAgent = kbWeakMatch
+
+          ? '(No sufficiently relevant knowledge base match for this question — do not invent facts; you MUST escalate: one short message to the guest in the same language as their latest message, then [ESCALATE] on a new line.)'
+
+          : knowledgeBase || 'No knowledge base entries yet.';
+
       }
+
+      const rawDraft = await this.agentService.processMessage(propertyLabel, kbContextForAgent, userText, chatHistory);
+
+      const { rawEndsEscalate, textWithoutMarker } = parseAssistantEscalation(rawDraft);
 
       const kbHasReliableMatch = !kbEmpty && !kbWeakMatch;
 

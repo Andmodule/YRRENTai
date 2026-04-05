@@ -30,6 +30,13 @@ export class MessagingMessageEntity {
   @Column({ type: 'text' })
   text!: string;
 
+  /**
+   * Normalized text for LLM / KB: guest inquiry (e.g. Booking strip) + attachment placeholders.
+   * UI / `text` keeps full body for display. Null on legacy rows — fallback to `text` in agent history.
+   */
+  @Column({ name: 'agent_text', type: 'text', nullable: true })
+  agentText!: string | null;
+
   @Column({ name: 'raw_email_id', type: 'varchar', nullable: true, unique: true })
   rawEmailId!: string | null;
 
