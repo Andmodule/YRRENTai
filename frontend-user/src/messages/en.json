@@ -362,6 +362,7 @@
       "contentRequired": "Content is required",
       "cancel": "Cancel",
       "saving": "Saving…",
+      "saved": "Saved",
       "saveClose": "save & close"
     },
     "import": {

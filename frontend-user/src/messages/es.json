@@ -263,6 +263,7 @@
       "contentRequired": "El contenido es obligatorio",
       "cancel": "Cancelar",
       "saving": "Guardando…",
+      "saved": "Guardado",
       "saveClose": "guardar y cerrar"
     },
     "import": {
