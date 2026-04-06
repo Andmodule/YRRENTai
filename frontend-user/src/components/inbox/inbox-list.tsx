@@ -1,11 +1,31 @@
 'use client';
 
+import { useMemo } from 'react';
 import { useTranslations } from 'next-intl';
 import { Inbox } from 'lucide-react';
 import type { ConversationDto } from '@/hooks/use-conversations';
+import { formatGuestAndProperty } from '@/lib/format/conversation-meta';
+import { useInboxSearchStore } from '@/stores/inbox-search.store';
 import { InboxCard } from './inbox-card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/ui/empty-state';
+
+function conversationMatchesQuery(c: ConversationDto, q: string): boolean {
+  const needle = q.trim().toLowerCase();
+  if (!needle) return true;
+  const title = formatGuestAndProperty(c.externalGuestKey, c.propertyName, c.guestDisplayName);
+  const hay = [
+    title,
+    c.propertyName ?? '',
+    c.guestDisplayName ?? '',
+    c.externalGuestKey ?? '',
+    c.lastMessagePreview ?? '',
+    c.channel ?? '',
+  ]
+    .join(' ')
+    .toLowerCase();
+  return hay.includes(needle);
+}
 
 interface InboxListProps {
   conversations: ConversationDto[];
@@ -16,6 +36,12 @@ interface InboxListProps {
 
 export function InboxList({ conversations, isLoading, activeId, onSelect }: InboxListProps) {
   const t = useTranslations('inbox');
+  const searchQuery = useInboxSearchStore((s) => s.query);
+
+  const filtered = useMemo(
+    () => conversations.filter((c) => conversationMatchesQuery(c, searchQuery)),
+    [conversations, searchQuery],
+  );
 
   if (isLoading) {
     return (
@@ -38,9 +64,20 @@ export function InboxList({ conversations, isLoading, activeId, onSelect }: Inbo
     );
   }
 
+  if (filtered.length === 0) {
+    return (
+      <EmptyState
+        icon={<Inbox className="h-10 w-10" />}
+        title={t('searchNoResults')}
+        description={t('searchNoResultsHint')}
+        className="py-16"
+      />
+    );
+  }
+
   return (
     <div className="space-y-1 p-2 overflow-y-auto">
-      {conversations.map((conv) => (
+      {filtered.map((conv) => (
         <InboxCard
           key={conv.id}
           conversation={conv}

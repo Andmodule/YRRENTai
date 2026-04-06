@@ -24,7 +24,7 @@ export default function PropertiesPage() {
   const setPropertyCreateHandler = useUiStore((s) => s.setPropertyCreateHandler);
 
   useEffect(() => {
-    setPropertyCreateHandler(() => () => setDraftOpen(true));
+    setPropertyCreateHandler(() => setDraftOpen(true));
     return () => setPropertyCreateHandler(null);
   }, [setPropertyCreateHandler]);
 

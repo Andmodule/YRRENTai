@@ -24,6 +24,7 @@ export class ChatService {
     await this.dataSource.transaction(async (manager) => {
       await manager.query(`DELETE FROM "escalations"`);
       await manager.query(`DELETE FROM "messaging_threads"`);
+      await manager.query(`DELETE FROM "whatsapp_processed_messages"`);
       await manager.query(`DELETE FROM "chat_messages"`);
       await manager.query(`DELETE FROM "conversations"`);
     });

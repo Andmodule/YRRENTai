@@ -14,6 +14,7 @@ import { ChatService } from './chat.service';
 import { ConversationService } from './conversation.service';
 import { ChatGateway } from './chat.gateway';
 import { MessagingService } from '../messaging/messaging.service';
+import { WhatsappCloudApiService } from './whatsapp-cloud-api.service';
 import { MessageChannel } from './enums/message-channel.enum';
 import { MessageDeliveryStatus } from './enums/message-delivery-status.enum';
 
@@ -28,6 +29,7 @@ export class StaffOutboundDeliveryService {
     private readonly chatGateway: ChatGateway,
     @Inject(forwardRef(() => MessagingService))
     private readonly messagingService: MessagingService,
+    private readonly whatsappCloudApi: WhatsappCloudApiService,
     @InjectRepository(ChatMessageEntity)
     private readonly messageRepository: Repository<ChatMessageEntity>,
   ) {}
@@ -73,8 +75,10 @@ export class StaffOutboundDeliveryService {
             `Guest delivery via ${fresh.channel} is not implemented yet.`,
           );
         case MessageChannel.AIRBNB_API:
-        case MessageChannel.WHATSAPP:
           throw new NotImplementedException(`Integration for ${fresh.channel} is not yet implemented.`);
+        case MessageChannel.WHATSAPP:
+          await this.whatsappCloudApi.sendTextToGuest(conv.propertyId, conv.externalGuestKey, fresh.content);
+          break;
         default:
           throw new Error(`Unknown channel: ${String(fresh.channel)}`);
       }

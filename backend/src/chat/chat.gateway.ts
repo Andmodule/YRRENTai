@@ -4,6 +4,7 @@ import {
   SubscribeMessage,
   OnGatewayConnection,
   OnGatewayDisconnect,
+  OnGatewayInit,
   ConnectedSocket,
   MessageBody,
 } from '@nestjs/websockets';
@@ -15,20 +16,12 @@ import { ChatService } from './chat.service';
 import { conversationChannelToMessageChannel } from './chat-channel.mapper';
 import { BookingComMetadataService } from './booking-com-metadata.service';
 import { ConversationService } from './conversation.service';
-import { AgentService } from '../agent/agent.service';
 import { PropertyService } from '../property/property.service';
-import { KnowledgeBaseService } from '../knowledge-base/knowledge-base.service';
-import { TelegramService } from '../telegram/telegram.service';
 import { MessagingService } from '../messaging/messaging.service';
 import { StaffRepliedEvent } from '../common/events/staff.events';
 import { sendChatMessageSchema, listPreviewForInbox } from '@rentai/shared';
-import {
-  resolveGuestEscalationFallback,
-  formatKnowledgeBaseEntriesForAgent,
-  parseAssistantEscalation,
-  shouldForceEscalationGuestReply,
-  assistantReplyIndicatesEscalationWithoutMarker,
-} from '../agent/constants/agent-prompts';
+import { ChatRealtimeService } from './chat-realtime.service';
+import { GuestAiPipelineService } from './guest-ai-pipeline.service';
 
 interface AuthenticatedSocket extends Socket {
   data: {
@@ -46,7 +39,7 @@ interface AuthenticatedSocket extends Socket {
     credentials: true,
   },
 })
-export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, OnGatewayInit {
   @WebSocketServer()
   server!: Server;
 
@@ -58,14 +51,16 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private readonly chatService: ChatService,
     private readonly bookingComMetadataService: BookingComMetadataService,
     private readonly conversationService: ConversationService,
-    private readonly agentService: AgentService,
     private readonly propertyService: PropertyService,
-    private readonly knowledgeBaseService: KnowledgeBaseService,
-    @Inject(forwardRef(() => TelegramService))
-    private readonly telegramService: TelegramService,
+    private readonly chatRealtime: ChatRealtimeService,
+    private readonly guestAiPipeline: GuestAiPipelineService,
     @Inject(forwardRef(() => MessagingService))
     private readonly messagingService: MessagingService,
   ) {}
+
+  afterInit(): void {
+    this.chatRealtime.attachServer(this.server);
+  }
 
   async handleConnection(client: AuthenticatedSocket) {
     try {
@@ -163,8 +158,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     client.emit('message:saved', msgPayload);
     /** Инбокс менеджера: иначе новый текст гостя виден только после refetch по conversation:updated (задержка / кэш). */
-    this.server.to(`inbox:${conversation.propertyId}`).emit('message:saved', msgPayload);
-    this.server.to(`inbox:${conversation.propertyId}`).emit('conversation:updated', {
+    this.chatRealtime.emitToInbox(conversation.propertyId, 'message:saved', msgPayload);
+    this.chatRealtime.emitToInbox(conversation.propertyId, 'conversation:updated', {
       conversationId: conversation.id,
       lastMessagePreview: listPreview.slice(0, 200),
       lastActivityAt: userMessage.createdAt.toISOString(),
@@ -172,133 +167,15 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     });
 
     const property = await this.propertyService.findOneForUser(propertyId, userId, client.data.role);
-    const kbSearch = await this.knowledgeBaseService.searchRelevant(propertyId, content, 8);
-    const { entries: kbEntries, isWeakMatch: kbWeakMatch } = kbSearch;
-    const knowledgeBase = kbWeakMatch ? '' : formatKnowledgeBaseEntriesForAgent(kbEntries);
-    const kbContextForAgent = kbWeakMatch
-      ? '(No sufficiently relevant knowledge base match for this question — do not invent facts; you MUST escalate: one short message to the guest in the same language as their latest message, then [ESCALATE] on a new line.)'
-      : knowledgeBase || 'No knowledge base entries yet.';
-    const history = await this.chatService.getRecentHistory(propertyId, 20, conversation.id);
-
-    client.emit('agent:streamStart', { propertyId, conversationId: conversation.id });
-
-    await this.agentService.processMessageStream(
-      property.name,
-      kbContextForAgent,
+    await this.guestAiPipeline.runAfterGuestUserMessage({
+      property: { id: property.id, name: property.name, ownerId: property.ownerId },
+      conversation,
+      userMessage,
       content,
-      history,
-      {
-        onChunk: (text) => {
-          client.emit('agent:streamChunk', { propertyId, conversationId: conversation.id, text });
-        },
-        onDone: async (fullText) => {
-          const { rawEndsEscalate, textWithoutMarker } = parseAssistantEscalation(fullText);
-
-          const kbEmpty = kbEntries.length === 0;
-          const kbHasReliableMatch = kbEntries.length > 0 && !kbWeakMatch;
-          const forcedByForbidden = shouldForceEscalationGuestReply(textWithoutMarker);
-          const modelSaysEscalateWithoutMarker =
-            assistantReplyIndicatesEscalationWithoutMarker(textWithoutMarker);
-
-          /** Staff / Telegram: any explicit escalation or missing KB / weak KB / forbidden wording. */
-          const notifyStaff =
-            kbEmpty ||
-            forcedByForbidden ||
-            kbWeakMatch ||
-            rawEndsEscalate ||
-            modelSaysEscalateWithoutMarker;
-
-          /**
-           * Guest-facing text: legacy rules — when the model escalated but KB still had a strong match,
-           * we only strip `[ESCALATE]` and show the model reply (same as before). Staff may still be
-           * notified via `notifyStaff` so Telegram is not silent.
-           */
-          const guestEscalationUi =
-            kbEmpty || forcedByForbidden || kbWeakMatch || (rawEndsEscalate && !kbHasReliableMatch);
-
-          const escalationFallback = resolveGuestEscalationFallback(content);
-
-          let cleanText: string;
-          if (!guestEscalationUi) {
-            cleanText = textWithoutMarker;
-          } else if (rawEndsEscalate && !forcedByForbidden) {
-            cleanText = textWithoutMarker || escalationFallback;
-          } else {
-            cleanText = escalationFallback;
-          }
-
-          if (!cleanText.trim()) {
-            cleanText = escalationFallback;
-          }
-
-          cleanText = await this.agentService.ensureReplyMatchesGuestLanguage(content, cleanText);
-
-          const agentMessage = await this.chatService.saveMessage({
-            propertyId,
-            conversationId: conversation.id,
-            content: cleanText,
-            role: 'assistant',
-            source: 'ai',
-            channel: conversationChannelToMessageChannel(conversation.channel),
-          });
-
-          await this.conversationService.touch(conversation.id, cleanText);
-
-          const inboxAiPayload = {
-            ...this.chatService.toSocketPayload(agentMessage),
-            conversationId: conversation.id,
-          };
-          /** Инбокс: ответ AI раньше уходил только гостю (`client.emit`), менеджер не получал message:saved и зависел от refetch. */
-          this.server.to(`inbox:${propertyId}`).emit('message:saved', inboxAiPayload);
-
-          client.emit('agent:streamEnd', {
-            id: agentMessage.id,
-            propertyId,
-            conversationId: conversation.id,
-            content: cleanText,
-            role: 'assistant',
-            source: 'ai',
-            createdAt: agentMessage.createdAt.toISOString(),
-            channel: agentMessage.channel,
-            deliveryStatus: agentMessage.deliveryStatus,
-          });
-
-          if (notifyStaff) {
-            await this.conversationService.setStatus(conversation.id, 'needs_human');
-            this.server.to(`inbox:${propertyId}`).emit('conversation:updated', {
-              conversationId: conversation.id,
-              status: 'needs_human',
-              lastMessagePreview: cleanText.slice(0, 200),
-              lastActivityAt: agentMessage.createdAt.toISOString(),
-            });
-            void this.telegramService.sendEscalationIfConfigured({
-              propertyId,
-              ownerId: property.ownerId,
-              propertyName: property.name,
-              guestQuestion: listPreview,
-              guestMessageId: userMessage.id,
-              conversationId: conversation.id,
-            });
-          } else {
-            /** AI answered from KB / guest-facing reply without staff — thread is idle until the next guest message. */
-            await this.conversationService.setStatus(conversation.id, 'resolved');
-            this.server.to(`inbox:${propertyId}`).emit('conversation:updated', {
-              conversationId: conversation.id,
-              status: 'resolved',
-              lastMessagePreview: cleanText.slice(0, 200),
-              lastActivityAt: agentMessage.createdAt.toISOString(),
-            });
-          }
-        },
-        onError: (error) => {
-          client.emit('agent:error', {
-            propertyId,
-            conversationId: conversation.id,
-            message: error.message || 'Agent processing failed',
-          });
-        },
-      },
-    );
+      listPreview,
+      streamClient: client,
+      guestReplyChannel: 'web_socket',
+    });
   }
 
   /**
@@ -319,8 +196,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       ...(event.deliveryStatus !== undefined ? { deliveryStatus: event.deliveryStatus } : {}),
     };
 
-    this.server.to(`property:${event.propertyId}`).emit('agent:streamEnd', msgPayload);
-    this.server.to(`property:${event.propertyId}`).emit('message:saved', msgPayload);
+    this.chatRealtime.emitToProperty(event.propertyId, 'agent:streamEnd', msgPayload);
+    this.chatRealtime.emitToProperty(event.propertyId, 'message:saved', msgPayload);
 
     if (event.conversationId) {
       const convUpd = {
@@ -330,10 +207,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         lastActivityAt: event.createdAt,
       };
 
-      this.server.to(`inbox:${event.propertyId}`).emit('conversation:updated', convUpd);
-      this.server.to(`property:${event.propertyId}`).emit('conversation:updated', convUpd);
+      this.chatRealtime.emitToInbox(event.propertyId, 'conversation:updated', convUpd);
+      this.chatRealtime.emitToProperty(event.propertyId, 'conversation:updated', convUpd);
 
-      this.server.to(`inbox:${event.propertyId}`).emit('message:saved', msgPayload);
+      this.chatRealtime.emitToInbox(event.propertyId, 'message:saved', msgPayload);
     }
   }
 
@@ -351,8 +228,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       channel: payload.channel,
       conversationId: payload.conversationId,
     };
-    this.server.to(`property:${payload.propertyId}`).emit('message_status_updated', base);
-    this.server.to(`inbox:${payload.propertyId}`).emit('message_status_updated', base);
+    this.chatRealtime.emitToProperty(payload.propertyId, 'message_status_updated', base);
+    this.chatRealtime.emitToInbox(payload.propertyId, 'message_status_updated', base);
   }
 
   @SubscribeMessage('chat:join')

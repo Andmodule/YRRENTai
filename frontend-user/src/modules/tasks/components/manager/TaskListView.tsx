@@ -2,6 +2,7 @@
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { useTranslations } from 'next-intl';
 import { ChevronDown, Mic, Pencil } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -59,6 +60,7 @@ export const TaskListView = memo(function TaskListView({
   voiceQuickAdd?: boolean;
 }) {
   const tList = useTranslations('tasks.listByProperty');
+  const tTasks = useTranslations('tasks');
 
   const groups = useMemo(
     () => groupTasksAndIncidentsForBoard(tasks, boardIncidents),
@@ -75,8 +77,8 @@ export const TaskListView = memo(function TaskListView({
   const isMdUp = useMatchMedia('(min-width: 768px)');
   const [voiceOpen, setVoiceOpen] = useState(false);
   const [voicePropertyId, setVoicePropertyId] = useState<string | null>(null);
-  /** `voice` = mic FAB + запись; `manual` = карандаш FAB — сразу форма без микрофона. */
-  const [fabEntry, setFabEntry] = useState<'voice' | 'manual'>('voice');
+  /** `voice` = mic FAB; `manual-*` = карандаш → выбор в меню, затем форма без микрофона. */
+  const [fabEntry, setFabEntry] = useState<'voice' | 'manual-task' | 'manual-incident'>('voice');
   const voiceSheetRef = useRef<VoiceTaskCreateSheetHandle>(null);
   /** Only one row may show the swipe-delete “peek” strip at a time; cleared when opening another row. */
   const [swipeOpenRowId, setSwipeOpenRowId] = useState<string | null>(null);
@@ -112,9 +114,9 @@ export const TaskListView = memo(function TaskListView({
     voiceSheetRef.current?.startRecordingFromUserGesture();
   }, []);
 
-  const openManualSheet = useCallback((propertyId: string) => {
+  const openManualSheet = useCallback((propertyId: string, kind: 'task' | 'incident') => {
     flushSync(() => {
-      setFabEntry('manual');
+      setFabEntry(kind === 'incident' ? 'manual-incident' : 'manual-task');
       setVoicePropertyId(propertyId);
       setVoiceOpen(true);
     });
@@ -309,19 +311,60 @@ export const TaskListView = memo(function TaskListView({
             )}
             style={{ transition: `opacity ${FAB_FADE_MS}ms ease-in-out` }}
           >
-            <button
-              type="button"
-              onClick={() => openManualSheet(fabPropertyId)}
-              className={cn(
-                'flex h-[38px] w-[38px] shrink-0 cursor-pointer items-center justify-center rounded-full touch-manipulation',
-                'border-[1.5px] border-[#008CA4] bg-white text-[#008CA4] shadow-md shadow-slate-900/10',
-                'transition-[box-shadow,transform] active:scale-[0.97]',
-                'dark:border-[#008CA4] dark:bg-slate-950 dark:text-[#00d4ff] dark:shadow-black/25',
-              )}
-              aria-label={tList('manualFabAria')}
-            >
-              <Pencil className="h-[15px] w-[15px]" strokeWidth={2} aria-hidden />
-            </button>
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger asChild>
+                <button
+                  type="button"
+                  className={cn(
+                    'flex h-[38px] w-[38px] shrink-0 cursor-pointer items-center justify-center rounded-full touch-manipulation',
+                    'border-[1.5px] border-[#008CA4] bg-white text-[#008CA4] shadow-md shadow-slate-900/10',
+                    'transition-[box-shadow,transform] active:scale-[0.97]',
+                    'dark:border-[#008CA4] dark:bg-slate-950 dark:text-[#00d4ff] dark:shadow-black/25',
+                  )}
+                  aria-label={tList('manualFabAria')}
+                >
+                  <Pencil className="h-[15px] w-[15px]" strokeWidth={2} aria-hidden />
+                </button>
+              </DropdownMenu.Trigger>
+              <DropdownMenu.Portal>
+                <DropdownMenu.Content
+                  side="top"
+                  align="end"
+                  sideOffset={10}
+                  className={cn(
+                    'z-[200] flex w-[min(11rem,calc(100vw-2rem))] min-w-0 flex-col gap-2 border-0 bg-transparent p-0 shadow-none outline-none',
+                    'data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95',
+                  )}
+                >
+                  <DropdownMenu.Item
+                    className={cn(
+                      'flex cursor-pointer select-none items-center justify-center rounded-2xl border px-3 py-2.5 text-[13px] font-semibold leading-tight outline-none',
+                      'border-[#008CA4]/40 bg-white/90 text-[#0a6b7a] shadow-sm shadow-[#008CA4]/12 backdrop-blur-md',
+                      'transition-[transform,box-shadow,border-color] active:scale-[0.99]',
+                      'dark:border-[#008CA4]/45 dark:bg-slate-950/65 dark:text-[#a5e9ff]',
+                      'dark:shadow-[#008CA4]/15 data-[highlighted]:border-[#008CA4]/70 data-[highlighted]:bg-[#008CA4]/10',
+                      'data-[highlighted]:shadow-md data-[highlighted]:shadow-[#008CA4]/20 dark:data-[highlighted]:bg-[#008CA4]/15',
+                    )}
+                    onSelect={() => openManualSheet(fabPropertyId, 'task')}
+                  >
+                    {tTasks('smartCreate.tabTask')}
+                  </DropdownMenu.Item>
+                  <DropdownMenu.Item
+                    className={cn(
+                      'flex cursor-pointer select-none items-center justify-center rounded-2xl border px-3 py-2.5 text-[13px] font-semibold leading-tight outline-none',
+                      'border-[#008CA4]/40 bg-white/90 text-[#0a6b7a] shadow-sm shadow-[#008CA4]/12 backdrop-blur-md',
+                      'transition-[transform,box-shadow,border-color] active:scale-[0.99]',
+                      'dark:border-[#008CA4]/45 dark:bg-slate-950/65 dark:text-[#a5e9ff]',
+                      'dark:shadow-[#008CA4]/15 data-[highlighted]:border-[#008CA4]/70 data-[highlighted]:bg-[#008CA4]/10',
+                      'data-[highlighted]:shadow-md data-[highlighted]:shadow-[#008CA4]/20 dark:data-[highlighted]:bg-[#008CA4]/15',
+                    )}
+                    onSelect={() => openManualSheet(fabPropertyId, 'incident')}
+                  >
+                    {tTasks('smartCreate.tabIncident')}
+                  </DropdownMenu.Item>
+                </DropdownMenu.Content>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Root>
             <button
               type="button"
               onClick={() => openVoiceSheet(fabPropertyId)}
@@ -351,7 +394,8 @@ export const TaskListView = memo(function TaskListView({
             }
           }}
           propertyId={(voicePropertyId ?? fabPropertyId)!}
-          startWithManualForm={fabEntry === 'manual'}
+          startWithManualForm={fabEntry === 'manual-task' || fabEntry === 'manual-incident'}
+          manualEntityTab={fabEntry === 'manual-incident' ? 'incident' : 'task'}
         />
       ) : null}
     </div>

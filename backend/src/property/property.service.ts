@@ -36,6 +36,8 @@ export class PropertyService {
       currency: dto.currency ?? 'USD',
       maxGuests: dto.maxGuests,
       icalImportUrls: dto.icalImportUrls ?? [],
+      whatsappPhoneNumberId: dto.whatsappPhoneNumberId ?? null,
+      whatsappAccessToken: dto.whatsappAccessToken ?? null,
       ownerId,
       companyId: owner.companyId,
     });
@@ -178,6 +180,23 @@ export class PropertyService {
     return null;
   }
 
+  /** Internal: load property by id without ownership (webhooks / outbound delivery). */
+  async findByIdBare(id: string): Promise<PropertyEntity | null> {
+    return this.propertyRepository.findOne({
+      where: { id },
+      relations: ['channelListings', 'channelListings.otaPlatform', 'otaPlatform'],
+    });
+  }
+
+  /** Resolve property by Meta WhatsApp Phone number id (webhook routing). */
+  async findByWhatsappPhoneNumberId(phoneNumberId: string): Promise<PropertyEntity | null> {
+    const t = phoneNumberId.trim();
+    if (!t) return null;
+    return this.propertyRepository.findOne({
+      where: { whatsappPhoneNumberId: t },
+    });
+  }
+
   async findOne(id: string, ownerId: string): Promise<PropertyEntity> {
     const property = await this.propertyRepository.findOne({
       where: { id, ownerId },
@@ -241,12 +260,20 @@ export class PropertyService {
       await this.assertChannelListingsPlatformsValid(dto.channelListings);
       await this.replaceChannelListings(id, dto.channelListings);
     }
-    const { channelListings: _cl, zodomusPropertyId: manualZodomus, ...scalar } = dto;
+    const {
+      channelListings: _cl,
+      zodomusPropertyId: manualZodomus,
+      whatsappAccessToken: waToken,
+      ...scalar
+    } = dto;
     for (const key of Object.keys(scalar) as Array<keyof typeof scalar>) {
       const v = scalar[key];
       if (v !== undefined) {
         (property as unknown as Record<string, unknown>)[key as string] = v as unknown;
       }
+    }
+    if (waToken !== undefined) {
+      property.whatsappAccessToken = waToken?.trim() ? waToken.trim() : null;
     }
     try {
       await this.propertyRepository.save(property);

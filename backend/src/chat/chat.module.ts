@@ -9,6 +9,7 @@ import { StaffReplyService } from './staff-reply.service';
 import { StaffOutboundDeliveryService } from './staff-outbound-delivery.service';
 import { ChatMessageEntity } from './entities/chat-message.entity';
 import { ConversationEntity } from './entities/conversation.entity';
+import { WhatsappProcessedMessageEntity } from './entities/whatsapp-processed-message.entity';
 import { ConversationService } from './conversation.service';
 import { AgentModule } from '../agent/agent.module';
 import { PropertyModule } from '../property/property.module';
@@ -16,10 +17,15 @@ import { UserModule } from '../user/user.module';
 import { KnowledgeBaseModule } from '../knowledge-base/knowledge-base.module';
 import { TelegramModule } from '../telegram/telegram.module';
 import { MessagingModule } from '../messaging/messaging.module';
+import { WhatsappWebhookController } from './whatsapp-webhook.controller';
+import { WhatsappInboundService } from './whatsapp-inbound.service';
+import { WhatsappCloudApiService } from './whatsapp-cloud-api.service';
+import { GuestAiPipelineService } from './guest-ai-pipeline.service';
+import { ChatRealtimeService } from './chat-realtime.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([ChatMessageEntity, ConversationEntity]),
+    TypeOrmModule.forFeature([ChatMessageEntity, ConversationEntity, WhatsappProcessedMessageEntity]),
     JwtModule.register({}),
     AgentModule,
     PropertyModule,
@@ -28,11 +34,15 @@ import { MessagingModule } from '../messaging/messaging.module';
     forwardRef(() => TelegramModule),
     forwardRef(() => MessagingModule),
   ],
-  controllers: [ChatController],
+  controllers: [ChatController, WhatsappWebhookController],
   providers: [
     ChatService,
     ConversationService,
     ChatGateway,
+    ChatRealtimeService,
+    GuestAiPipelineService,
+    WhatsappCloudApiService,
+    WhatsappInboundService,
     StaffReplyService,
     StaffOutboundDeliveryService,
     BookingComMetadataService,
@@ -41,6 +51,8 @@ import { MessagingModule } from '../messaging/messaging.module';
     ChatService,
     ConversationService,
     ChatGateway,
+    ChatRealtimeService,
+    GuestAiPipelineService,
     StaffReplyService,
     StaffOutboundDeliveryService,
     BookingComMetadataService,

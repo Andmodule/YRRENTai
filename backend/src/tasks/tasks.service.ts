@@ -873,7 +873,7 @@ export class TasksService {
       return this.voiceParseHeuristicMock(file, contextPropertyId, props);
     }
 
-    const trimmed = transcript.trim();
+    const trimmed = this.stripVoiceSilenceHallucinations(transcript);
     if (!trimmed) {
       return this.voiceParseTranscriptOnlyFallback('');
     }
@@ -1146,7 +1146,7 @@ Reply with JSON only, no markdown.`;
         transcript: '',
         isGeneralTask: true,
         propertyIds: [],
-        title: 'Task',
+        title: '',
         type: 'other',
         assigneeId: null,
         dueDate: format(addDays(new Date(), 1), 'yyyy-MM-dd'),
@@ -1158,7 +1158,7 @@ Reply with JSON only, no markdown.`;
       transcript: trimmed,
       isGeneralTask: true,
       propertyIds: [],
-      title: this.deriveVoiceTaskTitle(trimmed) || 'Task',
+      title: this.deriveVoiceTaskTitle(trimmed) || '',
       type: 'other',
       assigneeId: null,
       dueDate: format(addDays(new Date(), 1), 'yyyy-MM-dd'),
@@ -1166,7 +1166,7 @@ Reply with JSON only, no markdown.`;
     };
   }
 
-  /** Dev/offline: placeholder transcript + token matching (no API keys). */
+  /** Dev/offline: optional `VOICE_PARSE_STT_TRANSCRIPT` + token matching (no API keys). Empty transcript → empty form fields. */
   private voiceParseHeuristicMock(
     file: Express.Multer.File,
     contextPropertyId: string | undefined,
@@ -1176,6 +1176,9 @@ Reply with JSON only, no markdown.`;
     const ctxOk = contextPropertyId && allIds.has(contextPropertyId) ? contextPropertyId : undefined;
 
     const transcriptText = this.resolveVoiceTranscriptPlaceholder(file);
+    if (!transcriptText.trim()) {
+      return Promise.resolve(this.voiceParseTranscriptOnlyFallback(''));
+    }
     const tNorm = this.normVoiceText(transcriptText);
 
     if (this.detectIncidentFromTranscript(tNorm)) {
@@ -1421,7 +1424,9 @@ Reply with JSON only, no markdown.`;
     }
 
     const title =
-      raw.title?.trim() || this.deriveVoiceTaskTitle(transcript) || 'Incident';
+      this.stripVoiceSilenceHallucinations(raw.title?.trim() || '') ||
+      this.deriveVoiceTaskTitle(transcript) ||
+      '';
 
     return {
       entityType: 'incident',
@@ -1470,7 +1475,9 @@ Reply with JSON only, no markdown.`;
         : format(addDays(new Date(), 1), 'yyyy-MM-dd');
 
     const title =
-      raw.title?.trim() || this.deriveVoiceTaskTitle(transcript) || 'Task';
+      this.stripVoiceSilenceHallucinations(raw.title?.trim() || '') ||
+      this.deriveVoiceTaskTitle(transcript) ||
+      '';
 
     if (!isGeneralTask && propertyIds.length === 0 && props.length === 1) {
       propertyIds = [props[0]!.id];
@@ -1512,19 +1519,30 @@ Reply with JSON only, no markdown.`;
     return VOICE_TASK_TYPES.includes(mapped as (typeof VOICE_TASK_TYPES)[number]) ? mapped : 'other';
   }
 
-  private resolveVoiceTranscriptPlaceholder(file: Express.Multer.File): string {
+  /**
+   * Whisper often hallucinates short captions on silence (e.g. RU «Продолжение следует»).
+   * If the transcript is only such noise, treat as empty.
+   */
+  private stripVoiceSilenceHallucinations(transcript: string): string {
+    const t = transcript.trim();
+    if (!t) return '';
+    const firstLine = t.split(/\n/)[0]?.trim() ?? t;
+    if (firstLine !== t) return t;
+    const onlyNoise =
+      /^продолжение\s+следует[\s.…]*$/iu.test(firstLine) ||
+      /^to be continued[\s.…]*$/iu.test(firstLine) ||
+      /^\[Music\]$/i.test(firstLine) ||
+      /^\[музыка\]$/iu.test(firstLine) ||
+      /^[\s.…]{2,}$/u.test(firstLine);
+    return onlyNoise ? '' : t;
+  }
+
+  private resolveVoiceTranscriptPlaceholder(_file: Express.Multer.File): string {
     const fromEnv = process.env.VOICE_PARSE_STT_TRANSCRIPT?.trim();
     if (fromEnv) {
       return fromEnv;
     }
-    // No STT yet: sample phrase for dev matching only — no “mock” suffix in user-facing text.
-    if (process.env.NODE_ENV === 'development') {
-      // eslint-disable-next-line no-console
-      console.debug(
-        `[voice-parse] STT not configured; using placeholder transcript (${file.size} bytes, ${file.mimetype || 'audio'})`,
-      );
-    }
-    return 'Слушай, на Арбате в гостиной разбили стакан, Наташе завтра убрать осколки, срочно.';
+    return '';
   }
 
   private normVoiceText(s: string): string {

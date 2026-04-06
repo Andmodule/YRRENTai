@@ -60,6 +60,24 @@ const icalEnvFields = z.object({
   ICAL_POLL_INTERVAL_MINUTES: z.coerce.number().min(1).max(1440).default(60),
 });
 
+const whatsappEnvFields = z.object({
+  /** Meta webhook verify token (GET hub.verify_token). */
+  WHATSAPP_VERIFY_TOKEN: z.string().optional(),
+  /** App Secret from Meta — HMAC SHA256 of raw body (`X-Hub-Signature-256`). Recommended in production. */
+  WHATSAPP_APP_SECRET: z.string().optional(),
+  /** Fallback token when property has no `whatsappAccessToken`. */
+  WHATSAPP_DEFAULT_ACCESS_TOKEN: z.string().optional(),
+  WHATSAPP_GRAPH_API_VERSION: z.string().default('v21.0'),
+  /**
+   * When false: inbound WhatsApp still creates guest messages and inbox rows, but no LLM reply and no Cloud API send;
+   * thread goes to needs_human and Telegram escalation if configured. Default true.
+   */
+  INBOUND_WHATSAPP_AI_ENABLED: z
+    .enum(['true', 'false', '1', '0', 'yes', 'no'])
+    .default('true')
+    .transform((v) => v === 'true' || v === '1' || v === 'yes'),
+});
+
 const resendEnvFields = z.object({
   RESEND_API_KEY: z.string().optional(),
   /** Svix signing secret from Resend inbound webhook. Omit in dev to skip verification (not for production). */
@@ -175,6 +193,7 @@ export const envSchema = z
   })
   .merge(zodomusEnvFields)
   .merge(icalEnvFields)
+  .merge(whatsappEnvFields)
   .merge(resendEnvFields)
   .refine(
     (d) => !d.ZODOMUS_ENABLED || (!!d.ZODOMUS_API_USER && !!d.ZODOMUS_API_PASSWORD),

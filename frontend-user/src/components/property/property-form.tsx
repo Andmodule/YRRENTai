@@ -77,6 +77,8 @@ export function PropertyForm({ defaultValues, onSubmit, onCancel, submitLabel }:
         return defaultValues?.zodomusPropertyId?.trim() ?? '';
       })(),
       icalImportUrls: defaultValues?.icalImportUrls ?? [],
+      whatsappPhoneNumberId: defaultValues?.whatsappPhoneNumberId ?? '',
+      whatsappAccessToken: '',
     },
   });
 
@@ -92,6 +94,9 @@ export function PropertyForm({ defaultValues, onSubmit, onCancel, submitLabel }:
     <form
       onSubmit={handleSubmit((data) => {
         const payload = { ...data, icalImportUrls: parseIcalImportLines(icalLines) };
+        if (defaultValues?.whatsappAccessTokenSet && !payload.whatsappAccessToken?.trim()) {
+          delete payload.whatsappAccessToken;
+        }
         if (payload.channelListings?.length) {
           const { zodomusPropertyId: _z, ...rest } = payload;
           void onSubmit(rest);
@@ -110,6 +115,46 @@ export function PropertyForm({ defaultValues, onSubmit, onCancel, submitLabel }:
         icalLines={icalLines}
         onIcalLinesChange={setIcalLines}
       />
+
+      <div className="space-y-3 border-t border-border/60 pt-4">
+        <p className="text-xs font-semibold tracking-tight text-foreground">{t('whatsappSection')}</p>
+        <p className="text-xs text-muted-foreground">{t('whatsappSectionHint')}</p>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label htmlFor="whatsappPhoneNumberId" className="text-xs">
+              {t('whatsappPhoneNumberId')}
+            </Label>
+            <Input
+              id="whatsappPhoneNumberId"
+              placeholder={t('whatsappPhoneNumberIdPlaceholder')}
+              autoComplete="off"
+              {...register('whatsappPhoneNumberId')}
+            />
+            <p className="text-xs text-muted-foreground">{t('whatsappPhoneNumberIdHint')}</p>
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label htmlFor="whatsappAccessToken" className="text-xs">
+              {t('whatsappAccessToken')}
+            </Label>
+            <Input
+              id="whatsappAccessToken"
+              type="password"
+              placeholder={
+                defaultValues?.whatsappAccessTokenSet
+                  ? t('whatsappAccessTokenPlaceholderKeep')
+                  : t('whatsappAccessTokenPlaceholder')
+              }
+              autoComplete="new-password"
+              {...register('whatsappAccessToken')}
+            />
+            <p className="text-xs text-muted-foreground">
+              {defaultValues?.whatsappAccessTokenSet
+                ? t('whatsappAccessTokenHintKeep')
+                : t('whatsappAccessTokenHint')}
+            </p>
+          </div>
+        </div>
+      </div>
 
       <div className="space-y-3 border-t border-border/60 pt-4">
         <p className="text-xs font-semibold tracking-tight text-foreground">{t('basicDetailsSection')}</p>

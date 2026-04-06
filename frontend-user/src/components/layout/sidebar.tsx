@@ -42,7 +42,7 @@ const navItems = [
 ] as const;
 
 /** When `NEXT_PUBLIC_NAV_LIMITED_MODE=true`, only these keys stay clickable; others are shown but disabled. */
-const NAV_LIMITED_ALLOWED_KEYS = new Set<string>(['dashboard', 'properties', 'tasks', 'chat']);
+const NAV_LIMITED_ALLOWED_KEYS = new Set<string>(['dashboard', 'properties', 'tasks', 'staff', 'chat']);
 const navLimitedMode = process.env.NEXT_PUBLIC_NAV_LIMITED_MODE === 'true';
 
 export function Sidebar() {
@@ -153,9 +153,9 @@ export function Sidebar() {
 
             <ThemeToggle
               className={cn(
-                'h-9 w-9 shrink-0 rounded-xl border border-slate-700/60 bg-slate-800/40 text-slate-400 shadow-sm',
+                'h-9 w-9 shrink-0 rounded-xl bg-slate-800/40 text-slate-400 shadow-sm',
                 'transition-all duration-300 ease-out',
-                'hover:border-primary/35 hover:bg-slate-800/90 hover:text-primary hover:shadow-[0_0_24px_-8px_rgba(59,130,246,0.35)]',
+                'hover:bg-slate-800/90 hover:text-primary hover:shadow-[0_0_24px_-8px_rgba(59,130,246,0.35)]',
                 'active:scale-[0.96] [&_svg]:text-current',
               )}
             />

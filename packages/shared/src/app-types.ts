@@ -72,6 +72,10 @@ export interface Property {
   zodomusRoomId?: string | null;
   /** External iCal feed URLs for calendar import. */
   icalImportUrls?: string[];
+  /** Meta WhatsApp Cloud API phone number id (routing inbound webhooks). */
+  whatsappPhoneNumberId?: string | null;
+  /** True when a WhatsApp token is stored (masked in API). */
+  whatsappAccessTokenSet?: boolean;
   ownerId: string;
   createdAt: string;
   updatedAt: string;

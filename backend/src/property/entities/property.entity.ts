@@ -93,4 +93,14 @@ export class PropertyEntity {
 
   @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt!: Date;
+
+  /**
+   * Meta WhatsApp Cloud API — Phone number ID (from App Dashboard) for inbound webhook routing.
+   */
+  @Column({ type: 'varchar', length: 64, nullable: true, unique: true })
+  whatsappPhoneNumberId!: string | null;
+
+  /** Long-lived token for this number; if null, backend may use WHATSAPP_DEFAULT_ACCESS_TOKEN. */
+  @Column({ type: 'text', nullable: true })
+  whatsappAccessToken!: string | null;
 }

@@ -58,6 +58,24 @@ const propertyFieldsSchema = z.object({
     },
     z.union([z.string().max(255), z.null()]).optional(),
   ),
+  /** Meta WhatsApp Cloud API — Phone number ID for webhooks / outbound. */
+  whatsappPhoneNumberId: z.preprocess(
+    (val) => {
+      if (val === undefined || val === null) return undefined;
+      const t = String(val).trim();
+      return t === '' ? null : t;
+    },
+    z.union([z.string().max(64), z.null()]).optional(),
+  ),
+  /** Per-property token; omit or empty to use server default env. */
+  whatsappAccessToken: z.preprocess(
+    (val) => {
+      if (val === undefined || val === null) return undefined;
+      const t = String(val).trim();
+      return t === '' ? null : t;
+    },
+    z.union([z.string().max(4096), z.null()]).optional(),
+  ),
 });
 
 export const createPropertySchema = propertyFieldsSchema.superRefine(refineDuplicateChannels);

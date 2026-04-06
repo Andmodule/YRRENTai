@@ -94,7 +94,7 @@ export default function StaffPage() {
       setStaffInviteHandler(null);
       return;
     }
-    setStaffInviteHandler(() => () => {
+    setStaffInviteHandler(() => {
       resetFormRef.current();
       setDialogOpen(true);
     });

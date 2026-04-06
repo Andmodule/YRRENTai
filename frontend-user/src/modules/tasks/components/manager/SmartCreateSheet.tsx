@@ -92,7 +92,7 @@ const smartFormSchema = z
 
 type SmartFormValues = z.infer<typeof smartFormSchema>;
 
-/** Idle (closed) → voice (hero) → parsing (shimmer) → review (form) → incidentCreated (success + next step) */
+/** Idle (closed) → voice (hero) → parsing (same mic hero + localized “parsing…”) → review (form) → incidentCreated */
 type FlowPhase = 'voice' | 'parsing' | 'review' | 'incidentCreated';
 
 const pillClass = (active: boolean) =>
@@ -131,6 +131,8 @@ type SmartCreateSheetProps = {
   incidentPrefill?: { notes: string; title?: string; incidentUuid?: string } | null;
   /** Open directly to the form (no mic) — e.g. pencil FAB on mobile. */
   startWithManualForm?: boolean;
+  /** When `startWithManualForm` is true: which flow to open (set from pencil menu). */
+  manualEntityTab?: 'task' | 'incident';
 };
 
 /** Call `startRecordingFromUserGesture` synchronously from the same pointer/click handler that opens the sheet (not from `useEffect`). iOS Safari requires this for `getUserMedia`. */
@@ -138,7 +140,108 @@ export type SmartCreateSheetHandle = {
   startRecordingFromUserGesture: () => void;
 };
 
-const parsingBlock = (active: boolean) => cn('rounded-md', active && 'animate-pulse bg-muted p-1');
+const VOICE_INFOGRAPHIC_ACCENT =
+  'border-[#008CA4]/55 text-[#008CA4] shadow-sm dark:border-[#008CA4]/45 dark:bg-slate-950/60 dark:text-[#5eead4]';
+
+/** Same pulsing mic rings as during recording — label is e.g. «Слушаю…» or «Распознаю…». */
+function VoiceMicActiveHero({ label }: { label: string }) {
+  return (
+    <>
+      <div className="relative z-[15] flex h-44 w-44 shrink-0 items-center justify-center">
+        <span
+          className="absolute inline-flex h-[120%] w-[120%] rounded-full bg-primary/15 animate-ping"
+          style={{ animationDuration: '2s' }}
+        />
+        <span
+          className="absolute inline-flex h-[95%] w-[95%] rounded-full bg-primary/10 animate-ping"
+          style={{ animationDuration: '2.4s', animationDelay: '0.2s' }}
+        />
+        <span
+          className="absolute inline-flex h-[72%] w-[72%] rounded-full border-2 border-primary/30"
+          aria-hidden
+        />
+        <div className="relative flex h-28 w-28 items-center justify-center rounded-full bg-gradient-to-br from-primary/40 to-primary/10 shadow-lg shadow-primary/35 ring-4 ring-primary/35 animate-pulse">
+          <Mic className="h-14 w-14 text-primary drop-shadow-md" strokeWidth={1.75} aria-hidden />
+        </div>
+      </div>
+      <p
+        className="max-w-md px-4 text-center text-sm font-medium text-muted-foreground animate-pulse sm:text-base"
+        aria-live="polite"
+        role="status"
+      >
+        {label}
+      </p>
+    </>
+  );
+}
+
+function VoiceRecordingInfographic({ className }: { className?: string }) {
+  const t = useTranslations('tasks.voiceCreate');
+  const steps = useMemo(
+    () =>
+      [
+        { n: 1, title: t('voiceInfographicStep1Title'), hint: t('voiceInfographicStep1Hint') },
+        { n: 2, title: t('voiceInfographicStep2Title'), hint: t('voiceInfographicStep2Hint') },
+        {
+          n: 3,
+          title: t('voiceInfographicStep3Title'),
+          subtitle: t('voiceInfographicStep3Subtitle'),
+          hint: t('voiceInfographicStep3Hint'),
+        },
+        { n: 4, title: t('voiceInfographicStep4Title'), hint: t('voiceInfographicStep4Hint') },
+        { n: 5, title: t('voiceInfographicStep5Title'), hint: t('voiceInfographicStep5Hint') },
+      ],
+    [t],
+  );
+
+  return (
+    <div className={cn('w-full', className)}>
+      <ol className="space-y-0">
+        {steps.map((step, index) => {
+          const isLast = index === steps.length - 1;
+          const hint = step.hint.trim();
+          const subtitle = ('subtitle' in step && step.subtitle ? step.subtitle : '').trim();
+          return (
+            <li key={step.n} className="flex gap-2">
+              <div className="flex w-7 shrink-0 flex-col items-center self-stretch">
+                <div
+                  className={cn(
+                    'z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 bg-background text-[10px] font-bold leading-none',
+                    VOICE_INFOGRAPHIC_ACCENT,
+                  )}
+                  aria-hidden
+                >
+                  {step.n}
+                </div>
+                {!isLast ? (
+                  <div className="flex min-h-[4px] flex-1 justify-center pt-0.5" aria-hidden>
+                    <div className="w-px flex-1 bg-gradient-to-b from-[#008CA4]/45 to-[#008CA4]/15 dark:from-[#008CA4]/35 dark:to-[#008CA4]/10" />
+                  </div>
+                ) : null}
+              </div>
+              <div className={cn('min-w-0 flex-1 space-y-0', !isLast ? 'pb-1.5' : '')}>
+                <p className="text-[12px] font-semibold leading-tight text-foreground">{step.title}</p>
+                {subtitle ? (
+                  <p className="text-[10px] leading-snug text-muted-foreground/90">{subtitle}</p>
+                ) : null}
+                {hint ? (
+                  <p className="text-[10px] leading-snug text-muted-foreground/85">{hint}</p>
+                ) : null}
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+      <div className="mt-2 border-t border-border/50 pt-2">
+        <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
+          {t('voiceInfographicFooterTitle')}
+        </p>
+        <p className="mt-1 text-[10px] leading-snug text-muted-foreground/90">{t('voiceInfographicFooterP1')}</p>
+        <p className="mt-1 text-[10px] leading-snug text-muted-foreground/90">{t('voiceInfographicFooterP2')}</p>
+      </div>
+    </div>
+  );
+}
 
 const defaultForm = (): SmartFormValues => ({
   entityTab: 'task',
@@ -154,7 +257,7 @@ const defaultForm = (): SmartFormValues => ({
 });
 
 export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSheetProps>(function SmartCreateSheet(
-  { open, onOpenChange, propertyId, incidentPrefill, startWithManualForm = false },
+  { open, onOpenChange, propertyId, incidentPrefill, startWithManualForm = false, manualEntityTab = 'task' },
   ref,
 ) {
   const t = useTranslations('tasks.voiceCreate');
@@ -291,7 +394,7 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
           reset({
             ...defaultForm(),
             entityTab: 'incident',
-            title: (data.title ?? 'Incident').trim(),
+            title: (data.title ?? '').trim(),
             incidentType: coerceIncidentType(data.incidentType),
             estimatedCost: data.estimatedCost != null ? String(data.estimatedCost) : '',
             propertyIds: pid ? [pid] : [],
@@ -381,6 +484,7 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
     } else if (startWithManualForm) {
       reset({
         ...defaultForm(),
+        entityTab: manualEntityTab,
         propertyIds: contextPropertyId ? [contextPropertyId] : [],
       });
       setPhase('review');
@@ -398,6 +502,7 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
     isIncidentDispatch,
     dispatchPrefill?.uuid,
     startWithManualForm,
+    manualEntityTab,
     reset,
     resetRecording,
     contextPropertyId,
@@ -542,7 +647,7 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
   const titleRegister = register('title');
   const titleValue = watch('title');
 
-  const showForm = phase === 'parsing' || phase === 'review';
+  const showForm = phase === 'review';
 
   const onAssignTechnicianAfterIncident = useCallback(() => {
     if (!incidentSuccess) return;
@@ -572,7 +677,6 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
     setIncidentSuccess(null);
     onOpenChange(false);
   }, [onOpenChange]);
-  const isParsing = phase === 'parsing';
   const isReview = phase === 'review';
   /** Voice hero: requesting mic or recording — show listening UI immediately after FAB open. */
   const isRecordingFocus =
@@ -581,7 +685,6 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
     recordingStatus !== 'unsupported';
 
   const onMicInReview = () => {
-    if (isParsing) return;
     resetRecording();
     reset(defaultForm());
     setPhase('voice');
@@ -599,19 +702,21 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
             'data-[state=open]:animate-in data-[state=closed]:animate-out',
             'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
             // Solid shell: avoid translucent bg-* /50 classes so the list does not show through.
-            showForm && entityTab === 'incident' && 'border-t-2 border-red-600 dark:border-red-500',
+            phase === 'review' && entityTab === 'incident' && 'border-t-2 border-red-600 dark:border-red-500',
             isDesktop
               ? 'inset-y-0 right-0 top-0 bottom-0 left-auto h-dvh max-h-dvh w-[min(100vw-0.5rem,26rem)] rounded-none rounded-l-xl border-l data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right'
               : 'inset-x-0 bottom-0 max-h-[min(92dvh,92vh)] rounded-t-xl data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom',
           )}
         >
-          {phase === 'voice' ? (
+          {phase === 'voice' || phase === 'parsing' ? (
             <>
               {!isDesktop ? (
-                <VaulDrawer.Handle className="mx-auto mt-3 h-1.5 w-12 shrink-0 rounded-full bg-muted" />
+                <VaulDrawer.Handle className="relative z-20 mx-auto mt-3 h-1.5 w-12 shrink-0 rounded-full bg-muted" />
               ) : null}
-              <VaulDrawer.Title className="sr-only">{t('voiceSheetTitle')}</VaulDrawer.Title>
-              <div className="flex shrink-0 justify-end px-3 pt-2 pb-1 sm:px-4">
+              <VaulDrawer.Title className="sr-only">
+                {phase === 'parsing' ? t('parsing') : t('voiceSheetTitle')}
+              </VaulDrawer.Title>
+              <div className="relative z-20 flex shrink-0 justify-end border-b border-border/30 bg-background px-3 pb-2 pt-2 sm:px-4">
                 <VaulDrawer.Close asChild>
                   <Button type="button" variant="ghost" size="icon" className="shrink-0" aria-label={t('closeAria')}>
                     <X className="h-4 w-4" />
@@ -645,13 +750,14 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
             </>
           )}
 
-          {phase === 'voice' ? (
+          {phase === 'voice' || phase === 'parsing' ? (
             <>
-              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              {phase === 'voice' ? (
+                <>
+              <div className="relative z-0 flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">
                 <div
                   className={cn(
-                    'flex flex-1 flex-col items-center justify-center px-6 py-8',
-                    isRecordingFocus ? 'min-h-[min(56dvh,460px)] gap-6' : 'min-h-[min(52dvh,420px)] gap-6',
+                    'flex min-h-0 flex-1 flex-col items-center justify-start gap-2 px-4 pb-3 pt-7 sm:gap-2.5 sm:px-6 sm:pb-4 sm:pt-8',
                   )}
                 >
                   {typeof window !== 'undefined' && !window.isSecureContext && window.location.hostname !== 'localhost' ? (
@@ -662,56 +768,21 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
                     <p className="max-w-md text-center text-sm text-muted-foreground">{t('micUnsupported')}</p>
                   ) : isRecordingFocus ? (
                     <>
-                      <div className="relative flex h-44 w-44 shrink-0 items-center justify-center">
-                        <span
-                          className="absolute inline-flex h-[120%] w-[120%] rounded-full bg-primary/15 animate-ping"
-                          style={{ animationDuration: '2s' }}
-                        />
-                        <span
-                          className="absolute inline-flex h-[95%] w-[95%] rounded-full bg-primary/10 animate-ping"
-                          style={{ animationDuration: '2.4s', animationDelay: '0.2s' }}
-                        />
-                        <span
-                          className="absolute inline-flex h-[72%] w-[72%] rounded-full border-2 border-primary/30"
-                          aria-hidden
-                        />
-                        <div className="relative flex h-28 w-28 items-center justify-center rounded-full bg-gradient-to-br from-primary/40 to-primary/10 shadow-lg shadow-primary/35 ring-4 ring-primary/35 animate-pulse">
-                          <Mic className="h-14 w-14 text-primary drop-shadow-md" strokeWidth={1.75} aria-hidden />
-                        </div>
-                      </div>
-                      <p
-                        className="max-w-md px-4 text-center text-sm font-medium text-muted-foreground animate-pulse sm:text-base"
-                        aria-live="polite"
-                        role="status"
-                      >
-                        {t('listeningPlaceholder')}
-                      </p>
-                      <div className="max-w-md space-y-3 text-center">
-                        <p className="text-sm font-medium leading-snug text-muted-foreground sm:text-base">{t('voiceLead')}</p>
-                        <p className="whitespace-pre-line text-xs leading-relaxed text-muted-foreground/90 sm:text-sm">
-                          {t('voiceHintCheatsheet')}
-                        </p>
-                        {recordingStatus !== 'denied' ? (
-                          <p className="text-[11px] leading-relaxed text-muted-foreground/70 sm:text-xs">{t('micPermissionHint')}</p>
-                        ) : null}
+                      <VoiceMicActiveHero label={t('listeningPlaceholder')} />
+                      <div className="w-full max-w-md shrink-0 px-0.5">
+                        <VoiceRecordingInfographic />
                       </div>
                     </>
                   ) : (
                     <>
-                      <div className="relative flex h-44 w-44 shrink-0 items-center justify-center">
+                      <div className="relative z-[15] flex h-44 w-44 shrink-0 items-center justify-center">
                         <div className="relative flex h-28 w-28 items-center justify-center rounded-full bg-muted/40 ring-2 ring-border">
                           <Mic className="h-12 w-12 text-muted-foreground" strokeWidth={1.75} aria-hidden />
                         </div>
                       </div>
 
-                      <div className="max-w-md space-y-3 text-center">
-                        <p className="text-sm font-medium leading-snug text-muted-foreground sm:text-base">{t('voiceLead')}</p>
-                        <p className="whitespace-pre-line text-xs leading-relaxed text-muted-foreground/90 sm:text-sm">
-                          {t('voiceHintCheatsheet')}
-                        </p>
-                        {recordingStatus !== 'denied' ? (
-                          <p className="text-[11px] leading-relaxed text-muted-foreground/70 sm:text-xs">{t('micPermissionHint')}</p>
-                        ) : null}
+                      <div className="w-full max-w-md shrink-0 px-0.5">
+                        <VoiceRecordingInfographic />
                       </div>
 
                       {recordingStatus === 'denied' ? (
@@ -751,6 +822,15 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
                   </Button>
                 ) : null}
               </div>
+                </>
+              ) : (
+                <div className="relative z-0 flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">
+                  <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 px-4 pb-8 pt-7 sm:px-6 sm:pt-8">
+                    <VoiceMicActiveHero label={t('parsing')} />
+                  </div>
+                  <div className="shrink-0 pb-[max(1rem,env(safe-area-inset-bottom))]" aria-hidden />
+                </div>
+              )}
             </>
           ) : null}
 
@@ -795,61 +875,14 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
                 const msg = first?.message != null ? String(first.message) : null;
                 if (msg) toast.error(msg);
               })}
-              aria-busy={isParsing}
             >
-              <div
-                className={cn(
-                  'min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-5 pb-4 pt-4 sm:px-6',
-                  isParsing && 'relative',
-                )}
-              >
-                {isParsing ? (
-                  <div
-                    className="pointer-events-none absolute inset-0 z-[1] rounded-xl bg-muted animate-pulse"
-                    aria-hidden
-                  />
-                ) : null}
-                <div className={cn('relative z-[2] space-y-4', isParsing && 'pointer-events-none')}>
-                  {!isIncidentDispatch ? (
-                    <Controller
-                      name="entityTab"
-                      control={control}
-                      render={({ field }) => (
-                        <div className="flex gap-1 rounded-lg border border-border/60 bg-muted p-1">
-                          <button
-                            type="button"
-                            disabled={isParsing}
-                            onClick={() => field.onChange('task')}
-                            className={cn(
-                              'flex flex-1 items-center justify-center gap-1 rounded-md py-2 text-xs font-semibold transition-colors',
-                              field.value === 'task'
-                                ? 'bg-background text-foreground shadow-sm'
-                                : 'text-muted-foreground hover:text-foreground',
-                            )}
-                          >
-                            {tTasks('smartCreate.tabTask')}
-                          </button>
-                          <button
-                            type="button"
-                            disabled={isParsing}
-                            onClick={() => field.onChange('incident')}
-                            className={cn(
-                              'flex flex-1 items-center justify-center gap-1 rounded-md py-2 text-xs font-semibold transition-colors',
-                              field.value === 'incident'
-                                ? 'bg-destructive/15 text-destructive shadow-sm'
-                                : 'text-muted-foreground hover:text-foreground',
-                            )}
-                          >
-                            {tTasks('smartCreate.tabIncident')}
-                          </button>
-                        </div>
-                      )}
-                    />
-                  ) : (
+              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-5 pb-4 pt-4 sm:px-6">
+                <div className="relative z-[2] space-y-4">
+                  {isIncidentDispatch ? (
                     <p className="text-xs text-muted-foreground">{tTasks('smartCreate.dispatchFromIncidentHint')}</p>
-                  )}
+                  ) : null}
 
-                  <div className={cn('space-y-1.5', parsingBlock(isParsing))}>
+                  <div className="space-y-1.5">
                     <div className="flex items-center justify-between gap-2">
                       <Label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                         {t('apartmentsLabel')}
@@ -859,7 +892,6 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
                         variant="outline"
                         size="icon"
                         disabled={
-                          isParsing ||
                           !canAddAnotherProperty ||
                           properties.length === 0 ||
                           isIncidentDispatch
@@ -885,7 +917,6 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
                             {entityTab === 'task' ? (
                               <button
                                 type="button"
-                                disabled={isParsing}
                                 onClick={() => field.onChange([])}
                                 className={cn(
                                   'inline-flex max-w-full items-center gap-1 rounded-full border px-2.5 py-1.5 text-left text-[11px] font-medium transition-colors md:text-xs',
@@ -903,7 +934,6 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
                                 <button
                                   key={p.id}
                                   type="button"
-                                  disabled={isParsing}
                                   onClick={() => {
                                     if (active) {
                                       field.onChange(field.value.filter((id: string) => id !== p.id));
@@ -929,7 +959,7 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
                     />
                   </div>
 
-                <div className={cn('relative', parsingBlock(isParsing))}>
+                <div className="relative">
                   <Label htmlFor="voice-task-title" className="sr-only">
                     {t('titleLabel')}
                   </Label>
@@ -937,16 +967,17 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
                     <Input
                       id="voice-task-title"
                       {...titleRegister}
-                      readOnly={isParsing}
                       autoComplete="off"
-                      placeholder={t('titlePlaceholder')}
+                      placeholder={
+                        entityTab === 'incident' ? t('titlePlaceholderIncident') : t('titlePlaceholder')
+                      }
                       className={cn(
                         'h-11 w-full min-w-0 border-0 bg-transparent pr-12 pl-3 text-base font-semibold shadow-none',
                         'placeholder:text-muted-foreground focus-visible:ring-0 focus-visible:ring-offset-0',
                       )}
                       aria-invalid={!!errors.title}
                     />
-                    {isReview && !isParsing ? (
+                    {isReview ? (
                       <button
                         type="button"
                         onClick={onMicInReview}
@@ -956,24 +987,18 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
                         <Mic className="h-[18px] w-[18px]" strokeWidth={2.25} />
                       </button>
                     ) : null}
-                    {isParsing ? (
-                      <div className="absolute right-1.5 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center">
-                        <Loader2 className="h-[18px] w-[18px] animate-spin text-primary" />
-                      </div>
-                    ) : null}
                   </div>
                   {errors.title ? (
                     <p className="mt-1 text-xs text-destructive">{errors.title.message}</p>
                   ) : null}
                 </div>
 
-                <div className={cn('space-y-1.5', parsingBlock(isParsing))}>
+                <div className="space-y-1.5">
                   <Label htmlFor="voice-task-notes" className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                     {t('notesLabel')}
                   </Label>
                   <Textarea
                     id="voice-task-notes"
-                    readOnly={isParsing}
                     rows={4}
                     placeholder={t('notesPlaceholder')}
                     className="min-h-[5.5rem] resize-y text-sm"
@@ -983,7 +1008,7 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
 
                 {entityTab === 'task' ? (
                   <>
-                <div className={cn('space-y-1.5', parsingBlock(isParsing))}>
+                <div className="space-y-1.5">
                   <Label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                     {t('typeLabel')}
                   </Label>
@@ -991,12 +1016,11 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
                     name="type"
                     control={control}
                     render={({ field }) => (
-                      <div className={cn('flex flex-wrap gap-1', parsingBlock(isParsing))}>
+                      <div className="flex flex-wrap gap-1">
                         {TASK_TYPES.map(({ type, labelKey, shortIcon: ShortIcon }) => (
                           <button
                             key={type}
                             type="button"
-                            disabled={isParsing}
                             onClick={() => field.onChange(type)}
                             className={pillClass(field.value === type)}
                           >
@@ -1013,7 +1037,7 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
                   />
                 </div>
 
-                <div className={cn('space-y-1.5', parsingBlock(isParsing))}>
+                <div className="space-y-1.5">
                   <Label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                     {t('assigneeLabel')}
                   </Label>
@@ -1021,7 +1045,7 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
                     name="assigneeId"
                     control={control}
                     render={({ field }) => (
-                      <div className={cn('min-h-[2.5rem]', parsingBlock(isParsing))}>
+                      <div className="min-h-[2.5rem]">
                         {staffLoading ? (
                           <p className="text-xs text-muted-foreground">…</p>
                         ) : staff.length === 0 ? (
@@ -1030,7 +1054,6 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
                           <div className="flex max-w-full flex-wrap gap-2">
                             <button
                               type="button"
-                              disabled={isParsing}
                               onClick={() => field.onChange('')}
                               title={tTasks('unassigned')}
                               className={cn(
@@ -1046,7 +1069,6 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
                               <button
                                 key={s.id}
                                 type="button"
-                                disabled={isParsing}
                                 onClick={() => field.onChange(s.id)}
                                 title={s.displayName}
                                 className={cn(
@@ -1066,7 +1088,7 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
                   />
                 </div>
 
-                <div className={cn('grid gap-3 sm:grid-cols-2', parsingBlock(isParsing))}>
+                <div className="grid gap-3 sm:grid-cols-2">
                   <div className="space-y-1">
                     <Label
                       htmlFor="voice-due"
@@ -1074,11 +1096,10 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
                     >
                       {t('dueLabel')}
                     </Label>
-                    <div className={cn('w-full min-w-0', parsingBlock(isParsing))}>
+                    <div className="w-full min-w-0">
                       <Input
                         id="voice-due"
                         type="date"
-                        disabled={isParsing}
                         className={cn(dateFieldClass, 'relative z-[1] w-full border-0 bg-background shadow-none')}
                         {...register('dueDate')}
                       />
@@ -1092,12 +1113,11 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
                       name="priority"
                       control={control}
                       render={({ field }) => (
-                        <div className={cn('flex flex-wrap gap-1', parsingBlock(isParsing))}>
+                        <div className="flex flex-wrap gap-1">
                           {PRIORITIES.map((p) => (
                             <button
                               key={p}
                               type="button"
-                              disabled={isParsing}
                               onClick={() => field.onChange(p)}
                               className={pillClass(field.value === p)}
                             >
@@ -1112,7 +1132,7 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
                   </>
                 ) : (
                   <>
-                    <div className={cn('space-y-1.5', parsingBlock(isParsing))}>
+                    <div className="space-y-1.5">
                       <Label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                         {tTasks('smartCreate.incidentTypeLabel')}
                       </Label>
@@ -1125,7 +1145,6 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
                               <button
                                 key={opt.value}
                                 type="button"
-                                disabled={isParsing}
                                 onClick={() => field.onChange(opt.value)}
                                 className={pillClass(field.value === opt.value)}
                               >
@@ -1136,7 +1155,7 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
                         )}
                       />
                     </div>
-                    <div className={cn('space-y-1.5', parsingBlock(isParsing))}>
+                    <div className="space-y-1.5">
                       <Label
                         htmlFor="voice-incident-cost"
                         className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground"
@@ -1147,7 +1166,6 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
                         id="voice-incident-cost"
                         type="text"
                         inputMode="decimal"
-                        readOnly={isParsing}
                         placeholder={tTasks('smartCreate.estimatedCostPlaceholder')}
                         className="h-10"
                         {...register('estimatedCost')}
@@ -1159,20 +1177,13 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
               </div>
 
               <div className="shrink-0 border-t border-border bg-background px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-6">
-                {isParsing ? (
-                  <div className="flex h-12 w-full items-center justify-center gap-2 text-sm font-medium text-muted-foreground">
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                    {t('parsing')}
-                  </div>
-                ) : (
-                  <Button
-                    type="submit"
-                    className="h-12 w-full bg-primary text-primary-foreground shadow-lg shadow-primary/25 hover:bg-primary/90"
-                    disabled={isPending || !titleValue?.trim()}
-                  >
-                    {isPending ? t('submitting') : tTasks('smartCreate.create')}
-                  </Button>
-                )}
+                <Button
+                  type="submit"
+                  className="h-12 w-full bg-primary text-primary-foreground shadow-lg shadow-primary/25 hover:bg-primary/90"
+                  disabled={isPending || !titleValue?.trim()}
+                >
+                  {isPending ? t('submitting') : tTasks('smartCreate.create')}
+                </Button>
               </div>
             </form>
           ) : null}
