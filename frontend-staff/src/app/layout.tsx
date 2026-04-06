@@ -7,7 +7,7 @@ import './globals.css';
 export const metadata: Metadata = {
   title: 'RentAI Staff',
   description: 'RentAI — приложение для персонала',
-  manifest: '/manifest.json',
+  manifest: '/manifest.json?v=2',
   appleWebApp: {
     capable: true,
     title: 'RentAI Staff',

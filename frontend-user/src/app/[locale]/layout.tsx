@@ -14,7 +14,7 @@ import '@/app/globals.css';
 export const metadata: Metadata = {
   title: 'RentAI — Dashboard',
   description: 'AI-powered rental property management dashboard',
-  manifest: '/manifest.json',
+  manifest: '/manifest.json?v=2',
   appleWebApp: {
     capable: true,
     title: 'RentAI',

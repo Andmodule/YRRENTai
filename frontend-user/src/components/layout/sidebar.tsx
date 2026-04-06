@@ -43,7 +43,8 @@ const navItems = [
 
 /** When `NEXT_PUBLIC_NAV_LIMITED_MODE=true`, only these keys stay clickable; others are shown but disabled. */
 const NAV_LIMITED_ALLOWED_KEYS = new Set<string>(['dashboard', 'properties', 'tasks', 'staff', 'chat']);
-const navLimitedMode = process.env.NEXT_PUBLIC_NAV_LIMITED_MODE === 'true';
+const navLimitedMode =
+  process.env.NEXT_PUBLIC_NAV_LIMITED_MODE?.trim().toLowerCase() === 'true';
 
 export function Sidebar() {
   const t = useTranslations('nav');

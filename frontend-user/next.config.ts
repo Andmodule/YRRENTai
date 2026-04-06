@@ -1,12 +1,6 @@
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { loadEnvConfig } from '@next/env';
+import './load-root-env';
 import type { NextConfig } from 'next';
 import createNextIntlPlugin from 'next-intl/plugin';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-// Monorepo: NEXT_PUBLIC_* and API_* can live in repo root `.env` (same file as backend).
-loadEnvConfig(path.join(__dirname, '..'));
 
 const withNextIntl = createNextIntlPlugin('./src/i18n/request.ts');
 
