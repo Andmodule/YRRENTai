@@ -41,6 +41,10 @@ const navItems = [
   { href: '/settings/profile', icon: Settings,       key: 'settings' },
 ] as const;
 
+/** When `NEXT_PUBLIC_NAV_LIMITED_MODE=true`, only these keys stay clickable; others are shown but disabled. */
+const NAV_LIMITED_ALLOWED_KEYS = new Set<string>(['dashboard', 'properties', 'tasks', 'chat']);
+const navLimitedMode = process.env.NEXT_PUBLIC_NAV_LIMITED_MODE === 'true';
+
 export function Sidebar() {
   const t = useTranslations('nav');
   const tAuth = useTranslations('auth');
@@ -162,6 +166,7 @@ export function Sidebar() {
         <nav className="flex-1 overflow-x-hidden overflow-y-auto p-3">
           <ul className="space-y-0.5">
             {navItems.map(({ href, icon: Icon, key }) => {
+              const itemDisabled = navLimitedMode && !NAV_LIMITED_ALLOWED_KEYS.has(key);
               const isActive =
                 href === '/settings/profile'
                   ? pathname.includes('/settings')
@@ -183,28 +188,20 @@ export function Sidebar() {
                               !pathname.match(/\/dashboard\/incidents/)
                             : pathname.includes(href);
 
-              const linkInner = (
-                <Link
-                  href={href}
-                  onClick={(e) => {
-                    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) {
-                      setSidebarOpen(false);
-                      return;
-                    }
-                    e.preventDefault();
-                    setSidebarOpen(false);
-                    router.push(href);
-                  }}
-                  className={cn(
-                    'flex items-center gap-3 rounded-xl border px-3 py-2.5 text-sm font-medium',
-                    'transition-all duration-300 ease-out',
-                    isActive
-                      ? 'border-primary/25 bg-primary/15 text-primary shadow-[inset_0_0_0_1px_rgba(59,130,246,0.25)]'
-                      : 'border-transparent text-slate-400 hover:border-primary/35 hover:bg-slate-800/90 hover:text-primary hover:shadow-sm hover:shadow-[0_0_24px_-8px_rgba(59,130,246,0.35)] active:scale-[0.99]',
-                    sidebarCollapsed && 'lg:justify-center lg:gap-0 lg:px-2',
-                    showCollapsedChrome && 'lg:relative',
-                  )}
-                >
+              const rowClassName = cn(
+                'flex items-center gap-3 rounded-xl border px-3 py-2.5 text-sm font-medium',
+                'transition-all duration-300 ease-out',
+                itemDisabled
+                  ? 'cursor-not-allowed border-transparent text-slate-500 opacity-60'
+                  : isActive
+                    ? 'border-primary/25 bg-primary/15 text-primary shadow-[inset_0_0_0_1px_rgba(59,130,246,0.25)]'
+                    : 'border-transparent text-slate-400 hover:border-primary/35 hover:bg-slate-800/90 hover:text-primary hover:shadow-sm hover:shadow-[0_0_24px_-8px_rgba(59,130,246,0.35)] active:scale-[0.99]',
+                sidebarCollapsed && 'lg:justify-center lg:gap-0 lg:px-2',
+                showCollapsedChrome && 'lg:relative',
+              );
+
+              const rowContent = (
+                <>
                   <span className="relative inline-flex shrink-0">
                     <Icon className="h-4 w-4" />
                     {showCollapsedChrome && key === 'tasks' && openIncidents > 0 && (
@@ -248,6 +245,28 @@ export function Sidebar() {
                       {unmappedCount > 99 ? '·' : unmappedCount}
                     </span>
                   )}
+                </>
+              );
+
+              const linkInner = itemDisabled ? (
+                <span aria-disabled="true" className={rowClassName}>
+                  {rowContent}
+                </span>
+              ) : (
+                <Link
+                  href={href}
+                  onClick={(e) => {
+                    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) {
+                      setSidebarOpen(false);
+                      return;
+                    }
+                    e.preventDefault();
+                    setSidebarOpen(false);
+                    router.push(href);
+                  }}
+                  className={rowClassName}
+                >
+                  {rowContent}
                 </Link>
               );
 
