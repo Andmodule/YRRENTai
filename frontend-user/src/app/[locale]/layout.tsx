@@ -8,6 +8,7 @@ import { routing } from '@/i18n/routing';
 import { ThemeProvider } from '@/components/providers/theme-provider';
 import { QueryProvider } from '@/components/providers/query-provider';
 import { PwaRegister } from '@/components/pwa-register';
+import { ThemeColorSync } from '@/components/theme-color-sync';
 import '@/app/globals.css';
 
 export const metadata: Metadata = {
@@ -28,7 +29,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: '#0d9488',
+  themeColor: '#ffffff',
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
@@ -54,6 +55,7 @@ export default async function LocaleLayout({ children, params }: LayoutProps) {
       <body className="min-h-screen bg-background text-foreground antialiased">
         <PwaRegister />
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange={false}>
+          <ThemeColorSync />
           <QueryProvider>
             <NextIntlClientProvider locale={locale} messages={messages}>
               <Suspense fallback={null}>
