@@ -3,7 +3,7 @@
 import { useState, useRef } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { Upload, Link2, CheckSquare, Square, Loader2, FileText } from 'lucide-react';
+import { Upload, Link2, CheckSquare, Square, Loader2, FileText, ClipboardPaste } from 'lucide-react';
 import {
   ResponsiveModal,
   ResponsiveModalTrigger,
@@ -13,6 +13,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { KbCategoryBadge } from './kb-category-badge';
 import { apiClient } from '@/lib/api/client';
 
@@ -34,7 +35,7 @@ interface ConfirmResponse {
   data: { saved: number };
 }
 
-type ImportMode = 'idle' | 'file' | 'url';
+type ImportMode = 'idle' | 'file' | 'url' | 'text';
 type ImportStep = 'input' | 'preview' | 'done';
 
 interface KbImportDialogProps {
@@ -43,11 +44,12 @@ interface KbImportDialogProps {
 }
 
 export function KbImportDialog({ propertyId, onConfirmed }: KbImportDialogProps) {
-  const t = useTranslations('kb.import');
+  const t = useTranslations('kb');
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<ImportMode>('idle');
   const [step, setStep] = useState<ImportStep>('input');
   const [url, setUrl] = useState('');
+  const [pastedText, setPastedText] = useState('');
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isProcessing, setIsProcessing] = useState(false);
@@ -59,6 +61,7 @@ export function KbImportDialog({ propertyId, onConfirmed }: KbImportDialogProps)
       setMode('idle');
       setStep('input');
       setUrl('');
+      setPastedText('');
       setDrafts([]);
       setSelectedIds(new Set());
     }, 200);
@@ -78,7 +81,7 @@ export function KbImportDialog({ propertyId, onConfirmed }: KbImportDialogProps)
       );
       openPreview(res.data.data.drafts);
     } catch {
-      toast.error(t('errorParse'));
+      toast.error(t('import.errorParse'));
     } finally {
       setIsProcessing(false);
     }
@@ -94,13 +97,36 @@ export function KbImportDialog({ propertyId, onConfirmed }: KbImportDialogProps)
       );
       openPreview(res.data.data.drafts);
     } catch {
-      toast.error(t('errorParse'));
+      toast.error(t('import.errorParse'));
+    } finally {
+      setIsProcessing(false);
+    }
+  }
+
+  async function handleTextImport() {
+    if (!pastedText.trim()) {
+      toast.error(t('import.textTooShort'));
+      return;
+    }
+    setIsProcessing(true);
+    try {
+      const res = await apiClient.post<ImportResponse>(
+        `/knowledge-base/${propertyId}/import/text`,
+        { text: pastedText },
+      );
+      openPreview(res.data.data.drafts);
+    } catch {
+      toast.error(t('import.errorParse'));
     } finally {
       setIsProcessing(false);
     }
   }
 
   function openPreview(items: Draft[]) {
+    if (items.length === 0) {
+      toast.message(t('import.emptyResult'));
+      return;
+    }
     setDrafts(items);
     setSelectedIds(new Set(items.map((d) => d.id)));
     setStep('preview');
@@ -132,11 +158,11 @@ export function KbImportDialog({ propertyId, onConfirmed }: KbImportDialogProps)
         `/knowledge-base/${propertyId}/import/confirm`,
         { drafts: selected },
       );
-      toast.success(t('confirmSuccess', { count: res.data.data.saved }));
+      toast.success(t('import.confirmSuccess', { count: res.data.data.saved }));
       onConfirmed();
       handleClose();
     } catch {
-      toast.error(t('errorConfirm'));
+      toast.error(t('import.errorConfirm'));
     } finally {
       setIsProcessing(false);
     }
@@ -147,39 +173,52 @@ export function KbImportDialog({ propertyId, onConfirmed }: KbImportDialogProps)
       <ResponsiveModalTrigger asChild>
         <Button variant="outline" size="sm">
           <Upload className="mr-2 h-4 w-4" />
-          {t('button')}
+          {t('import.button')}
         </Button>
       </ResponsiveModalTrigger>
 
-      <ResponsiveModalContent title={t('title')} description={t('description')}>
+      <ResponsiveModalContent title={t('import.title')} description={t('import.description')}>
         {step === 'input' && (
           <div className="space-y-5">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <button
+                type="button"
                 onClick={() => setMode('file')}
                 className={`flex flex-col items-center gap-2 rounded-lg border-2 p-4 transition-colors ${
                   mode === 'file' ? 'border-primary bg-primary/5' : 'border-dashed hover:border-muted-foreground'
                 }`}
               >
                 <FileText className="h-7 w-7 text-muted-foreground" />
-                <span className="text-sm font-medium">{t('modeFile')}</span>
+                <span className="text-sm font-medium">{t('import.modeFile')}</span>
                 <span className="text-center text-xs text-muted-foreground">PDF, DOCX, TXT</span>
               </button>
               <button
+                type="button"
                 onClick={() => setMode('url')}
                 className={`flex flex-col items-center gap-2 rounded-lg border-2 p-4 transition-colors ${
                   mode === 'url' ? 'border-primary bg-primary/5' : 'border-dashed hover:border-muted-foreground'
                 }`}
               >
                 <Link2 className="h-7 w-7 text-muted-foreground" />
-                <span className="text-sm font-medium">{t('modeUrl')}</span>
-                <span className="text-xs text-muted-foreground">{t('modeUrlHint')}</span>
+                <span className="text-sm font-medium">{t('import.modeUrl')}</span>
+                <span className="text-xs text-muted-foreground">{t('import.modeUrlHint')}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode('text')}
+                className={`flex flex-col items-center gap-2 rounded-lg border-2 p-4 transition-colors ${
+                  mode === 'text' ? 'border-primary bg-primary/5' : 'border-dashed hover:border-muted-foreground'
+                }`}
+              >
+                <ClipboardPaste className="h-7 w-7 text-muted-foreground" />
+                <span className="text-sm font-medium">{t('import.modeText')}</span>
+                <span className="text-xs text-muted-foreground">{t('import.modeTextHint')}</span>
               </button>
             </div>
 
             {mode === 'file' && (
               <div className="space-y-2">
-                <Label>{t('fileLabel')}</Label>
+                <Label>{t('import.fileLabel')}</Label>
                 <div
                   onClick={() => fileInputRef.current?.click()}
                   className="flex cursor-pointer flex-col items-center gap-2 rounded-lg border-2 border-dashed py-8 transition-colors hover:bg-muted/50"
@@ -189,7 +228,7 @@ export function KbImportDialog({ propertyId, onConfirmed }: KbImportDialogProps)
                   ) : (
                     <>
                       <Upload className="h-8 w-8 text-muted-foreground" />
-                      <p className="text-sm text-muted-foreground">{t('fileDrop')}</p>
+                      <p className="text-sm text-muted-foreground">{t('import.fileDrop')}</p>
                     </>
                   )}
                 </div>
@@ -205,7 +244,7 @@ export function KbImportDialog({ propertyId, onConfirmed }: KbImportDialogProps)
 
             {mode === 'url' && (
               <div className="space-y-2">
-                <Label htmlFor="import-url">{t('urlLabel')}</Label>
+                <Label htmlFor="import-url">{t('import.urlLabel')}</Label>
                 <div className="flex gap-2">
                   <Input
                     id="import-url"
@@ -215,15 +254,44 @@ export function KbImportDialog({ propertyId, onConfirmed }: KbImportDialogProps)
                     onKeyDown={(e) => e.key === 'Enter' && handleUrlImport()}
                   />
                   <Button onClick={handleUrlImport} disabled={isProcessing || !url.trim()}>
-                    {isProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : t('parseButton')}
+                    {isProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : t('import.parseButton')}
                   </Button>
                 </div>
               </div>
             )}
 
+            {mode === 'text' && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <Label htmlFor="import-text">{t('import.textLabel')}</Label>
+                  <span className="text-xs text-muted-foreground">
+                    {t('import.textCounter', { count: pastedText.length })}
+                  </span>
+                </div>
+                <Textarea
+                  id="import-text"
+                  placeholder={t('import.textPlaceholder')}
+                  value={pastedText}
+                  onChange={(e) => setPastedText(e.target.value)}
+                  rows={10}
+                  maxLength={40000}
+                  className="min-h-[200px] resize-y font-mono text-sm"
+                />
+                <Button
+                  type="button"
+                  className="w-full sm:w-auto"
+                  onClick={() => void handleTextImport()}
+                  disabled={isProcessing || !pastedText.trim()}
+                >
+                  {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                  {t('import.parseButton')}
+                </Button>
+              </div>
+            )}
+
             <div className="flex justify-end">
               <ResponsiveModalClose asChild>
-                <Button variant="outline">{t('cancel')}</Button>
+                <Button variant="outline">{t('import.cancel')}</Button>
               </ResponsiveModalClose>
             </div>
           </div>
@@ -233,7 +301,7 @@ export function KbImportDialog({ propertyId, onConfirmed }: KbImportDialogProps)
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <p className="text-sm text-muted-foreground">
-                {t('previewCount', { selected: selectedIds.size, total: drafts.length })}
+                {t('import.previewCount', { selected: selectedIds.size, total: drafts.length })}
               </p>
               <button
                 onClick={toggleAll}
@@ -244,7 +312,7 @@ export function KbImportDialog({ propertyId, onConfirmed }: KbImportDialogProps)
                 ) : (
                   <Square className="h-3.5 w-3.5" />
                 )}
-                {selectedIds.size === drafts.length ? t('deselectAll') : t('selectAll')}
+                {selectedIds.size === drafts.length ? t('import.deselectAll') : t('import.selectAll')}
               </button>
             </div>
 
@@ -281,7 +349,7 @@ export function KbImportDialog({ propertyId, onConfirmed }: KbImportDialogProps)
 
             <div className="flex justify-between gap-2">
               <Button variant="outline" onClick={() => setStep('input')}>
-                {t('back')}
+                {t('import.back')}
               </Button>
               <Button
                 onClick={handleConfirm}
@@ -290,7 +358,7 @@ export function KbImportDialog({ propertyId, onConfirmed }: KbImportDialogProps)
                 {isProcessing ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 ) : null}
-                {t('confirmButton', { count: selectedIds.size })}
+                {t('import.confirmButton', { count: selectedIds.size })}
               </Button>
             </div>
           </div>

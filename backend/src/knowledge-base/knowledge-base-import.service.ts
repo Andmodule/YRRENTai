@@ -76,6 +76,10 @@ export class KnowledgeBaseImportService {
     return main.replace(/\s{3,}/g, '\n\n').trim();
   }
 
+  /**
+   * LLM step: prompt and category rules live in `kb-import-prompt.ts` (`buildImportPrompt`).
+   * Text is clipped to KB_IMPORT_TEXT_MAX_CHARS there.
+   */
   async parseToEntries(rawText: string): Promise<KbImportDraft[]> {
     if (!rawText.trim()) {
       throw new BadRequestException('Extracted text is empty');

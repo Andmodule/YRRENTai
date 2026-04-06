@@ -184,6 +184,14 @@ export class KnowledgeBaseService {
   }
 
   /**
+   * Deletes all knowledge base rows for a property (any status). Used only from guarded dev endpoints.
+   */
+  async removeAllForProperty(propertyId: string): Promise<{ deleted: number }> {
+    const result = await this.kbRepository.delete({ propertyId });
+    return { deleted: result.affected ?? 0 };
+  }
+
+  /**
    * Re-generate embeddings for all active entries of a property that lack one.
    * Useful after adding OPENAI_API_KEY to an existing installation.
    */

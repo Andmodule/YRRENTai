@@ -368,13 +368,19 @@
     "import": {
       "button": "Import",
       "title": "Import Knowledge Base",
-      "description": "Upload a file or paste a URL — AI will parse it and suggest entries to add",
+      "description": "Upload a file, paste a URL, or paste plain text — AI will parse it and suggest entries to add",
       "modeFile": "File",
       "modeUrl": "URL",
       "modeUrlHint": "Website, FAQ, page",
+      "modeText": "Paste text",
+      "modeTextHint": "Notes, email, listing copy",
       "fileLabel": "Choose file",
       "fileDrop": "Click to select (PDF, DOCX, TXT, MD)",
       "urlLabel": "Page URL",
+      "textLabel": "Text to analyze",
+      "textPlaceholder": "Paste house rules, FAQ, or any property notes…",
+      "textCounter": "{count} / 40,000",
+      "textTooShort": "Add some text to analyze",
       "parseButton": "Analyze",
       "cancel": "Cancel",
       "back": "Back",
@@ -384,7 +390,16 @@
       "confirmButton": "Add {count} entries",
       "confirmSuccess": "{count} entries added",
       "errorParse": "Could not process the document",
-      "errorConfirm": "Could not save entries"
+      "errorConfirm": "Could not save entries",
+      "emptyResult": "No entries were extracted — try more detailed text or another source"
+    },
+    "dev": {
+      "button": "Clear KB (dev)",
+      "title": "Delete all knowledge base entries for this property (development only)",
+      "confirm": "Delete all {count} knowledge base entries for this property? This cannot be undone.",
+      "success": "Removed {count} entries",
+      "error": "Could not clear knowledge base",
+      "nothingToClear": "Knowledge base is already empty"
     },
     "categories": {
       "checkin": "Check-in & check-out",

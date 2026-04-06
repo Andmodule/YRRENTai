@@ -157,6 +157,12 @@ export const envSchema = z
 
     FF_VOICE_ENABLED: z.coerce.boolean().default(false),
     FF_REALTIME_CALLS_ENABLED: z.coerce.boolean().default(false),
+
+    /**
+     * Set to "true" to allow POST /knowledge-base/:propertyId/dev/clear-all when NODE_ENV is not development.
+     * Trusted staging only; never enable on public production.
+     */
+    KB_DEV_ALLOW_CLEAR: z.string().optional(),
   })
   .merge(zodomusEnvFields)
   .merge(icalEnvFields)

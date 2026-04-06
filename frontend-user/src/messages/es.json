@@ -269,13 +269,19 @@
     "import": {
       "button": "Importar",
       "title": "Importar base de conocimiento",
-      "description": "Sube un archivo o pega una URL — la IA analizará el contenido y sugerirá entradas",
+      "description": "Sube un archivo, pega una URL o pega texto — la IA analizará el contenido y sugerirá entradas",
       "modeFile": "Archivo",
       "modeUrl": "URL",
       "modeUrlHint": "Sitio, FAQ, página",
+      "modeText": "Texto",
+      "modeTextHint": "Notas, correo, descripción",
       "fileLabel": "Elegir archivo",
       "fileDrop": "Haz clic para seleccionar (PDF, DOCX, TXT, MD)",
       "urlLabel": "URL de la página",
+      "textLabel": "Texto a analizar",
+      "textPlaceholder": "Pega normas, FAQ o notas del alojamiento…",
+      "textCounter": "{count} / 40.000",
+      "textTooShort": "Añade texto para analizar",
       "parseButton": "Analizar",
       "cancel": "Cancelar",
       "back": "Atrás",
@@ -285,7 +291,16 @@
       "confirmButton": "Agregar {count} entradas",
       "confirmSuccess": "{count} entradas agregadas",
       "errorParse": "No se pudo procesar el documento",
-      "errorConfirm": "No se pudieron guardar las entradas"
+      "errorConfirm": "No se pudieron guardar las entradas",
+      "emptyResult": "No se extrajeron entradas — prueba con más texto o otra fuente"
+    },
+    "dev": {
+      "button": "Vaciar BC (dev)",
+      "title": "Eliminar todas las entradas de la base de conocimiento de esta propiedad (solo desarrollo)",
+      "confirm": "¿Eliminar las {count} entradas? No se puede deshacer.",
+      "success": "Se eliminaron {count} entradas",
+      "error": "No se pudo vaciar la base de conocimiento",
+      "nothingToClear": "La base de conocimiento ya está vacía"
     },
     "categories": {
       "checkin": "Entrada y salida",

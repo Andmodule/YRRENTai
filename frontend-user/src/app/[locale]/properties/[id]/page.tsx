@@ -21,7 +21,7 @@ import {
 import { useProperty, useProperties } from '@/hooks/use-properties';
 import { useKnowledgeBase } from '@/hooks/use-knowledge-base';
 import { PropertyForm, DeletePropertyDialog, PropertyIntegrationsCard } from '@/components/property';
-import { KbBoard, KbImportDialog } from '@/components/knowledge-base';
+import { KbBoard, KbImportDialog, KbDevClearButton } from '@/components/knowledge-base';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/error-state';
@@ -96,6 +96,10 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
   ];
 
   const loc = (v: string) => (v && v !== '-' ? v : t('detail.notSpecified'));
+
+  const showKbDevTools =
+    process.env.NODE_ENV === 'development' ||
+    process.env.NEXT_PUBLIC_KB_DEV_CLEAR === 'true';
 
   const details = [
     { icon: Globe, label: t('detail.country'), value: loc(property.country) },
@@ -269,7 +273,16 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
         <div className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm text-muted-foreground">{tKb('subtitle')}</p>
-            <KbImportDialog propertyId={id} onConfirmed={() => void mutateKb()} />
+            <div className="flex flex-wrap items-center gap-2">
+              {showKbDevTools && (
+                <KbDevClearButton
+                  propertyId={id}
+                  entryCount={entries.length}
+                  onCleared={() => void mutateKb()}
+                />
+              )}
+              <KbImportDialog propertyId={id} onConfirmed={() => void mutateKb()} />
+            </div>
           </div>
           <KbBoard
             key={id}

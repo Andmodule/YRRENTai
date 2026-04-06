@@ -63,6 +63,21 @@ export class KnowledgeBaseImportController {
     return { data: { drafts, total: drafts.length } };
   }
 
+  @Post(':propertyId/import/text')
+  @Roles('OWNER', 'MANAGER')
+  async importText(
+    @Param('propertyId') _propertyId: string,
+    @Body() body: { text: string },
+  ) {
+    if (!body.text || typeof body.text !== 'string' || !body.text.trim()) {
+      throw new BadRequestException('text is required');
+    }
+
+    const drafts = await this.importService.parseToEntries(body.text);
+
+    return { data: { drafts, total: drafts.length } };
+  }
+
   @Post(':propertyId/import/confirm')
   @Roles('OWNER', 'MANAGER')
   async confirmImport(

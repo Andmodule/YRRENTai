@@ -269,13 +269,19 @@
     "import": {
       "button": "Import",
       "title": "Import bazy wiedzy",
-      "description": "Prześlij plik lub wklej URL — AI przeanalizuje treść i zaproponuje wpisy do dodania",
+      "description": "Prześlij plik, wklej URL lub wklej tekst — AI przeanalizuje treść i zaproponuje wpisy do dodania",
       "modeFile": "Plik",
       "modeUrl": "URL",
       "modeUrlHint": "Strona, FAQ",
+      "modeText": "Tekst",
+      "modeTextHint": "Notatki, e-mail, opis",
       "fileLabel": "Wybierz plik",
       "fileDrop": "Kliknij aby wybrać (PDF, DOCX, TXT, MD)",
       "urlLabel": "Adres URL",
+      "textLabel": "Tekst do analizy",
+      "textPlaceholder": "Wklej zasady, FAQ lub notatki o obiekcie…",
+      "textCounter": "{count} / 40 000",
+      "textTooShort": "Dodaj tekst do analizy",
       "parseButton": "Analizuj",
       "cancel": "Anuluj",
       "back": "Wstecz",
@@ -285,7 +291,16 @@
       "confirmButton": "Dodaj {count} wpisów",
       "confirmSuccess": "Dodano {count} wpisów",
       "errorParse": "Nie udało się przetworzyć dokumentu",
-      "errorConfirm": "Nie udało się zapisać wpisów"
+      "errorConfirm": "Nie udało się zapisać wpisów",
+      "emptyResult": "Nie wyodrębniono wpisów — spróbuj dłuższego tekstu lub innego źródła"
+    },
+    "dev": {
+      "button": "Wyczyść BW (dev)",
+      "title": "Usuń wszystkie wpisy bazy wiedzy dla tego obiektu (tylko dev)",
+      "confirm": "Usunąć wszystkie {count} wpisy? Tej operacji nie można cofnąć.",
+      "success": "Usunięto {count} wpisów",
+      "error": "Nie udało się wyczyścić bazy wiedzy",
+      "nothingToClear": "Baza wiedzy jest już pusta"
     },
     "categories": {
       "checkin": "Zameldowanie i wymeldowanie",

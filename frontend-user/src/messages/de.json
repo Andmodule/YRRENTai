@@ -269,13 +269,19 @@
     "import": {
       "button": "Importieren",
       "title": "Wissensdatenbank importieren",
-      "description": "Datei hochladen oder URL angeben — KI analysiert den Inhalt und schlägt Einträge vor",
+      "description": "Datei hochladen, URL angeben oder Text einfügen — KI analysiert den Inhalt und schlägt Einträge vor",
       "modeFile": "Datei",
       "modeUrl": "URL",
       "modeUrlHint": "Website, FAQ, Seite",
+      "modeText": "Text",
+      "modeTextHint": "Notizen, E-Mail, Text",
       "fileLabel": "Datei auswählen",
       "fileDrop": "Klicken zum Auswählen (PDF, DOCX, TXT, MD)",
       "urlLabel": "Seiten-URL",
+      "textLabel": "Text zur Analyse",
+      "textPlaceholder": "Hausregeln, FAQ oder Objekthinweise einfügen…",
+      "textCounter": "{count} / 40.000",
+      "textTooShort": "Bitte Text zum Analysieren einfügen",
       "parseButton": "Analysieren",
       "cancel": "Abbrechen",
       "back": "Zurück",
@@ -285,7 +291,16 @@
       "confirmButton": "{count} Einträge hinzufügen",
       "confirmSuccess": "{count} Einträge hinzugefügt",
       "errorParse": "Dokument konnte nicht verarbeitet werden",
-      "errorConfirm": "Einträge konnten nicht gespeichert werden"
+      "errorConfirm": "Einträge konnten nicht gespeichert werden",
+      "emptyResult": "Keine Einträge erkannt — versuchen Sie ausführlicheren Text oder eine andere Quelle"
+    },
+    "dev": {
+      "button": "KB leeren (dev)",
+      "title": "Alle Wissensdatenbank-Einträge für diese Unterkunft löschen (nur Entwicklung)",
+      "confirm": "Alle {count} Einträge löschen? Dies kann nicht rückgängig gemacht werden.",
+      "success": "{count} Einträge entfernt",
+      "error": "Wissensdatenbank konnte nicht geleert werden",
+      "nothingToClear": "Wissensdatenbank ist bereits leer"
     },
     "categories": {
       "checkin": "An- und Abreise",
