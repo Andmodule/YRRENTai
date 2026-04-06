@@ -10,6 +10,7 @@ import {
   Inbox,
   LayoutGrid,
   ListTodo,
+  LogOut,
   MessageSquare,
   Settings,
   Sparkles,
@@ -18,6 +19,11 @@ import {
 } from 'lucide-react';
 import { useOpenIncidentsCount } from '@/modules/incidents/hooks/useIncidents';
 import { useUnmappedReportsCount } from '@/hooks/use-unmapped-reports';
+import { useAuth } from '@/hooks/use-auth';
+import { apiClient } from '@/lib/api/client';
+import { Button } from '@/components/ui/button';
+import { ThemeToggle } from '@/components/ui/theme-toggle';
+import { toast } from 'sonner';
 
 const navItems = [
   { href: '/dashboard',      icon: LayoutDashboard, key: 'dashboard' },
@@ -39,6 +45,18 @@ export function Sidebar() {
   const pathname = usePathname();
   const { data: openIncidents = 0 } = useOpenIncidentsCount();
   const { data: unmappedCount = 0 } = useUnmappedReportsCount();
+  const { user, mutate } = useAuth();
+
+  async function handleLogout() {
+    try {
+      await apiClient.post('/auth/logout');
+      await mutate(undefined, false);
+      setSidebarOpen(false);
+      router.replace('/login');
+    } catch {
+      toast.error('Logout failed');
+    }
+  }
 
   return (
     <>
@@ -59,11 +77,14 @@ export function Sidebar() {
           'lg:translate-x-0',
         )}
       >
-        {/* Logo */}
-        <div className="flex h-16 shrink-0 items-center border-b border-slate-800 px-6">
+        {/* Logo + theme (mobile drawer only; desktop theme stays in header) */}
+        <div className="flex h-16 shrink-0 items-center justify-between gap-2 border-b border-slate-800 px-4">
           <span className="bg-gradient-to-r from-cyan-400 to-violet-400 bg-clip-text text-lg font-bold tracking-tight text-transparent">
             RentAI
           </span>
+          <div className="lg:hidden">
+            <ThemeToggle className="h-9 w-9 shrink-0 text-slate-400 hover:bg-slate-800 hover:text-white [&_svg]:text-slate-400" />
+          </div>
         </div>
 
         {/* Navigation */}
@@ -135,6 +156,21 @@ export function Sidebar() {
             })}
           </ul>
         </nav>
+
+        {/* Sign out — bottom of drawer on mobile only */}
+        {user ? (
+          <div className="shrink-0 border-t border-slate-800 p-3 lg:hidden">
+            <Button
+              type="button"
+              variant="ghost"
+              className="h-11 w-full justify-start gap-3 px-3 text-slate-400 hover:bg-slate-800 hover:text-slate-100"
+              onClick={() => void handleLogout()}
+            >
+              <LogOut className="h-4 w-4 shrink-0" aria-hidden />
+              <span>{t('signOut')}</span>
+            </Button>
+          </div>
+        ) : null}
 
         {/* Bottom gradient line */}
         <div className="h-px bg-gradient-to-r from-transparent via-slate-700 to-transparent" />

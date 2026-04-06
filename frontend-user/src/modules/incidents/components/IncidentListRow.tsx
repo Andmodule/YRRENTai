@@ -73,7 +73,7 @@ export const IncidentListRow = memo(function IncidentListRow({
   const statusKey = incidentStatusLabelKey(incident.status);
   const statusDot = (
     <span
-      className={cn('h-2 w-2 shrink-0 rounded-full', incidentListStatusDotClass(incident.status))}
+      className={cn('h-1 w-1 shrink-0 rounded-full', incidentListStatusDotClass(incident.status))}
       title={tCard(statusKey)}
       aria-hidden
     />
@@ -127,7 +127,7 @@ export const IncidentListRow = memo(function IncidentListRow({
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col gap-0.5 overflow-hidden">
-        <span className="truncate text-sm font-semibold leading-tight text-foreground">{titleDisplay}</span>
+        <span className="truncate text-sm font-normal leading-tight text-foreground">{titleDisplay}</span>
         <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
           <IncidentTypePill type={incident.type} />
           <span

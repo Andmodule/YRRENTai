@@ -21,7 +21,9 @@ import {
   Clock,
   ImagePlus,
   MapPin,
+  MoreVertical,
   Package,
+  Pencil,
   ShieldAlert,
   Zap,
 } from 'lucide-react';
@@ -40,6 +42,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/hooks/use-auth';
 import { useDateLocale } from '@/hooks/useDateLocale';
+import { useMediaQuery } from '@/hooks/use-media-query';
 import { useProperties } from '@/hooks/use-properties';
 import { useStaffUsers } from '@/hooks/use-staff-users';
 import { cn } from '@/lib/utils';
@@ -67,6 +70,14 @@ import { TaskTypeBadge } from './TaskTypeBadge';
 
 const STATUS_ORDER: TaskStatus[] = ['pending', 'in_progress', 'done', 'issue'];
 const PRIORITY_ORDER: TaskPriority[] = ['normal', 'urgent', 'critical'];
+
+const MD_UP = '(min-width: 768px)';
+
+const TASK_PRIORITY_BADGE: Record<TaskPriority, string> = {
+  normal: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200',
+  urgent: 'bg-amber-50 text-amber-800 dark:bg-amber-950/50 dark:text-amber-200',
+  critical: 'bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-200',
+};
 
 /** Drawer is portaled to <body> — scope tasks cyan/teal tokens (same as `tasks/new` + kanban). */
 const TASK_MODAL_THEME = 'tasks-theme';
@@ -164,6 +175,7 @@ function TaskDetailMode({
 
   /** TMA sets isStaffView; staff logged into dashboard need the same UX (footer + inline issue). */
   const effectiveStaffView = isStaffView || authUser?.role === 'STAFF';
+  const isDesktop = useMediaQuery(MD_UP);
 
   const [title, setTitle] = useState(() => task?.title ?? '');
   const [notes, setNotes] = useState(() => (task ? stripStaffSeedTaskMarker(task.notes) : ''));
@@ -335,11 +347,32 @@ function TaskDetailMode({
     }
   };
 
+  const handleDeleteTask = useCallback(async () => {
+    if (!task) return;
+    if (typeof window !== 'undefined' && !window.confirm(t('deleteTaskConfirm'))) return;
+    try {
+      await apiClient.delete(`/tasks/${task.uuid}`);
+      await queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      onOpenChange(false);
+      toast.success(t('deleteTaskSuccess'));
+    } catch {
+      toast.error(t('deleteTaskError'));
+    }
+  }, [task, queryClient, onOpenChange, t]);
+
   const headerAdornment = task ? (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-2">
         <TaskTypeBadge type={task.type} variant="dense" />
         <TaskStatusBadge status={task.status} size="sm" />
+        <span
+          className={cn(
+            'inline-flex rounded-md px-2 py-0.5 text-[10px] font-medium leading-tight sm:text-xs',
+            TASK_PRIORITY_BADGE[task.priority],
+          )}
+        >
+          {tPriority(task.priority)}
+        </span>
       </div>
       <p className="text-xs text-muted-foreground">
         <span className="font-medium text-foreground/90">{t('duePrefix')}</span>{' '}
@@ -352,146 +385,196 @@ function TaskDetailMode({
   const checklistItems = checklistData?.items ?? [];
   const headerDisabled = effectiveStaffView || patchPending;
 
-  const taskFooter = (() => {
+  const staffFooter = (() => {
     if (!task) return null;
-    if (effectiveStaffView) {
-      if (issueReportOpen) {
-        return (
-          <Button
-            type="button"
-            variant="outline"
-            className="w-full"
-            onClick={() => {
-              setIssueReportOpen(false);
-              setIssueText('');
-            }}
-          >
-            {tIssue('cancel')}
-          </Button>
-        );
-      }
-      if (task.status === 'pending') {
-        return (
-          <Button
-            type="button"
-            className="w-full"
-            disabled={statusPending}
-            onClick={() => void updateStatus({ uuid: task.uuid, status: 'in_progress' })}
-          >
-            {t('staffTakeWork')}
-          </Button>
-        );
-      }
-      if (task.status === 'in_progress') {
-        return (
-          <div className="flex w-full flex-col gap-2">
-            <Button
-              type="button"
-              className="w-full bg-emerald-600 text-white hover:bg-emerald-700"
-              disabled={statusPending}
-              onClick={() => void updateStatus({ uuid: task.uuid, status: 'done' })}
-            >
-              {t('staffComplete')}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full border-destructive/50 text-destructive hover:bg-destructive/10"
-              onClick={() => {
-                setIssueReportOpen(true);
-                setIssueText('');
-              }}
-            >
-              {t('staffReportIssue')}
-            </Button>
-          </div>
-        );
-      }
+    if (!effectiveStaffView) return null;
+    if (issueReportOpen) {
       return (
-        <Button type="button" variant="secondary" className="w-full" onClick={() => onOpenChange(false)}>
-          {t('close')}
-        </Button>
-      );
-    }
-    return (
-      <div className="flex w-full flex-col gap-2.5">
-        <Button
-          type="button"
-          variant="default"
-          className="h-auto min-h-12 w-full rounded-xl py-3 text-base font-semibold shadow-sm"
-          asChild
-        >
-          <Link href={`/dashboard/tasks/new?propertyId=${encodeURIComponent(task.propertyId ?? '')}`}>
-            {t('editTask')}
-          </Link>
-        </Button>
         <Button
           type="button"
           variant="outline"
-          className="h-auto min-h-12 w-full rounded-xl border-border/80 py-3 text-base"
-          onClick={() => onOpenChange(false)}
-        >
-          {t('close')}
-        </Button>
-        <Button
-          type="button"
-          variant="destructive"
-          className="h-auto min-h-12 w-full rounded-xl py-3 text-base"
+          className="w-full"
           onClick={() => {
-            if (typeof window !== 'undefined' && !window.confirm(t('deleteTaskConfirm'))) return;
-            void (async () => {
-              try {
-                await apiClient.delete(`/tasks/${task.uuid}`);
-                await queryClient.invalidateQueries({ queryKey: ['tasks'] });
-                onOpenChange(false);
-                toast.success(t('deleteTaskSuccess'));
-              } catch {
-                toast.error(t('deleteTaskError'));
-              }
-            })();
+            setIssueReportOpen(false);
+            setIssueText('');
           }}
         >
-          {t('deleteTask')}
+          {tIssue('cancel')}
         </Button>
-      </div>
+      );
+    }
+    if (task.status === 'pending') {
+      return (
+        <Button
+          type="button"
+          className="w-full"
+          disabled={statusPending}
+          onClick={() => void updateStatus({ uuid: task.uuid, status: 'in_progress' })}
+        >
+          {t('staffTakeWork')}
+        </Button>
+      );
+    }
+    if (task.status === 'in_progress') {
+      return (
+        <div className="flex w-full flex-col gap-2">
+          <Button
+            type="button"
+            className="w-full bg-emerald-600 text-white hover:bg-emerald-700"
+            disabled={statusPending}
+            onClick={() => void updateStatus({ uuid: task.uuid, status: 'done' })}
+          >
+            {t('staffComplete')}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full border-destructive/50 text-destructive hover:bg-destructive/10"
+            onClick={() => {
+              setIssueReportOpen(true);
+              setIssueText('');
+            }}
+          >
+            {t('staffReportIssue')}
+          </Button>
+        </div>
+      );
+    }
+    return (
+      <Button type="button" variant="secondary" className="w-full" onClick={() => onOpenChange(false)}>
+        {t('close')}
+      </Button>
     );
   })();
+
+  const managerDesktopFooter = task && !effectiveStaffView && (
+    <div className="flex w-full flex-col gap-2.5">
+      <Button
+        type="button"
+        variant="default"
+        className="h-auto min-h-12 w-full rounded-xl py-3 text-base font-semibold shadow-sm"
+        asChild
+      >
+        <Link href={`/dashboard/tasks/new?propertyId=${encodeURIComponent(task.propertyId ?? '')}`}>
+          {t('editTask')}
+        </Link>
+      </Button>
+      <Button
+        type="button"
+        variant="outline"
+        className="h-auto min-h-12 w-full rounded-xl border-border/80 py-3 text-base"
+        onClick={() => onOpenChange(false)}
+      >
+        {t('close')}
+      </Button>
+      <Button
+        type="button"
+        variant="destructive"
+        className="h-auto min-h-12 w-full rounded-xl py-3 text-base"
+        onClick={() => void handleDeleteTask()}
+      >
+        {t('deleteTask')}
+      </Button>
+    </div>
+  );
+
+  const modalFooter =
+    effectiveStaffView && staffFooter ? (
+      <div className="pb-safe">{staffFooter}</div>
+    ) : isDesktop && managerDesktopFooter ? (
+      <div className="pb-safe">{managerDesktopFooter}</div>
+    ) : undefined;
+
+  const managerMobileHeaderActions =
+    task && !effectiveStaffView && !isDesktop ? (
+      <div className="flex shrink-0 items-center gap-0.5">
+        <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full text-muted-foreground" asChild>
+          <Link href={`/dashboard/tasks/new?propertyId=${encodeURIComponent(task.propertyId ?? '')}`}>
+            <Pencil className="h-5 w-5" aria-hidden />
+            <span className="sr-only">{t('editTask')}</span>
+          </Link>
+        </Button>
+        <DropdownMenu.Root>
+          <DropdownMenu.Trigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 rounded-full text-muted-foreground"
+            >
+              <MoreVertical className="h-5 w-5" aria-hidden />
+              <span className="sr-only">{t('moreMenuAria')}</span>
+            </Button>
+          </DropdownMenu.Trigger>
+          <DropdownMenu.Portal>
+            <DropdownMenu.Content
+              align="end"
+              sideOffset={8}
+              className="z-[200] min-w-[11rem] overflow-hidden rounded-xl border bg-popover p-1 text-popover-foreground shadow-md"
+            >
+              <DropdownMenu.Item
+                className="cursor-pointer rounded-md px-3 py-2 text-sm font-medium text-destructive outline-none focus:bg-destructive/10 data-[highlighted]:bg-destructive/10"
+                onSelect={() => void handleDeleteTask()}
+              >
+                {t('deleteTask')}
+              </DropdownMenu.Item>
+            </DropdownMenu.Content>
+          </DropdownMenu.Portal>
+        </DropdownMenu.Root>
+      </div>
+    ) : null;
 
   if (!task) {
     return null;
   }
 
   return (
-    <ResponsiveModal open={open} onOpenChange={onOpenChange}>
+    <ResponsiveModal open={open} onOpenChange={onOpenChange} drawerSnapPoints={['0.5', '0.92']}>
       <ResponsiveModalContent
         title={stickyTitle}
         headerAdornment={headerAdornment}
+        headerActions={managerMobileHeaderActions}
+        hideCloseButton={!isDesktop}
         contentStyle={TASK_DETAIL_PORTAL_STYLE}
         className={cn(
           TASK_MODAL_THEME,
-          'flex max-h-[min(92dvh,92vh)] w-full max-w-xl flex-col rounded-t-2xl sm:max-w-xl sm:rounded-xl',
+          'flex w-full max-w-xl flex-col rounded-t-2xl sm:max-w-xl sm:rounded-xl md:max-h-[min(90dvh,90vh)]',
         )}
-        bodyClassName="border-t border-border/50 px-4 pt-4 pb-4"
-        footer={<div className="pb-safe">{taskFooter}</div>}
+        bodyClassName="border-t border-border/50 px-4 pt-4 pb-4 max-md:border-t-0 max-md:px-4 max-md:pb-2"
+        footer={modalFooter}
       >
-        <div className="detail-scroll-body flex flex-col gap-[var(--space-4,1rem)]">
-          <div className="space-y-1.5">
+        <div className="detail-scroll-body flex flex-col gap-[var(--space-4,1rem)] max-md:gap-5">
+          <div className="space-y-1.5 max-md:space-y-2">
             <p className={taskDetailFieldLabel}>{t('taskTitleLabel')}</p>
             {effectiveStaffView ? (
-              <div className={cn(taskTitleShell, 'py-3')}>
-                <h2 className="text-base font-semibold leading-snug tracking-tight text-foreground sm:text-lg">
+              <div
+                className={cn(
+                  taskTitleShell,
+                  'py-3 max-md:border-0 max-md:bg-transparent max-md:px-0 max-md:py-0 max-md:shadow-none',
+                )}
+              >
+                <h2 className="text-base font-semibold leading-snug tracking-tight text-foreground max-md:text-[1.125rem] max-md:leading-relaxed sm:text-lg">
                   {task.title?.trim() ? task.title : t('untitledFallback')}
                 </h2>
               </div>
             ) : (
-              <div className={taskTitleShell}>
+              <div
+                className={cn(
+                  taskTitleShell,
+                  'max-md:border-0 max-md:bg-transparent max-md:px-0 max-md:py-0 max-md:shadow-none',
+                )}
+              >
                 <input
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   onBlur={() => void onTitleBlur()}
                   disabled={patchPending}
                   placeholder={t('untitledFallback')}
-                  className={cn(taskTitleInputClass, patchPending && 'pointer-events-none opacity-60')}
+                  className={cn(
+                    taskTitleInputClass,
+                    'max-md:text-[1.125rem] max-md:leading-relaxed',
+                    patchPending && 'pointer-events-none opacity-60',
+                  )}
                   aria-label={t('taskTitleAria')}
                 />
               </div>
@@ -517,7 +600,13 @@ function TaskDetailMode({
           ) : null}
 
           {checklistItems.length > 0 && (
-            <div className={cn('space-y-2', taskDetailSurface)}>
+            <div
+              className={cn(
+                'space-y-2',
+                taskDetailSurface,
+                'max-md:border-0 max-md:bg-transparent max-md:p-0 max-md:shadow-none',
+              )}
+            >
               <p className={taskDetailFieldLabel}>{t('checklist')}</p>
               <ul className="space-y-2">
                 {checklistItems.map((item) => (
@@ -550,16 +639,22 @@ function TaskDetailMode({
             </div>
           )}
 
-          <div className={cn('space-y-2', taskDetailSurface)}>
+          <div
+            className={cn(
+              'space-y-2',
+              taskDetailSurface,
+              'max-md:border-0 max-md:bg-transparent max-md:p-0 max-md:shadow-none',
+            )}
+          >
             <p className={taskDetailFieldLabel}>{t('photos')}</p>
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-4 gap-2 max-md:flex max-md:flex-nowrap max-md:gap-2 max-md:overflow-x-auto max-md:pb-1.5 [-webkit-overflow-scrolling:touch]">
               {task.photoUrls.map((url) => (
                 <a
                   key={url}
                   href={url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="relative aspect-square overflow-hidden rounded-md border border-border bg-muted"
+                  className="relative aspect-square w-full shrink-0 overflow-hidden rounded-md border border-border bg-muted max-md:h-20 max-md:w-20 max-md:max-w-[5rem]"
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element -- external URLs */}
                   <img src={url} alt="" className="h-full w-full object-cover" />
@@ -570,7 +665,7 @@ function TaskDetailMode({
                   type="button"
                   disabled={uploadPending}
                   onClick={() => fileRef.current?.click()}
-                  className="flex aspect-square flex-col items-center justify-center gap-1 rounded-md border border-dashed border-muted-foreground/40 bg-muted/15 text-[10px] font-medium text-muted-foreground transition-colors hover:border-primary/45 hover:bg-primary/5 disabled:opacity-50"
+                  className="flex aspect-square w-full shrink-0 flex-col items-center justify-center gap-1 rounded-md border border-dashed border-muted-foreground/40 bg-muted/15 text-[10px] font-medium text-muted-foreground transition-colors hover:border-primary/45 hover:bg-primary/5 disabled:opacity-50 max-md:h-20 max-md:w-20 max-md:max-w-[5rem]"
                 >
                   <ImagePlus className="h-5 w-5 opacity-70" aria-hidden />
                   <span className="px-0.5 text-center leading-tight">{t('addPhoto')}</span>
@@ -583,7 +678,12 @@ function TaskDetailMode({
             <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={onFiles} />
           </div>
 
-          <div className="space-y-1.5">
+          <div
+            className={cn(
+              'space-y-1.5',
+              !effectiveStaffView && 'max-md:rounded-xl max-md:bg-slate-50 max-md:p-4 dark:max-md:bg-slate-900/35',
+            )}
+          >
             <label htmlFor="task-manager-note" className={taskDetailFieldLabel}>
               {t('managerNote')}
             </label>
@@ -602,6 +702,8 @@ function TaskDetailMode({
               placeholder={t('managerNotePlaceholder')}
               className={cn(
                 taskNotesTextareaClass,
+                !effectiveStaffView &&
+                  'max-md:border-0 max-md:bg-transparent max-md:shadow-none dark:max-md:bg-transparent',
                 effectiveStaffView && 'cursor-default opacity-90',
               )}
             />
@@ -626,9 +728,15 @@ function TaskDetailMode({
             </div>
           )}
 
-          <div className={cn(taskDetailSurfaceBase, 'border-l-[3px] border-l-primary p-4')}>
+          <div
+            className={cn(
+              taskDetailSurfaceBase,
+              'border-l-[3px] border-l-primary p-4',
+              'max-md:border-0 max-md:border-l-0 max-md:bg-transparent max-md:p-0 max-md:shadow-none',
+            )}
+          >
             {!effectiveStaffView && (
-              <div className="mb-4 flex flex-wrap items-center gap-2 border-b border-border/50 pb-4">
+              <div className="mb-4 flex flex-wrap items-center gap-2 border-b border-border/50 pb-4 max-md:mb-3 max-md:border-0 max-md:pb-0">
                 <select
                   aria-label={t('status')}
                   disabled={headerDisabled}
@@ -665,7 +773,131 @@ function TaskDetailMode({
                 </select>
               </div>
             )}
-            <dl className="grid grid-cols-[100px_1fr] gap-x-3 gap-y-2.5 text-sm">
+
+            <div className="md:hidden divide-y divide-slate-100 dark:divide-slate-800">
+              <div className="flex items-center justify-between gap-3 py-3">
+                <span className="text-xs text-muted-foreground">{t('property')}</span>
+                <div className="min-w-0 max-w-[65%] text-right text-sm font-medium text-foreground">
+                  {effectiveStaffView ? (
+                    <span className="inline-flex max-w-full justify-end truncate text-right">
+                      {task.propertyTitle}
+                    </span>
+                  ) : (
+                    <DropdownMenu.Root>
+                      <DropdownMenu.Trigger asChild>
+                        <button
+                          type="button"
+                          disabled={patchPending}
+                          className={cn(
+                            'inline-flex max-w-full items-center justify-end gap-1 truncate rounded-md border border-input bg-background px-2 py-1 text-right text-sm font-medium shadow-sm transition-colors hover:bg-muted',
+                            taskControlFocus,
+                            'disabled:opacity-50',
+                          )}
+                        >
+                          {task.propertyTitle}
+                        </button>
+                      </DropdownMenu.Trigger>
+                      <DropdownMenu.Portal>
+                        <DropdownMenu.Content
+                          sideOffset={6}
+                          align="end"
+                          className="z-[200] max-h-[min(280px,45vh)] min-w-[10rem] overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
+                        >
+                          {properties.map((p) => (
+                            <DropdownMenu.Item
+                              key={p.id}
+                              onSelect={() => void onPickProperty(p.id)}
+                              className="cursor-pointer rounded-sm px-2 py-1.5 text-sm outline-none data-[highlighted]:bg-accent"
+                            >
+                              {p.name}
+                            </DropdownMenu.Item>
+                          ))}
+                        </DropdownMenu.Content>
+                      </DropdownMenu.Portal>
+                    </DropdownMenu.Root>
+                  )}
+                </div>
+              </div>
+
+              {!effectiveStaffView && (
+                <div className="flex items-center justify-between gap-3 py-3">
+                  <span className="text-xs text-muted-foreground">{t('assignee')}</span>
+                  <div className="min-w-0 max-w-[65%] text-right">
+                    <DropdownMenu.Root>
+                      <DropdownMenu.Trigger asChild>
+                        <button
+                          type="button"
+                          disabled={patchPending}
+                          className={cn(
+                            'inline-flex max-w-full items-center justify-end gap-2 rounded-md border border-input bg-background py-0.5 pl-1 pr-2 text-right text-sm font-medium shadow-sm transition-colors hover:bg-muted',
+                            taskControlFocus,
+                            'disabled:opacity-50',
+                          )}
+                        >
+                          <span className="inline-flex h-7 min-w-7 max-w-[5.5rem] shrink-0 items-center justify-center truncate rounded-full bg-primary/15 px-1 text-[10px] font-semibold text-primary">
+                            {task.assigneeName ? formatNameAndLastInitial(task.assigneeName) : '?'}
+                          </span>
+                          <span className="truncate">{task.assigneeName ?? t('unassigned')}</span>
+                        </button>
+                      </DropdownMenu.Trigger>
+                      <DropdownMenu.Portal>
+                        <DropdownMenu.Content
+                          sideOffset={6}
+                          align="end"
+                          className="z-[200] max-h-[min(280px,45vh)] min-w-[12rem] overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
+                        >
+                          <DropdownMenu.Item
+                            onSelect={() => void onPickAssignee(null)}
+                            className="cursor-pointer rounded-sm px-2 py-1.5 text-sm outline-none data-[highlighted]:bg-accent"
+                          >
+                            {t('unassigned')}
+                          </DropdownMenu.Item>
+                          {staff.map((s) => (
+                            <DropdownMenu.Item
+                              key={s.id}
+                              onSelect={() => void onPickAssignee(s.id)}
+                              className="cursor-pointer rounded-sm px-2 py-1.5 text-sm outline-none data-[highlighted]:bg-accent"
+                            >
+                              {s.displayName}
+                            </DropdownMenu.Item>
+                          ))}
+                        </DropdownMenu.Content>
+                      </DropdownMenu.Portal>
+                    </DropdownMenu.Root>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center justify-between gap-3 py-3">
+                <span className="text-xs text-muted-foreground">{t('creator')}</span>
+                <span className="max-w-[65%] text-right text-sm font-medium text-foreground">
+                  {task.creatorName?.trim() ? task.creatorName : '—'}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between gap-3 py-3">
+                <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                  <Clock className="h-3 w-3 opacity-70" aria-hidden />
+                  {t('dueDate')}
+                </span>
+                <span className="text-xs font-medium tabular-nums text-foreground sm:text-sm">{dateOnly}</span>
+              </div>
+
+              <div className="flex items-center justify-between gap-3 py-3">
+                <span className="text-xs text-muted-foreground">{t('dueTime')}</span>
+                <span className="text-xs font-medium tabular-nums text-foreground sm:text-sm">{timeStr}</span>
+              </div>
+
+              <div className="flex items-start justify-between gap-3 py-3">
+                <span className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
+                  <MapPin className="h-3 w-3 opacity-70" aria-hidden />
+                  {t('location')}
+                </span>
+                <span className="max-w-[70%] text-right text-sm leading-snug text-foreground">{task.propertyAddress}</span>
+              </div>
+            </div>
+
+            <dl className="hidden grid-cols-[100px_1fr] gap-x-3 gap-y-2.5 text-sm md:grid">
               <dt className={taskDetailFieldLabel}>{t('property')}</dt>
               <dd className="min-w-0">
                 {effectiveStaffView ? (

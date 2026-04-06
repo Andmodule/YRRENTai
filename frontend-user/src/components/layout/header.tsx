@@ -5,6 +5,7 @@ import { Menu, LogOut, User } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { TasksHeaderControls } from '@/modules/tasks/components/manager/TasksHeaderControls';
+import { MobileTasksHeader } from '@/modules/tasks/components/ui/mobile-tasks-header';
 import { useUiStore } from '@/stores/ui.store';
 import { useAuth } from '@/hooks/use-auth';
 import { apiClient } from '@/lib/api/client';
@@ -38,46 +39,62 @@ export function Header() {
   const headerShell =
     'sticky top-0 z-30 shrink-0 border-b border-slate-200 bg-background/95 backdrop-blur-sm dark:border-slate-800 dark:bg-slate-900/85';
 
-  /** Tasks list: row 1 — menu, title, theme, logout; row 2 — view + search/dates */
+  /** Tasks list: mobile — Telegram-style single row + kebab; desktop — two rows + toolbar */
   if (isTasksListPage) {
     return (
-      <header className={cn(headerShell, 'tasks-theme flex flex-col', isChat && 'hidden lg:flex')}>
-        <div className="flex h-11 items-center gap-2 px-3 sm:h-12 sm:px-4">
-          <div className="flex min-w-0 flex-1 justify-start">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={toggleSidebar}
-              className="lg:hidden text-slate-400 hover:bg-slate-800 hover:text-white"
-              aria-label="Toggle sidebar"
-            >
-              <Menu className="h-5 w-5" />
-            </Button>
-          </div>
-          <h1 className="shrink-0 text-base font-semibold tracking-tight">{tTasks('pageTitle')}</h1>
-          <div className="flex min-w-0 flex-1 justify-end gap-0.5 sm:gap-1">
-            {user ? (
-              <>
-                <ThemeToggle />
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={handleLogout}
-                  aria-label="Sign out"
-                  className="text-slate-400 hover:bg-slate-800 hover:text-white"
-                >
-                  <LogOut className="h-4 w-4" />
-                </Button>
-              </>
-            ) : null}
-          </div>
+      <header
+        className={cn(
+          /* Как на остальных экранах дашборда (staff и т.д.): тот же headerShell, без отдельной «заливки» задач */
+          headerShell,
+          'flex flex-col',
+          isChat && 'hidden lg:flex',
+        )}
+      >
+        <div className="lg:hidden">
+          <MobileTasksHeader title={tTasks('pageTitle')} />
         </div>
-        <div className="border-t border-border/40">
-          <Suspense
-            fallback={<div className="h-14 w-full shrink animate-pulse bg-muted/20 px-4 py-2" aria-hidden />}
-          >
-            <TasksHeaderControls />
-          </Suspense>
+
+        <div className="hidden lg:flex lg:flex-col">
+          <div className="flex h-11 items-center gap-2 px-3 sm:h-12 sm:px-4">
+            <div className="flex min-w-0 flex-1 justify-start">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={toggleSidebar}
+                className="lg:hidden text-slate-400 hover:bg-slate-800 hover:text-white"
+                aria-label="Toggle sidebar"
+              >
+                <Menu className="h-5 w-5" />
+              </Button>
+            </div>
+            <h1 className="shrink-0 text-base font-semibold tracking-tight">{tTasks('pageTitle')}</h1>
+            <div className="flex min-w-0 flex-1 justify-end">
+              {user ? (
+                <div className="hidden items-center gap-0.5 sm:gap-1 lg:flex">
+                  <ThemeToggle />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleLogout}
+                    aria-label="Sign out"
+                    className="text-slate-400 hover:bg-slate-800 hover:text-white"
+                  >
+                    <LogOut className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : null}
+            </div>
+          </div>
+          <div className="flex w-full items-center border-t border-border/40">
+            <Suspense
+              fallback={<div className="h-14 w-full shrink animate-pulse bg-muted/20 px-4 py-2" aria-hidden />}
+            >
+              {/* Teal accent только у тулбара — не на всей шапке (иначе --ring/--primary дают «неон» по краю) */}
+              <div className="tasks-theme min-w-0 flex-1">
+                <TasksHeaderControls />
+              </div>
+            </Suspense>
+          </div>
         </div>
       </header>
     );
@@ -122,17 +139,18 @@ export function Header() {
             </div>
           </div>
 
-          <ThemeToggle />
-
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={handleLogout}
-            aria-label="Sign out"
-            className="text-slate-400 hover:bg-slate-800 hover:text-white"
-          >
-            <LogOut className="h-4 w-4" />
-          </Button>
+          <div className="hidden items-center gap-2 lg:flex">
+            <ThemeToggle />
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleLogout}
+              aria-label="Sign out"
+              className="text-slate-400 hover:bg-slate-800 hover:text-white"
+            >
+              <LogOut className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
       )}
     </header>

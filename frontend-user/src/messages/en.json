@@ -442,7 +442,8 @@
     "incidents": "Incidents",
     "staff": "Staff",
     "unmappedInbox": "Inbox",
-    "unmappedInboxBadgeHint": "Unmapped staff messages awaiting review"
+    "unmappedInboxBadgeHint": "Unmapped staff messages awaiting review",
+    "signOut": "Sign out"
   },
   "staff": {
     "title": "Staff",
@@ -665,6 +666,8 @@
       "parsing": "Parsing speech…",
       "parseError": "Could not parse voice. Try again or enter manually.",
       "parseEmptyAudio": "No audio captured. Try again.",
+      "recordingStoppedMaxDuration": "Recording stopped — 5 minute limit reached.",
+      "recordingStoppedSilence": "Recording stopped after 1 minute of silence.",
       "apartmentsLabel": "Properties",
       "addPropertyAria": "Add property",
       "addPropertySheetTitle": "Add property",
@@ -767,6 +770,16 @@
       "toolbarAria": "View mode",
       "tableIncidentsHeading": "Incidents in this period",
       "kanbanSwipeHint": "Swipe the board horizontally or tap a column — same as modern task apps."
+    },
+    "mobileHeader": {
+      "kebabAria": "More actions",
+      "menuSearch": "Search",
+      "menuDateRange": "Due date range",
+      "menuView": "View",
+      "viewSheetTitle": "Choose view",
+      "backAria": "Back",
+      "clearSearchAria": "Clear search",
+      "menuAria": "Open menu"
     },
     "listByProperty": {
       "voiceFabAria": "New task — start with voice",
@@ -882,6 +895,7 @@
       "staffReportIssue": "Report a problem",
       "editTask": "Edit / New task",
       "deleteTask": "Delete",
+      "moreMenuAria": "More actions",
       "deleteTaskConfirm": "Delete this task? This cannot be undone.",
       "deleteTaskSuccess": "Task deleted",
       "deleteTaskError": "Could not delete task",

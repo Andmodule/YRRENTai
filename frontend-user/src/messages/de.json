@@ -343,7 +343,8 @@
     "incidents": "Vorfälle",
     "staff": "Personal",
     "unmappedInbox": "Posteingang",
-    "unmappedInboxBadgeHint": "Unzugeordnete Mitarbeiternachrichten"
+    "unmappedInboxBadgeHint": "Unzugeordnete Mitarbeiternachrichten",
+    "signOut": "Abmelden"
   },
   "staff": {
     "title": "Personal",
@@ -520,6 +521,8 @@
       "parsing": "Wird erkannt…",
       "parseError": "Sprache konnte nicht verarbeitet werden. Erneut versuchen oder manuell eingeben.",
       "parseEmptyAudio": "Keine Aufnahme. Bitte erneut versuchen.",
+      "recordingStoppedMaxDuration": "Aufnahme beendet — 5-Minuten-Limit.",
+      "recordingStoppedSilence": "Aufnahme beendet: 1 Minute Stille.",
       "apartmentsLabel": "Objekte",
       "addPropertyAria": "Objekt hinzufügen",
       "addPropertySheetTitle": "Objekt hinzufügen",
@@ -618,6 +621,16 @@
       "toolbarAria": "Ansichtsmodus",
       "tableIncidentsHeading": "Vorfälle im Zeitraum",
       "kanbanSwipeHint": "Wischen Sie horizontal oder tippen Sie eine Spalte — wie in modernen Task-Apps."
+    },
+    "mobileHeader": {
+      "kebabAria": "Weitere Aktionen",
+      "menuSearch": "Suche",
+      "menuDateRange": "Datumsbereich",
+      "menuView": "Ansicht",
+      "viewSheetTitle": "Ansicht wählen",
+      "backAria": "Zurück",
+      "clearSearchAria": "Suche leeren",
+      "menuAria": "Menü öffnen"
     },
     "listByProperty": {
       "voiceFabAria": "Neue Aufgabe — per Sprache",

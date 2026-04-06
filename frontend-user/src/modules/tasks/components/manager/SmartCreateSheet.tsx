@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -33,7 +33,7 @@ import { useMatchMedia } from '@/hooks/use-match-media';
 import { useProperties } from '@/hooks/use-properties';
 import { useStaffUsers } from '@/hooks/use-staff-users';
 import { apiClient } from '@/lib/api/client';
-import { useVoiceRecorder } from '../../hooks/useVoiceRecorder';
+import { useVoiceRecorder, type VoiceAutoStopPayload } from '../../hooks/useVoiceRecorder';
 import { parseVoiceTaskAudio } from '../../hooks/useVoiceTaskParse';
 import { GENERAL_TASK_PROPERTY_GROUP_KEY } from '../../utils/groupTasksByProperty';
 import { formatNameAndLastInitial } from '../../utils/staff-name-short';
@@ -128,6 +128,11 @@ type SmartCreateSheetProps = {
   incidentPrefill?: { notes: string; title?: string; incidentUuid?: string } | null;
 };
 
+/** Call `startRecordingFromUserGesture` synchronously from the same pointer/click handler that opens the sheet (not from `useEffect`). iOS Safari requires this for `getUserMedia`. */
+export type SmartCreateSheetHandle = {
+  startRecordingFromUserGesture: () => void;
+};
+
 const parsingBlock = (active: boolean) => cn('rounded-md', active && 'animate-pulse bg-muted p-1');
 
 const defaultForm = (): SmartFormValues => ({
@@ -143,12 +148,10 @@ const defaultForm = (): SmartFormValues => ({
   estimatedCost: '',
 });
 
-export function SmartCreateSheet({
-  open,
-  onOpenChange,
-  propertyId,
-  incidentPrefill,
-}: SmartCreateSheetProps) {
+export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSheetProps>(function SmartCreateSheet(
+  { open, onOpenChange, propertyId, incidentPrefill },
+  ref,
+) {
   const t = useTranslations('tasks.voiceCreate');
   const tType = useTranslations('tasks.type');
   const tPriority = useTranslations('tasks.priority');
@@ -255,7 +258,86 @@ export function SmartCreateSheet({
   }, [entityTab, getValues, setValue, resolveGeneralPropertyId]);
 
   const [phase, setPhase] = useState<FlowPhase>('voice');
-  const { status: recordingStatus, isRecording, startRecording, stopRecording, resetRecording } = useVoiceRecorder();
+
+  const processVoiceBlob = useCallback(
+    async (blob: Blob | null) => {
+      if (!blob || blob.size === 0) {
+        toast.error(t('parseEmptyAudio'));
+        setPhase('voice');
+        return;
+      }
+      setPhase('parsing');
+      try {
+        const data = await parseVoiceTaskAudio(blob, contextPropertyId, locale);
+        if (data.entityType === 'incident') {
+          const pid =
+            data.propertyId && properties.some((p: Property) => p.id === data.propertyId)
+              ? data.propertyId
+              : contextPropertyId && properties.some((p: Property) => p.id === contextPropertyId)
+                ? contextPropertyId
+                : properties.length === 1
+                  ? properties[0]!.id
+                  : null;
+          reset({
+            ...defaultForm(),
+            entityTab: 'incident',
+            title: (data.title ?? 'Incident').trim(),
+            incidentType: coerceIncidentType(data.incidentType),
+            estimatedCost: data.estimatedCost != null ? String(data.estimatedCost) : '',
+            propertyIds: pid ? [pid] : [],
+            notes: data.transcript.trim(),
+          });
+        } else {
+          const filteredIds = (data.propertyIds ?? []).filter((id) =>
+            properties.some((p: Property) => p.id === id),
+          );
+          reset({
+            ...defaultForm(),
+            entityTab: 'task',
+            title: data.title ?? '',
+            type: data.type ?? 'other',
+            assigneeId: data.assigneeId ?? '',
+            dueDate: data.dueDate ?? format(addDays(new Date(), 1), 'yyyy-MM-dd'),
+            priority: data.priority ?? 'normal',
+            propertyIds: data.isGeneralTask || filteredIds.length === 0 ? [] : filteredIds,
+            notes: data.transcript.trim(),
+          });
+        }
+        setPhase('review');
+      } catch {
+        toast.error(t('parseError'));
+        setPhase('voice');
+      }
+    },
+    [contextPropertyId, locale, properties, reset, t],
+  );
+
+  const onVoiceAutoStop = useCallback(
+    (payload: VoiceAutoStopPayload) => {
+      toast.info(
+        t(payload.reason === 'max_duration' ? 'recordingStoppedMaxDuration' : 'recordingStoppedSilence'),
+      );
+      if (!payload.blob || payload.blob.size === 0) {
+        setPhase('voice');
+        return;
+      }
+      void processVoiceBlob(payload.blob);
+    },
+    [processVoiceBlob, t],
+  );
+
+  const { status: recordingStatus, isRecording, startRecording, stopRecording, resetRecording } =
+    useVoiceRecorder({ onAutoStop: onVoiceAutoStop });
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      startRecordingFromUserGesture: () => {
+        void startRecording();
+      },
+    }),
+    [startRecording],
+  );
 
   useEffect(() => {
     if (!open) {
@@ -289,7 +371,7 @@ export function SmartCreateSheet({
     } else {
       reset(defaultForm());
       setPhase('voice');
-      /* resetRecording only on close — mic auto-starts in useLayoutEffect while user gesture chain is fresh */
+      /* Mic start: parent must call ref.startRecordingFromUserGesture() in the same click/tap that opens the sheet. */
     }
   }, [
     open,
@@ -304,73 +386,14 @@ export function SmartCreateSheet({
     tTasks,
   ]);
 
-  const autoStartSessionRef = useRef(false);
-  useLayoutEffect(() => {
-    if (!open) {
-      autoStartSessionRef.current = false;
-      return;
-    }
-    if (incidentPrefill?.notes?.trim() || incidentPrefill?.incidentUuid) return;
-    if (dispatchPrefill?.uuid) return;
-    if (autoStartSessionRef.current) return;
-    autoStartSessionRef.current = true;
-    void startRecording();
-  }, [open, incidentPrefill, dispatchPrefill?.uuid, startRecording]);
-
   const handleStopRecording = useCallback(async () => {
     if (!isRecording) {
       toast.error(t('micNotRecording'));
       return;
     }
     const blob = await stopRecording();
-    if (!blob || blob.size === 0) {
-      toast.error(t('parseEmptyAudio'));
-      setPhase('voice');
-      return;
-    }
-    setPhase('parsing');
-    try {
-      const data = await parseVoiceTaskAudio(blob, contextPropertyId, locale);
-      if (data.entityType === 'incident') {
-        const pid =
-          data.propertyId && properties.some((p: Property) => p.id === data.propertyId)
-            ? data.propertyId
-            : contextPropertyId && properties.some((p: Property) => p.id === contextPropertyId)
-              ? contextPropertyId
-              : properties.length === 1
-                ? properties[0]!.id
-                : null;
-        reset({
-          ...defaultForm(),
-          entityTab: 'incident',
-          title: (data.title ?? 'Incident').trim(),
-          incidentType: coerceIncidentType(data.incidentType),
-          estimatedCost: data.estimatedCost != null ? String(data.estimatedCost) : '',
-          propertyIds: pid ? [pid] : [],
-          notes: data.transcript.trim(),
-        });
-      } else {
-        const filteredIds = (data.propertyIds ?? []).filter((id) =>
-          properties.some((p: Property) => p.id === id),
-        );
-        reset({
-          ...defaultForm(),
-          entityTab: 'task',
-          title: data.title ?? '',
-          type: data.type ?? 'other',
-          assigneeId: data.assigneeId ?? '',
-          dueDate: data.dueDate ?? format(addDays(new Date(), 1), 'yyyy-MM-dd'),
-          priority: data.priority ?? 'normal',
-          propertyIds: data.isGeneralTask || filteredIds.length === 0 ? [] : filteredIds,
-          notes: data.transcript.trim(),
-        });
-      }
-      setPhase('review');
-    } catch {
-      toast.error(t('parseError'));
-      setPhase('voice');
-    }
-  }, [contextPropertyId, isRecording, locale, properties, reset, stopRecording, t]);
+    await processVoiceBlob(blob);
+  }, [isRecording, processVoiceBlob, stopRecording, t]);
 
   const handleTypeManually = useCallback(() => {
     resetRecording();
@@ -1227,4 +1250,6 @@ export function SmartCreateSheet({
     </ResponsiveModal>
     </>
   );
-}
+});
+
+SmartCreateSheet.displayName = 'SmartCreateSheet';

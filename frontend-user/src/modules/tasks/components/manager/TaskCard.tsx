@@ -82,11 +82,11 @@ export const TaskCard = memo(function TaskCard({
           ) : null}
         </div>
         <span className="flex items-center gap-1">
-          {critical && <span className="h-2 w-2 rounded-full bg-red-600" title={t('priority.critical')} />}
-          {urgent && !critical && <span className="h-2 w-2 rounded-full bg-amber-500" title={t('priority.urgent')} />}
+          {critical && <span className="h-1 w-1 rounded-full bg-red-600" title={t('priority.critical')} />}
+          {urgent && !critical && <span className="h-1 w-1 rounded-full bg-amber-500" title={t('priority.urgent')} />}
         </span>
       </div>
-      <p className="mt-2 text-sm font-semibold text-foreground">
+      <p className="mt-2 text-sm font-normal text-foreground">
         {task.title || task.propertyTitle}
       </p>
       <p className="mt-0.5 text-xs text-muted-foreground">{task.propertyTitle}</p>

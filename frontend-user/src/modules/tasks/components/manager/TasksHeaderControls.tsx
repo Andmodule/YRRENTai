@@ -81,15 +81,13 @@ export function TasksHeaderControls() {
   const datesActive = datesOpen || filters.dateRangeEnabled;
 
   return (
-    <div className="flex min-w-0 flex-col gap-1.5 px-3 py-1.5 sm:px-4">
-      <div className="flex min-w-0 items-center justify-between gap-2">
+    <div className="flex min-w-0 flex-col gap-1 px-3 py-1 sm:gap-1.5 sm:px-4 sm:py-2">
+      <div className="flex min-h-9 w-full min-w-0 items-center">
         <div
           className={cn(
-            'flex min-w-0 shrink gap-0.5 rounded-xl border p-0.5 backdrop-blur-sm',
-            'border-slate-200/90 bg-gradient-to-b from-white to-slate-100/55 shadow-sm ring-1 ring-slate-900/[0.04]',
-            'shadow-[inset_0_1px_0_0_rgba(255,255,255,0.95)]',
-            'dark:border-slate-700/75 dark:from-slate-900/95 dark:to-slate-950/90 dark:ring-cyan-500/12',
-            'dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06),0_8px_28px_-16px_rgba(34,211,238,0.18)]',
+            'flex h-9 min-w-0 shrink-0 items-center gap-0.5 rounded-xl border p-0.5',
+            'border-slate-200/90 bg-white shadow-sm ring-1 ring-slate-900/[0.03]',
+            'dark:border-slate-700/75 dark:bg-slate-900/80 dark:ring-slate-500/10',
           )}
           role="toolbar"
           aria-label={t('viewModes.toolbarAria')}
@@ -107,9 +105,9 @@ export function TasksHeaderControls() {
               variant="ghost"
               size="sm"
               className={cn(
-                'h-7 gap-0.5 rounded-md px-1.5 sm:h-8 sm:px-2',
+                'h-8 gap-0.5 rounded-lg px-1.5 sm:px-2',
                 view === id
-                  ? 'border-transparent bg-gradient-to-r from-cyan-600 to-violet-600 text-white shadow-sm hover:from-cyan-500 hover:to-violet-500 hover:text-white dark:shadow-[0_0_18px_-4px_rgba(34,211,238,0.45)]'
+                  ? 'bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 hover:text-primary-foreground dark:shadow-[0_0_16px_-4px_rgba(0,180,200,0.35)]'
                   : 'text-muted-foreground hover:bg-slate-100/90 dark:hover:bg-slate-800/80',
               )}
               onClick={() => setView(id)}
@@ -122,16 +120,19 @@ export function TasksHeaderControls() {
           ))}
         </div>
 
-        <div className="flex shrink-0 items-center gap-1">
+        {/* Разрыв между режимами просмотра и поиском/датами — не склеивать в одну «полосу» */}
+        <div className="min-w-2 flex-1" aria-hidden />
+
+        <div className="flex h-9 shrink-0 items-center gap-1.5">
           <Button
             type="button"
             variant="ghost"
             size="icon"
             className={cn(
-              'h-8 w-8 rounded-md border transition-colors',
+              'h-8 w-8 rounded-lg border transition-colors',
               searchActive
-                ? 'border-transparent bg-gradient-to-r from-cyan-600 to-violet-600 text-white shadow-sm hover:from-cyan-500 hover:to-violet-500 dark:shadow-[0_0_16px_-3px_rgba(34,211,238,0.4)]'
-                : 'border-slate-200/90 bg-white/90 text-muted-foreground shadow-sm ring-1 ring-slate-900/[0.04] hover:bg-slate-50 dark:border-slate-600/55 dark:bg-slate-900/55 dark:ring-cyan-500/10 dark:hover:bg-slate-800/80',
+                ? 'border-transparent bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 dark:shadow-[0_0_14px_-3px_rgba(0,180,200,0.35)]'
+                : 'border-slate-200/90 bg-white text-muted-foreground shadow-sm hover:bg-slate-50 dark:border-slate-600/55 dark:bg-slate-900/55 dark:hover:bg-slate-800/80',
             )}
             aria-label={t('filters.searchToggleAria')}
             aria-expanded={searchOpen}
@@ -145,10 +146,10 @@ export function TasksHeaderControls() {
             variant="ghost"
             size="icon"
             className={cn(
-              'h-8 w-8 rounded-md border transition-colors',
+              'h-8 w-8 rounded-lg border transition-colors',
               datesActive
-                ? 'border-transparent bg-gradient-to-r from-cyan-600 to-violet-600 text-white shadow-sm hover:from-cyan-500 hover:to-violet-500 dark:shadow-[0_0_16px_-3px_rgba(34,211,238,0.4)]'
-                : 'border-slate-200/90 bg-white/90 text-muted-foreground shadow-sm ring-1 ring-slate-900/[0.04] hover:bg-slate-50 dark:border-slate-600/55 dark:bg-slate-900/55 dark:ring-cyan-500/10 dark:hover:bg-slate-800/80',
+                ? 'border-transparent bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 dark:shadow-[0_0_14px_-3px_rgba(0,180,200,0.35)]'
+                : 'border-slate-200/90 bg-white text-muted-foreground shadow-sm hover:bg-slate-50 dark:border-slate-600/55 dark:bg-slate-900/55 dark:hover:bg-slate-800/80',
             )}
             aria-label={t('filters.periodAria')}
             aria-expanded={datesOpen}

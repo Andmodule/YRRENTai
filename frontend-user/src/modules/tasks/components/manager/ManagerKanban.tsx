@@ -177,8 +177,8 @@ export function ManagerKanban({
   const isEmptyBoard = filtered.length === 0 && boardIncidents.length === 0;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden md:gap-3">
-      <div className="shrink-0 max-md:-mx-2">
+    <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-hidden md:gap-3">
+      <div className="flex shrink-0 items-center max-md:-mx-2">
         <TasksFiltersBar filters={filters} onFiltersChange={onFiltersChange} />
       </div>
 

@@ -15,6 +15,7 @@ import {
   rubberBandHorizontal,
   swipeActivationThresholdPx,
   swipeDeletePeekWidthPx,
+  swipeDoneActivationThresholdPx,
 } from '../../utils/swipe-physics';
 
 const SWIPE_AXIS_LOCK_PX = 10;
@@ -78,6 +79,7 @@ export function TaskListRowMobile({
   const swipeAxisRef = useRef<'idle' | 'h' | 'v'>('idle');
   const modeRef = useRef<SwipeMode>('idle');
   const activationPxRef = useRef(100);
+  const doneActivationPxRef = useRef(122);
   const peekPxRef = useRef(96);
   const maxPullPxRef = useRef(140);
   const vibratedCrossRef = useRef(false);
@@ -167,6 +169,7 @@ export function TaskListRowMobile({
 
       const mode = modeRef.current;
       const ap = activationPxRef.current;
+      const apDone = doneActivationPxRef.current;
 
       if (mode === 'idle' || mode === 'scroll') {
         const next = rubberBandHorizontal(dx, maxPullPxRef.current);
@@ -207,7 +210,7 @@ export function TaskListRowMobile({
         const next = rubberBandHorizontal(Math.max(dx, 0), maxPullPxRef.current);
         dragXRef.current = next;
         setDragX(next);
-        if (dx >= ap && !vibratedCrossRef.current) {
+        if (dx >= apDone && !vibratedCrossRef.current) {
           vibratedCrossRef.current = true;
           try {
             navigator.vibrate(50);
@@ -239,6 +242,7 @@ export function TaskListRowMobile({
       swipeStartXRef.current = e.clientX;
       swipeStartYRef.current = e.clientY;
       activationPxRef.current = swipeActivationThresholdPx();
+      doneActivationPxRef.current = swipeDoneActivationThresholdPx();
       peekPxRef.current = swipeDeletePeekWidthPx();
       maxPullPxRef.current = 140;
       lastRawDxRef.current = 0;
@@ -292,6 +296,7 @@ export function TaskListRowMobile({
       const raw = lastRawDxRef.current;
       const mode = modeRef.current;
       const ap = activationPxRef.current;
+      const apDone = doneActivationPxRef.current;
       const peekPx = peekPxRef.current;
 
       if (wasAdjustDeletePeek && canSwipeLeftDelete && deletePeekOpenRef.current) {
@@ -327,7 +332,7 @@ export function TaskListRowMobile({
         return;
       }
 
-      if (mode === 'done' && canSwipeRightDone && raw >= ap) {
+      if (mode === 'done' && canSwipeRightDone && raw >= apDone) {
         try {
           navigator.vibrate(50);
         } catch {
@@ -396,10 +401,10 @@ export function TaskListRowMobile({
     [deleteExit],
   );
 
-  const apDisplay = swipeActivationThresholdPx();
+  const doneApDisplay = swipeDoneActivationThresholdPx();
   const peekPxDisplay = swipeDeletePeekWidthPx();
   const raw = lastRawDxRef.current;
-  const doneProgress = Math.min(1, Math.max(0, raw) / Math.max(apDisplay, 1));
+  const doneProgress = Math.min(1, Math.max(0, raw) / Math.max(doneApDisplay, 1));
   /** Only left drag reveals delete — never use |dragX| or right-swipe would show trash/red */
   const deletePeekProgress =
     deletePeekOpen
@@ -511,7 +516,7 @@ export function TaskListRowMobile({
             beginDeleteSlideOff();
           }}
         >
-          <Trash2 className="h-6 w-6 shrink-0 drop-shadow-sm" strokeWidth={2.25} aria-hidden />
+          <Trash2 className="h-5 w-5 shrink-0 text-white/88" strokeWidth={1.5} aria-hidden />
         </button>
       ) : null}
 

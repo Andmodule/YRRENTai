@@ -442,7 +442,8 @@
     "incidents": "Инциденты",
     "staff": "Персонал",
     "unmappedInbox": "Входящие",
-    "unmappedInboxBadgeHint": "Сообщения персонала без привязки к задаче"
+    "unmappedInboxBadgeHint": "Сообщения персонала без привязки к задаче",
+    "signOut": "Выйти"
   },
   "staff": {
     "title": "Персонал",
@@ -665,6 +666,8 @@
       "parsing": "Распознаю…",
       "parseError": "Не удалось разобрать голос. Повторите или введите вручную.",
       "parseEmptyAudio": "Аудио пустое. Попробуйте ещё раз.",
+      "recordingStoppedMaxDuration": "Запись остановлена — лимит 5 минут.",
+      "recordingStoppedSilence": "Запись остановлена: минута тишины.",
       "apartmentsLabel": "Объекты",
       "addPropertyAria": "Добавить объект",
       "addPropertySheetTitle": "Добавить объект",
@@ -767,6 +770,16 @@
       "toolbarAria": "Режим просмотра",
       "tableIncidentsHeading": "Инциденты за период",
       "kanbanSwipeHint": "Свайпайте доску влево-вправо или нажмите колонку — как в современных таск-трекерах."
+    },
+    "mobileHeader": {
+      "kebabAria": "Ещё действия",
+      "menuSearch": "Поиск",
+      "menuDateRange": "Период по датам",
+      "menuView": "Вид",
+      "viewSheetTitle": "Режим отображения",
+      "backAria": "Назад",
+      "clearSearchAria": "Очистить поиск",
+      "menuAria": "Открыть меню"
     },
     "listByProperty": {
       "voiceFabAria": "Новая задача — голосом",
@@ -882,6 +895,7 @@
       "staffReportIssue": "Сообщить о проблеме",
       "editTask": "Редактировать / новая задача",
       "deleteTask": "Удалить",
+      "moreMenuAria": "Дополнительные действия",
       "deleteTaskConfirm": "Удалить эту задачу? Это действие нельзя отменить.",
       "deleteTaskSuccess": "Задача удалена",
       "deleteTaskError": "Не удалось удалить задачу",

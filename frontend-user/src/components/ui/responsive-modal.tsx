@@ -11,10 +11,13 @@ export function ResponsiveModal({
   open,
   onOpenChange,
   children,
+  /** Vaul snap heights (e.g. `['0.5', '0.92']`) — mobile drawer only. */
+  drawerSnapPoints,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   children: ReactNode;
+  drawerSnapPoints?: (number | string)[];
 }) {
   const isDesktop = useMediaQuery(MD_UP);
 
@@ -27,7 +30,12 @@ export function ResponsiveModal({
   }
 
   return (
-    <Drawer open={open} onOpenChange={onOpenChange}>
+    <Drawer
+      open={open}
+      onOpenChange={onOpenChange}
+      {...(drawerSnapPoints && drawerSnapPoints.length > 0 ? { snapPoints: drawerSnapPoints } : {})}
+      modal
+    >
       {children}
     </Drawer>
   );
@@ -46,6 +54,10 @@ interface ResponsiveModalContentProps {
   description?: string;
   /** Badges / meta below title (not in scroll body). */
   headerAdornment?: React.ReactNode;
+  /** Mobile drawer: title row actions (e.g. edit + overflow). */
+  headerActions?: React.ReactNode;
+  /** Mobile drawer: no X — dismiss via swipe or overlay. */
+  hideCloseButton?: boolean;
   children: React.ReactNode;
   /** Pinned at bottom; scroll stays in the main body. */
   footer?: React.ReactNode;
@@ -59,6 +71,8 @@ export function ResponsiveModalContent({
   title,
   description,
   headerAdornment,
+  headerActions,
+  hideCloseButton,
   children,
   footer,
   className,
@@ -86,6 +100,8 @@ export function ResponsiveModalContent({
       title={title}
       description={description}
       headerAdornment={headerAdornment}
+      headerActions={headerActions}
+      hideCloseButton={hideCloseButton}
       footer={footer}
       className={className}
       bodyClassName={bodyClassName}

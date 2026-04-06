@@ -31,6 +31,10 @@ interface DrawerContentProps extends React.ComponentPropsWithoutRef<typeof Drawe
   description?: string;
   /** Below title row (badges, meta). */
   headerAdornment?: React.ReactNode;
+  /** Right side of title row (e.g. edit + overflow menu). Shown instead of the close button when `hideCloseButton` is true. */
+  headerActions?: React.ReactNode;
+  /** When true, swipe / overlay dismiss only (no X). */
+  hideCloseButton?: boolean;
   /** Pinned below scroll area (e.g. action buttons). */
   footer?: React.ReactNode;
   bodyClassName?: string;
@@ -40,6 +44,8 @@ export function DrawerContent({
   title,
   description,
   headerAdornment,
+  headerActions,
+  hideCloseButton = false,
   children,
   footer,
   className,
@@ -51,7 +57,7 @@ export function DrawerContent({
       <DrawerOverlay />
       <DrawerPrimitive.Content
         className={cn(
-          'fixed inset-x-0 bottom-0 z-[100] flex max-h-[min(92dvh,92vh)] flex-col rounded-t-lg border bg-background shadow-lg',
+          'fixed inset-x-0 bottom-0 z-[100] flex max-h-[90vh] flex-col rounded-t-[20px] border bg-background shadow-lg',
           'data-[state=open]:animate-in data-[state=closed]:animate-out',
           'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
           'data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom',
@@ -70,10 +76,19 @@ export function DrawerContent({
                 </DrawerPrimitive.Description>
               )}
             </div>
-            <DrawerPrimitive.Close className="ml-2 shrink-0 rounded-sm opacity-70 ring-offset-background transition-colors duration-200 ease-in-out hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
-              <X className="h-4 w-4" />
-              <span className="sr-only">Close</span>
-            </DrawerPrimitive.Close>
+            {hideCloseButton ? (
+              headerActions ? (
+                <div className="ml-2 flex shrink-0 items-center">{headerActions}</div>
+              ) : null
+            ) : (
+              <div className="ml-2 flex shrink-0 items-center gap-1">
+                {headerActions}
+                <DrawerPrimitive.Close className="rounded-sm opacity-70 ring-offset-background transition-colors duration-200 ease-in-out hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
+                  <X className="h-4 w-4" />
+                  <span className="sr-only">Close</span>
+                </DrawerPrimitive.Close>
+              </div>
+            )}
           </div>
           {headerAdornment ? <div className="px-6 pb-3">{headerAdornment}</div> : null}
         </div>

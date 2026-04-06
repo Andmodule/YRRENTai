@@ -1,6 +1,7 @@
 'use client';
 
-import { memo, useCallback, useMemo, useState } from 'react';
+import { memo, useCallback, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { useTranslations } from 'next-intl';
 import { ChevronDown, Pencil } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -16,7 +17,7 @@ import { useTaskListCollapsedGroups } from '../../hooks/useTaskListCollapsedGrou
 import { TaskListRow } from './TaskListRow';
 import type { Incident } from '@/modules/incidents/hooks/useIncidents';
 import { IncidentListRow } from '@/modules/incidents/components/IncidentListRow';
-import { VoiceTaskCreateSheet } from './VoiceTaskCreateSheet';
+import { VoiceTaskCreateSheet, type VoiceTaskCreateSheetHandle } from './VoiceTaskCreateSheet';
 
 export const TaskListView = memo(function TaskListView({
   tasks,
@@ -57,6 +58,7 @@ export const TaskListView = memo(function TaskListView({
   const isMdUp = useMatchMedia('(min-width: 768px)');
   const [voiceOpen, setVoiceOpen] = useState(false);
   const [voicePropertyId, setVoicePropertyId] = useState<string | null>(null);
+  const voiceSheetRef = useRef<VoiceTaskCreateSheetHandle>(null);
   /** Only one row may show the swipe-delete “peek” strip at a time; cleared when opening another row. */
   const [swipeOpenRowId, setSwipeOpenRowId] = useState<string | null>(null);
 
@@ -81,15 +83,18 @@ export const TaskListView = memo(function TaskListView({
     return g?.propertyId ?? null;
   }, [visibleGroups]);
 
-  /** Voice-first: open sheet and immediately enter recording (voice hero) UI. */
+  /** Voice-first: open sheet and start mic in the same tap/click (required for mobile Safari `getUserMedia`). */
   const openVoiceSheet = useCallback((propertyId: string) => {
-    setVoicePropertyId(propertyId);
-    setVoiceOpen(true);
+    flushSync(() => {
+      setVoicePropertyId(propertyId);
+      setVoiceOpen(true);
+    });
+    voiceSheetRef.current?.startRecordingFromUserGesture();
   }, []);
 
   return (
     <div className="relative flex min-w-0 flex-col gap-1.5 pb-24 md:gap-3 md:pb-0">
-      {visibleGroups.map((group, idx) => {
+      {visibleGroups.map((group) => {
         const collapsed = collapsedById[group.propertyId] ?? false;
         const displayTitle =
           group.propertyId === INCIDENTS_BOARD_GROUP_KEY
@@ -112,24 +117,17 @@ export const TaskListView = memo(function TaskListView({
           <section
             key={group.propertyId}
             className={cn(
-              'min-w-0 overflow-hidden scroll-mt-2 rounded-xl border shadow-sm',
-              'border-slate-200/70 bg-gradient-to-b from-slate-50/85 via-white/70 to-slate-100/25 ring-1 ring-slate-900/[0.035]',
-              'dark:border-slate-700/75 dark:bg-gradient-to-b dark:from-slate-950/90 dark:via-slate-900/45 dark:to-slate-950/85 dark:ring-cyan-500/10',
-              idx % 2 === 1 &&
-                group.propertyId !== INCIDENTS_BOARD_GROUP_KEY &&
-                'from-slate-100/40 to-slate-50/50 dark:from-slate-900/50 dark:via-slate-900/35 dark:to-slate-950/70',
+              'min-w-0 overflow-hidden scroll-mt-2 rounded-2xl border border-slate-200/80 bg-white shadow-sm',
+              'dark:border-slate-700/75 dark:bg-slate-900/35',
             )}
             aria-label={displayTitle}
           >
             <Collapsible open={!collapsed} onOpenChange={(open) => setCollapsed(group.propertyId, !open)}>
               <div
                 className={cn(
-                  'sticky top-0 z-20 rounded-t-xl border-b border-slate-200/80',
-                  /* Light: явная светло-серая шапка — отделяется от белого списка и от фона страницы */
-                  'bg-slate-100 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.75)]',
-                  'dark:border-slate-700/60 dark:bg-gradient-to-b dark:from-slate-900/96 dark:via-slate-900/92 dark:to-slate-950/96',
-                  'dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.07),0_1px_0_0_rgba(34,211,238,0.07)]',
-                  'dark:backdrop-blur-md dark:backdrop-saturate-150',
+                  'sticky top-0 z-20 rounded-t-2xl border-b border-slate-200/70',
+                  'bg-slate-50/95',
+                  'dark:border-slate-700/60 dark:bg-slate-900/90',
                 )}
               >
                 <CollapsibleTrigger
@@ -153,14 +151,17 @@ export const TaskListView = memo(function TaskListView({
                       </h2>
                       {group.propertyId === INCIDENTS_BOARD_GROUP_KEY ? (
                         <span
-                          className="min-w-[1.25rem] rounded-full bg-red-500/15 px-1.5 py-px text-center text-[10px] font-medium tabular-nums text-red-700 dark:text-red-400"
+                          className="inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full bg-red-500/15 px-1 text-[10px] font-semibold tabular-nums leading-none text-red-700 dark:text-red-400"
                           aria-label={tList('incidentCount', { count: group.incidents.length })}
                         >
                           {group.incidents.length}
                         </span>
                       ) : (
-                        <span className="rounded-full bg-muted/80 px-1.5 py-px text-[10px] font-medium text-muted-foreground">
-                          {tList('taskCount', { count: group.tasks.length })}
+                        <span
+                          className="inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full border border-slate-200/90 bg-slate-100/90 px-1 text-[10px] font-semibold tabular-nums leading-none text-slate-600 dark:border-slate-600/70 dark:bg-slate-800/80 dark:text-slate-400"
+                          aria-label={tList('taskCount', { count: group.tasks.length })}
+                        >
+                          {group.tasks.length}
                         </span>
                       )}
                     </div>
@@ -239,24 +240,27 @@ export const TaskListView = memo(function TaskListView({
           type="button"
           onClick={() => openVoiceSheet(fabPropertyId)}
           className={cn(
-            'fixed bottom-6 right-6 z-50 flex h-14 w-14 cursor-pointer items-center justify-center rounded-full border-0 touch-manipulation',
-            'bg-gradient-to-r from-cyan-600 to-violet-600 text-white shadow-lg hover:from-cyan-500 hover:to-violet-500',
-            'dark:shadow-[0_8px_32px_-10px_rgba(34,211,238,0.45)]',
+            'fixed bottom-6 right-6 z-50 flex h-12 w-12 cursor-pointer items-center justify-center rounded-full touch-manipulation',
+            'border border-primary/25 bg-white text-primary shadow-md shadow-slate-900/8 ring-1 ring-primary/10',
+            'transition-colors hover:border-primary/35 hover:bg-primary/[0.06] hover:shadow-lg hover:shadow-slate-900/10',
+            'dark:border-primary/30 dark:bg-slate-900/90 dark:text-primary dark:shadow-black/20 dark:ring-primary/20',
+            'dark:hover:bg-primary/10',
           )}
           aria-label={tList('voiceFabAria')}
         >
-          <Pencil className="h-6 w-6" strokeWidth={2.25} aria-hidden />
+          <Pencil className="h-5 w-5" strokeWidth={2} aria-hidden />
         </button>
       ) : null}
 
-      {voiceQuickAdd && voicePropertyId ? (
+      {voiceQuickAdd && (fabPropertyId ?? voicePropertyId) ? (
         <VoiceTaskCreateSheet
+          ref={voiceSheetRef}
           open={voiceOpen}
           onOpenChange={(o) => {
             setVoiceOpen(o);
             if (!o) setVoicePropertyId(null);
           }}
-          propertyId={voicePropertyId}
+          propertyId={(voicePropertyId ?? fabPropertyId)!}
         />
       ) : null}
     </div>

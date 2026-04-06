@@ -343,7 +343,8 @@
     "incidents": "Incydenty",
     "staff": "Personel",
     "unmappedInbox": "Skrzynka",
-    "unmappedInboxBadgeHint": "Nieprzypisane wiadomości personelu"
+    "unmappedInboxBadgeHint": "Nieprzypisane wiadomości personelu",
+    "signOut": "Wyloguj"
   },
   "staff": {
     "title": "Personel",
@@ -520,6 +521,8 @@
       "parsing": "Rozpoznawanie…",
       "parseError": "Nie udało się przetworzyć głosu. Spróbuj ponownie lub wpisz ręcznie.",
       "parseEmptyAudio": "Brak nagrania. Spróbuj jeszcze raz.",
+      "recordingStoppedMaxDuration": "Nagranie zatrzymane — limit 5 minut.",
+      "recordingStoppedSilence": "Nagranie zatrzymane: minuta ciszy.",
       "apartmentsLabel": "Obiekty",
       "addPropertyAria": "Dodaj obiekt",
       "addPropertySheetTitle": "Dodaj obiekt",
@@ -618,6 +621,16 @@
       "toolbarAria": "Tryb widoku",
       "tableIncidentsHeading": "Incydenty w okresie",
       "kanbanSwipeHint": "Przesuwaj tablicę w poziomie lub dotknij kolumny — jak w nowoczesnych aplikacjach."
+    },
+    "mobileHeader": {
+      "kebabAria": "Więcej akcji",
+      "menuSearch": "Szukaj",
+      "menuDateRange": "Zakres dat",
+      "menuView": "Widok",
+      "viewSheetTitle": "Wybierz widok",
+      "backAria": "Wstecz",
+      "clearSearchAria": "Wyczyść wyszukiwanie",
+      "menuAria": "Otwórz menu"
     },
     "listByProperty": {
       "voiceFabAria": "Nowe zadanie — głosem",

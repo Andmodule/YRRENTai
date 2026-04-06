@@ -100,14 +100,14 @@ export const TaskListRow = memo(function TaskListRow({
 
   const priorityDot = (() => {
     if (task.priority === 'critical') {
-      return <span className="h-2 w-2 shrink-0 rounded-full bg-red-500" title={t('priority.critical')} />;
+      return <span className="h-1 w-1 shrink-0 rounded-full bg-red-500" title={t('priority.critical')} />;
     }
     if (task.priority === 'urgent') {
       return (
-        <span className="h-2 w-2 shrink-0 rounded-full bg-yellow-400 dark:bg-yellow-500" title={t('priority.urgent')} />
+        <span className="h-1 w-1 shrink-0 rounded-full bg-yellow-400 dark:bg-yellow-500" title={t('priority.urgent')} />
       );
     }
-    return <span className="h-2 w-2 shrink-0 rounded-full bg-gray-400 dark:bg-gray-500" title={t('priority.normal')} />;
+    return <span className="h-1 w-1 shrink-0 rounded-full bg-gray-400 dark:bg-gray-500" title={t('priority.normal')} />;
   })();
 
   const checklist = task.checklistSummary;
@@ -182,7 +182,7 @@ export const TaskListRow = memo(function TaskListRow({
       <div className="flex min-w-0 flex-1 flex-col gap-0.5 overflow-hidden">
         <span
           className={cn(
-            'truncate text-sm font-semibold leading-tight',
+            'truncate text-sm font-normal leading-tight',
             doneVisual ? 'text-muted-foreground' : 'text-foreground',
           )}
         >

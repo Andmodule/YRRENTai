@@ -19,42 +19,42 @@ export function formatGuestAndProperty(
   return `${label} · ${propertyName}`;
 }
 
+function isSameCalendarDay(a: Date, b: Date): boolean {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
+/** When the message is not from «today»: day + month; add year if not the current calendar year. */
+function formatNonTodayDateLabel(d: Date, locale: string, referenceNow: Date): string {
+  const sameYear = d.getFullYear() === referenceNow.getFullYear();
+  return d.toLocaleDateString(locale, {
+    day: '2-digit',
+    month: '2-digit',
+    ...(sameYear ? {} : { year: '2-digit' }),
+  });
+}
+
 /**
- * Time in the list / header on the right (Telegram-style):
- * today → short clock; otherwise → date + time compact.
+ * Inbox list / header on the right: today → time only; otherwise → date only (no time).
  */
 export function formatTelegramStyleTime(iso: string, locale: string): string {
   const d = new Date(iso);
   const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const startOfMsg = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const isToday = startOfMsg.getTime() === startOfToday.getTime();
-
-  if (isToday) {
+  if (isSameCalendarDay(d, now)) {
     return d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
   }
-
-  const sameYear = d.getFullYear() === now.getFullYear();
-  return d.toLocaleString(locale, {
-    day: '2-digit',
-    month: '2-digit',
-    ...(sameYear ? {} : { year: '2-digit' }),
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  return formatNonTodayDateLabel(d, locale, now);
 }
 
-/** Time inside message bubble (Telegram-style): time only today, else short date + time. */
+/** Inside message bubble: today → time only; otherwise → date only (no time). */
 export function formatBubbleTimestamp(iso: string, locale: string): string {
   const d = new Date(iso);
   const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const startOfMsg = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const isToday = startOfMsg.getTime() === startOfToday.getTime();
-
-  const time = d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
-  if (isToday) return time;
-
-  const datePart = d.toLocaleDateString(locale, { day: '2-digit', month: '2-digit' });
-  return `${datePart}, ${time}`;
+  if (isSameCalendarDay(d, now)) {
+    return d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
+  }
+  return formatNonTodayDateLabel(d, locale, now);
 }

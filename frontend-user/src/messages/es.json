@@ -343,7 +343,8 @@
     "incidents": "Incidentes",
     "staff": "Personal",
     "unmappedInbox": "Bandeja",
-    "unmappedInboxBadgeHint": "Mensajes del personal sin asignar"
+    "unmappedInboxBadgeHint": "Mensajes del personal sin asignar",
+    "signOut": "Salir"
   },
   "staff": {
     "title": "Personal",
@@ -520,6 +521,8 @@
       "parsing": "Reconociendo…",
       "parseError": "No se pudo analizar la voz. Inténtalo de nuevo o escribe a mano.",
       "parseEmptyAudio": "No hay audio. Inténtalo otra vez.",
+      "recordingStoppedMaxDuration": "Grabación detenida: límite de 5 minutos.",
+      "recordingStoppedSilence": "Grabación detenida: 1 minuto de silencio.",
       "apartmentsLabel": "Alojamientos",
       "addPropertyAria": "Añadir alojamiento",
       "addPropertySheetTitle": "Añadir alojamiento",
@@ -618,6 +621,16 @@
       "toolbarAria": "Modo de vista",
       "tableIncidentsHeading": "Incidentes en el periodo",
       "kanbanSwipeHint": "Desliza el tablero o toca una columna, como en las apps de tareas actuales."
+    },
+    "mobileHeader": {
+      "kebabAria": "Más acciones",
+      "menuSearch": "Buscar",
+      "menuDateRange": "Rango de fechas",
+      "menuView": "Vista",
+      "viewSheetTitle": "Elegir vista",
+      "backAria": "Atrás",
+      "clearSearchAria": "Borrar búsqueda",
+      "menuAria": "Abrir menú"
     },
     "listByProperty": {
       "voiceFabAria": "Nueva tarea — por voz",

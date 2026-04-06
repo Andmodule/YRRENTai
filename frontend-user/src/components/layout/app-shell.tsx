@@ -80,7 +80,8 @@ function AppShellContent({ children }: { children: React.ReactNode }) {
               ? /* overflow-hidden на всех ширинах — иначе ломается flex-скролл и поле ввода уезжает за viewport */
                 'flex min-h-0 flex-col overflow-hidden p-0 lg:p-6'
               : isTasksBoardPage
-                ? 'flex min-h-0 min-w-0 flex-col overflow-hidden p-4 sm:p-6'
+                ? /* мобайл: меньше пустоты между шапкой и фильтрами */
+                  'flex min-h-0 min-w-0 flex-col overflow-hidden px-4 pb-4 pt-1 sm:p-6'
                 : /* overflow-x-hidden: широкий тулбар/сетка не расширяют viewport по X */
                   'flex min-h-0 min-w-0 flex-col overflow-x-hidden p-4 sm:p-6',
           )}

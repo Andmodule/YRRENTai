@@ -16,6 +16,12 @@ export function swipeActivationThresholdPx(): number {
   return Math.max(100, Math.round(window.innerWidth * 0.35));
 }
 
+/** Right-swipe «Готово»: чуть длиннее, чем порог удаления — меньше случайных отметок. */
+export function swipeDoneActivationThresholdPx(): number {
+  const base = swipeActivationThresholdPx();
+  return Math.round(base * 1.22);
+}
+
 /** Resting “open delete” width: compact square behind trash (tap target), not a full-width strip. */
 export function swipeDeletePeekWidthPx(): number {
   if (typeof window === 'undefined') return 64;

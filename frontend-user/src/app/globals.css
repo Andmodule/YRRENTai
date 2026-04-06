@@ -37,7 +37,7 @@
   --color-slate-950: #ffffff;
 
   /* Portaled task detail modal: accent source (bound via inline style on shell) */
-  --task-detail-accent: #0891b2;
+  --task-detail-accent: #0096af;
   --task-detail-accent-fg: #ffffff;
 }
 
@@ -81,11 +81,11 @@ html:not(.dark) {
   color-scheme: light;
 }
 
-/* Tasks board: cyan/teal accent (voice FAB, filters, kanban) — scoped to .tasks-theme */
+/* Tasks board: teal accent (aligned with create-task sheet / mobile) — scoped to .tasks-theme */
 .tasks-theme {
-  --primary: #0891b2;
+  --primary: #0096af;
   --primary-foreground: #ffffff;
-  --ring: #0891b2;
+  --ring: #0096af;
 }
 
 html.dark .tasks-theme {
