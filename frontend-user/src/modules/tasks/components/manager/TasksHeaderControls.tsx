@@ -9,6 +9,11 @@ import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { useTasksFiltersStore } from '@/stores/tasks-filters.store';
 import { useTasksViewMode } from '../../hooks/useTasksViewMode';
+import {
+  tasksToolbarIconButtonActive,
+  tasksToolbarIconButtonBase,
+  tasksToolbarIconButtonIdle,
+} from '../../task-toolbar-icon-button-classes';
 
 const WIDE = {
   start: new Date('2000-01-01T12:00:00'),
@@ -129,10 +134,8 @@ export function TasksHeaderControls() {
             variant="ghost"
             size="icon"
             className={cn(
-              'h-8 w-8 rounded-lg border transition-colors',
-              searchActive
-                ? 'border-transparent bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 dark:shadow-[0_0_14px_-3px_rgba(0,180,200,0.35)]'
-                : 'border-slate-200/90 bg-white text-muted-foreground shadow-sm hover:bg-slate-50 dark:border-slate-600/55 dark:bg-slate-900/55 dark:hover:bg-slate-800/80',
+              tasksToolbarIconButtonBase,
+              searchActive ? tasksToolbarIconButtonActive : tasksToolbarIconButtonIdle,
             )}
             aria-label={t('filters.searchToggleAria')}
             aria-expanded={searchOpen}
@@ -146,10 +149,8 @@ export function TasksHeaderControls() {
             variant="ghost"
             size="icon"
             className={cn(
-              'h-8 w-8 rounded-lg border transition-colors',
-              datesActive
-                ? 'border-transparent bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 dark:shadow-[0_0_14px_-3px_rgba(0,180,200,0.35)]'
-                : 'border-slate-200/90 bg-white text-muted-foreground shadow-sm hover:bg-slate-50 dark:border-slate-600/55 dark:bg-slate-900/55 dark:hover:bg-slate-800/80',
+              tasksToolbarIconButtonBase,
+              datesActive ? tasksToolbarIconButtonActive : tasksToolbarIconButtonIdle,
             )}
             aria-label={t('filters.periodAria')}
             aria-expanded={datesOpen}

@@ -122,11 +122,12 @@ export function PropertyListTable({ properties }: PropertyListTableProps) {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={t('searchPlaceholder')}
-          className="h-10 border-border/50 bg-background/60 pl-8 text-sm shadow-none placeholder:text-muted-foreground/55 focus-visible:ring-1 focus-visible:ring-border sm:h-8"
+          className="h-10 border-slate-200/90 bg-white pl-8 text-sm shadow-none placeholder:text-slate-400 focus-visible:ring-1 focus-visible:ring-slate-300 dark:border-border/50 dark:bg-background/60 dark:placeholder:text-muted-foreground/55 dark:focus-visible:ring-border sm:h-8"
         />
       </div>
 
-      <div className="-mx-1 overflow-x-auto rounded-xl border border-border/50 bg-card/40 sm:mx-0 sm:rounded-lg">
+      {/* Десктоп: широкая таблица */}
+      <div className="-mx-1 hidden overflow-x-auto rounded-xl border border-border/50 bg-card/40 sm:mx-0 sm:rounded-lg lg:block">
         <table className="w-full min-w-[720px] border-collapse text-sm">
           <thead>
             <tr className="border-b border-border/50 bg-muted/20">
@@ -224,6 +225,61 @@ export function PropertyListTable({ properties }: PropertyListTableProps) {
             )}
           </tbody>
         </table>
+      </div>
+
+      {/* Мобайл / планшет: карточки вместо горизонтального скролла таблицы */}
+      <div className="flex flex-col gap-3 lg:hidden">
+        {rows.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-slate-200/90 bg-white/90 px-4 py-10 text-center text-sm text-slate-500 shadow-sm dark:border-border/60 dark:bg-muted/20 dark:text-muted-foreground">
+            {query.trim() ? t('noSearchResults') : '—'}
+          </div>
+        ) : (
+          rows.map((property) => (
+            <Link
+              key={property.id}
+              href={`/properties/${property.id}`}
+              className="block rounded-2xl border border-slate-200/80 bg-white p-4 text-slate-900 shadow-[0_1px_3px_rgba(15,23,42,0.06)] ring-1 ring-slate-100 transition-colors active:bg-slate-50 dark:border-border/80 dark:bg-card dark:text-foreground dark:ring-border/40 dark:active:bg-muted/20"
+            >
+              <div className="flex items-start gap-3">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500 dark:bg-muted/50 dark:text-muted-foreground">
+                  <Building2 className="h-5 w-5" aria-hidden />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold leading-snug tracking-tight text-slate-900 dark:text-foreground">{property.name}</p>
+                  <p className="mt-1 text-sm text-slate-500 line-clamp-2 dark:text-muted-foreground">{formatPropertyLocation(property)}</p>
+                  <div className="mt-3 space-y-1.5 text-xs text-slate-500 dark:text-muted-foreground">
+                    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                      <span className="shrink-0">{t('colCurrency')}:</span>
+                      <span className="font-medium text-slate-900 dark:text-foreground">{property.currency}</span>
+                    </div>
+                    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                      <span className="shrink-0">{t('colGuests')}:</span>
+                      <span className="font-medium text-slate-900 dark:text-foreground">{property.maxGuests ?? '—'}</span>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {property.channelListings && property.channelListings.length > 0 ? (
+                      property.channelListings.map((cl) => (
+                        <span
+                          key={cl.id}
+                          className="inline-flex rounded-md bg-sky-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase text-sky-700 dark:bg-primary/15 dark:text-primary"
+                        >
+                          {cl.otaPlatform?.code ?? 'OTA'}
+                        </span>
+                      ))
+                    ) : property.zodomusPropertyId?.trim() ? (
+                      <span className="inline-flex rounded-md bg-sky-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase text-sky-700 dark:bg-primary/15 dark:text-primary">
+                        {property.otaPlatform?.code ?? 'OTA'}
+                      </span>
+                    ) : (
+                      <span className="text-[11px] text-slate-400 dark:text-muted-foreground/70">—</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </Link>
+          ))
+        )}
       </div>
     </div>
   );

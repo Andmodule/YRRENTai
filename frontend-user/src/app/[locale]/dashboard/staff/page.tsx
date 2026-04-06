@@ -1,18 +1,19 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import useSWR from 'swr';
 import { useTranslations } from 'next-intl';
 import { useRouter } from '@/i18n/navigation';
 import { useAuth } from '@/hooks/use-auth';
 import { apiClient } from '@/lib/api/client';
 import { Button } from '@/components/ui/button';
+import { useUiStore } from '@/stores/ui.store';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Copy, Loader2, UserPlus } from 'lucide-react';
+import { Copy, Loader2 } from 'lucide-react';
 
 const JOB_TYPES = ['cleaner', 'maintenance', 'driver', 'other'] as const;
 type JobType = (typeof JOB_TYPES)[number];
@@ -84,6 +85,22 @@ export default function StaffPage() {
     setFormError(null);
   };
 
+  const resetFormRef = useRef(resetForm);
+  resetFormRef.current = resetForm;
+  const setStaffInviteHandler = useUiStore((s) => s.setStaffInviteHandler);
+
+  useEffect(() => {
+    if (authLoading || !user || (user.role !== 'OWNER' && user.role !== 'MANAGER')) {
+      setStaffInviteHandler(null);
+      return;
+    }
+    setStaffInviteHandler(() => () => {
+      resetFormRef.current();
+      setDialogOpen(true);
+    });
+    return () => setStaffInviteHandler(null);
+  }, [authLoading, user, setStaffInviteHandler]);
+
   const onSubmit = async () => {
     const fn = firstName.trim();
     const ln = lastName.trim();
@@ -151,20 +168,6 @@ export default function StaffPage() {
   return (
     <>
       <div className="mx-auto max-w-6xl space-y-4 sm:space-y-6">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
-          <Button
-            type="button"
-            className="h-11 w-full shrink-0 sm:h-10 sm:w-auto"
-            onClick={() => {
-              resetForm();
-              setDialogOpen(true);
-            }}
-          >
-            <UserPlus className="mr-2 h-4 w-4" />
-            {t('addStaff')}
-          </Button>
-        </div>
-
       {!telegramBotConfigured && (
         <Alert>
           <AlertDescription>{t('botNotConfigured')}</AlertDescription>
@@ -181,7 +184,8 @@ export default function StaffPage() {
 
       {!isLoading && !error && (
         <>
-        <div className="hidden overflow-x-auto rounded-xl border border-border bg-card md:block">
+        {/* Таблица только на большом экране; до lg — карточки (планшеты тоже «мобильный» UX) */}
+        <div className="hidden overflow-x-auto rounded-xl border border-slate-200/80 bg-white shadow-sm dark:border-border dark:bg-card lg:block">
           <table className="w-full min-w-[720px] text-left text-sm">
             <thead className="border-b border-border bg-muted/40">
               <tr>
@@ -190,7 +194,7 @@ export default function StaffPage() {
                 <th className="px-4 py-3 font-medium">{t('colPhone')}</th>
                 <th className="px-4 py-3 font-medium">{t('colEmail')}</th>
                 <th className="px-4 py-3 font-medium">{t('colTelegram')}</th>
-                <th className="hidden px-4 py-3 font-medium md:table-cell">{t('colAdded')}</th>
+                <th className="hidden px-4 py-3 font-medium xl:table-cell">{t('colAdded')}</th>
               </tr>
             </thead>
             <tbody>
@@ -216,7 +220,7 @@ export default function StaffPage() {
                     <td className="px-4 py-3">
                       <TelegramCell row={row} />
                     </td>
-                    <td className="hidden px-4 py-3 text-muted-foreground md:table-cell">
+                    <td className="hidden px-4 py-3 text-muted-foreground xl:table-cell">
                       {new Date(row.createdAt).toLocaleDateString()}
                     </td>
                   </tr>
@@ -226,40 +230,41 @@ export default function StaffPage() {
           </table>
         </div>
 
-        <div className="flex flex-col gap-3 md:hidden">
+        {/* Должно совпадать с брейкпоинтом таблицы: иначе на 768–1023px не видно ни карточек, ни таблицы */}
+        <div className="flex flex-col gap-3 lg:hidden">
           {list.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-border bg-muted/20 px-4 py-10 text-center text-sm text-muted-foreground">
+            <div className="rounded-2xl border border-dashed border-slate-200/90 bg-white/90 px-4 py-12 text-center text-sm text-slate-500 shadow-sm dark:bg-white/95 dark:text-slate-600">
               {t('empty')}
             </div>
           ) : (
             list.map((row) => (
               <article
                 key={row.id}
-                className="rounded-2xl border border-border/80 bg-card p-4 shadow-sm ring-1 ring-border/40"
+                className="rounded-2xl border border-slate-200/80 bg-white p-5 text-slate-900 shadow-[0_1px_3px_rgba(15,23,42,0.06)] ring-1 ring-slate-100 dark:border-slate-200/80 dark:bg-white dark:text-slate-900 dark:shadow-[0_2px_16px_rgba(0,0,0,0.12)] dark:ring-slate-200/50"
               >
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <p className="font-semibold text-foreground">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-semibold leading-snug tracking-tight text-slate-900">
                       {row.firstName} {row.lastName}
                     </p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">{jobTypeLabel(row.jobType)}</p>
+                    <p className="mt-1 text-xs font-medium text-slate-500">{jobTypeLabel(row.jobType)}</p>
                   </div>
-                  <span className="text-[11px] tabular-nums text-muted-foreground">
+                  <span className="shrink-0 text-[11px] tabular-nums text-slate-400">
                     {new Date(row.createdAt).toLocaleDateString()}
                   </span>
                 </div>
-                <dl className="mt-3 space-y-2 text-sm">
-                  <div className="flex flex-wrap gap-x-2">
-                    <dt className="text-muted-foreground">{t('colEmail')}</dt>
-                    <dd className="min-w-0 break-all font-medium text-foreground">{row.email}</dd>
+                <dl className="mt-4 space-y-3 text-sm">
+                  <div className="grid grid-cols-1 gap-1 sm:grid-cols-[minmax(0,7rem)_1fr] sm:gap-x-3">
+                    <dt className="text-slate-500">{t('colEmail')}</dt>
+                    <dd className="min-w-0 break-all font-medium text-slate-900">{row.email}</dd>
                   </div>
-                  <div className="flex flex-wrap gap-x-2">
-                    <dt className="text-muted-foreground">{t('colPhone')}</dt>
-                    <dd className="font-medium text-foreground">{row.phone ?? '—'}</dd>
+                  <div className="grid grid-cols-1 gap-1 sm:grid-cols-[minmax(0,7rem)_1fr] sm:gap-x-3">
+                    <dt className="text-slate-500">{t('colPhone')}</dt>
+                    <dd className="font-medium text-slate-900">{row.phone ?? '—'}</dd>
                   </div>
-                  <div>
-                    <dt className="mb-1 text-muted-foreground">{t('colTelegram')}</dt>
-                    <dd>
+                  <div className="grid grid-cols-1 gap-1 sm:grid-cols-[minmax(0,7rem)_1fr] sm:gap-x-3">
+                    <dt className="text-slate-500">{t('colTelegram')}</dt>
+                    <dd className="min-w-0 text-slate-900">
                       <TelegramCell row={row} />
                     </dd>
                   </div>

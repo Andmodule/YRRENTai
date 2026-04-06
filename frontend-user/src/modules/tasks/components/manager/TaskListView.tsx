@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, useCallback, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useTranslations } from 'next-intl';
 import { ChevronDown, Mic, Pencil } from 'lucide-react';
@@ -18,6 +18,23 @@ import { TaskListRow } from './TaskListRow';
 import type { Incident } from '@/modules/incidents/hooks/useIncidents';
 import { IncidentListRow } from '@/modules/incidents/components/IncidentListRow';
 import { VoiceTaskCreateSheet, type VoiceTaskCreateSheetHandle } from './VoiceTaskCreateSheet';
+
+/** Короткий debounce только чтобы понять «скролл остановился» — показ включаем сразу после него. */
+const FAB_SCROLL_END_DEBOUNCE_MS = 100;
+/** Длительность плавного появления/пропадания (только opacity), видимая анимация. */
+const FAB_FADE_MS = 1500;
+
+function getScrollableParent(el: HTMLElement | null): HTMLElement | null {
+  let node: HTMLElement | null = el?.parentElement ?? null;
+  while (node) {
+    const { overflowY, overflow } = getComputedStyle(node);
+    if (/(auto|scroll|overlay)/.test(overflowY) || /(auto|scroll|overlay)/.test(overflow)) {
+      return node;
+    }
+    node = node.parentElement;
+  }
+  return null;
+}
 
 export const TaskListView = memo(function TaskListView({
   tasks,
@@ -103,8 +120,34 @@ export const TaskListView = memo(function TaskListView({
     });
   }, []);
 
+  const listRootRef = useRef<HTMLDivElement>(null);
+  const [fabHiddenByScroll, setFabHiddenByScroll] = useState(false);
+  const fabScrollIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!voiceQuickAdd || isMdUp) return;
+    const root = listRootRef.current;
+    if (!root) return;
+    const scrollEl = getScrollableParent(root) ?? document.documentElement;
+
+    const onScroll = () => {
+      setFabHiddenByScroll(true);
+      if (fabScrollIdleTimerRef.current) clearTimeout(fabScrollIdleTimerRef.current);
+      fabScrollIdleTimerRef.current = setTimeout(() => {
+        setFabHiddenByScroll(false);
+        fabScrollIdleTimerRef.current = null;
+      }, FAB_SCROLL_END_DEBOUNCE_MS);
+    };
+
+    scrollEl.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      scrollEl.removeEventListener('scroll', onScroll);
+      if (fabScrollIdleTimerRef.current) clearTimeout(fabScrollIdleTimerRef.current);
+    };
+  }, [voiceQuickAdd, isMdUp, visibleGroups.length]);
+
   return (
-    <div className="relative flex min-w-0 flex-col gap-1.5 pb-36 md:gap-3 md:pb-0">
+    <div ref={listRootRef} className="relative flex min-w-0 flex-col gap-1.5 pb-36 md:gap-3 md:pb-0">
       {visibleGroups.map((group) => {
         const collapsed = collapsedById[group.propertyId] ?? false;
         const displayTitle =
@@ -252,12 +295,20 @@ export const TaskListView = memo(function TaskListView({
       {voiceQuickAdd && !isMdUp && fabPropertyId ? (
         <div
           className={cn(
-            'pointer-events-none fixed right-4 z-50 flex flex-col items-center',
+            'pointer-events-none fixed right-6 z-50 flex flex-col items-center',
             'bottom-[max(2.25rem,env(safe-area-inset-bottom))]',
-            'w-14',
+            'w-[4.2rem]',
           )}
         >
-          <div className="pointer-events-auto flex w-full flex-col items-center gap-3">
+          <div
+            className={cn(
+              'flex w-full flex-col items-center gap-3 [transform:translateZ(0)]',
+              fabHiddenByScroll
+                ? 'pointer-events-none opacity-0'
+                : 'pointer-events-auto opacity-100',
+            )}
+            style={{ transition: `opacity ${FAB_FADE_MS}ms ease-in-out` }}
+          >
             <button
               type="button"
               onClick={() => openManualSheet(fabPropertyId)}
@@ -275,14 +326,14 @@ export const TaskListView = memo(function TaskListView({
               type="button"
               onClick={() => openVoiceSheet(fabPropertyId)}
               className={cn(
-                'flex h-14 w-14 shrink-0 cursor-pointer items-center justify-center rounded-full touch-manipulation',
+                'flex h-[4.2rem] w-[4.2rem] shrink-0 cursor-pointer items-center justify-center rounded-full touch-manipulation',
                 'bg-[#008CA4] text-white shadow-lg shadow-[#008CA4]/35',
                 'transition-[box-shadow,transform] hover:bg-[#007a90] active:scale-[0.98]',
                 'dark:bg-[#008CA4] dark:text-white dark:shadow-black/40',
               )}
               aria-label={tList('voiceFabAria')}
             >
-              <Mic className="h-6 w-6" strokeWidth={2} aria-hidden />
+              <Mic className="h-[1.8rem] w-[1.8rem]" strokeWidth={2} aria-hidden />
             </button>
           </div>
         </div>

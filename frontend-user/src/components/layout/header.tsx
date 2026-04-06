@@ -1,17 +1,23 @@
 'use client';
 
 import { Suspense } from 'react';
-import { Filter, Menu } from 'lucide-react';
+import { Filter, Menu, Plus } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { TasksHeaderControls } from '@/modules/tasks/components/manager/TasksHeaderControls';
 import { MobileTasksHeader } from '@/modules/tasks/components/ui/mobile-tasks-header';
+import { useAuth } from '@/hooks/use-auth';
 import { useUiStore } from '@/stores/ui.store';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import {
+  tasksToolbarIconButtonBase,
+  tasksToolbarIconButtonIdle,
+} from '@/modules/tasks/task-toolbar-icon-button-classes';
 
 export function Header() {
   const pathname = usePathname() ?? '';
+  const { user } = useAuth();
   const tTasks = useTranslations('tasks');
   const tInbox = useTranslations('inbox');
   const tStaff = useTranslations('staff');
@@ -28,7 +34,11 @@ export function Header() {
     pathname.includes('/dashboard/tasks') && !isNewTaskPage;
   const isCalendar = pathname.includes('/dashboard/calendar');
 
-  const { toggleSidebar, openCalendarFilter } = useUiStore();
+  const { toggleSidebar, openCalendarFilter, propertyCreateHandler, staffInviteHandler } = useUiStore();
+
+  const isPropertiesListPage = pathname.includes('/properties') && !/\/properties\/[^/]+/.test(pathname);
+  const isStaffPage = pathname.includes('/dashboard/staff');
+  const canUseStaffInvite = user?.role === 'OWNER' || user?.role === 'MANAGER';
 
   /**
    * Заголовок страницы в центре шапки.
@@ -113,7 +123,7 @@ export function Header() {
         ) : null}
       </div>
 
-      {/* Right: filter button for calendar, empty otherwise */}
+      {/* Right: календарь — фильтр; объекты/персонал — «+» */}
       <div className="flex justify-end">
         {isCalendar && (
           <Button
@@ -126,6 +136,30 @@ export function Header() {
             <Filter className="h-5 w-5" />
           </Button>
         )}
+        {!isCalendar && isPropertiesListPage && propertyCreateHandler ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className={cn(tasksToolbarIconButtonBase, tasksToolbarIconButtonIdle)}
+            aria-label={tProperties('addProperty')}
+            onClick={() => propertyCreateHandler()}
+          >
+            <Plus className="h-4 w-4" aria-hidden />
+          </Button>
+        ) : null}
+        {!isCalendar && !isPropertiesListPage && isStaffPage && canUseStaffInvite && staffInviteHandler ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className={cn(tasksToolbarIconButtonBase, tasksToolbarIconButtonIdle)}
+            aria-label={tStaff('addStaff')}
+            onClick={() => staffInviteHandler()}
+          >
+            <Plus className="h-4 w-4" aria-hidden />
+          </Button>
+        ) : null}
       </div>
     </header>
   );
