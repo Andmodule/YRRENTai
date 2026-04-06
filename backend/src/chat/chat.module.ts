@@ -6,6 +6,7 @@ import { ChatService } from './chat.service';
 import { ChatGateway } from './chat.gateway';
 import { BookingComMetadataService } from './booking-com-metadata.service';
 import { StaffReplyService } from './staff-reply.service';
+import { StaffOutboundDeliveryService } from './staff-outbound-delivery.service';
 import { ChatMessageEntity } from './entities/chat-message.entity';
 import { ConversationEntity } from './entities/conversation.entity';
 import { ConversationService } from './conversation.service';
@@ -28,7 +29,21 @@ import { MessagingModule } from '../messaging/messaging.module';
     forwardRef(() => MessagingModule),
   ],
   controllers: [ChatController],
-  providers: [ChatService, ConversationService, ChatGateway, StaffReplyService, BookingComMetadataService],
-  exports: [ChatService, ConversationService, ChatGateway, StaffReplyService, BookingComMetadataService],
+  providers: [
+    ChatService,
+    ConversationService,
+    ChatGateway,
+    StaffReplyService,
+    StaffOutboundDeliveryService,
+    BookingComMetadataService,
+  ],
+  exports: [
+    ChatService,
+    ConversationService,
+    ChatGateway,
+    StaffReplyService,
+    StaffOutboundDeliveryService,
+    BookingComMetadataService,
+  ],
 })
 export class ChatModule {}

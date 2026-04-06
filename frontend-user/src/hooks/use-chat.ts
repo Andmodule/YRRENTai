@@ -8,6 +8,16 @@ import { apiClient } from '@/lib/api/client';
 /** Mirrors backend `chat_messages.source` — staff = human reply from inbox. */
 export type ChatMessageSource = 'ai' | 'staff';
 
+/** Mirrors backend `MessageChannel` / `MessageDeliveryStatus`. */
+export type MessageChannelCode =
+  | 'BOOKING_API'
+  | 'AIRBNB_API'
+  | 'EMAIL'
+  | 'TELEGRAM'
+  | 'WHATSAPP';
+
+export type MessageDeliveryStatusCode = 'PENDING' | 'SENT' | 'ERROR';
+
 export interface ChatMessage {
   id: string;
   propertyId: string;
@@ -19,6 +29,10 @@ export interface ChatMessage {
   source?: ChatMessageSource;
   /** OTA template parse (e.g. Booking.com email). */
   metadata?: BookingComMessageMetadata | null;
+  /** Outbound routing channel (guest + assistant rows). */
+  channel?: MessageChannelCode;
+  /** Staff outbound delivery to guest (Booking/email/Telegram/…); AI/user rows are usually SENT. */
+  deliveryStatus?: MessageDeliveryStatusCode;
   createdAt: string;
 }
 
@@ -55,6 +69,8 @@ function mapApiRowsToMessages(
     content: string;
     role: string;
     source?: string;
+    channel?: string;
+    deliveryStatus?: string;
     metadata?: BookingComMessageMetadata | null;
     createdAt: string;
   }>,
@@ -67,6 +83,8 @@ function mapApiRowsToMessages(
     content: m.content,
     role: m.role as 'user' | 'assistant' | 'system',
     source: m.source === 'staff' ? 'staff' : m.source === 'ai' ? 'ai' : undefined,
+    channel: (m.channel as MessageChannelCode | undefined) ?? undefined,
+    deliveryStatus: (m.deliveryStatus as MessageDeliveryStatusCode | undefined) ?? undefined,
     metadata: m.metadata ?? undefined,
     createdAt:
       typeof m.createdAt === 'string'
@@ -144,6 +162,8 @@ export function useChat(propertyId: string | null, opts?: UseChatOpts | null): U
             content: string;
             role: string;
             source?: string;
+            channel?: string;
+            deliveryStatus?: string;
             metadata?: BookingComMessageMetadata | null;
             createdAt: string;
           }>;
@@ -243,7 +263,11 @@ export function useChat(propertyId: string | null, opts?: UseChatOpts | null): U
         function handleMessageSaved(msg: ChatMessage) {
           if (msg.propertyId !== currentPropertyId.current) return;
           if (!matchesConversation(msg)) return;
-          setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
+          setMessages((prev) => {
+            const i = prev.findIndex((m) => m.id === msg.id);
+            if (i === -1) return [...prev, msg];
+            return prev.map((m, idx) => (idx === i ? { ...m, ...msg } : m));
+          });
         }
 
         function handleStreamStart(data: StreamPayload) {
@@ -264,7 +288,35 @@ export function useChat(propertyId: string | null, opts?: UseChatOpts | null): U
           if (!matchesConversation(msg)) return;
           setIsStreaming(false);
           setStreamingText('');
-          setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
+          setMessages((prev) => {
+            const i = prev.findIndex((m) => m.id === msg.id);
+            if (i === -1) return [...prev, msg];
+            return prev.map((m, idx) => (idx === i ? { ...m, ...msg } : m));
+          });
+        }
+
+        function handleMessageStatusUpdated(data: {
+          propertyId: string;
+          messageId: string;
+          status: string;
+          channel?: string;
+          conversationId?: string;
+        }) {
+          if (data.propertyId !== currentPropertyId.current) return;
+          if (!matchesConversation(data)) return;
+          const ds = data.status as MessageDeliveryStatusCode;
+          const ch = data.channel as MessageChannelCode | undefined;
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === data.messageId
+                ? {
+                    ...m,
+                    deliveryStatus: ds,
+                    ...(ch ? { channel: ch } : {}),
+                  }
+                : m,
+            ),
+          );
         }
 
         function handleAgentError(data: StreamPayload) {
@@ -310,6 +362,7 @@ export function useChat(propertyId: string | null, opts?: UseChatOpts | null): U
         s.on('agent:error', handleAgentError);
         s.on('error', handleError);
         s.on('conversation:updated', handleConversationUpdated);
+        s.on('message_status_updated', handleMessageStatusUpdated);
 
         if (typeof window !== 'undefined') {
           window.addEventListener('focus', onWindowFocus);
@@ -332,6 +385,7 @@ export function useChat(propertyId: string | null, opts?: UseChatOpts | null): U
           s.off('agent:error', handleAgentError);
           s.off('error', handleError);
           s.off('conversation:updated', handleConversationUpdated);
+          s.off('message_status_updated', handleMessageStatusUpdated);
         };
 
         if (s.connected) {

@@ -46,6 +46,18 @@ const propertyFieldsSchema = z.object({
     .max(32)
     .optional()
     .default([]),
+  /**
+   * Внешний id объекта в Zodomus без строк каналов (нет Booking/Airbnb в форме).
+   * При наличии channelListings бэкенд берёт id из строк каналов и игнорирует это поле.
+   */
+  zodomusPropertyId: z.preprocess(
+    (val) => {
+      if (val === undefined || val === null) return undefined;
+      const t = String(val).trim();
+      return t === '' ? null : t;
+    },
+    z.union([z.string().max(255), z.null()]).optional(),
+  ),
 });
 
 export const createPropertySchema = propertyFieldsSchema.superRefine(refineDuplicateChannels);

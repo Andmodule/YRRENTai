@@ -29,6 +29,8 @@ import { ChatGateway } from '../chat/chat.gateway';
 
 import { ChatService } from '../chat/chat.service';
 
+import { conversationChannelToMessageChannel } from '../chat/chat-channel.mapper';
+
 import { BookingComMetadataService } from '../chat/booking-com-metadata.service';
 
 import { ConversationService } from '../chat/conversation.service';
@@ -774,6 +776,7 @@ export class MessagingService {
         role: 'user',
         source: 'ai',
         metadata: bookingMeta ?? undefined,
+        channel: conversationChannelToMessageChannel(conv.channel),
       });
 
       const listPreview = listPreviewForInbox(previewText, bookingMeta);
@@ -1096,6 +1099,8 @@ export class MessagingService {
 
             source: 'ai',
 
+            channel: conversationChannelToMessageChannel(CONVERSATION_CHANNEL.EMAIL),
+
           });
 
           const inboxStatus = notifyStaff ? 'needs_human' : 'resolved';
@@ -1349,6 +1354,8 @@ export class MessagingService {
 
       this.logger.error(`Staff reply email failed for thread ${thread.id}`, err as Error);
 
+      throw err;
+
     }
 
   }
@@ -1365,6 +1372,8 @@ export class MessagingService {
 
     if (thread.conversationId && thread.propertyId) {
 
+      const convForThread = await this.conversationService.findById(thread.conversationId);
+
       const saved = await this.chatService.saveMessage({
 
         propertyId: thread.propertyId,
@@ -1378,6 +1387,8 @@ export class MessagingService {
         role: 'assistant',
 
         source: 'staff',
+
+        channel: conversationChannelToMessageChannel(convForThread.channel),
 
       });
 

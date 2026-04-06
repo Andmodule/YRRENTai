@@ -12,6 +12,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { Server, Socket } from 'socket.io';
 import { ChatService } from './chat.service';
+import { conversationChannelToMessageChannel } from './chat-channel.mapper';
 import { BookingComMetadataService } from './booking-com-metadata.service';
 import { ConversationService } from './conversation.service';
 import { AgentService } from '../agent/agent.service';
@@ -148,6 +149,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       content,
       role: 'user',
       metadata: bookingMeta ?? undefined,
+      channel: conversationChannelToMessageChannel(conversation.channel),
     });
 
     const listPreview = listPreviewForInbox(content, bookingMeta);
@@ -160,6 +162,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     };
 
     client.emit('message:saved', msgPayload);
+    /** Инбокс менеджера: иначе новый текст гостя виден только после refetch по conversation:updated (задержка / кэш). */
+    this.server.to(`inbox:${conversation.propertyId}`).emit('message:saved', msgPayload);
     this.server.to(`inbox:${conversation.propertyId}`).emit('conversation:updated', {
       conversationId: conversation.id,
       lastMessagePreview: listPreview.slice(0, 200),
@@ -235,9 +239,17 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
             content: cleanText,
             role: 'assistant',
             source: 'ai',
+            channel: conversationChannelToMessageChannel(conversation.channel),
           });
 
           await this.conversationService.touch(conversation.id, cleanText);
+
+          const inboxAiPayload = {
+            ...this.chatService.toSocketPayload(agentMessage),
+            conversationId: conversation.id,
+          };
+          /** Инбокс: ответ AI раньше уходил только гостю (`client.emit`), менеджер не получал message:saved и зависел от refetch. */
+          this.server.to(`inbox:${propertyId}`).emit('message:saved', inboxAiPayload);
 
           client.emit('agent:streamEnd', {
             id: agentMessage.id,
@@ -247,6 +259,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
             role: 'assistant',
             source: 'ai',
             createdAt: agentMessage.createdAt.toISOString(),
+            channel: agentMessage.channel,
+            deliveryStatus: agentMessage.deliveryStatus,
           });
 
           if (notifyStaff) {
@@ -301,6 +315,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       source: 'staff' as const,
       userId: null,
       createdAt: event.createdAt,
+      ...(event.channel !== undefined ? { channel: event.channel } : {}),
+      ...(event.deliveryStatus !== undefined ? { deliveryStatus: event.deliveryStatus } : {}),
     };
 
     this.server.to(`property:${event.propertyId}`).emit('agent:streamEnd', msgPayload);
@@ -319,6 +335,24 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
       this.server.to(`inbox:${event.propertyId}`).emit('message:saved', msgPayload);
     }
+  }
+
+  emitMessageDeliveryStatus(payload: {
+    propertyId: string;
+    conversationId?: string;
+    messageId: string;
+    deliveryStatus: string;
+    channel: string;
+  }): void {
+    const base = {
+      propertyId: payload.propertyId,
+      messageId: payload.messageId,
+      status: payload.deliveryStatus,
+      channel: payload.channel,
+      conversationId: payload.conversationId,
+    };
+    this.server.to(`property:${payload.propertyId}`).emit('message_status_updated', base);
+    this.server.to(`inbox:${payload.propertyId}`).emit('message_status_updated', base);
   }
 
   @SubscribeMessage('chat:join')

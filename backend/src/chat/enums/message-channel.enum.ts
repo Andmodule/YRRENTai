@@ -1,0 +1,7 @@
+export enum MessageChannel {
+  BOOKING_API = 'BOOKING_API',
+  AIRBNB_API = 'AIRBNB_API',
+  EMAIL = 'EMAIL',
+  TELEGRAM = 'TELEGRAM',
+  WHATSAPP = 'WHATSAPP',
+}

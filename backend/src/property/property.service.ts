@@ -42,7 +42,9 @@ export class PropertyService {
     try {
       const saved = await this.propertyRepository.save(property);
       await this.replaceChannelListings(saved.id, channelListings);
-      await this.syncLegacyColumnsFromListings(saved.id);
+      await this.syncLegacyColumnsFromListings(saved.id, {
+        manualZodomusPropertyId: channelListings.length === 0 ? dto.zodomusPropertyId : undefined,
+      });
       return this.findOne(saved.id, ownerId);
     } catch (e) {
       this.rethrowIfDuplicateExternalListingId(e);
@@ -164,6 +166,11 @@ export class PropertyService {
         if (ext) return ext;
       }
     }
+    if (listings.length === 0) {
+      const only = property.zodomusPropertyId?.trim();
+      if (only) return only;
+      return null;
+    }
     if (property.otaPlatform?.zodomusChannelId === zodomusChannelId) {
       const leg = property.zodomusPropertyId?.trim();
       if (leg) return leg;
@@ -234,7 +241,7 @@ export class PropertyService {
       await this.assertChannelListingsPlatformsValid(dto.channelListings);
       await this.replaceChannelListings(id, dto.channelListings);
     }
-    const { channelListings: _cl, ...scalar } = dto;
+    const { channelListings: _cl, zodomusPropertyId: manualZodomus, ...scalar } = dto;
     for (const key of Object.keys(scalar) as Array<keyof typeof scalar>) {
       const v = scalar[key];
       if (v !== undefined) {
@@ -244,7 +251,17 @@ export class PropertyService {
     try {
       await this.propertyRepository.save(property);
       if (dto.channelListings !== undefined) {
-        await this.syncLegacyColumnsFromListings(id);
+        await this.syncLegacyColumnsFromListings(id, {
+          manualZodomusPropertyId:
+            dto.channelListings.length === 0 ? manualZodomus : undefined,
+        });
+      } else if (manualZodomus !== undefined) {
+        const count = await this.channelListingRepository.count({ where: { propertyId: id } });
+        if (count === 0) {
+          await this.propertyRepository.update(id, {
+            zodomusPropertyId: manualZodomus?.trim() ? manualZodomus.trim() : null,
+          });
+        }
       }
       return this.findOne(id, ownerId);
     } catch (e) {
@@ -294,7 +311,10 @@ export class PropertyService {
   }
 
   /** Дублирует первый канал в legacy-колонки `properties` для совместимости. */
-  private async syncLegacyColumnsFromListings(propertyId: string): Promise<void> {
+  private async syncLegacyColumnsFromListings(
+    propertyId: string,
+    options?: { manualZodomusPropertyId?: string | null },
+  ): Promise<void> {
     const listings = await this.channelListingRepository.find({
       where: { propertyId },
       relations: ['otaPlatform'],
@@ -302,9 +322,19 @@ export class PropertyService {
     });
     const first = listings[0];
     if (!first) {
+      let nextZ: string | null;
+      if (options?.manualZodomusPropertyId !== undefined) {
+        nextZ = options.manualZodomusPropertyId?.trim() ? options.manualZodomusPropertyId.trim() : null;
+      } else {
+        const cur = await this.propertyRepository.findOne({
+          where: { id: propertyId },
+          select: { zodomusPropertyId: true },
+        });
+        nextZ = cur?.zodomusPropertyId ?? null;
+      }
       await this.propertyRepository.update(propertyId, {
         otaPlatformId: null,
-        zodomusPropertyId: null,
+        zodomusPropertyId: nextZ,
         zodomusRoomId: null,
       });
       return;

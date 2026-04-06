@@ -7,6 +7,7 @@ import axios from 'axios';
 import { EscalationEntity } from './entities/escalation.entity';
 import { IncidentManagerNoteEvent } from '../common/events/incident.events';
 import { StaffReplyService } from '../chat/staff-reply.service';
+import { MessageDeliveryStatus } from '../chat/enums/message-delivery-status.enum';
 import { ChatService } from '../chat/chat.service';
 import { ConversationService } from '../chat/conversation.service';
 import { MessagingService } from '../messaging/messaging.service';
@@ -19,6 +20,7 @@ import {
   TELEGRAM_INSTRUCTION_REPLY_NEEDS_TEXT,
   TELEGRAM_INSTRUCTION_REPLY_REQUIRED,
   TELEGRAM_STAFF_REPLY_CONFIRMED,
+  TELEGRAM_STAFF_REPLY_EMAIL_FAILED,
 } from './constants/telegram-instruction.constants';
 import { TelegramDeliveryService } from './telegram-delivery.service';
 import { TelegramMetricsService } from './telegram-metrics.service';
@@ -489,6 +491,7 @@ export class TelegramService {
           conversationId: convId,
           content: replyText,
           relayMessagingThreadId: escalation.messagingThreadId ?? null,
+          awaitOutboundDelivery: true,
         });
       } catch (err) {
         this.logger.error(
@@ -505,10 +508,18 @@ export class TelegramService {
       await this.escalationRepository.save(escalation);
 
       this.logger.log(
-        `Telegram staff reply OK: escalation=${escalation.id} conv=${convId} chatMessageId=${savedMessage.id}`,
+        `Telegram staff reply OK: escalation=${escalation.id} conv=${convId} chatMessageId=${savedMessage.id} delivery=${savedMessage.deliveryStatus}`,
       );
 
-      await this.sendStaffReplyConfirmation(chatId, message.message_id);
+      if (savedMessage.deliveryStatus === MessageDeliveryStatus.SENT) {
+        await this.sendStaffReplyConfirmation(chatId, message.message_id);
+      } else if (savedMessage.deliveryStatus === MessageDeliveryStatus.ERROR) {
+        await this.sendInstructionMessage(chatId, TELEGRAM_STAFF_REPLY_EMAIL_FAILED);
+      } else {
+        this.logger.warn(
+          `Telegram staff reply: unexpected deliveryStatus=${savedMessage.deliveryStatus} messageId=${savedMessage.id}`,
+        );
+      }
       return;
     }
 

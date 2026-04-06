@@ -1,12 +1,13 @@
-import { BadRequestException, forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger, forwardRef } from '@nestjs/common';
 import { stripEscalationForGuestDisplay } from '@rentai/shared';
 import { ChatService } from './chat.service';
 import { ConversationService } from './conversation.service';
 import { ChatGateway } from './chat.gateway';
+import { StaffOutboundDeliveryService } from './staff-outbound-delivery.service';
 import { StaffRepliedEvent } from '../common/events/staff.events';
 import { resolveGuestEscalationFallback } from '../agent/constants/agent-prompts';
 import { ChatMessageEntity } from './entities/chat-message.entity';
-import { MessagingService } from '../messaging/messaging.service';
+import { MessageDeliveryStatus } from './enums/message-delivery-status.enum';
 
 /**
  * Saves manager reply to chat DB, pushes to WebSocket clients, and relays to guest email.
@@ -21,8 +22,7 @@ export class StaffReplyService {
     private readonly conversationService: ConversationService,
     @Inject(forwardRef(() => ChatGateway))
     private readonly chatGateway: ChatGateway,
-    @Inject(forwardRef(() => MessagingService))
-    private readonly messagingService: MessagingService,
+    private readonly staffOutboundDelivery: StaffOutboundDeliveryService,
   ) {}
 
   async applyStaffReply(params: {
@@ -32,6 +32,11 @@ export class StaffReplyService {
     userId?: string | null;
     /** Если задан (эскалация из почты), релей в email ищет `messaging_threads` даже при рассинхроне `conversation_id`. */
     relayMessagingThreadId?: string | null;
+    /**
+     * Дождаться завершения outbound (email и т.д.), чтобы вернуть финальный `deliveryStatus`.
+     * Нужно для ответа из Telegram: подтверждение «доставлено» только при SENT.
+     */
+    awaitOutboundDelivery?: boolean;
   }): Promise<ChatMessageEntity> {
     const conv = await this.conversationService.findById(params.conversationId.trim());
     if (conv.propertyId !== params.propertyId) {
@@ -41,6 +46,8 @@ export class StaffReplyService {
     const replyBody =
       stripEscalationForGuestDisplay(params.content) || resolveGuestEscalationFallback(params.content);
 
+    const targetChannel = await this.chatService.resolveOutboundChannel(conv.id, conv.channel);
+
     const savedMessage = await this.chatService.saveMessage({
       propertyId: conv.propertyId,
       conversationId: conv.id,
@@ -48,6 +55,8 @@ export class StaffReplyService {
       content: replyBody,
       role: 'assistant',
       source: 'staff',
+      channel: targetChannel,
+      deliveryStatus: MessageDeliveryStatus.PENDING,
     });
 
     await this.conversationService.setStatus(conv.id, 'resolved');
@@ -60,26 +69,36 @@ export class StaffReplyService {
         replyBody,
         savedMessage.createdAt.toISOString(),
         conv.id,
+        savedMessage.channel,
+        savedMessage.deliveryStatus,
       ),
     );
 
     this.logger.log(`Staff reply saved: conv=${conv.id} messageId=${savedMessage.id}`);
 
-    const relay = this.messagingService.relayStaffReplyToEmailGuest(conv.id, savedMessage.content, {
-      messagingThreadId: params.relayMessagingThreadId ?? undefined,
-    });
-    /** Telegram escalation: дождаться Resend — иначе void мог «обогнать» подтверждение в TG и скрыть ошибку. */
-    if (params.relayMessagingThreadId?.trim()) {
+    const relayOpts = { messagingThreadId: params.relayMessagingThreadId ?? undefined };
+    const mustAwait =
+      params.awaitOutboundDelivery === true || !!params.relayMessagingThreadId?.trim();
+
+    /** Async delivery: статус PENDING → SENT/ERROR и WS `message_status_updated`. */
+    if (mustAwait) {
       try {
-        await relay;
-        this.logger.log(`Email relay OK (Telegram anchor) conv=${conv.id} thread=${params.relayMessagingThreadId}`);
+        await this.staffOutboundDelivery.routeStaffOutbound(savedMessage, relayOpts);
+        if (params.relayMessagingThreadId?.trim()) {
+          this.logger.log(
+            `Outbound delivery OK (thread anchor) conv=${conv.id} thread=${params.relayMessagingThreadId}`,
+          );
+        }
       } catch (e) {
-        this.logger.error(`Email relay failed for conv=${conv.id}`, e as Error);
+        this.logger.error(`Outbound delivery failed for conv=${conv.id}`, e as Error);
       }
     } else {
-      void relay.catch((e) => this.logger.error(`Email relay failed for conv=${conv.id}`, e as Error));
+      void this.staffOutboundDelivery.routeStaffOutbound(savedMessage, relayOpts).catch((e) =>
+        this.logger.error(`Outbound delivery failed for conv=${conv.id}`, e as Error),
+      );
     }
 
-    return savedMessage;
+    const reloaded = await this.chatService.findMessageById(savedMessage.id);
+    return reloaded ?? savedMessage;
   }
 }

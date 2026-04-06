@@ -35,9 +35,14 @@ export interface ConversationSocketPayload {
 }
 
 export function sortConversationsByActivity(rows: ConversationDto[]): ConversationDto[] {
-  return [...rows].sort(
-    (a, b) => new Date(b.lastActivityAt).getTime() - new Date(a.lastActivityAt).getTime(),
-  );
+  return [...rows].sort((a, b) => {
+    const tb = new Date(b.lastActivityAt).getTime();
+    const ta = new Date(a.lastActivityAt).getTime();
+    const byActivity = tb - ta;
+    if (byActivity !== 0) return byActivity;
+    /** Одинаковая активность — выше более новый диалог по дате создания */
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+  });
 }
 
 interface UseConversationsOpts {
@@ -151,7 +156,8 @@ export function useConversations(opts: UseConversationsOpts = {}) {
   );
 
   return {
-    conversations: data?.data ?? [],
+    /** Всегда по убыванию активности (новые/недавние сверху), не только после сокет-патча */
+    conversations: data?.data ? sortConversationsByActivity(data.data) : [],
     meta: data?.meta,
     isLoading,
     isError: !!error,

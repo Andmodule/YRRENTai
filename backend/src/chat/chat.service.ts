@@ -1,8 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, FindOptionsWhere, Repository } from 'typeorm';
-import type { BookingComMessageMetadata } from '@rentai/shared';
+import type { BookingComMessageMetadata, ConversationChannel } from '@rentai/shared';
+import { conversationChannelToMessageChannel } from './chat-channel.mapper';
 import { ChatMessageEntity, type MessageSource } from './entities/chat-message.entity';
+import { MessageChannel } from './enums/message-channel.enum';
+import { MessageDeliveryStatus } from './enums/message-delivery-status.enum';
 
 @Injectable()
 export class ChatService {
@@ -38,9 +41,34 @@ export class ChatService {
     role: string;
     source?: MessageSource;
     metadata?: BookingComMessageMetadata | null;
+    channel?: MessageChannel;
+    deliveryStatus?: MessageDeliveryStatus;
   }): Promise<ChatMessageEntity> {
-    const message = this.messageRepository.create({ source: 'ai', ...data });
+    const message = this.messageRepository.create({
+      ...data,
+      source: data.source ?? 'ai',
+      channel: data.channel ?? MessageChannel.BOOKING_API,
+      deliveryStatus: data.deliveryStatus ?? MessageDeliveryStatus.SENT,
+    });
     return this.messageRepository.save(message);
+  }
+
+  async resolveOutboundChannel(
+    conversationId: string,
+    convChannel: ConversationChannel,
+  ): Promise<MessageChannel> {
+    const lastGuest = await this.messageRepository.findOne({
+      where: { conversationId, role: 'user' },
+      order: { createdAt: 'DESC' },
+    });
+    if (lastGuest?.channel) {
+      return lastGuest.channel;
+    }
+    return conversationChannelToMessageChannel(convChannel);
+  }
+
+  async saveMessageEntity(m: ChatMessageEntity): Promise<ChatMessageEntity> {
+    return this.messageRepository.save(m);
   }
 
   /**
@@ -68,6 +96,8 @@ export class ChatService {
     content: string;
     role: string;
     source: MessageSource;
+    channel: MessageChannel;
+    deliveryStatus: MessageDeliveryStatus;
     metadata?: BookingComMessageMetadata;
     createdAt: string;
   } {
@@ -79,6 +109,8 @@ export class ChatService {
       content: m.content,
       role: m.role,
       source: m.source,
+      channel: m.channel,
+      deliveryStatus: m.deliveryStatus,
       ...(m.metadata ? { metadata: m.metadata } : {}),
       createdAt: m.createdAt.toISOString(),
     };

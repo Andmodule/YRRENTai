@@ -824,6 +824,8 @@
     "guestAsUserHint": "Los mensajes van a esta conversación como pregunta del huésped.",
     "staffReply": "Respuesta del gestor",
     "operatorReplyBadge": "Respondió el operador",
+    "messageDeliveryRetry": "Reintentar envío",
+    "messageChannelHint": "Canal: {channel}",
     "bookingComMessageTitle": "Mensaje de {name}",
     "bookingComMoreToggleAria": "Mostrar u ocultar más del correo",
     "bookingComGuest": "Huésped",

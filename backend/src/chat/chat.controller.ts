@@ -4,6 +4,7 @@ import {
   Controller,
   ForbiddenException,
   Get,
+  NotFoundException,
   Param,
   Post,
   Query,
@@ -14,6 +15,7 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { ChatService } from './chat.service';
 import { StaffReplyService } from './staff-reply.service';
+import { StaffOutboundDeliveryService } from './staff-outbound-delivery.service';
 import { ConversationService } from './conversation.service';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -37,6 +39,7 @@ export class ChatController {
     private readonly conversationService: ConversationService,
     private readonly propertyService: PropertyService,
     private readonly staffReplyService: StaffReplyService,
+    private readonly staffOutboundDelivery: StaffOutboundDeliveryService,
     private readonly config: ConfigService,
     private readonly userService: UserService,
   ) {}
@@ -136,6 +139,30 @@ export class ChatController {
     return { data: { ok: true } };
   }
 
+  @Post('messages/:messageId/retry')
+  @Roles('OWNER', 'MANAGER')
+  @ApiOperation({ summary: 'Retry delivery for a staff message that failed (ERROR → PENDING → …)' })
+  async retryStaffMessageDelivery(
+    @Param('messageId') messageId: string,
+    @CurrentUser() user?: JwtPayload,
+  ) {
+    const msg = await this.chatService.findMessageById(messageId);
+    if (!msg?.conversationId) {
+      throw new NotFoundException('Message not found');
+    }
+    const conv = await this.conversationService.findById(msg.conversationId);
+    await this.propertyService.findOneForUser(conv.propertyId, user!.sub, user!.role);
+    const updated = await this.staffOutboundDelivery.retryFailedDelivery(messageId);
+    return {
+      data: {
+        id: updated.id,
+        conversationId: updated.conversationId,
+        deliveryStatus: updated.deliveryStatus,
+        channel: updated.channel,
+      },
+    };
+  }
+
   @Post('conversations/reply')
   @Roles('OWNER', 'MANAGER')
   @ApiOperation({ summary: 'Manager replies to a conversation (resolves it)' })
@@ -162,6 +189,8 @@ export class ChatController {
         content: savedMessage.content,
         role: 'assistant',
         source: 'staff',
+        channel: savedMessage.channel,
+        deliveryStatus: savedMessage.deliveryStatus,
         createdAt: savedMessage.createdAt.toISOString(),
       },
     };

@@ -53,6 +53,10 @@ export function ConversationWindow({ conversation, onStaffReplySuccess }: Conver
     }
   }, [replyText, replying, conversation.id, onStaffReplySuccess]);
 
+  const handleRetryStaffDelivery = useCallback(async (messageId: string) => {
+    await apiClient.post(`/chats/messages/${encodeURIComponent(messageId)}/retry`);
+  }, []);
+
   const isNeedsHuman = conversation.status === 'needs_human';
   const headerTitle = formatGuestAndProperty(
     conversation.externalGuestKey,
@@ -93,7 +97,11 @@ export function ConversationWindow({ conversation, onStaffReplySuccess }: Conver
         )}
         {!isHistoryLoading &&
           messages.map((msg) => (
-            <ChatMessageBubble key={msg.id} message={msg} />
+            <ChatMessageBubble
+              key={msg.id}
+              message={msg}
+              onRetryStaffDelivery={handleRetryStaffDelivery}
+            />
           ))}
         {isStreaming && <StreamingBubble text={streamingText} />}
       </div>

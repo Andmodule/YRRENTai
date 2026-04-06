@@ -9,6 +9,8 @@ import {
 } from 'typeorm';
 import type { BookingComMessageMetadata } from '@rentai/shared';
 import { ConversationEntity } from './conversation.entity';
+import { MessageChannel } from '../enums/message-channel.enum';
+import { MessageDeliveryStatus } from '../enums/message-delivery-status.enum';
 
 export type MessageSource = 'ai' | 'staff';
 
@@ -43,6 +45,22 @@ export class ChatMessageEntity {
 
   @Column({ default: 'ai' })
   source!: MessageSource;
+
+  @Column({
+    type: 'enum',
+    enum: MessageChannel,
+    enumName: 'chat_messages_channel_enum',
+    default: MessageChannel.BOOKING_API,
+  })
+  channel!: MessageChannel;
+
+  @Column({
+    type: 'enum',
+    enum: MessageDeliveryStatus,
+    enumName: 'chat_messages_delivery_status_enum',
+    default: MessageDeliveryStatus.SENT,
+  })
+  deliveryStatus!: MessageDeliveryStatus;
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;

@@ -779,6 +779,8 @@
     "guestAsUserHint": "Nachrichten gehen in diese Konversation wie eine Gastfrage.",
     "staffReply": "Antwort Manager",
     "operatorReplyBadge": "Antwort vom Operator",
+    "messageDeliveryRetry": "Erneut senden",
+    "messageChannelHint": "Kanal: {channel}",
     "bookingComMessageTitle": "Nachricht von {name}",
     "bookingComMoreToggleAria": "Mehr aus der E-Mail ein- oder ausblenden",
     "bookingComGuest": "Gast",

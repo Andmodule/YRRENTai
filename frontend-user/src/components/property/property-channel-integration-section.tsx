@@ -253,7 +253,30 @@ export function PropertyChannelIntegrationSection({
           )}
 
           {!isLoading && fields.length === 0 && (
-            <div className="rounded-xl border border-dashed border-border/60 bg-muted/15 px-4 py-4 text-center">
+            <div className="space-y-3">
+              <div className="rounded-xl border border-border/50 bg-muted/10 p-3 sm:p-4">
+                <Label htmlFor="manual-zodomus-property-id" className="text-xs">
+                  {t('manualZodomusStandaloneLabel')}
+                </Label>
+                <Input
+                  id="manual-zodomus-property-id"
+                  placeholder={t('manualZodomusStandalonePlaceholder')}
+                  autoComplete="off"
+                  className="mt-1.5 min-h-11 w-full font-mono text-sm tabular-nums"
+                  aria-invalid={!!errors.zodomusPropertyId}
+                  aria-describedby="manual-zodomus-hint"
+                  {...register('zodomusPropertyId')}
+                />
+                <p id="manual-zodomus-hint" className="mt-1.5 text-[11px] leading-snug text-muted-foreground sm:text-[12px]">
+                  {t('manualZodomusStandaloneHint')}
+                </p>
+                {errors.zodomusPropertyId && (
+                  <p className="mt-1 text-xs text-destructive">
+                    {String(errors.zodomusPropertyId.message)}
+                  </p>
+                )}
+              </div>
+              <div className="rounded-xl border border-dashed border-border/60 bg-muted/15 px-4 py-4 text-center">
               <p className="text-[12px] leading-relaxed text-muted-foreground sm:text-[13px]">{t('channelsEmptyHint')}</p>
               <Button
                 type="button"
@@ -266,6 +289,7 @@ export function PropertyChannelIntegrationSection({
                 <Plug2 className="h-3.5 w-3.5" aria-hidden />
                 {t('addFirstChannel')}
               </Button>
+              </div>
             </div>
           )}
 

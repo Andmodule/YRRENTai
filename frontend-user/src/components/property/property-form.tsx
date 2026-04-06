@@ -68,6 +68,14 @@ export function PropertyForm({ defaultValues, onSubmit, onCancel, submitLabel }:
         }
         return [];
       })(),
+      zodomusPropertyId: (() => {
+        const list = defaultValues?.channelListings;
+        if (list?.length) return '';
+        const legacyOta = defaultValues?.otaPlatformId ?? defaultValues?.otaPlatform?.id;
+        const legacyZ = defaultValues?.zodomusPropertyId?.trim();
+        if (legacyOta && legacyZ) return '';
+        return defaultValues?.zodomusPropertyId?.trim() ?? '';
+      })(),
       icalImportUrls: defaultValues?.icalImportUrls ?? [],
     },
   });
@@ -82,9 +90,15 @@ export function PropertyForm({ defaultValues, onSubmit, onCancel, submitLabel }:
 
   return (
     <form
-      onSubmit={handleSubmit((data) =>
-        onSubmit({ ...data, icalImportUrls: parseIcalImportLines(icalLines) }),
-      )}
+      onSubmit={handleSubmit((data) => {
+        const payload = { ...data, icalImportUrls: parseIcalImportLines(icalLines) };
+        if (payload.channelListings?.length) {
+          const { zodomusPropertyId: _z, ...rest } = payload;
+          void onSubmit(rest);
+        } else {
+          void onSubmit(payload);
+        }
+      })}
       className="space-y-3"
     >
       <PropertyChannelIntegrationSection

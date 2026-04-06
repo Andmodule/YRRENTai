@@ -1,24 +1,70 @@
 'use client';
 
+import { useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import ReactMarkdown from 'react-markdown';
+import { AlertCircle, Check, Mail, MessageCircle, Send } from 'lucide-react';
 import { stripEscalationForGuestDisplay } from '@rentai/shared';
 import { cn } from '@/lib/utils';
 import { formatBubbleTimestamp } from '@/lib/format/conversation-meta';
-import type { ChatMessage } from '@/hooks/use-chat';
+import type { ChatMessage, MessageChannelCode } from '@/hooks/use-chat';
 import { BookingComGuestMessage } from './booking-com-guest-message';
 
 interface ChatMessageBubbleProps {
   message: ChatMessage;
+  /** Inbox: retry failed staff delivery (POST /chats/messages/:id/retry). */
+  onRetryStaffDelivery?: (messageId: string) => Promise<void>;
 }
 
-export function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
+function channelGlyph(ch: MessageChannelCode | undefined) {
+  switch (ch) {
+    case 'EMAIL':
+      return <Mail className="h-2.5 w-2.5" aria-hidden />;
+    case 'TELEGRAM':
+      return <Send className="h-2.5 w-2.5" aria-hidden />;
+    case 'WHATSAPP':
+      return <MessageCircle className="h-2.5 w-2.5" aria-hidden />;
+    default:
+      return null;
+  }
+}
+
+export function ChatMessageBubble({ message, onRetryStaffDelivery }: ChatMessageBubbleProps) {
   const locale = useLocale();
   const t = useTranslations('inbox');
   const isUser = message.role === 'user';
   const isStaffManual = message.role === 'assistant' && message.source === 'staff';
+  /** Всё, что не ручной ответ оператора (AI и legacy без `source`). */
+  const isNonStaffAssistant = message.role === 'assistant' && !isStaffManual;
   const timeLabel = formatBubbleTimestamp(message.createdAt, locale);
   const displayContent = stripEscalationForGuestDisplay(message.content);
+  const ds = message.deliveryStatus;
+  /**
+   * Staff: PENDING = нет иконки; SENT = галочка; ERROR = retry.
+   * AI: нет внешней очереди как у staff — после сохранения в чат считаем доставленным (галочка при SENT / без PENDING).
+   */
+  const outboundDeliveryUi = isStaffManual
+    ? ds === 'PENDING'
+      ? null
+      : ds === 'ERROR'
+        ? 'error'
+        : 'sent'
+    : isNonStaffAssistant
+      ? ds === 'PENDING'
+        ? null
+        : 'sent'
+      : null;
+  const [isRetrying, setIsRetrying] = useState(false);
+
+  const handleRetryClick = async () => {
+    if (!onRetryStaffDelivery || outboundDeliveryUi !== 'error' || isRetrying) return;
+    setIsRetrying(true);
+    try {
+      await onRetryStaffDelivery(message.id);
+    } finally {
+      setIsRetrying(false);
+    }
+  };
 
   return (
     <div className={cn('flex w-full', isUser ? 'justify-start' : 'justify-end')}>
@@ -49,15 +95,46 @@ export function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
         </div>
         <div
           className={cn(
-            'mt-1 flex shrink-0 justify-end self-end pl-4',
+            'mt-1 flex shrink-0 items-center justify-end gap-1.5 self-end pl-4',
             isUser
               ? 'text-primary-foreground/70 dark:text-zinc-400'
               : 'text-muted-foreground/90 dark:text-slate-500',
           )}
         >
+          {isStaffManual && message.channel && channelGlyph(message.channel) && (
+            <span
+              className="inline-flex text-muted-foreground/80 dark:text-slate-500"
+              title={t('messageChannelHint', { channel: message.channel })}
+            >
+              {channelGlyph(message.channel)}
+            </span>
+          )}
           <time dateTime={message.createdAt} className="text-[11px] tabular-nums leading-none">
             {timeLabel}
           </time>
+          {outboundDeliveryUi && (
+            <span className="inline-flex h-4 min-w-[14px] items-center justify-center">
+              {outboundDeliveryUi === 'sent' && (
+                <Check
+                  className="h-3.5 w-3.5 text-emerald-500 dark:text-emerald-400"
+                  strokeWidth={2.75}
+                  aria-hidden
+                />
+              )}
+              {outboundDeliveryUi === 'error' && (
+                <button
+                  type="button"
+                  onClick={() => void handleRetryClick()}
+                  disabled={isRetrying}
+                  className="inline-flex rounded-full outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-destructive disabled:opacity-50"
+                  title={t('messageDeliveryRetry')}
+                  aria-label={t('messageDeliveryRetry')}
+                >
+                  <AlertCircle className="h-3.5 w-3.5 text-destructive" aria-hidden />
+                </button>
+              )}
+            </span>
+          )}
         </div>
       </div>
     </div>

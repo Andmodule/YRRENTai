@@ -5,5 +5,7 @@ export class StaffRepliedEvent {
     public readonly content: string,
     public readonly createdAt: string,
     public readonly conversationId?: string,
+    public readonly channel?: string,
+    public readonly deliveryStatus?: string,
   ) {}
 }
