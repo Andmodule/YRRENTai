@@ -2,10 +2,7 @@
 
 import { useTheme } from 'next-themes';
 import { useLayoutEffect } from 'react';
-
-/** Matches globals.css: light #ffffff, dark --background #111827 */
-const THEME_COLOR_LIGHT = '#ffffff';
-const THEME_COLOR_DARK = '#111827';
+import { THEME_COLOR_DARK, THEME_COLOR_LIGHT } from '@/lib/theme-color';
 
 export function ThemeColorSync() {
   const { resolvedTheme } = useTheme();

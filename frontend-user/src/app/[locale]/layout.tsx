@@ -9,12 +9,13 @@ import { ThemeProvider } from '@/components/providers/theme-provider';
 import { QueryProvider } from '@/components/providers/query-provider';
 import { PwaRegister } from '@/components/pwa-register';
 import { ThemeColorSync } from '@/components/theme-color-sync';
+import { buildThemeColorInitScript } from '@/lib/theme-color';
 import '@/app/globals.css';
 
 export const metadata: Metadata = {
   title: 'RentAI — Dashboard',
   description: 'AI-powered rental property management dashboard',
-  manifest: '/manifest.json?v=2',
+  manifest: '/manifest.json?v=3',
   appleWebApp: {
     capable: true,
     title: 'RentAI',
@@ -28,8 +29,8 @@ export const metadata: Metadata = {
   },
 };
 
+/** theme-color: inline script + ThemeColorSync only (no Next viewport meta). */
 export const viewport: Viewport = {
-  themeColor: '#ffffff',
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
@@ -52,6 +53,12 @@ export default async function LocaleLayout({ children, params }: LayoutProps) {
 
   return (
     <html lang={locale} suppressHydrationWarning>
+      <head>
+        <script
+          suppressHydrationWarning
+          dangerouslySetInnerHTML={{ __html: buildThemeColorInitScript() }}
+        />
+      </head>
       <body className="min-h-screen bg-background text-foreground antialiased">
         <PwaRegister />
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange={false}>
