@@ -508,19 +508,61 @@ export class MessagingService {
 
     );
 
-    await this.generateAndEmitDraft(
+    const inboundAiAutoReplyEnabled =
 
-      thread,
+      this.config.get<boolean>('INBOUND_EMAIL_AI_AUTO_REPLY_ENABLED') ?? true;
 
-      guestMessage.id,
+    if (inboundAiAutoReplyEnabled) {
 
-      bodyForAgent,
+      await this.generateAndEmitDraft(
 
-      syncInbox?.chatGuestMessageId ?? null,
+        thread,
 
-      syncInbox?.listPreview ?? guestDisplayText,
+        guestMessage.id,
 
-    );
+        bodyForAgent,
+
+        syncInbox?.chatGuestMessageId ?? null,
+
+        syncInbox?.listPreview ?? guestDisplayText,
+
+      );
+
+    } else {
+
+      this.logger.log(
+
+        `Inbound email: AI auto-reply disabled (INBOUND_EMAIL_AI_AUTO_REPLY_ENABLED=false); threadId=${thread.id}`,
+
+      );
+
+      const freshThread = await this.threadRepo.findOne({ where: { id: thread.id } });
+
+      const cid = freshThread?.conversationId?.trim();
+
+      const pid = freshThread?.propertyId?.trim();
+
+      if (cid && pid) {
+
+        await this.conversationService.setStatus(cid, 'needs_human');
+
+        const preview = (syncInbox?.listPreview ?? guestDisplayText).slice(0, 200);
+
+        this.chatGateway.server.to(`inbox:${pid}`).emit('conversation:updated', {
+
+          conversationId: cid,
+
+          lastMessagePreview: preview,
+
+          lastActivityAt: new Date().toISOString(),
+
+          status: 'needs_human',
+
+        });
+
+      }
+
+    }
 
   }
 

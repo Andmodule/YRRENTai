@@ -73,6 +73,15 @@ const resendEnvFields = z.object({
    * Booking/Airbnb never use this as a fallback after failed hotel/reservation/name match — inbox sync is skipped instead.
    */
   RESEND_INBOUND_PROPERTY_ID: z.string().uuid().optional(),
+  /**
+   * When false: inbound Resend email still creates/updates the thread and guest message + chat inbox sync,
+   * but no LLM draft, no auto email reply to the guest, no AI assistant row in chat.
+   * Staff replies (UI/Telegram) unchanged. Default true.
+   */
+  INBOUND_EMAIL_AI_AUTO_REPLY_ENABLED: z
+    .enum(['true', 'false', '1', '0', 'yes', 'no'])
+    .default('true')
+    .transform((v) => v === 'true' || v === '1' || v === 'yes'),
 });
 
 export const envSchema = z
