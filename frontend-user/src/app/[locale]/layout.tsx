@@ -1,4 +1,4 @@
-import type { Metadata, Viewport } from 'next';
+import type { Metadata } from 'next';
 import { NextIntlClientProvider } from 'next-intl';
 import { getMessages, setRequestLocale } from 'next-intl/server';
 import { notFound } from 'next/navigation';
@@ -7,33 +7,11 @@ import { Toaster } from 'sonner';
 import { routing } from '@/i18n/routing';
 import { ThemeProvider } from '@/components/providers/theme-provider';
 import { QueryProvider } from '@/components/providers/query-provider';
-import { PwaRegister } from '@/components/pwa-register';
-import { ThemeColorSync } from '@/components/theme-color-sync';
-import { buildThemeColorInitScript } from '@/lib/theme-color';
 import '@/app/globals.css';
 
 export const metadata: Metadata = {
   title: 'RentAI — Dashboard',
   description: 'AI-powered rental property management dashboard',
-  manifest: '/manifest.json?v=3',
-  appleWebApp: {
-    capable: true,
-    title: 'RentAI',
-  },
-  icons: {
-    icon: [
-      { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
-      { url: '/icon-512.png', sizes: '512x512', type: 'image/png' },
-    ],
-    apple: '/icon-192.png',
-  },
-};
-
-/** theme-color: inline script + ThemeColorSync only (no Next viewport meta). */
-export const viewport: Viewport = {
-  width: 'device-width',
-  initialScale: 1,
-  maximumScale: 1,
 };
 
 interface LayoutProps {
@@ -53,16 +31,8 @@ export default async function LocaleLayout({ children, params }: LayoutProps) {
 
   return (
     <html lang={locale} suppressHydrationWarning>
-      <head>
-        <script
-          suppressHydrationWarning
-          dangerouslySetInnerHTML={{ __html: buildThemeColorInitScript() }}
-        />
-      </head>
       <body className="min-h-screen bg-background text-foreground antialiased">
-        <PwaRegister />
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange={false}>
-          <ThemeColorSync />
           <QueryProvider>
             <NextIntlClientProvider locale={locale} messages={messages}>
               <Suspense fallback={null}>

@@ -1,4 +1,4 @@
-/* Minimal SW for PWA installability; forwards all requests to network. v2 */
+/* Minimal SW for PWA installability; forwards all requests to network. */
 self.addEventListener('install', () => {
   self.skipWaiting();
 });
