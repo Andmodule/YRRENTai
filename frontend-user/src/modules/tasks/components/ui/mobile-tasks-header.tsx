@@ -259,22 +259,22 @@ export function MobileTasksHeader({ title }: MobileTasksHeaderProps) {
       <header
         className={cn(
           mobileHeaderBar,
-          'flex h-14 items-center justify-between gap-2 px-3 pt-[max(0.25rem,env(safe-area-inset-top))] transition-colors duration-200',
+          'relative flex h-14 items-center gap-2 px-3 pt-[max(0.25rem,env(safe-area-inset-top))] transition-colors duration-200',
         )}
       >
-        <div className="flex min-w-0 flex-1 items-center gap-2">
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-10 w-10 shrink-0 text-muted-foreground"
-            onClick={toggleSidebar}
-            aria-label={t('mobileHeader.menuAria')}
-          >
-            <Menu className="h-6 w-6" aria-hidden />
-          </Button>
-          <h1 className="truncate text-lg font-semibold tracking-tight text-foreground">{title}</h1>
-        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="relative z-10 h-10 w-10 shrink-0 text-muted-foreground"
+          onClick={toggleSidebar}
+          aria-label={t('mobileHeader.menuAria')}
+        >
+          <Menu className="h-6 w-6" aria-hidden />
+        </Button>
+        <h1 className="pointer-events-none absolute left-1/2 top-1/2 z-0 max-w-[min(16rem,calc(100%-7rem))] -translate-x-1/2 -translate-y-1/2 truncate text-center text-lg font-semibold tracking-tight text-foreground">
+          {title}
+        </h1>
 
         <DropdownMenu.Root>
           <DropdownMenu.Trigger asChild>
@@ -282,7 +282,7 @@ export function MobileTasksHeader({ title }: MobileTasksHeaderProps) {
               type="button"
               variant="ghost"
               size="icon"
-              className="h-10 w-10 shrink-0 text-muted-foreground"
+              className="relative z-10 ml-auto h-10 w-10 shrink-0 text-muted-foreground"
               aria-label={t('mobileHeader.kebabAria')}
             >
               <MoreVertical className="h-6 w-6" aria-hidden />

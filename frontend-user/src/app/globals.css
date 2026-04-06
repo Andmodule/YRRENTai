@@ -215,6 +215,32 @@ body {
 .animate-scale-in { animation: scaleIn 0.2s ease-out; }
 .animate-shimmer  { animation: shimmer 2s infinite; }
 
+/* Task list (desktop): короткий «сдвиг» при отметке готово + toast с отменой */
+@keyframes task-row-complete {
+  0% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  45% {
+    transform: translateX(-14px);
+    opacity: 0.72;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.animate-task-row-complete {
+  animation: task-row-complete 0.42s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-task-row-complete {
+    animation: none;
+  }
+}
+
 /* ─── Safe area for mobile (iOS notch / home bar) ────────────────────────── */
 @supports (padding: max(0px)) {
   .pb-safe {

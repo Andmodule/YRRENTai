@@ -1,9 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Building2, Inbox } from 'lucide-react';
-import { useRouter } from '@/i18n/navigation';
+import { usePathname, useRouter } from '@/i18n/navigation';
 import { useProperties } from '@/hooks/use-properties';
 import {
   InboxList,
@@ -29,13 +30,43 @@ import { formatGuestAndProperty } from '@/lib/format/conversation-meta';
 import { ConversationStatusDot } from '@/components/inbox/conversation-status-dot';
 import { TooltipProvider } from '@/components/ui/tooltip';
 
-/** Временно всегда true — тест на проде; вернуть gate через NODE_ENV / NEXT_PUBLIC_ENABLE_GUEST_SIMULATOR когда не нужен. */
-const showGuestSimulator = true;
+/** Sync with URL so Android / browser «back» returns to inbox list before leaving /chat */
+const CHAT_CONVERSATION_QUERY = 'conversation';
 
-export default function ChatPage() {
+/**
+ * Dev-панель «тест гостя» (DevGuestSimulator) скрыта в UI по умолчанию.
+ * Включить локально: в `.env` задать `NEXT_PUBLIC_ENABLE_GUEST_SIMULATOR=true` и перезапустить dev-сервер.
+ */
+const showGuestSimulator = process.env.NEXT_PUBLIC_ENABLE_GUEST_SIMULATOR === 'true';
+
+function ChatLoadingSkeleton() {
+  return (
+    <div
+      className={cn(
+        'flex h-full min-h-[280px] gap-0 overflow-hidden rounded-xl border border-slate-200 bg-gray-50 shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:border-slate-800 dark:bg-slate-900/50',
+      )}
+    >
+      <div className="w-80 border-r border-slate-200 bg-background p-3 space-y-2 dark:border-slate-800 dark:bg-slate-900/40">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <Skeleton key={i} className="h-16 w-full rounded-lg" />
+        ))}
+      </div>
+      <div className="flex-1 bg-background p-6 dark:bg-slate-900/30">
+        <Skeleton className="h-full w-full rounded-xl" />
+      </div>
+    </div>
+  );
+}
+
+function ChatPageContent() {
   const t = useTranslations('inbox');
   const tChat = useTranslations('chat');
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  const conversationId = searchParams.get(CHAT_CONVERSATION_QUERY);
+
   const { properties, isLoading, isError: propertiesError } = useProperties();
   const propertiesRef = useRef(properties);
   useEffect(() => {
@@ -48,13 +79,13 @@ export default function ChatPage() {
 
   /** Сразу после POST ответа — без ожидания сокета (иначе лаг точки и плейсхолдера). */
   const handleStaffReplySuccess = useCallback(
-    (conversationId: string, content: string) => {
+    (conversationIdReply: string, content: string) => {
       const preview = content.slice(0, 200);
       const now = new Date().toISOString();
       void mutateConversations(
         (current) => {
           if (!current?.data) return current;
-          const cid = conversationId.toLowerCase();
+          const cid = conversationIdReply.toLowerCase();
           const nextData = sortConversationsByActivity(
             current.data.map((c) =>
               c.id.toLowerCase() === cid
@@ -75,27 +106,32 @@ export default function ChatPage() {
     },
     [mutateConversations],
   );
-  /** id из списка SWR — активный чат всегда берётся из свежих данных, иначе точка статуса «застывает» */
-  const [activeId, setActiveId] = useState<string | null>(null);
+
+  const stripConversationFromUrl = useCallback(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete(CHAT_CONVERSATION_QUERY);
+    const q = params.toString();
+    router.replace(q ? `${pathname}?${q}` : pathname);
+  }, [pathname, router, searchParams]);
 
   const handleDevChatsCleared = useCallback(() => {
-    setActiveId(null);
+    stripConversationFromUrl();
     void mutateConversations(undefined, { revalidate: true });
-  }, [mutateConversations]);
+  }, [mutateConversations, stripConversationFromUrl]);
 
   const activeConversation = useMemo(() => {
-    if (!activeId) return null;
-    const aid = activeId.toLowerCase();
+    if (!conversationId) return null;
+    const aid = conversationId.toLowerCase();
     return conversations.find((c) => c.id.toLowerCase() === aid) ?? null;
-  }, [activeId, conversations]);
+  }, [conversationId, conversations]);
 
   useEffect(() => {
-    if (!activeId || inboxLoading) return;
-    const aid = activeId.toLowerCase();
+    if (!conversationId || inboxLoading) return;
+    const aid = conversationId.toLowerCase();
     if (!conversations.some((c) => c.id.toLowerCase() === aid)) {
-      setActiveId(null);
+      stripConversationFromUrl();
     }
-  }, [activeId, conversations, inboxLoading]);
+  }, [conversationId, conversations, inboxLoading, stripConversationFromUrl]);
 
   /**
    * Сервер шлёт `conversation:updated` / `message:saved` в комнаты `inbox:${propertyId}`.
@@ -138,13 +174,18 @@ export default function ChatPage() {
     };
   }, []);
 
-  const handleSelect = useCallback((conv: ConversationDto) => {
-    setActiveId(conv.id);
-  }, []);
+  const handleSelect = useCallback(
+    (conv: ConversationDto) => {
+      const params = new URLSearchParams(searchParams.toString());
+      params.set(CHAT_CONVERSATION_QUERY, conv.id);
+      router.push(`${pathname}?${params.toString()}`);
+    },
+    [pathname, router, searchParams],
+  );
 
   const handleMobileBack = useCallback(() => {
-    if (activeId) {
-      setActiveId(null);
+    if (conversationId) {
+      stripConversationFromUrl();
       return;
     }
     if (typeof window !== 'undefined' && window.history.length > 1) {
@@ -152,25 +193,10 @@ export default function ChatPage() {
     } else {
       router.push('/dashboard');
     }
-  }, [activeId, router]);
+  }, [conversationId, router, stripConversationFromUrl]);
 
   if (isLoading) {
-    return (
-      <div
-        className={cn(
-          'flex h-full min-h-[280px] gap-0 overflow-hidden rounded-xl border border-slate-200 bg-gray-50 shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:border-slate-800 dark:bg-slate-900/50',
-        )}
-      >
-        <div className="w-80 border-r border-slate-200 bg-background p-3 space-y-2 dark:border-slate-800 dark:bg-slate-900/40">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <Skeleton key={i} className="h-16 w-full rounded-lg" />
-          ))}
-        </div>
-        <div className="flex-1 bg-background p-6 dark:bg-slate-900/30">
-          <Skeleton className="h-full w-full rounded-xl" />
-        </div>
-      </div>
-    );
+    return <ChatLoadingSkeleton />;
   }
 
   /** API down and no cached properties — only show fix hint */
@@ -213,81 +239,90 @@ export default function ChatPage() {
 
   return (
     <TooltipProvider delayDuration={280}>
-    <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col gap-0 overflow-hidden lg:gap-3">
-      <ChatMobileNav
-        title={mobileTitle}
-        onBack={handleMobileBack}
-        right={mobileRight}
-      />
+      <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col gap-0 overflow-hidden lg:gap-3">
+        <ChatMobileNav
+          title={mobileTitle}
+          variant={activeConversation ? 'conversation' : 'list'}
+          onBack={handleMobileBack}
+          right={mobileRight}
+        />
 
-      <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden max-lg:pt-14">
-        {propertiesError && (
-          <div className="shrink-0">
-            <BackendUnreachableBanner />
-          </div>
-        )}
-
-        {showGuestSimulator && (
-          <div className="shrink-0">
-            <DevGuestSimulator
-              properties={properties}
-              syncedPropertyId={defaultPropertyId}
-              activeConversation={activeConversation}
-              onChatsCleared={handleDevChatsCleared}
-            />
-          </div>
-        )}
-
-        {/* Master-detail — светлая тема как раньше (серый фон + белые панели); тёмная — сланец, не чистый чёрный */}
-        <div
-          className={cn(
-            'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden',
-            'border border-slate-200 bg-gray-50 shadow-[0_1px_2px_rgba(15,23,42,0.04)]',
-            'dark:border-slate-800 dark:bg-slate-900/45 dark:shadow-none',
-            CHAT_FRAME.lgBox,
+        <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden max-lg:pt-14">
+          {propertiesError && (
+            <div className="shrink-0">
+              <BackendUnreachableBanner />
+            </div>
           )}
-        >
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background lg:flex-row dark:bg-slate-900/35">
-          {/* List panel */}
-          <div
-            className={cn(
-              'flex min-h-0 w-full shrink-0 flex-col overflow-y-auto bg-background lg:h-auto lg:max-h-full lg:w-80',
-              CHAT_FRAME.rLg,
-              activeConversation && 'hidden lg:flex',
-            )}
-          >
-            <InboxList
-              conversations={conversations}
-              isLoading={inboxLoading}
-              activeId={activeId}
-              onSelect={handleSelect}
-            />
-          </div>
 
-          {/* Detail panel */}
+          {showGuestSimulator && (
+            <div className="shrink-0">
+              <DevGuestSimulator
+                properties={properties}
+                syncedPropertyId={defaultPropertyId}
+                activeConversation={activeConversation}
+                onChatsCleared={handleDevChatsCleared}
+              />
+            </div>
+          )}
+
+          {/* Master-detail — светлая тема как раньше (серый фон + белые панели); тёмная — сланец, не чистый чёрный */}
           <div
             className={cn(
-              'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background',
-              !activeConversation && 'hidden lg:flex',
+              'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden',
+              'border border-slate-200 bg-gray-50 shadow-[0_1px_2px_rgba(15,23,42,0.04)]',
+              'dark:border-slate-800 dark:bg-slate-900/45 dark:shadow-none',
+              CHAT_FRAME.lgBox,
             )}
           >
-            {activeConversation ? (
-              <ConversationWindow
-                key={activeConversation.id}
-                conversation={activeConversation}
-                onStaffReplySuccess={handleStaffReplySuccess}
-              />
-            ) : (
-              <div className="flex h-full flex-col items-center justify-center p-6 text-center">
-                <Inbox className="mb-3 h-12 w-12 text-muted-foreground/30" />
-                <p className="text-sm text-muted-foreground">{t('selectConversation')}</p>
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background lg:flex-row dark:bg-slate-900/35">
+              {/* List panel */}
+              <div
+                className={cn(
+                  'flex min-h-0 w-full shrink-0 flex-col overflow-y-auto bg-background lg:h-auto lg:max-h-full lg:w-80',
+                  CHAT_FRAME.rLg,
+                  activeConversation && 'hidden lg:flex',
+                )}
+              >
+                <InboxList
+                  conversations={conversations}
+                  isLoading={inboxLoading}
+                  activeId={conversationId}
+                  onSelect={handleSelect}
+                />
               </div>
-            )}
+
+              {/* Detail panel */}
+              <div
+                className={cn(
+                  'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background',
+                  !activeConversation && 'hidden lg:flex',
+                )}
+              >
+                {activeConversation ? (
+                  <ConversationWindow
+                    key={activeConversation.id}
+                    conversation={activeConversation}
+                    onStaffReplySuccess={handleStaffReplySuccess}
+                  />
+                ) : (
+                  <div className="flex h-full flex-col items-center justify-center p-6 text-center">
+                    <Inbox className="mb-3 h-12 w-12 text-muted-foreground/30" />
+                    <p className="text-sm text-muted-foreground">{t('selectConversation')}</p>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
-        </div>
         </div>
       </div>
-    </div>
     </TooltipProvider>
+  );
+}
+
+export default function ChatPage() {
+  return (
+    <Suspense fallback={<ChatLoadingSkeleton />}>
+      <ChatPageContent />
+    </Suspense>
   );
 }

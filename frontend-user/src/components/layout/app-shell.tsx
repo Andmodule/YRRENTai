@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useRouter } from '@/i18n/navigation';
 import { useAuth } from '@/hooks/use-auth';
 import { cn } from '@/lib/utils';
+import { useUiStore } from '@/stores/ui.store';
 import { APP_SHELL_GRADIENT_DARK } from './shell-background';
 import { Sidebar } from './sidebar';
 import { Header } from './header';
@@ -55,6 +56,7 @@ export function AppShell({ children }: AppShellProps) {
 
 function AppShellContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const sidebarCollapsed = useUiStore((s) => s.sidebarCollapsed);
   const isChat = pathname?.includes('/chat');
   /** Tasks board: header + filters stay fixed; list scrolls inside main (same height lock as chat). */
   const isTasksBoardPage =
@@ -67,7 +69,8 @@ function AppShellContent({ children }: { children: React.ReactNode }) {
       <div
         className={cn(
           /* min-w-0: flex-элемент иначе не сужается ниже ширины контента → горизонтальный скролл всей страницы */
-          'flex min-h-0 min-w-0 max-w-full flex-1 flex-col overflow-x-hidden lg:ml-56',
+          'flex min-h-0 min-w-0 max-w-full flex-1 flex-col overflow-x-hidden transition-[margin] duration-500 ease-[cubic-bezier(0.33,1,0.68,1)] motion-reduce:duration-300',
+          sidebarCollapsed ? 'lg:ml-[4.5rem]' : 'lg:ml-56',
           /* Явная высота viewport — иначе h-full у детей = 0 и не работает скролл/поле ввода */
           lockViewportColumn ? 'h-dvh max-h-dvh overflow-hidden' : 'min-h-screen',
         )}

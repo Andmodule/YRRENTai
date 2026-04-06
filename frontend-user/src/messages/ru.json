@@ -455,13 +455,15 @@
     "operations": "Операции",
     "calendar": "Календарь",
     "chat": "Чат",
-    "kbImprovement": "Улучшения Агента",
+    "kbImprovement": "Улучшение агента",
     "settings": "Настройки",
     "incidents": "Инциденты",
     "staff": "Персонал",
     "unmappedInbox": "Входящие",
     "unmappedInboxBadgeHint": "Сообщения персонала без привязки к задаче",
-    "signOut": "Выйти"
+    "signOut": "Выйти",
+    "collapseSidebar": "Свернуть меню",
+    "expandSidebar": "Развернуть меню"
   },
   "staff": {
     "title": "Персонал",
@@ -801,6 +803,7 @@
     },
     "listByProperty": {
       "voiceFabAria": "Новая задача — голосом",
+      "manualFabAria": "Новая задача — вручную",
       "newTaskFallback": "Новая задача",
       "untitledTask": "Без названия",
       "generalTitle": "Общие задачи",
@@ -1097,7 +1100,7 @@
   "inbox": {
     "backendUnreachable": "Нет связи с API",
     "backendUnreachableHint": "Запустите бэкенд Nest — тогда Next сможет проксировать /api/v1, а WebSocket подключится к тому же хосту. Ожидаемый адрес API: {apiUrl}",
-    "title": "Входящие",
+    "title": "Чат",
     "selectConversation": "Выберите диалог из списка",
     "allProperties": "Все объекты",
     "allStatuses": "Все статусы",
@@ -1322,7 +1325,7 @@
     }
   },
   "kbImprovement": {
-    "title": "Улучшение базы знаний",
+    "title": "Улучшение агента",
     "subtitle": "Ответы, которые вы дали вручную — добавьте их в базу знаний",
     "queueTab": "Очередь",
     "pendingStats": "Ждут обработки: {count} шт.",

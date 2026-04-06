@@ -43,6 +43,8 @@ export const TaskListRow = memo(function TaskListRow({
 
   /** Instant checkbox + strike before React Query paints the optimistic update */
   const [instantDone, setInstantDone] = useState(false);
+  /** Десктоп: короткая анимация строки при «готово» с отложенным commit (как свайп на мобайл). */
+  const [desktopMarkAnim, setDesktopMarkAnim] = useState(false);
   useEffect(() => {
     if (task.status === 'done') setInstantDone(false);
   }, [task.status]);
@@ -153,6 +155,7 @@ export const TaskListRow = memo(function TaskListRow({
     'flex w-full min-w-0 origin-top cursor-pointer flex-row items-start gap-2 border-b border-border/40 px-2 py-2 text-left md:px-3',
     'hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
     'transition-colors',
+    isMdUp && desktopMarkAnim && 'motion-safe:animate-task-row-complete',
   );
 
   const rowInner = (
@@ -164,10 +167,20 @@ export const TaskListRow = memo(function TaskListRow({
             id={`task-done-${task.uuid}`}
             checked={checkedVisual}
             disabled={task.status === 'issue'}
-            className="h-4 w-4 rounded border-input"
+            className={cn(
+              'h-4 w-4 rounded border-slate-400 bg-white shadow-sm',
+              'data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground',
+              'dark:border-input dark:bg-transparent dark:shadow-none',
+            )}
             aria-label={tList('markDoneAria')}
             onCheckedChange={(checked) => {
               if (checked === true) {
+                if (onSwipeMarkDone && task.status !== 'issue' && task.status !== 'done') {
+                  setDesktopMarkAnim(true);
+                  window.setTimeout(() => setDesktopMarkAnim(false), 450);
+                  onSwipeMarkDone(task);
+                  return;
+                }
                 flushSync(() => setInstantDone(true));
                 onStatusChange(task.uuid, 'done');
               } else if (checked === false && (task.status === 'done' || instantDone)) {

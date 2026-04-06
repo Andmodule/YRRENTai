@@ -455,13 +455,15 @@
     "operations": "Operations",
     "calendar": "Calendar",
     "chat": "Chat",
-    "kbImprovement": "Knowledge Base",
+    "kbImprovement": "Agent improvement",
     "settings": "Settings",
     "incidents": "Incidents",
     "staff": "Staff",
     "unmappedInbox": "Inbox",
     "unmappedInboxBadgeHint": "Unmapped staff messages awaiting review",
-    "signOut": "Sign out"
+    "signOut": "Sign out",
+    "collapseSidebar": "Collapse sidebar",
+    "expandSidebar": "Expand sidebar"
   },
   "staff": {
     "title": "Staff",
@@ -801,6 +803,7 @@
     },
     "listByProperty": {
       "voiceFabAria": "New task — start with voice",
+      "manualFabAria": "New task — enter manually",
       "newTaskFallback": "New task",
       "untitledTask": "Untitled task",
       "generalTitle": "General tasks",
@@ -1097,7 +1100,7 @@
   "inbox": {
     "backendUnreachable": "Cannot reach the API",
     "backendUnreachableHint": "Start the Nest backend so Next.js can proxy /api/v1 and Socket.IO can connect. Expected API base: {apiUrl}",
-    "title": "Inbox",
+    "title": "Chat",
     "selectConversation": "Select a conversation from the list",
     "allProperties": "All properties",
     "allStatuses": "All statuses",
@@ -1322,7 +1325,7 @@
     }
   },
   "kbImprovement": {
-    "title": "Improve Knowledge Base",
+    "title": "Agent improvement",
     "subtitle": "Manual replies you've given — add them to the knowledge base",
     "queueTab": "Queue",
     "pendingStats": "Pending: {count}",

@@ -396,7 +396,6 @@ export function CalendarView({
           onFiltersChange={onFiltersChange}
           properties={properties}
           reservations={reservations}
-          filteredCount={filteredProperties.length}
           onNewBooking={openNewBooking}
           showSyncOta={showSyncOta}
           onSyncOta={onSyncOta}
@@ -422,7 +421,6 @@ export function CalendarView({
           onFiltersChange={onFiltersChange}
           properties={properties}
           reservations={reservations}
-          filteredCount={0}
           onNewBooking={openNewBooking}
           showSyncOta={showSyncOta}
           onSyncOta={onSyncOta}
@@ -448,7 +446,6 @@ export function CalendarView({
           onFiltersChange={onFiltersChange}
           properties={[]}
           reservations={[]}
-          filteredCount={0}
           onNewBooking={openNewBooking}
           showSyncOta={false}
         />
@@ -472,7 +469,6 @@ export function CalendarView({
         onFiltersChange={onFiltersChange}
         properties={properties}
         reservations={reservations}
-        filteredCount={filteredProperties.length}
         onNewBooking={openNewBooking}
         showSyncOta={showSyncOta}
         onSyncOta={onSyncOta}

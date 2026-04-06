@@ -112,7 +112,7 @@ export function PropertyListTable({ properties }: PropertyListTableProps) {
 
   return (
     <div className="space-y-3">
-      <div className="relative max-w-xs">
+      <div className="relative w-full max-w-full sm:max-w-xs">
         <Search
           className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/55"
           aria-hidden
@@ -122,11 +122,11 @@ export function PropertyListTable({ properties }: PropertyListTableProps) {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={t('searchPlaceholder')}
-          className="h-8 border-border/50 bg-background/60 pl-8 text-sm shadow-none placeholder:text-muted-foreground/55 focus-visible:ring-1 focus-visible:ring-border"
+          className="h-10 border-border/50 bg-background/60 pl-8 text-sm shadow-none placeholder:text-muted-foreground/55 focus-visible:ring-1 focus-visible:ring-border sm:h-8"
         />
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-border/50 bg-card/40">
+      <div className="-mx-1 overflow-x-auto rounded-xl border border-border/50 bg-card/40 sm:mx-0 sm:rounded-lg">
         <table className="w-full min-w-[720px] border-collapse text-sm">
           <thead>
             <tr className="border-b border-border/50 bg-muted/20">

@@ -130,19 +130,14 @@ export default function KbImprovementPage() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-5 pb-28 2xl:max-w-[min(100%,96rem)]">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-lg font-semibold tracking-tight text-foreground">{t('title')}</h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">{t('subtitle')}</p>
-        </div>
-      </div>
+    <div className="mx-auto w-full max-w-7xl space-y-4 px-0 pb-[calc(5.5rem+env(safe-area-inset-bottom))] sm:space-y-5 sm:pb-28 2xl:max-w-[min(100%,96rem)]">
+      <p className="text-sm leading-relaxed text-muted-foreground sm:text-[15px]">{t('subtitle')}</p>
 
       <div className="flex border-b border-border/80">
-        <div className="flex items-center gap-2 border-b-2 border-foreground/80 px-0.5 pb-2 text-sm font-medium text-foreground">
+        <div className="flex min-h-[44px] items-center gap-2 border-b-2 border-foreground/80 px-0.5 pb-2 text-sm font-medium text-foreground">
           {t('queueTab')}
           {total > 0 && (
-            <span className="rounded bg-muted px-1.5 py-0.5 text-xs font-normal tabular-nums text-muted-foreground">
+            <span className="rounded-md bg-muted px-2 py-0.5 text-xs font-normal tabular-nums text-muted-foreground">
               {total}
             </span>
           )}
@@ -177,7 +172,7 @@ export default function KbImprovementPage() {
           </div>
 
           <div
-            className="flex gap-3 border-b border-border/60 px-3 pb-2 pt-0.5 text-[11px] font-medium text-muted-foreground sm:px-4 sm:pr-11"
+            className="hidden gap-3 border-b border-border/60 px-3 pb-2 pt-0.5 text-[11px] font-medium text-muted-foreground sm:flex sm:px-4 sm:pr-11"
             role="row"
           >
             <span className="w-[18px] shrink-0" aria-hidden />
@@ -213,14 +208,14 @@ export default function KbImprovementPage() {
       )}
 
       {selectedCount > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-border/80 bg-background/95 px-4 py-3 backdrop-blur-md supports-[backdrop-filter]:bg-background/80 dark:bg-background/95 lg:left-56">
-          <div className="mx-auto flex w-full max-w-7xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between 2xl:max-w-[min(100%,96rem)]">
-            <p className="text-sm text-muted-foreground">{t('selectedCount', { count: selectedCount })}</p>
-            <div className="flex flex-wrap gap-2">
-              <Button type="button" variant="outline" size="sm" onClick={handleBulkIgnore}>
+        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2">
+          <div className="pointer-events-auto flex w-full max-w-lg flex-col gap-3 rounded-2xl border border-border/80 bg-background/95 p-3 shadow-lg backdrop-blur-md supports-[backdrop-filter]:bg-background/85 sm:max-w-7xl sm:flex-row sm:items-center sm:justify-between sm:p-4 2xl:max-w-[min(100%,96rem)]">
+            <p className="text-center text-sm text-muted-foreground sm:text-left">{t('selectedCount', { count: selectedCount })}</p>
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
+              <Button type="button" variant="outline" className="h-11 sm:h-9" onClick={handleBulkIgnore}>
                 {t('deleteSelected')}
               </Button>
-              <Button type="button" size="sm" onClick={handleBulkAdd}>
+              <Button type="button" className="h-11 sm:h-9" onClick={handleBulkAdd}>
                 {t('addSelectedToKb')}
               </Button>
             </div>

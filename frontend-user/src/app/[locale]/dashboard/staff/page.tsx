@@ -149,23 +149,21 @@ export default function StaffPage() {
   };
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{t('title')}</h1>
-          <p className="text-sm text-muted-foreground">{t('subtitle')}</p>
+    <>
+      <div className="mx-auto max-w-6xl space-y-4 sm:space-y-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+          <Button
+            type="button"
+            className="h-11 w-full shrink-0 sm:h-10 sm:w-auto"
+            onClick={() => {
+              resetForm();
+              setDialogOpen(true);
+            }}
+          >
+            <UserPlus className="mr-2 h-4 w-4" />
+            {t('addStaff')}
+          </Button>
         </div>
-        <Button
-          type="button"
-          onClick={() => {
-            resetForm();
-            setDialogOpen(true);
-          }}
-        >
-          <UserPlus className="mr-2 h-4 w-4" />
-          {t('addStaff')}
-        </Button>
-      </div>
 
       {!telegramBotConfigured && (
         <Alert>
@@ -182,7 +180,8 @@ export default function StaffPage() {
       {error && <p className="text-sm text-destructive">{t('loadError')}</p>}
 
       {!isLoading && !error && (
-        <div className="overflow-x-auto rounded-xl border border-border bg-card">
+        <>
+        <div className="hidden overflow-x-auto rounded-xl border border-border bg-card md:block">
           <table className="w-full min-w-[720px] text-left text-sm">
             <thead className="border-b border-border bg-muted/40">
               <tr>
@@ -226,6 +225,50 @@ export default function StaffPage() {
             </tbody>
           </table>
         </div>
+
+        <div className="flex flex-col gap-3 md:hidden">
+          {list.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-border bg-muted/20 px-4 py-10 text-center text-sm text-muted-foreground">
+              {t('empty')}
+            </div>
+          ) : (
+            list.map((row) => (
+              <article
+                key={row.id}
+                className="rounded-2xl border border-border/80 bg-card p-4 shadow-sm ring-1 ring-border/40"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="font-semibold text-foreground">
+                      {row.firstName} {row.lastName}
+                    </p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">{jobTypeLabel(row.jobType)}</p>
+                  </div>
+                  <span className="text-[11px] tabular-nums text-muted-foreground">
+                    {new Date(row.createdAt).toLocaleDateString()}
+                  </span>
+                </div>
+                <dl className="mt-3 space-y-2 text-sm">
+                  <div className="flex flex-wrap gap-x-2">
+                    <dt className="text-muted-foreground">{t('colEmail')}</dt>
+                    <dd className="min-w-0 break-all font-medium text-foreground">{row.email}</dd>
+                  </div>
+                  <div className="flex flex-wrap gap-x-2">
+                    <dt className="text-muted-foreground">{t('colPhone')}</dt>
+                    <dd className="font-medium text-foreground">{row.phone ?? '—'}</dd>
+                  </div>
+                  <div>
+                    <dt className="mb-1 text-muted-foreground">{t('colTelegram')}</dt>
+                    <dd>
+                      <TelegramCell row={row} />
+                    </dd>
+                  </div>
+                </dl>
+              </article>
+            ))
+          )}
+        </div>
+        </>
       )}
 
       <Dialog
@@ -358,7 +401,8 @@ export default function StaffPage() {
           )}
         </DialogContent>
       </Dialog>
-    </div>
+      </div>
+    </>
   );
 }
 

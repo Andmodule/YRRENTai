@@ -1,6 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { usePathname, useRouter } from '@/i18n/navigation';
 import {
   DndContext,
   DragOverlay,
@@ -36,6 +38,7 @@ import { TasksFiltersBar } from './TasksFiltersBar';
 import { usePendingTaskDelete } from '../../hooks/usePendingTaskDelete';
 import { usePendingTaskMarkDone } from '../../hooks/usePendingTaskMarkDone';
 import { usePendingIncidentClose } from '@/modules/incidents/hooks/usePendingIncidentClose';
+import { TASK_DETAIL_URL_QUERY, TASK_INCIDENT_URL_QUERY } from '../../task-url-params';
 
 export function ManagerKanban({
   filters,
@@ -61,15 +64,67 @@ export function ManagerKanban({
     undoLabel: tTma('undoDelete'),
     closeErrorMessage: tTma('incidentCloseError'),
   });
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const taskId = searchParams.get(TASK_DETAIL_URL_QUERY);
+  const rawIncidentId = searchParams.get(TASK_INCIDENT_URL_QUERY);
+  const incidentId = taskId ? null : rawIncidentId;
+
   const { view } = useTasksViewMode();
   const { data, isLoading, isError, refetch } = useTasks(filters);
   const { data: incidentsRaw, isLoading: incidentsLoading } = useIncidents();
   const filtered = useTaskFilters(data?.tasks ?? [], filters);
   const { mutate: updateStatus } = useUpdateTaskStatus();
 
-  const [detailTask, setDetailTask] = useState<Task | null>(null);
-  const [detailIncident, setDetailIncident] = useState<Incident | null>(null);
+  const detailTask = useMemo((): Task | null => {
+    if (!taskId) return null;
+    return data?.tasks?.find((x) => x.uuid === taskId) ?? null;
+  }, [taskId, data?.tasks]);
+
+  const detailIncident = useMemo((): Incident | null => {
+    if (!incidentId) return null;
+    return incidentsRaw?.find((x) => x.uuid === incidentId) ?? null;
+  }, [incidentId, incidentsRaw]);
+
   const [activeTask, setActiveTask] = useState<Task | null>(null);
+
+  const clearTaskFromUrl = useCallback(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete(TASK_DETAIL_URL_QUERY);
+    const q = params.toString();
+    router.replace(q ? `${pathname}?${q}` : pathname);
+  }, [pathname, router, searchParams]);
+
+  const clearIncidentFromUrl = useCallback(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete(TASK_INCIDENT_URL_QUERY);
+    const q = params.toString();
+    router.replace(q ? `${pathname}?${q}` : pathname);
+  }, [pathname, router, searchParams]);
+
+  useEffect(() => {
+    if (taskId && rawIncidentId) {
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete(TASK_INCIDENT_URL_QUERY);
+      const q = params.toString();
+      router.replace(q ? `${pathname}?${q}` : pathname);
+    }
+  }, [taskId, rawIncidentId, pathname, router, searchParams]);
+
+  useEffect(() => {
+    if (!taskId || isLoading) return;
+    if (data?.tasks && !data.tasks.some((x) => x.uuid === taskId)) {
+      clearTaskFromUrl();
+    }
+  }, [taskId, isLoading, data?.tasks, clearTaskFromUrl]);
+
+  useEffect(() => {
+    if (!incidentId || incidentsLoading) return;
+    if (incidentsRaw && !incidentsRaw.some((x) => x.uuid === incidentId)) {
+      clearIncidentFromUrl();
+    }
+  }, [incidentId, incidentsLoading, incidentsRaw, clearIncidentFromUrl]);
 
   const boardIncidents = useMemo(() => {
     if (!incidentsRaw?.length) return [];
@@ -97,12 +152,6 @@ export function ManagerKanban({
       return (a.title || a.propertyTitle).localeCompare(b.title || b.propertyTitle);
     });
   }, [filtered]);
-
-  useEffect(() => {
-    if (!detailIncident || !incidentsRaw) return;
-    const next = incidentsRaw.find((x) => x.uuid === detailIncident.uuid);
-    if (next) setDetailIncident(next);
-  }, [incidentsRaw, detailIncident?.uuid]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -153,15 +202,25 @@ export function ManagerKanban({
     }
   };
 
-  const openTask = (task: Task) => {
-    setDetailIncident(null);
-    setDetailTask(task);
-  };
+  const openTask = useCallback(
+    (task: Task) => {
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete(TASK_INCIDENT_URL_QUERY);
+      params.set(TASK_DETAIL_URL_QUERY, task.uuid);
+      router.push(`${pathname}?${params.toString()}`);
+    },
+    [pathname, router, searchParams],
+  );
 
-  const openIncident = (incident: Incident) => {
-    setDetailTask(null);
-    setDetailIncident(incident);
-  };
+  const openIncident = useCallback(
+    (incident: Incident) => {
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete(TASK_DETAIL_URL_QUERY);
+      params.set(TASK_INCIDENT_URL_QUERY, incident.uuid);
+      router.push(`${pathname}?${params.toString()}`);
+    },
+    [pathname, router, searchParams],
+  );
 
   const patchStatus = useCallback(
     (uuid: string, status: TaskStatus) => {
@@ -281,11 +340,19 @@ export function ManagerKanban({
         </div>
       )}
 
-      <TaskDetailDrawer task={detailTask} open={!!detailTask} onOpenChange={(o) => !o && setDetailTask(null)} />
+      <TaskDetailDrawer
+        task={detailTask}
+        open={Boolean(taskId && detailTask)}
+        onOpenChange={(o) => {
+          if (!o) clearTaskFromUrl();
+        }}
+      />
       <IncidentDetailDrawer
         incident={detailIncident}
-        open={!!detailIncident}
-        onOpenChange={(o) => !o && setDetailIncident(null)}
+        open={Boolean(incidentId && detailIncident)}
+        onOpenChange={(o) => {
+          if (!o) clearIncidentFromUrl();
+        }}
       />
     </div>
   );

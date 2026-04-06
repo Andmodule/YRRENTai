@@ -4,7 +4,9 @@ import { useTranslations } from 'next-intl';
 import { Link, usePathname, useRouter } from '@/i18n/navigation';
 import { useUiStore } from '@/stores/ui.store';
 import { cn } from '@/lib/utils';
+import { useMediaQuery } from '@/hooks/use-media-query';
 import {
+  ChevronLeft,
   LayoutDashboard,
   Building2,
   Inbox,
@@ -23,6 +25,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { apiClient } from '@/lib/api/client';
 import { Button } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 
 const navItems = [
@@ -40,8 +43,11 @@ const navItems = [
 
 export function Sidebar() {
   const t = useTranslations('nav');
+  const tAuth = useTranslations('auth');
   const router = useRouter();
-  const { sidebarOpen, setSidebarOpen } = useUiStore();
+  const isLg = useMediaQuery('(min-width: 1024px)');
+  const { sidebarOpen, setSidebarOpen, sidebarCollapsed, toggleSidebarCollapsed } = useUiStore();
+  const showCollapsedChrome = Boolean(sidebarCollapsed && isLg);
   const pathname = usePathname();
   const { data: openIncidents = 0 } = useOpenIncidentsCount();
   const { data: unmappedCount = 0 } = useUnmappedReportsCount();
@@ -59,36 +65,101 @@ export function Sidebar() {
   }
 
   return (
-    <>
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden"
-          aria-hidden
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
+    <TooltipProvider delayDuration={200}>
+      {/* Mobile: всегда в DOM — плавный fade при закрытии (раньше overlay пропадал мгновенно) */}
+      <div
+        className={cn(
+          'fixed inset-0 z-40 lg:hidden',
+          'transition-[opacity,backdrop-filter] duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]',
+          'motion-reduce:transition-opacity motion-reduce:duration-200',
+          sidebarOpen
+            ? 'cursor-pointer bg-black/50 opacity-100 backdrop-blur-[8px]'
+            : 'pointer-events-none opacity-0 backdrop-blur-none',
+        )}
+        aria-hidden
+        onClick={() => setSidebarOpen(false)}
+      />
 
       <aside
         className={cn(
           'fixed left-0 top-0 z-50 flex h-screen w-56 flex-col',
-          'border-r border-slate-800 bg-slate-900/95 backdrop-blur-sm',
-          'transition-transform duration-200',
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full',
+          'overflow-hidden border-r border-slate-800 bg-slate-900/95 backdrop-blur-xl',
+          /* Mobile drawer: слайд + тень; десктоп: ширина */
+          'max-lg:transition-[transform,box-shadow] max-lg:duration-500 max-lg:[transition-timing-function:cubic-bezier(0.32,0.72,0,1)]',
+          'motion-reduce:max-lg:duration-200',
+          /* Десктоп: мягкое раскрытие/сворачивание (синхронно с отступом main в app-shell) */
+          'lg:transition-[width] lg:duration-500 lg:ease-[cubic-bezier(0.33,1,0.68,1)]',
+          'motion-reduce:lg:duration-300',
+          sidebarOpen
+            ? 'translate-x-0 max-lg:shadow-[0_25px_80px_-12px_rgba(0,0,0,0.55),0_0_1px_rgba(255,255,255,0.06)_inset] max-lg:rounded-r-2xl'
+            : '-translate-x-full max-lg:shadow-none',
           'lg:translate-x-0',
+          sidebarCollapsed ? 'lg:w-[4.5rem]' : 'lg:w-56',
         )}
       >
-        {/* Logo + theme (mobile drawer only; desktop theme stays in header) */}
-        <div className="flex h-16 shrink-0 items-center justify-between gap-2 border-b border-slate-800 px-4">
-          <span className="bg-gradient-to-r from-cyan-400 to-violet-400 bg-clip-text text-lg font-bold tracking-tight text-transparent">
-            RentAI
-          </span>
-          <div className="lg:hidden">
-            <ThemeToggle className="h-9 w-9 shrink-0 text-slate-400 hover:bg-slate-800 hover:text-white [&_svg]:text-slate-400" />
+        {/* Логотип + сворачивание (десктоп) + тема */}
+        <div
+          className={cn(
+            'flex shrink-0 items-center border-b border-slate-800 px-4',
+            sidebarCollapsed
+              ? 'h-auto flex-col gap-3 py-4 lg:flex lg:items-center lg:py-4'
+              : 'h-16 justify-between gap-2',
+          )}
+        >
+          <Link
+            href="/dashboard"
+            onClick={() => setSidebarOpen(false)}
+            className={cn(
+              'min-w-0 shrink bg-gradient-to-r from-cyan-400 to-violet-400 bg-clip-text text-lg font-bold tracking-tight text-transparent',
+              'transition-opacity duration-200 hover:opacity-90',
+              sidebarCollapsed && 'lg:hidden',
+            )}
+          >
+            {tAuth('brandName')}
+          </Link>
+
+          <div
+            className={cn(
+              'flex items-center gap-2',
+              sidebarCollapsed ? 'flex-col' : 'shrink-0',
+            )}
+          >
+            <button
+              type="button"
+              onClick={() => toggleSidebarCollapsed()}
+              className={cn(
+                'hidden h-10 w-10 shrink-0 items-center justify-center rounded-lg lg:flex',
+                'border-0 bg-transparent text-slate-400',
+                'transition-colors duration-300 ease-out',
+                'hover:bg-slate-800/60 hover:text-primary',
+                'active:scale-[0.96]',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50',
+              )}
+              aria-expanded={!sidebarCollapsed}
+              aria-label={sidebarCollapsed ? t('expandSidebar') : t('collapseSidebar')}
+            >
+              <ChevronLeft
+                className={cn(
+                  'h-5 w-5 transition-transform duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)]',
+                  sidebarCollapsed && 'rotate-180',
+                )}
+                aria-hidden
+              />
+            </button>
+
+            <ThemeToggle
+              className={cn(
+                'h-9 w-9 shrink-0 rounded-xl border border-slate-700/60 bg-slate-800/40 text-slate-400 shadow-sm',
+                'transition-all duration-300 ease-out',
+                'hover:border-primary/35 hover:bg-slate-800/90 hover:text-primary hover:shadow-[0_0_24px_-8px_rgba(59,130,246,0.35)]',
+                'active:scale-[0.96] [&_svg]:text-current',
+              )}
+            />
           </div>
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto p-3">
+        <nav className="flex-1 overflow-x-hidden overflow-y-auto p-3">
           <ul className="space-y-0.5">
             {navItems.map(({ href, icon: Icon, key }) => {
               const isActive =
@@ -112,70 +183,142 @@ export function Sidebar() {
                               !pathname.match(/\/dashboard\/incidents/)
                             : pathname.includes(href);
 
-              return (
-                <li key={href}>
-                  <Link
-                    href={href}
-                    onClick={(e) => {
-                      if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) {
-                        setSidebarOpen(false);
-                        return;
-                      }
-                      e.preventDefault();
+              const linkInner = (
+                <Link
+                  href={href}
+                  onClick={(e) => {
+                    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) {
                       setSidebarOpen(false);
-                      router.push(href);
-                    }}
-                    className={cn(
-                      'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
-                      isActive
-                        ? 'bg-primary/15 text-primary border border-primary/20'
-                        : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200 border border-transparent',
-                    )}
-                  >
-                    <Icon className="h-4 w-4 shrink-0" />
-                    <span className="flex-1 text-left">{t(key)}</span>
-                    {key === 'tasks' && openIncidents > 0 && (
+                      return;
+                    }
+                    e.preventDefault();
+                    setSidebarOpen(false);
+                    router.push(href);
+                  }}
+                  className={cn(
+                    'flex items-center gap-3 rounded-xl border px-3 py-2.5 text-sm font-medium',
+                    'transition-all duration-300 ease-out',
+                    isActive
+                      ? 'border-primary/25 bg-primary/15 text-primary shadow-[inset_0_0_0_1px_rgba(59,130,246,0.25)]'
+                      : 'border-transparent text-slate-400 hover:border-primary/35 hover:bg-slate-800/90 hover:text-primary hover:shadow-sm hover:shadow-[0_0_24px_-8px_rgba(59,130,246,0.35)] active:scale-[0.99]',
+                    sidebarCollapsed && 'lg:justify-center lg:gap-0 lg:px-2',
+                    showCollapsedChrome && 'lg:relative',
+                  )}
+                >
+                  <span className="relative inline-flex shrink-0">
+                    <Icon className="h-4 w-4" />
+                    {showCollapsedChrome && key === 'tasks' && openIncidents > 0 && (
                       <span
-                        className="h-2 w-2 shrink-0 rounded-full bg-amber-500"
+                        className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-amber-500 ring-2 ring-slate-900"
                         title={t('tasksIncidentsHint')}
                         aria-label={t('tasksIncidentsHint')}
                       />
                     )}
-                    {key === 'unmappedInbox' && unmappedCount > 0 && (
-                      <span
-                        className="min-w-[1.25rem] shrink-0 rounded-full bg-amber-500/90 px-1.5 py-0 text-center text-[10px] font-semibold leading-none text-slate-950 tabular-nums"
-                        title={t('unmappedInboxBadgeHint')}
-                        aria-label={t('unmappedInboxBadgeHint')}
-                      >
-                        {unmappedCount > 99 ? '99+' : unmappedCount}
-                      </span>
+                  </span>
+                  <span
+                    className={cn(
+                      'min-w-0 flex-1 text-left transition-[opacity,transform] duration-300 ease-out',
+                      sidebarCollapsed && 'lg:hidden',
                     )}
-                  </Link>
+                  >
+                    {t(key)}
+                  </span>
+                  {!showCollapsedChrome && key === 'tasks' && openIncidents > 0 && (
+                    <span
+                      className="h-2 w-2 shrink-0 rounded-full bg-amber-500"
+                      title={t('tasksIncidentsHint')}
+                      aria-label={t('tasksIncidentsHint')}
+                    />
+                  )}
+                  {!showCollapsedChrome && key === 'unmappedInbox' && unmappedCount > 0 && (
+                    <span
+                      className="min-w-[1.25rem] shrink-0 rounded-full bg-amber-500/90 px-1.5 py-0 text-center text-[10px] font-semibold leading-none text-slate-950 tabular-nums"
+                      title={t('unmappedInboxBadgeHint')}
+                      aria-label={t('unmappedInboxBadgeHint')}
+                    >
+                      {unmappedCount > 99 ? '99+' : unmappedCount}
+                    </span>
+                  )}
+                  {showCollapsedChrome && key === 'unmappedInbox' && unmappedCount > 0 && (
+                    <span
+                      className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500/95 px-1 text-[9px] font-bold leading-none text-slate-950"
+                      title={t('unmappedInboxBadgeHint')}
+                      aria-label={t('unmappedInboxBadgeHint')}
+                    >
+                      {unmappedCount > 99 ? '·' : unmappedCount}
+                    </span>
+                  )}
+                </Link>
+              );
+
+              const linkEl =
+                showCollapsedChrome ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>{linkInner}</TooltipTrigger>
+                    <TooltipContent side="right" sideOffset={10} className="font-medium">
+                      {t(key)}
+                    </TooltipContent>
+                  </Tooltip>
+                ) : (
+                  linkInner
+                );
+
+              return (
+                <li key={href}>
+                  {linkEl}
                 </li>
               );
             })}
           </ul>
         </nav>
 
-        {/* Sign out — bottom of drawer on mobile only */}
+        {/* Sign out */}
         {user ? (
-          <div className="shrink-0 border-t border-slate-800 p-3 lg:hidden">
-            <Button
-              type="button"
-              variant="ghost"
-              className="h-11 w-full justify-start gap-3 px-3 text-slate-400 hover:bg-slate-800 hover:text-slate-100"
-              onClick={() => void handleLogout()}
-            >
-              <LogOut className="h-4 w-4 shrink-0" aria-hidden />
-              <span>{t('signOut')}</span>
-            </Button>
+          <div className="shrink-0 border-t border-slate-800 p-3">
+            {showCollapsedChrome ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className={cn(
+                      'relative h-11 w-full justify-center rounded-xl border border-slate-700/60 bg-slate-800/40 px-2 text-slate-400 shadow-sm',
+                      'transition-all duration-300 ease-out',
+                      'hover:border-primary/35 hover:bg-slate-800/90 hover:text-primary hover:shadow-[0_0_24px_-8px_rgba(59,130,246,0.35)]',
+                      'active:scale-[0.96]',
+                    )}
+                    onClick={() => void handleLogout()}
+                  >
+                    <LogOut className="h-4 w-4 shrink-0" aria-hidden />
+                    <span className="sr-only">{t('signOut')}</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="right" sideOffset={10}>
+                  {t('signOut')}
+                </TooltipContent>
+              </Tooltip>
+            ) : (
+              <Button
+                type="button"
+                variant="ghost"
+                className={cn(
+                  'h-11 w-full justify-start gap-3 rounded-xl border border-slate-700/60 bg-slate-800/40 px-3 text-slate-400 shadow-sm',
+                  'transition-all duration-300 ease-out',
+                  'hover:border-primary/35 hover:bg-slate-800/90 hover:text-primary hover:shadow-[0_0_24px_-8px_rgba(59,130,246,0.35)]',
+                  'active:scale-[0.99]',
+                )}
+                onClick={() => void handleLogout()}
+              >
+                <LogOut className="h-4 w-4 shrink-0" aria-hidden />
+                <span>{t('signOut')}</span>
+              </Button>
+            )}
           </div>
         ) : null}
 
-        {/* Bottom gradient line */}
         <div className="h-px bg-gradient-to-r from-transparent via-slate-700 to-transparent" />
         <div className="h-1 bg-gradient-to-r from-transparent via-cyan-500/20 to-transparent" />
       </aside>
-    </>
+    </TooltipProvider>
   );
 }

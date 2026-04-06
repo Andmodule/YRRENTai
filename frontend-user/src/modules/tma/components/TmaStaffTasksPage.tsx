@@ -1,7 +1,9 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
+import { usePathname, useRouter } from '@/i18n/navigation';
 import { apiClient } from '@/lib/api/client';
 import { useTasks, useUpdateTaskStatus } from '@/modules/tasks/hooks/useTasks';
 import { usePendingTaskDelete } from '@/modules/tasks/hooks/usePendingTaskDelete';
@@ -10,12 +12,18 @@ import { useTaskFilters } from '@/modules/tasks/hooks/useTaskFilters';
 import { TaskListView } from '@/modules/tasks/components/manager/TaskListView';
 import { TaskDetailDrawer } from '@/modules/tasks/components/shared/TaskDetailDrawer';
 import { parseTaskUuidFromTelegramStartParam } from '@/modules/tasks/utils/tma-start-param';
+import { TASK_DETAIL_URL_QUERY } from '@/modules/tasks/task-url-params';
 import { DEFAULT_TASK_FILTERS } from '@/stores/tasks-filters.store';
 import type { Task, TaskStatus } from '@/modules/tasks/types';
 import type { Incident } from '@/modules/incidents/hooks/useIncidents';
 
 export function TmaStaffTasksPage() {
   const t = useTranslations('tma');
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const taskId = searchParams.get(TASK_DETAIL_URL_QUERY);
+
   const { data, isLoading, isError, refetch } = useTasks(DEFAULT_TASK_FILTERS);
   const filtered = useTaskFilters(data?.tasks ?? [], DEFAULT_TASK_FILTERS);
   const { mutate: updateStatus } = useUpdateTaskStatus();
@@ -30,28 +38,74 @@ export function TmaStaffTasksPage() {
     markDoneErrorMessage: t('taskMarkDoneError'),
   });
 
-  const [detailTask, setDetailTask] = useState<Task | null>(null);
-  const deepLinkHandledRef = useRef(false);
+  /** When task is not in the list payload, load by id (Telegram deep link / shared URL). */
+  const [fetchedTask, setFetchedTask] = useState<Task | null>(null);
+  const deepLinkSyncedRef = useRef(false);
+
+  const taskFromList = useMemo(() => {
+    if (!taskId) return null;
+    return data?.tasks?.find((x) => x.uuid === taskId) ?? null;
+  }, [taskId, data?.tasks]);
+
+  const clearTaskFromUrl = useCallback(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete(TASK_DETAIL_URL_QUERY);
+    const q = params.toString();
+    router.replace(q ? `${pathname}?${q}` : pathname);
+  }, [pathname, router, searchParams]);
+
+  const detailTask = useMemo((): Task | null => {
+    if (!taskId) return null;
+    if (taskFromList) return taskFromList;
+    if (fetchedTask?.uuid === taskId) return fetchedTask;
+    return null;
+  }, [taskId, taskFromList, fetchedTask]);
 
   useEffect(() => {
-    if (deepLinkHandledRef.current) return;
+    if (!taskId) {
+      setFetchedTask(null);
+      return;
+    }
+    if (taskFromList) setFetchedTask(null);
+  }, [taskId, taskFromList]);
+
+  /** Telegram start_param → same `?task=` as dashboard (system «back» pops detail first). */
+  useEffect(() => {
+    if (deepLinkSyncedRef.current) return;
     const sp = window.Telegram?.WebApp?.initDataUnsafe?.start_param;
-    const taskId = parseTaskUuidFromTelegramStartParam(typeof sp === 'string' ? sp : undefined);
-    if (!taskId) return;
-    deepLinkHandledRef.current = true;
+    const id = parseTaskUuidFromTelegramStartParam(typeof sp === 'string' ? sp : undefined);
+    if (!id) return;
+    deepLinkSyncedRef.current = true;
+    const params = new URLSearchParams(searchParams.toString());
+    if (params.get(TASK_DETAIL_URL_QUERY) === id) return;
+    params.set(TASK_DETAIL_URL_QUERY, id);
+    router.replace(`${pathname}?${params.toString()}`);
+  }, [pathname, router, searchParams]);
+
+  useEffect(() => {
+    if (!taskId || taskFromList || isLoading) return;
     let cancelled = false;
     void (async () => {
       try {
         const res = await apiClient.get<{ data: { task: Task } }>(`/tasks/${taskId}`);
-        if (!cancelled) setDetailTask(res.data.data.task);
+        if (!cancelled) setFetchedTask(res.data.data.task);
       } catch {
-        deepLinkHandledRef.current = false;
+        if (!cancelled) clearTaskFromUrl();
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [taskId, taskFromList, isLoading, clearTaskFromUrl]);
+
+  const openTask = useCallback(
+    (task: Task) => {
+      const params = new URLSearchParams(searchParams.toString());
+      params.set(TASK_DETAIL_URL_QUERY, task.uuid);
+      router.push(`${pathname}?${params.toString()}`);
+    },
+    [pathname, router, searchParams],
+  );
 
   const patchStatus = useCallback(
     (uuid: string, status: TaskStatus) => {
@@ -91,7 +145,7 @@ export function TmaStaffTasksPage() {
           <TaskListView
             tasks={filtered}
             boardIncidents={[]}
-            onOpenTask={setDetailTask}
+            onOpenTask={openTask}
             onOpenIncident={noopOpenIncident}
             onStatusChange={patchStatus}
             onSwipeDeleteTask={enqueueDeleteAfterSwipe}
@@ -103,8 +157,10 @@ export function TmaStaffTasksPage() {
 
       <TaskDetailDrawer
         task={detailTask}
-        open={!!detailTask}
-        onOpenChange={(o) => !o && setDetailTask(null)}
+        open={Boolean(taskId && detailTask)}
+        onOpenChange={(o) => {
+          if (!o) clearTaskFromUrl();
+        }}
         isStaffView
       />
     </div>

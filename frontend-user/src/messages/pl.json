@@ -353,13 +353,15 @@
     "operations": "Operacje",
     "calendar": "Kalendarz",
     "chat": "Czat",
-    "kbImprovement": "Baza wiedzy",
+    "kbImprovement": "Ulepszenie agenta",
     "settings": "Ustawienia",
     "incidents": "Incydenty",
     "staff": "Personel",
     "unmappedInbox": "Skrzynka",
     "unmappedInboxBadgeHint": "Nieprzypisane wiadomości personelu",
-    "signOut": "Wyloguj"
+    "signOut": "Wyloguj",
+    "collapseSidebar": "Zwiń panel boczny",
+    "expandSidebar": "Rozwiń panel boczny"
   },
   "staff": {
     "title": "Personel",
@@ -649,6 +651,7 @@
     },
     "listByProperty": {
       "voiceFabAria": "Nowe zadanie — głosem",
+      "manualFabAria": "Nowe zadanie — ręcznie",
       "untitledTask": "Bez tytułu",
       "generalTitle": "Zadania ogólne",
       "unnamedProperty": "Obiekt bez nazwy",
@@ -810,7 +813,7 @@
   "inbox": {
     "backendUnreachable": "Brak połączenia z API",
     "backendUnreachableHint": "Uruchom backend Nest, aby Next.js proxyował /api/v1 i Socket.IO mógł się połączyć. Oczekiwany URL API: {apiUrl}",
-    "title": "Skrzynka odbiorcza",
+    "title": "Czat",
     "selectConversation": "Wybierz rozmowę z listy",
     "allProperties": "Wszystkie obiekty",
     "allStatuses": "Wszystkie statusy",
@@ -1035,7 +1038,7 @@
     }
   },
   "kbImprovement": {
-    "title": "Ulepszanie bazy wiedzy",
+    "title": "Ulepszenie agenta",
     "subtitle": "Ręczne odpowiedzi — dodaj je do bazy wiedzy",
     "queueTab": "Kolejka",
     "pendingStats": "Oczekujące: {count}",

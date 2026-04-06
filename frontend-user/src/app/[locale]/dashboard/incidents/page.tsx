@@ -47,11 +47,9 @@ function IncidentsPageInner() {
   const list = incidents ?? [];
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6 p-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Инциденты</h1>
+    <>
+      <div className="mx-auto max-w-4xl space-y-6 px-6 pb-6">
         <p className="text-sm text-muted-foreground">Забытые вещи и повреждения от персонала</p>
-      </div>
       <ul className="space-y-3">
         {list.length === 0 ? (
           <li className="rounded-lg border bg-card p-6 text-center text-muted-foreground">Пока нет записей</li>
@@ -147,7 +145,8 @@ function IncidentsPageInner() {
           ))
         )}
       </ul>
-    </div>
+      </div>
+    </>
   );
 }
 

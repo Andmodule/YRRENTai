@@ -89,6 +89,24 @@ export function TaskListRowMobile({
   const [deleteExit, setDeleteExit] = useState<TaskListRowDeleteExit>('none');
   const [collapseMaxH, setCollapseMaxH] = useState<number | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  /** Row surface that owns pointer handlers — capture is deferred until horizontal swipe intent (fixes scroll on mobile). */
+  const rowSurfaceRef = useRef<HTMLDivElement>(null);
+  const rowPointerIdRef = useRef<number | null>(null);
+  const pointerCapturedRef = useRef(false);
+
+  const releasePointerCaptureIfNeeded = useCallback(() => {
+    if (!pointerCapturedRef.current) return;
+    const el = rowSurfaceRef.current;
+    const pid = rowPointerIdRef.current;
+    if (el != null && pid != null) {
+      try {
+        el.releasePointerCapture(pid);
+      } catch {
+        /* noop */
+      }
+    }
+    pointerCapturedRef.current = false;
+  }, []);
 
   /** Another row opened delete peek — close this row’s delete peek */
   useEffect(() => {
@@ -101,6 +119,7 @@ export function TaskListRowMobile({
   }, [swipeOpenRowId, rowId, deletePeekOpen]);
 
   const resetPointerState = useCallback(() => {
+    releasePointerCaptureIfNeeded();
     swipeActiveRef.current = false;
     swipeAxisRef.current = 'idle';
     modeRef.current = 'idle';
@@ -121,7 +140,7 @@ export function TaskListRowMobile({
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
     }
-  }, []);
+  }, [releasePointerCaptureIfNeeded]);
 
   useEffect(
     () => () => {
@@ -160,6 +179,16 @@ export function TaskListRowMobile({
           modeRef.current = canSwipeRightDone ? 'done' : 'idle';
         } else {
           modeRef.current = 'idle';
+        }
+        const surface = rowSurfaceRef.current;
+        const pid = rowPointerIdRef.current;
+        if (surface != null && pid != null) {
+          try {
+            surface.setPointerCapture(pid);
+            pointerCapturedRef.current = true;
+          } catch {
+            /* noop */
+          }
         }
       }
 
@@ -235,6 +264,8 @@ export function TaskListRowMobile({
     (e: ReactPointerEvent) => {
       if (deleteExit !== 'none') return;
       if (e.button !== 0) return;
+      rowPointerIdRef.current = e.pointerId;
+      pointerCapturedRef.current = false;
       suppressRowClickRef.current = false;
       swipeActiveRef.current = true;
       swipeAxisRef.current = 'idle';
@@ -258,10 +289,13 @@ export function TaskListRowMobile({
       }
 
       setIsDragging(true);
-      try {
-        e.currentTarget.setPointerCapture(e.pointerId);
-      } catch {
-        /* ignore */
+      if (deletePeekOpenRef.current && canSwipeLeftDelete) {
+        try {
+          rowSurfaceRef.current?.setPointerCapture(e.pointerId);
+          pointerCapturedRef.current = true;
+        } catch {
+          /* noop */
+        }
       }
     },
     [deleteExit, canSwipeLeftDelete, suppressRowClickRef],
@@ -287,11 +321,8 @@ export function TaskListRowMobile({
       const wasAdjustDeletePeek = adjustDeletePeekRef.current;
       adjustDeletePeekRef.current = false;
       swipeAxisRef.current = 'idle';
-      try {
-        e.currentTarget.releasePointerCapture(e.pointerId);
-      } catch {
-        /* ignore */
-      }
+      releasePointerCaptureIfNeeded();
+      rowPointerIdRef.current = null;
       setIsDragging(false);
       const raw = lastRawDxRef.current;
       const mode = modeRef.current;
@@ -354,20 +385,14 @@ export function TaskListRowMobile({
       onSwipeRowOpenChange,
       rowId,
       suppressRowClickRef,
+      releasePointerCaptureIfNeeded,
     ],
   );
 
-  const onPointerCancel = useCallback(
-    (e: ReactPointerEvent) => {
-      resetPointerState();
-      try {
-        e.currentTarget.releasePointerCapture(e.pointerId);
-      } catch {
-        /* ignore */
-      }
-    },
-    [resetPointerState],
-  );
+  const onPointerCancel = useCallback(() => {
+    resetPointerState();
+    rowPointerIdRef.current = null;
+  }, [resetPointerState]);
 
   const beginDeleteSlideOff = useCallback(() => {
     suppressRowClickRef.current = true;
@@ -521,6 +546,7 @@ export function TaskListRowMobile({
       ) : null}
 
       <div
+        ref={rowSurfaceRef}
         role="button"
         tabIndex={deleteExit === 'none' ? 0 : -1}
         className={cn(

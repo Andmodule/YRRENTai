@@ -1,14 +1,15 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Filter, RefreshCw } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Drawer, DrawerClose, DrawerContent } from '@/components/ui/drawer';
 import { cn } from '@/lib/utils';
+import { useUiStore } from '@/stores/ui.store';
 import { filterPropertiesBySearch } from '../calendarSearch';
 import type { BookingChannel, BookingStatus, CalendarFilters, Property, Reservation } from '../types';
 import { useIsMobile } from '@/hooks/useIsMobile';
@@ -19,7 +20,6 @@ interface FilterBarProps {
   properties: Property[];
   /** Для подсказок: поиск по имени гостя, email, номеру брони. */
   reservations: Reservation[];
-  filteredCount: number;
   onNewBooking: () => void;
   showSyncOta?: boolean;
   /** `force` — удерживайте Shift при клике (принудительная перезапись уже синхронизированных броней). */
@@ -138,7 +138,6 @@ export function FilterBar({
   onFiltersChange,
   properties,
   reservations,
-  filteredCount,
   onNewBooking,
   showSyncOta,
   onSyncOta,
@@ -147,6 +146,13 @@ export function FilterBar({
   const t = useTranslations('calendar');
   const isMobile = useIsMobile();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const { setOpenCalendarFilter } = useUiStore();
+
+  /** Регистрируем колбэк в ui.store, чтобы кнопка фильтра в Header могла открыть Drawer */
+  useEffect(() => {
+    setOpenCalendarFilter(() => setDrawerOpen(true));
+    return () => setOpenCalendarFilter(null);
+  }, [setOpenCalendarFilter]);
   const [query, setQuery] = useState(filters.propertyQuery);
   const [showSuggestions, setShowSuggestions] = useState(false);
 
@@ -194,16 +200,6 @@ export function FilterBar({
 
   return (
     <div className="flex w-full min-w-0 max-w-full shrink-0 flex-col gap-3 border-b border-border px-4 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-x-2 sm:gap-y-2">
-      <div className="flex min-w-0 items-center gap-2">
-        <h1 className="truncate text-lg font-semibold tracking-tight">{t('title')}</h1>
-        <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{filteredCount}</span>
-        {isMobile && (
-          <Button variant="outline" size="icon" className="ml-auto" type="button" aria-label={t('filters')} onClick={() => setDrawerOpen(true)}>
-            <Filter className="h-4 w-4" />
-          </Button>
-        )}
-      </div>
-
       {!isMobile && (
         <>
           <div className="flex min-w-0 flex-1 justify-center px-2">{search}</div>

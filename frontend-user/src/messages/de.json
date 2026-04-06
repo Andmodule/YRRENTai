@@ -353,13 +353,15 @@
     "operations": "Betrieb",
     "calendar": "Kalender",
     "chat": "Chat",
-    "kbImprovement": "Wissensdatenbank",
+    "kbImprovement": "Agent-Verbesserung",
     "settings": "Einstellungen",
     "incidents": "Vorfälle",
     "staff": "Personal",
     "unmappedInbox": "Posteingang",
     "unmappedInboxBadgeHint": "Unzugeordnete Mitarbeiternachrichten",
-    "signOut": "Abmelden"
+    "signOut": "Abmelden",
+    "collapseSidebar": "Seitenleiste einklappen",
+    "expandSidebar": "Seitenleiste ausklappen"
   },
   "staff": {
     "title": "Personal",
@@ -649,6 +651,7 @@
     },
     "listByProperty": {
       "voiceFabAria": "Neue Aufgabe — per Sprache",
+      "manualFabAria": "Neue Aufgabe — manuell",
       "untitledTask": "Ohne Titel",
       "generalTitle": "Allgemeine Aufgaben",
       "unnamedProperty": "Unbenanntes Objekt",
@@ -765,7 +768,7 @@
   "inbox": {
     "backendUnreachable": "API nicht erreichbar",
     "backendUnreachableHint": "Starten Sie das Nest-Backend, damit Next.js /api/v1 proxyt und Socket.IO verbindet. Erwartete API-URL: {apiUrl}",
-    "title": "Posteingang",
+    "title": "Chat",
     "selectConversation": "Wählen Sie eine Konversation aus der Liste",
     "allProperties": "Alle Objekte",
     "allStatuses": "Alle Status",
@@ -990,7 +993,7 @@
     }
   },
   "kbImprovement": {
-    "title": "Wissensdatenbank verbessern",
+    "title": "Agent-Verbesserung",
     "subtitle": "Manuelle Antworten — fügen Sie sie der Wissensdatenbank hinzu",
     "queueTab": "Warteschlange",
     "pendingStats": "Ausstehend: {count}",

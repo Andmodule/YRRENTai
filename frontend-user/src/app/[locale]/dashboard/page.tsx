@@ -64,15 +64,6 @@ export default function DashboardPage() {
   return (
     <div className="mx-auto max-w-5xl space-y-4 text-white sm:space-y-6">
 
-      {/* Page header */}
-      <div>
-        <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-widest text-slate-500 sm:mb-1 sm:text-xs">
-          RentAI
-        </p>
-        <h1 className="text-xl font-bold tracking-tight text-white sm:text-2xl">{t('title')}</h1>
-        <p className="mt-0.5 text-xs text-slate-400 sm:mt-1 sm:text-sm">{t('subtitle')}</p>
-      </div>
-
       <DashboardUnmappedBanner />
 
       {/* Stat cards — 3 compact columns on mobile */}

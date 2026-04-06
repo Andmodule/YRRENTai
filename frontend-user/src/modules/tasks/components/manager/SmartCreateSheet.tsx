@@ -35,7 +35,10 @@ import { useStaffUsers } from '@/hooks/use-staff-users';
 import { apiClient } from '@/lib/api/client';
 import { useVoiceRecorder, type VoiceAutoStopPayload } from '../../hooks/useVoiceRecorder';
 import { parseVoiceTaskAudio } from '../../hooks/useVoiceTaskParse';
-import { GENERAL_TASK_PROPERTY_GROUP_KEY } from '../../utils/groupTasksByProperty';
+import {
+  GENERAL_TASK_PROPERTY_GROUP_KEY,
+  INCIDENTS_BOARD_GROUP_KEY,
+} from '../../utils/groupTasksByProperty';
 import { formatNameAndLastInitial } from '../../utils/staff-name-short';
 import type { StaffMember, Task, TaskPriority, TaskType } from '../../types';
 import type { Incident } from '@/modules/incidents/hooks/useIncidents';
@@ -126,6 +129,8 @@ type SmartCreateSheetProps = {
   propertyId: string;
   /** Skip voice capture; open review form with notes/title (e.g. from incident drawer). */
   incidentPrefill?: { notes: string; title?: string; incidentUuid?: string } | null;
+  /** Open directly to the form (no mic) — e.g. pencil FAB on mobile. */
+  startWithManualForm?: boolean;
 };
 
 /** Call `startRecordingFromUserGesture` synchronously from the same pointer/click handler that opens the sheet (not from `useEffect`). iOS Safari requires this for `getUserMedia`. */
@@ -149,7 +154,7 @@ const defaultForm = (): SmartFormValues => ({
 });
 
 export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSheetProps>(function SmartCreateSheet(
-  { open, onOpenChange, propertyId, incidentPrefill },
+  { open, onOpenChange, propertyId, incidentPrefill, startWithManualForm = false },
   ref,
 ) {
   const t = useTranslations('tasks.voiceCreate');
@@ -176,10 +181,15 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
   }>(null);
 
   const effectivePropertyId = dispatchPrefill?.propertyId ?? propertyId;
-  const contextPropertyId = useMemo(
-    () => (effectivePropertyId === GENERAL_TASK_PROPERTY_GROUP_KEY ? null : effectivePropertyId),
-    [effectivePropertyId],
-  );
+  const contextPropertyId = useMemo(() => {
+    if (
+      effectivePropertyId === GENERAL_TASK_PROPERTY_GROUP_KEY ||
+      effectivePropertyId === INCIDENTS_BOARD_GROUP_KEY
+    ) {
+      return null;
+    }
+    return effectivePropertyId;
+  }, [effectivePropertyId]);
 
   const form = useForm<SmartFormValues>({
     resolver: zodResolver(smartFormSchema),
@@ -368,6 +378,13 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
     } else if (dispatchPrefill?.uuid) {
       /* Задача по инциденту: форма уже заполнена в onAssignTechnicianAfterIncident — не сбрасывать в голос. */
       return;
+    } else if (startWithManualForm) {
+      reset({
+        ...defaultForm(),
+        propertyIds: contextPropertyId ? [contextPropertyId] : [],
+      });
+      setPhase('review');
+      resetRecording();
     } else {
       reset(defaultForm());
       setPhase('voice');
@@ -380,6 +397,7 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
     incidentPrefill?.incidentUuid,
     isIncidentDispatch,
     dispatchPrefill?.uuid,
+    startWithManualForm,
     reset,
     resetRecording,
     contextPropertyId,

@@ -3,7 +3,7 @@
 import { memo, useCallback, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useTranslations } from 'next-intl';
-import { ChevronDown, Pencil } from 'lucide-react';
+import { ChevronDown, Mic, Pencil } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useMatchMedia } from '@/hooks/use-match-media';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -58,6 +58,8 @@ export const TaskListView = memo(function TaskListView({
   const isMdUp = useMatchMedia('(min-width: 768px)');
   const [voiceOpen, setVoiceOpen] = useState(false);
   const [voicePropertyId, setVoicePropertyId] = useState<string | null>(null);
+  /** `voice` = mic FAB + запись; `manual` = карандаш FAB — сразу форма без микрофона. */
+  const [fabEntry, setFabEntry] = useState<'voice' | 'manual'>('voice');
   const voiceSheetRef = useRef<VoiceTaskCreateSheetHandle>(null);
   /** Only one row may show the swipe-delete “peek” strip at a time; cleared when opening another row. */
   const [swipeOpenRowId, setSwipeOpenRowId] = useState<string | null>(null);
@@ -86,14 +88,23 @@ export const TaskListView = memo(function TaskListView({
   /** Voice-first: open sheet and start mic in the same tap/click (required for mobile Safari `getUserMedia`). */
   const openVoiceSheet = useCallback((propertyId: string) => {
     flushSync(() => {
+      setFabEntry('voice');
       setVoicePropertyId(propertyId);
       setVoiceOpen(true);
     });
     voiceSheetRef.current?.startRecordingFromUserGesture();
   }, []);
 
+  const openManualSheet = useCallback((propertyId: string) => {
+    flushSync(() => {
+      setFabEntry('manual');
+      setVoicePropertyId(propertyId);
+      setVoiceOpen(true);
+    });
+  }, []);
+
   return (
-    <div className="relative flex min-w-0 flex-col gap-1.5 pb-24 md:gap-3 md:pb-0">
+    <div className="relative flex min-w-0 flex-col gap-1.5 pb-36 md:gap-3 md:pb-0">
       {visibleGroups.map((group) => {
         const collapsed = collapsedById[group.propertyId] ?? false;
         const displayTitle =
@@ -108,10 +119,12 @@ export const TaskListView = memo(function TaskListView({
             ? null
             : group.propertyAddress || null;
 
-        const canQuickAdd =
-          voiceQuickAdd &&
+        const isPropertySection =
           group.propertyId !== GENERAL_TASK_PROPERTY_GROUP_KEY &&
           group.propertyId !== INCIDENTS_BOARD_GROUP_KEY;
+        /** Десктоп: «+ Добавить задачу» и для общих/инцидентов; мобайл — только FAB. */
+        const showAddTaskFooter =
+          voiceQuickAdd && (isPropertySection || (isMdUp && !isPropertySection));
 
         return (
           <section
@@ -210,7 +223,7 @@ export const TaskListView = memo(function TaskListView({
                     </li>
                   ))}
                 </ul>
-                {canQuickAdd ? (
+                {showAddTaskFooter ? (
                   <div
                     className={cn(
                       'border-t border-border/40 px-2 py-1 md:px-3',
@@ -221,8 +234,9 @@ export const TaskListView = memo(function TaskListView({
                       type="button"
                       onClick={() => openVoiceSheet(group.propertyId)}
                       className={cn(
-                        'flex w-full items-center justify-center rounded-md py-2 text-sm font-medium text-muted-foreground',
-                        'transition-colors hover:bg-muted/60 hover:text-foreground',
+                        'flex w-full items-center justify-center rounded-md py-2 text-sm font-medium',
+                        'text-[#008CA4] transition-colors hover:bg-[#008CA4]/8 hover:text-[#007a90]',
+                        'dark:text-[#00d4ff] dark:hover:bg-[#00d4ff]/10',
                       )}
                     >
                       {tList('addTask')}
@@ -236,20 +250,42 @@ export const TaskListView = memo(function TaskListView({
       })}
 
       {voiceQuickAdd && !isMdUp && fabPropertyId ? (
-        <button
-          type="button"
-          onClick={() => openVoiceSheet(fabPropertyId)}
+        <div
           className={cn(
-            'fixed bottom-6 right-6 z-50 flex h-12 w-12 cursor-pointer items-center justify-center rounded-full touch-manipulation',
-            'border border-primary/25 bg-white text-primary shadow-md shadow-slate-900/8 ring-1 ring-primary/10',
-            'transition-colors hover:border-primary/35 hover:bg-primary/[0.06] hover:shadow-lg hover:shadow-slate-900/10',
-            'dark:border-primary/30 dark:bg-slate-900/90 dark:text-primary dark:shadow-black/20 dark:ring-primary/20',
-            'dark:hover:bg-primary/10',
+            'pointer-events-none fixed right-4 z-50 flex flex-col items-center',
+            'bottom-[max(2.25rem,env(safe-area-inset-bottom))]',
+            'w-14',
           )}
-          aria-label={tList('voiceFabAria')}
         >
-          <Pencil className="h-5 w-5" strokeWidth={2} aria-hidden />
-        </button>
+          <div className="pointer-events-auto flex w-full flex-col items-center gap-3">
+            <button
+              type="button"
+              onClick={() => openManualSheet(fabPropertyId)}
+              className={cn(
+                'flex h-[38px] w-[38px] shrink-0 cursor-pointer items-center justify-center rounded-full touch-manipulation',
+                'border-[1.5px] border-[#008CA4] bg-white text-[#008CA4] shadow-md shadow-slate-900/10',
+                'transition-[box-shadow,transform] active:scale-[0.97]',
+                'dark:border-[#008CA4] dark:bg-slate-950 dark:text-[#00d4ff] dark:shadow-black/25',
+              )}
+              aria-label={tList('manualFabAria')}
+            >
+              <Pencil className="h-[15px] w-[15px]" strokeWidth={2} aria-hidden />
+            </button>
+            <button
+              type="button"
+              onClick={() => openVoiceSheet(fabPropertyId)}
+              className={cn(
+                'flex h-14 w-14 shrink-0 cursor-pointer items-center justify-center rounded-full touch-manipulation',
+                'bg-[#008CA4] text-white shadow-lg shadow-[#008CA4]/35',
+                'transition-[box-shadow,transform] hover:bg-[#007a90] active:scale-[0.98]',
+                'dark:bg-[#008CA4] dark:text-white dark:shadow-black/40',
+              )}
+              aria-label={tList('voiceFabAria')}
+            >
+              <Mic className="h-6 w-6" strokeWidth={2} aria-hidden />
+            </button>
+          </div>
+        </div>
       ) : null}
 
       {voiceQuickAdd && (fabPropertyId ?? voicePropertyId) ? (
@@ -258,9 +294,13 @@ export const TaskListView = memo(function TaskListView({
           open={voiceOpen}
           onOpenChange={(o) => {
             setVoiceOpen(o);
-            if (!o) setVoicePropertyId(null);
+            if (!o) {
+              setVoicePropertyId(null);
+              setFabEntry('voice');
+            }
           }}
           propertyId={(voicePropertyId ?? fabPropertyId)!}
+          startWithManualForm={fabEntry === 'manual'}
         />
       ) : null}
     </div>

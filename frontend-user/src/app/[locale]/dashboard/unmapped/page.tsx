@@ -52,11 +52,9 @@ export default function UnmappedInboxPage() {
   const list = reports ?? [];
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6 p-6">
-      <div>
-        <h1 className="text-2xl font-semibold">{t('title')}</h1>
+    <>
+      <div className="mx-auto max-w-3xl space-y-6 px-6 pb-6">
         <p className="text-sm text-muted-foreground">{t('subtitle')}</p>
-      </div>
 
       {list.length === 0 ? (
         <p className="rounded-lg border border-dashed bg-muted/30 p-8 text-center text-sm text-muted-foreground">
@@ -127,6 +125,7 @@ export default function UnmappedInboxPage() {
           ))}
         </ul>
       )}
-    </div>
+      </div>
+    </>
   );
 }

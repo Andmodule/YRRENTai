@@ -28,19 +28,16 @@ export default function PropertiesPage() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">{t('subtitle')}</p>
+    <>
+      <div className="mx-auto max-w-6xl space-y-4 sm:space-y-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+          {!draftOpen && (
+            <Button type="button" className="h-11 w-full shrink-0 sm:h-10 sm:w-auto" onClick={() => setDraftOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" />
+              {t('addProperty')}
+            </Button>
+          )}
         </div>
-        {!draftOpen && (
-          <Button type="button" onClick={() => setDraftOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            {t('addProperty')}
-          </Button>
-        )}
-      </div>
 
       {draftOpen && (
         <PropertyDraftCard
@@ -66,6 +63,7 @@ export default function PropertiesPage() {
       ) : properties.length > 0 ? (
         <PropertyListTable properties={properties} />
       ) : null}
-    </div>
+      </div>
+    </>
   );
 }

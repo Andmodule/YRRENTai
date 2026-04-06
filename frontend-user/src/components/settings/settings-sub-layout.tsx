@@ -2,7 +2,6 @@
 
 import { useEffect } from 'react';
 import { useTranslations } from 'next-intl';
-import { Settings } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import { useRouter } from '@/i18n/navigation';
 import { useAuth } from '@/hooks/use-auth';
@@ -63,10 +62,6 @@ export function SettingsSubLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col space-y-6">
-      <div className="flex items-center gap-2">
-        <Settings className="h-5 w-5 text-muted-foreground" aria-hidden />
-        <h1 className="text-xl font-bold">{t('title')}</h1>
-      </div>
 
       <div className="flex min-h-0 min-w-0 flex-col gap-6 md:flex-row md:items-start md:gap-8">
         <SettingsNav items={navItems} />

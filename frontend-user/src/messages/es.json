@@ -353,13 +353,15 @@
     "operations": "Operaciones",
     "calendar": "Calendario",
     "chat": "Chat",
-    "kbImprovement": "Base de conocimiento",
+    "kbImprovement": "Mejora del agente",
     "settings": "Configuración",
     "incidents": "Incidentes",
     "staff": "Personal",
     "unmappedInbox": "Bandeja",
     "unmappedInboxBadgeHint": "Mensajes del personal sin asignar",
-    "signOut": "Salir"
+    "signOut": "Salir",
+    "collapseSidebar": "Contraer barra lateral",
+    "expandSidebar": "Expandir barra lateral"
   },
   "staff": {
     "title": "Personal",
@@ -649,6 +651,7 @@
     },
     "listByProperty": {
       "voiceFabAria": "Nueva tarea — por voz",
+      "manualFabAria": "Nueva tarea — manualmente",
       "untitledTask": "Sin título",
       "generalTitle": "Tareas generales",
       "unnamedProperty": "Propiedad sin nombre",
@@ -810,7 +813,7 @@
   "inbox": {
     "backendUnreachable": "No hay conexión con la API",
     "backendUnreachableHint": "Arranque el backend Nest para que Next.js proxifique /api/v1 y Socket.IO se conecte. URL esperada: {apiUrl}",
-    "title": "Bandeja de entrada",
+    "title": "Chat",
     "selectConversation": "Seleccione una conversación de la lista",
     "allProperties": "Todas las propiedades",
     "allStatuses": "Todos los estados",
@@ -1035,7 +1038,7 @@
     }
   },
   "kbImprovement": {
-    "title": "Mejorar la base de conocimiento",
+    "title": "Mejora del agente",
     "subtitle": "Respuestas manuales — agrégalas a la base de conocimiento",
     "queueTab": "Cola",
     "pendingStats": "Pendientes: {count}",
