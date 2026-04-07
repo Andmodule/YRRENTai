@@ -347,6 +347,7 @@
   },
   "nav": {
     "tasksIncidentsHint": "Aktywne incydenty są w kolumnie Problem na tablicy zadań",
+    "chatNeedsHumanHint": "W czacie czeka wiadomość gościa na Twoją odpowiedź",
     "dashboard": "Panel",
     "properties": "Obiekty",
     "tasks": "Zadania",

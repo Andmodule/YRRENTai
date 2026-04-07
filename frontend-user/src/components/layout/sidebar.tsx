@@ -20,6 +20,7 @@ import {
   Warehouse,
 } from 'lucide-react';
 import { useOpenIncidentsCount } from '@/modules/incidents/hooks/useIncidents';
+import { useChatNeedsHumanPending } from '@/hooks/use-conversations';
 import { useUnmappedReportsCount } from '@/hooks/use-unmapped-reports';
 import { useAuth } from '@/hooks/use-auth';
 import { apiClient } from '@/lib/api/client';
@@ -56,6 +57,7 @@ export function Sidebar() {
   const pathname = usePathname();
   const { data: openIncidents = 0 } = useOpenIncidentsCount();
   const { data: unmappedCount = 0 } = useUnmappedReportsCount();
+  const chatNeedsHuman = useChatNeedsHumanPending();
   const { user, mutate } = useAuth();
 
   async function handleLogout() {
@@ -212,6 +214,13 @@ export function Sidebar() {
                         aria-label={t('tasksIncidentsHint')}
                       />
                     )}
+                    {showCollapsedChrome && key === 'chat' && chatNeedsHuman && (
+                      <span
+                        className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-amber-500 ring-2 ring-slate-900"
+                        title={t('chatNeedsHumanHint')}
+                        aria-label={t('chatNeedsHumanHint')}
+                      />
+                    )}
                   </span>
                   <span
                     className={cn(
@@ -226,6 +235,13 @@ export function Sidebar() {
                       className="h-2 w-2 shrink-0 rounded-full bg-amber-500"
                       title={t('tasksIncidentsHint')}
                       aria-label={t('tasksIncidentsHint')}
+                    />
+                  )}
+                  {!showCollapsedChrome && key === 'chat' && chatNeedsHuman && (
+                    <span
+                      className="h-2 w-2 shrink-0 rounded-full bg-amber-500"
+                      title={t('chatNeedsHumanHint')}
+                      aria-label={t('chatNeedsHumanHint')}
                     />
                   )}
                   {!showCollapsedChrome && key === 'unmappedInbox' && unmappedCount > 0 && (

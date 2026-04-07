@@ -102,7 +102,13 @@ export function Header() {
 
   if (isChatPage) {
     return (
-      <header className={cn(headerShell, 'flex flex-col')}>
+      <header
+        className={cn(
+          headerShell,
+          /* На мобайле шапку даёт `ChatMobileNav` (fixed); этот блок в потоке давал пустую полосу ~h-14 под ней. */
+          'hidden flex-col lg:flex',
+        )}
+      >
         <div className="grid h-14 grid-cols-[1fr_auto_1fr] items-center gap-2 px-4 sm:h-16 sm:px-6">
           <div className="flex justify-start">
             <Button

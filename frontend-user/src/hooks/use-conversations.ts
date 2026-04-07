@@ -165,3 +165,9 @@ export function useConversations(opts: UseConversationsOpts = {}) {
     reply,
   };
 }
+
+/** Есть ли диалоги, ожидающие ответа менеджера (оранжевая точка в инбоксе — `needs_human`). */
+export function useChatNeedsHumanPending(): boolean {
+  const { conversations } = useConversations({ status: 'needs_human', limit: 1 });
+  return conversations.some((c) => c.status === 'needs_human');
+}

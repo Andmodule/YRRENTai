@@ -347,6 +347,7 @@
   },
   "nav": {
     "tasksIncidentsHint": "Los incidentes activos aparecen en la columna Incidencia del tablero",
+    "chatNeedsHumanHint": "Hay un mensaje de huésped esperando tu respuesta en el chat",
     "dashboard": "Panel",
     "properties": "Propiedades",
     "tasks": "Tareas",

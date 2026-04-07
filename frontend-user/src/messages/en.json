@@ -459,6 +459,7 @@
   },
   "nav": {
     "tasksIncidentsHint": "Active incidents appear in the Issue column on the task board",
+    "chatNeedsHumanHint": "A guest message is waiting for your reply in Chat",
     "dashboard": "Dashboard",
     "properties": "Properties",
     "tasks": "Tasks",
