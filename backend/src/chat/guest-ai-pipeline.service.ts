@@ -82,7 +82,6 @@ export class GuestAiPipelineService {
           const { rawEndsEscalate, textWithoutMarker } = parseAssistantEscalation(fullText);
 
           const kbEmpty = kbEntries.length === 0;
-          const kbHasReliableMatch = kbEntries.length > 0 && !kbWeakMatch;
           const forcedByForbidden = shouldForceEscalationGuestReply(textWithoutMarker);
           const modelSaysEscalateWithoutMarker =
             assistantReplyIndicatesEscalationWithoutMarker(textWithoutMarker);
@@ -94,8 +93,13 @@ export class GuestAiPipelineService {
             rawEndsEscalate ||
             modelSaysEscalateWithoutMarker;
 
+          /** Canned reply iff there is no KB-backed answer to show: empty/weak KB, forbidden wording, or model escalates. */
           const guestEscalationUi =
-            kbEmpty || forcedByForbidden || kbWeakMatch || (rawEndsEscalate && !kbHasReliableMatch);
+            kbEmpty ||
+            forcedByForbidden ||
+            kbWeakMatch ||
+            rawEndsEscalate ||
+            modelSaysEscalateWithoutMarker;
 
           const escalationFallback = resolveGuestEscalationFallback(content);
 

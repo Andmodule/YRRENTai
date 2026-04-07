@@ -995,8 +995,6 @@ export class MessagingService {
 
       const { rawEndsEscalate, textWithoutMarker } = parseAssistantEscalation(rawDraft);
 
-      const kbHasReliableMatch = !kbEmpty && !kbWeakMatch;
-
       const forcedByForbidden = shouldForceEscalationGuestReply(textWithoutMarker);
 
       const modelSaysEscalateWithoutMarker =
@@ -1010,9 +1008,13 @@ export class MessagingService {
         rawEndsEscalate ||
         modelSaysEscalateWithoutMarker;
 
+      /** Canned reply iff no KB-backed answer to show: same rule as `GuestAiPipelineService`. */
       const guestEscalationUi =
-
-        kbEmpty || forcedByForbidden || kbWeakMatch || (rawEndsEscalate && !kbHasReliableMatch);
+        kbEmpty ||
+        forcedByForbidden ||
+        kbWeakMatch ||
+        rawEndsEscalate ||
+        modelSaysEscalateWithoutMarker;
 
       const escalationFallback = resolveGuestEscalationFallback(userText);
 
