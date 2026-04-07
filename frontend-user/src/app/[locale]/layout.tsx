@@ -1,17 +1,24 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { NextIntlClientProvider } from 'next-intl';
 import { getMessages, setRequestLocale } from 'next-intl/server';
 import { notFound } from 'next/navigation';
 import { Suspense } from 'react';
-import { Toaster } from 'sonner';
 import { routing } from '@/i18n/routing';
 import { ThemeProvider } from '@/components/providers/theme-provider';
+import { ThemedToaster } from '@/components/providers/themed-toaster';
 import { QueryProvider } from '@/components/providers/query-provider';
 import '@/app/globals.css';
 
 export const metadata: Metadata = {
   title: 'RentAI — Dashboard',
   description: 'AI-powered rental property management dashboard',
+};
+
+/** `viewport-fit=cover` — чтобы `env(safe-area-inset-*)` работали на iPhone / PWA. */
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
 };
 
 interface LayoutProps {
@@ -31,12 +38,12 @@ export default async function LocaleLayout({ children, params }: LayoutProps) {
 
   return (
     <html lang={locale} suppressHydrationWarning>
-      <body className="min-h-screen bg-background text-foreground antialiased">
-        <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange={false}>
+      <body className="min-h-dvh min-h-screen bg-background text-foreground antialiased">
+        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange={false}>
           <QueryProvider>
             <NextIntlClientProvider locale={locale} messages={messages}>
               <Suspense fallback={null}>
-                <Toaster richColors theme="system" position="top-center" />
+                <ThemedToaster />
               </Suspense>
               {children}
             </NextIntlClientProvider>

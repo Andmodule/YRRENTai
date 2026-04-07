@@ -81,12 +81,12 @@ function AppShellContent({ children }: { children: React.ReactNode }) {
             'min-w-0 flex-1',
             isChat
               ? /* overflow-hidden на всех ширинах — иначе ломается flex-скролл и поле ввода уезжает за viewport */
-                'flex min-h-0 flex-col overflow-hidden p-0 lg:p-6'
+                'flex min-h-0 flex-col overflow-hidden p-0 pl-[max(0px,env(safe-area-inset-left,0px))] pr-[max(0px,env(safe-area-inset-right,0px))] lg:p-6'
               : isTasksBoardPage
-                ? /* мобайл: меньше пустоты между шапкой и фильтрами */
-                  'flex min-h-0 min-w-0 flex-col overflow-hidden px-4 pb-4 pt-1 sm:p-6'
+                ? /* мобайл: меньше пустоты между шапкой и фильтрами; safe-area для вырезов iPhone */
+                  'flex min-h-0 min-w-0 flex-col overflow-hidden pt-1 pb-[max(1rem,env(safe-area-inset-bottom,0px))] pl-[max(1rem,env(safe-area-inset-left,0px))] pr-[max(1rem,env(safe-area-inset-right,0px))] sm:pt-6 sm:pb-[max(1.5rem,env(safe-area-inset-bottom,0px))] sm:pl-6 sm:pr-6'
                 : /* overflow-x-hidden: широкий тулбар/сетка не расширяют viewport по X */
-                  'flex min-h-0 min-w-0 flex-col overflow-x-hidden p-4 sm:p-6',
+                  'flex min-h-0 min-w-0 flex-col overflow-x-hidden pt-4 pb-[max(1rem,env(safe-area-inset-bottom,0px))] pl-[max(1rem,env(safe-area-inset-left,0px))] pr-[max(1rem,env(safe-area-inset-right,0px))] sm:pt-6 sm:pb-[max(1.5rem,env(safe-area-inset-bottom,0px))] sm:pl-6 sm:pr-6',
           )}
         >
           {children}

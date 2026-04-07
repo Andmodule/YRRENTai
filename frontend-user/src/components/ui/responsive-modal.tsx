@@ -1,11 +1,28 @@
 'use client';
 
-import type { ComponentProps, CSSProperties, ReactNode } from 'react';
+import { createContext, useContext, type ComponentProps, type CSSProperties, type ReactNode } from 'react';
 import { Dialog, DialogClose, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import { Drawer, DrawerClose, DrawerContent, DrawerTrigger } from '@/components/ui/drawer';
+import { Sheet, SheetClose, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { useMediaQuery } from '@/hooks/use-media-query';
 
 const MD_UP = '(min-width: 768px)';
+
+export type ResponsiveModalDesktopPresentation = 'centered' | 'side';
+
+const ResponsiveModalDesktopContext = createContext<boolean | undefined>(undefined);
+const ResponsiveModalPresentationContext = createContext<ResponsiveModalDesktopPresentation>('centered');
+
+/** Same boolean as `ResponsiveModal` / `ResponsiveModalContent` (avoids split Dialog vs Drawer). */
+function useResponsiveModalIsDesktop(): boolean {
+  const ctx = useContext(ResponsiveModalDesktopContext);
+  const fallback = useMediaQuery(MD_UP);
+  return ctx !== undefined ? ctx : fallback;
+}
+
+function useResponsiveModalPresentation(): ResponsiveModalDesktopPresentation {
+  return useContext(ResponsiveModalPresentationContext);
+}
 
 export function ResponsiveModal({
   open,
@@ -13,38 +30,53 @@ export function ResponsiveModal({
   children,
   /** Vaul snap heights (e.g. `['0.5', '0.92']`) — mobile drawer only. */
   drawerSnapPoints,
+  /** Desktop: side panel (Sheet) vs centered Dialog. Default `centered`. */
+  desktopPresentation = 'centered',
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   children: ReactNode;
   drawerSnapPoints?: (number | string)[];
+  desktopPresentation?: ResponsiveModalDesktopPresentation;
 }) {
   const isDesktop = useMediaQuery(MD_UP);
 
-  if (isDesktop) {
-    return (
+  const desktopRoot =
+    desktopPresentation === 'side' ? (
+      <Sheet open={open} onOpenChange={onOpenChange}>
+        {children}
+      </Sheet>
+    ) : (
       <Dialog open={open} onOpenChange={onOpenChange}>
         {children}
       </Dialog>
     );
-  }
 
   return (
-    <Drawer
-      open={open}
-      onOpenChange={onOpenChange}
-      {...(drawerSnapPoints && drawerSnapPoints.length > 0 ? { snapPoints: drawerSnapPoints } : {})}
-      modal
-    >
-      {children}
-    </Drawer>
+    <ResponsiveModalPresentationContext.Provider value={desktopPresentation}>
+      <ResponsiveModalDesktopContext.Provider value={isDesktop}>
+        {isDesktop ? (
+          desktopRoot
+        ) : (
+          <Drawer
+            open={open}
+            onOpenChange={onOpenChange}
+            {...(drawerSnapPoints && drawerSnapPoints.length > 0 ? { snapPoints: drawerSnapPoints } : {})}
+            modal
+          >
+            {children}
+          </Drawer>
+        )}
+      </ResponsiveModalDesktopContext.Provider>
+    </ResponsiveModalPresentationContext.Provider>
   );
 }
 
 export function ResponsiveModalTrigger(props: ComponentProps<typeof DialogTrigger>) {
-  const isDesktop = useMediaQuery(MD_UP);
+  const isDesktop = useResponsiveModalIsDesktop();
+  const presentation = useResponsiveModalPresentation();
   if (isDesktop) {
-    return <DialogTrigger {...props} />;
+    return presentation === 'side' ? <SheetTrigger {...props} /> : <DialogTrigger {...props} />;
   }
   return <DrawerTrigger {...props} />;
 }
@@ -63,7 +95,7 @@ interface ResponsiveModalContentProps {
   footer?: React.ReactNode;
   className?: string;
   bodyClassName?: string;
-  /** Dialog/Drawer root (portaled). Bind task accent tokens so primary is cyan, not global blue. */
+  /** Dialog/Drawer/Sheet root (portaled). Bind task accent tokens so primary is cyan, not global blue. */
   contentStyle?: CSSProperties;
 }
 
@@ -79,7 +111,25 @@ export function ResponsiveModalContent({
   bodyClassName,
   contentStyle,
 }: ResponsiveModalContentProps) {
-  const isDesktop = useMediaQuery(MD_UP);
+  const isDesktop = useResponsiveModalIsDesktop();
+  const presentation = useResponsiveModalPresentation();
+
+  if (isDesktop && presentation === 'side') {
+    return (
+      <SheetContent
+        title={title}
+        description={description}
+        headerAdornment={headerAdornment}
+        footer={footer}
+        className={className}
+        bodyClassName={bodyClassName}
+        style={contentStyle}
+      >
+        {children}
+      </SheetContent>
+    );
+  }
+
   if (isDesktop) {
     return (
       <DialogContent
@@ -95,6 +145,7 @@ export function ResponsiveModalContent({
       </DialogContent>
     );
   }
+
   return (
     <DrawerContent
       title={title}
@@ -113,9 +164,10 @@ export function ResponsiveModalContent({
 }
 
 export function ResponsiveModalClose(props: ComponentProps<typeof DialogClose>) {
-  const isDesktop = useMediaQuery(MD_UP);
+  const isDesktop = useResponsiveModalIsDesktop();
+  const presentation = useResponsiveModalPresentation();
   if (isDesktop) {
-    return <DialogClose {...props} />;
+    return presentation === 'side' ? <SheetClose {...props} /> : <DialogClose {...props} />;
   }
   return <DrawerClose {...props} />;
 }

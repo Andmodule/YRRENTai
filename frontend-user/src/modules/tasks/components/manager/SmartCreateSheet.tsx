@@ -704,7 +704,7 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
             // Solid shell: avoid translucent bg-* /50 classes so the list does not show through.
             phase === 'review' && entityTab === 'incident' && 'border-t-2 border-red-600 dark:border-red-500',
             isDesktop
-              ? 'inset-y-0 right-0 top-0 bottom-0 left-auto h-dvh max-h-dvh w-[min(100vw-0.5rem,26rem)] rounded-none rounded-l-xl border-l data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right'
+              ? 'inset-y-0 right-0 top-0 bottom-0 left-auto h-dvh max-h-dvh w-[min(26rem,calc(100svw-0.5rem))] rounded-none rounded-l-xl border-l data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right'
               : 'inset-x-0 bottom-0 max-h-[min(92dvh,92vh)] rounded-t-xl data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom',
           )}
         >
@@ -757,7 +757,7 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
               <div className="relative z-0 flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">
                 <div
                   className={cn(
-                    'flex min-h-0 flex-1 flex-col items-center justify-start gap-2 px-4 pb-3 pt-7 sm:gap-2.5 sm:px-6 sm:pb-4 sm:pt-8',
+                    'flex min-h-0 flex-1 flex-col items-center justify-start gap-2 px-4 pb-[max(1.25rem,env(safe-area-inset-bottom,0px))] pt-7 sm:gap-2.5 sm:px-6 sm:pb-4 sm:pt-8',
                   )}
                 >
                   {typeof window !== 'undefined' && !window.isSecureContext && window.location.hostname !== 'localhost' ? (

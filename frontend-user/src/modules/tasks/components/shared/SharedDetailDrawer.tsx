@@ -529,7 +529,7 @@ function TaskDetailMode({
   }
 
   return (
-    <ResponsiveModal open={open} onOpenChange={onOpenChange} drawerSnapPoints={['0.5', '0.92']}>
+    <ResponsiveModal open={open} onOpenChange={onOpenChange} desktopPresentation="side">
       <ResponsiveModalContent
         title={stickyTitle}
         headerAdornment={headerAdornment}
@@ -538,7 +538,8 @@ function TaskDetailMode({
         contentStyle={TASK_DETAIL_PORTAL_STYLE}
         className={cn(
           TASK_MODAL_THEME,
-          'flex w-full max-w-xl flex-col rounded-t-2xl sm:max-w-xl sm:rounded-xl md:max-h-[min(90dvh,90vh)]',
+          'flex w-full max-w-xl flex-col rounded-t-2xl sm:max-w-xl sm:rounded-xl',
+          'max-h-[85vh] md:max-h-[min(90dvh,90vh)] md:rounded-none md:rounded-l-2xl',
         )}
         bodyClassName="border-t border-border/50 px-4 pt-4 pb-4 max-md:border-t-0 max-md:px-4 max-md:pb-2"
         footer={modalFooter}
@@ -1265,12 +1266,12 @@ function IncidentDetailMode({
 
   return (
     <>
-      <ResponsiveModal open={open} onOpenChange={onOpenChange}>
+      <ResponsiveModal open={open} onOpenChange={onOpenChange} desktopPresentation="side">
         <ResponsiveModalContent
           title={stickyTitle}
           description={t('subtitle')}
           headerAdornment={headerAdornment}
-          className="max-w-xl"
+          className="max-h-[85vh] max-w-xl rounded-t-2xl md:max-h-[min(90dvh,90vh)] md:rounded-none md:rounded-l-2xl"
           bodyClassName="px-4 pt-4 pb-4"
           footer={
             incidentFooter ? (

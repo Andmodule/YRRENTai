@@ -112,7 +112,7 @@ export function KanbanBoardRail({
             }}
             className={cn(
               'flex min-h-0 flex-col',
-              'max-md:snap-center max-md:shrink-0 max-md:w-[min(22rem,calc(100vw-2rem))]',
+              'max-md:snap-center max-md:shrink-0 max-md:w-[min(22rem,calc(100svw-2rem))]',
               'md:w-auto md:min-w-0 md:snap-none md:shrink-0',
             )}
           >

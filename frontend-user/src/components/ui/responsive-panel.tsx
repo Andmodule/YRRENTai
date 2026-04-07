@@ -36,7 +36,7 @@ export function ResponsivePanel({ open, onOpenChange, title, children }: Respons
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent title={title} className="w-[400px] max-w-[100vw] sm:max-w-[400px]">
+      <SheetContent title={title} className="w-[400px] max-w-[min(400px,100svw)] sm:max-w-[400px]">
         {children}
       </SheetContent>
     </Sheet>

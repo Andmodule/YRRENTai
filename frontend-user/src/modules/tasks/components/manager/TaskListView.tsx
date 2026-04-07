@@ -149,7 +149,10 @@ export const TaskListView = memo(function TaskListView({
   }, [voiceQuickAdd, isMdUp, visibleGroups.length]);
 
   return (
-    <div ref={listRootRef} className="relative flex min-w-0 flex-col gap-1.5 pb-36 md:gap-3 md:pb-0">
+    <div
+      ref={listRootRef}
+      className="relative flex min-w-0 flex-col gap-1.5 pb-[max(9rem,calc(9rem+env(safe-area-inset-bottom,0px)))] md:gap-3 md:pb-0"
+    >
       {visibleGroups.map((group) => {
         const collapsed = collapsedById[group.propertyId] ?? false;
         const displayTitle =
@@ -297,8 +300,9 @@ export const TaskListView = memo(function TaskListView({
       {voiceQuickAdd && !isMdUp && fabPropertyId ? (
         <div
           className={cn(
-            'pointer-events-none fixed right-6 z-50 flex flex-col items-center',
-            'bottom-[max(2.25rem,env(safe-area-inset-bottom))]',
+            'pointer-events-none fixed z-50 flex flex-col items-center',
+            'right-[max(1.5rem,env(safe-area-inset-right,0px))]',
+            'bottom-[max(2.25rem,env(safe-area-inset-bottom,0px))]',
             'w-[4.2rem]',
           )}
         >
@@ -332,7 +336,7 @@ export const TaskListView = memo(function TaskListView({
                   align="end"
                   sideOffset={10}
                   className={cn(
-                    'z-[200] flex w-[min(11rem,calc(100vw-2rem))] min-w-0 flex-col gap-2 border-0 bg-transparent p-0 shadow-none outline-none',
+                    'z-[200] flex w-[min(11rem,calc(100svw-2rem))] min-w-0 flex-col gap-2 border-0 bg-transparent p-0 shadow-none outline-none',
                     'data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95',
                   )}
                 >

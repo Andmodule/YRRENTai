@@ -57,7 +57,7 @@ export function DrawerContent({
       <DrawerOverlay />
       <DrawerPrimitive.Content
         className={cn(
-          'fixed inset-x-0 bottom-0 z-[100] flex max-h-[90vh] flex-col rounded-t-[20px] border bg-background shadow-lg',
+          'fixed inset-x-0 bottom-0 z-[100] flex max-h-[85vh] flex-col rounded-t-[20px] border bg-background shadow-lg',
           'data-[state=open]:animate-in data-[state=closed]:animate-out',
           'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
           'data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom',
@@ -92,7 +92,14 @@ export function DrawerContent({
           </div>
           {headerAdornment ? <div className="px-6 pb-3">{headerAdornment}</div> : null}
         </div>
-        <div className={cn('min-h-0 flex-1 overflow-y-auto px-6 pt-4 pb-4', bodyClassName)}>{children}</div>
+        <div
+          className={cn(
+            'min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain px-6 pt-4 pb-4',
+            bodyClassName,
+          )}
+        >
+          {children}
+        </div>
         {footer ? (
           <div className="shrink-0 border-t border-border bg-background px-6 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
             {footer}

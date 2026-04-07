@@ -31,7 +31,7 @@ export function TasksFiltersBar({
       className={cn(
         'flex w-full min-w-0 flex-row items-center gap-1 overflow-x-auto whitespace-nowrap no-scrollbar',
         /* Мобайл / планшет: больше воздуха сверху и снизу; от lg — компактнее под десктоп */
-        'py-2.5 pl-4 pr-0 sm:px-4 lg:py-1.5',
+        'py-2.5 pl-4 pr-[max(0.75rem,env(safe-area-inset-right,0px))] sm:px-4 lg:py-1.5',
       )}
     >
         {STATUSES.map((s) => {

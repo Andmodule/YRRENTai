@@ -23,7 +23,7 @@ export default function TasksPage() {
   const setFilters = useTasksFiltersStore((s) => s.setFilters);
 
   return (
-    <div className="tasks-theme flex min-h-0 flex-1 flex-col overflow-hidden bg-slate-50 max-md:-mx-4 max-md:px-2 max-md:pb-2 max-md:pt-0 md:space-y-4 dark:bg-background">
+    <div className="tasks-theme flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-slate-50 max-md:-mx-4 max-md:px-2 max-md:pb-2 max-md:pt-0 md:space-y-4 dark:bg-background">
       <Suspense fallback={<TasksBoardFallback />}>
         <ManagerKanban filters={filters} onFiltersChange={setFilters} />
       </Suspense>

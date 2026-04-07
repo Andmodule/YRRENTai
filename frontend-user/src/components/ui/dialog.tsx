@@ -66,7 +66,10 @@ export function DialogContent({
           {headerAdornment ? <div className="px-6 pb-4">{headerAdornment}</div> : null}
         </div>
         <div
-          className={cn('min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 pt-4 pb-4', bodyClassName)}
+          className={cn(
+            'min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain px-6 pt-4 pb-4',
+            bodyClassName,
+          )}
         >
           {children}
         </div>
