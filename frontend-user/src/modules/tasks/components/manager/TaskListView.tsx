@@ -302,7 +302,8 @@ export const TaskListView = memo(function TaskListView({
           className={cn(
             'pointer-events-none fixed z-50 flex flex-col items-center',
             'right-[max(1.5rem,env(safe-area-inset-right,0px))]',
-            'bottom-[max(2.25rem,env(safe-area-inset-bottom,0px))]',
+            /* iOS Safari: нижняя панель (табы/навигация) не входит в safe-area — поднимаем «матрёшку» над хромом */
+            'bottom-[max(4.75rem,calc(env(safe-area-inset-bottom,0px)+4.25rem))]',
             'w-[4.2rem]',
           )}
         >
