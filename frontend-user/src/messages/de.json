@@ -805,6 +805,7 @@
     "guestAsUserHint": "Nachrichten gehen in diese Konversation wie eine Gastfrage.",
     "staffReply": "Antwort Manager",
     "operatorReplyBadge": "Antwort vom Operator",
+    "attachmentsGroupAria": "Angehängte Dateien: {count}",
     "messageDeliveryRetry": "Erneut senden",
     "messageChannelHint": "Kanal: {channel}",
     "bookingComMessageTitle": "Nachricht von {name}",

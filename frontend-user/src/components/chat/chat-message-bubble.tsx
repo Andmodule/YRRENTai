@@ -110,10 +110,14 @@ export function ChatMessageBubble({ message, onRetryStaffDelivery }: ChatMessage
           )}
         </div>
         {isUser && emailAttachments && (
-          <div className="mt-3 border-t border-primary-foreground/15 pt-3 dark:border-zinc-600/50">
-            <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-primary-foreground/80 dark:text-zinc-400">
+          <div
+            className="mt-3 border-t border-primary-foreground/15 pt-3 dark:border-zinc-600/50"
+            role="group"
+            aria-label={t('attachmentsGroupAria', { count: emailAttachments.length })}
+          >
+            <div className="mb-2 flex items-center gap-1.5 text-[11px] font-medium tabular-nums text-primary-foreground/75 dark:text-zinc-400">
               <Paperclip className="h-3.5 w-3.5 shrink-0" aria-hidden />
-              {t('attachmentsHeading', { count: emailAttachments.length })}
+              <span aria-hidden>{emailAttachments.length}</span>
             </div>
             <div className="flex flex-wrap gap-2">
               {emailAttachments.map((att) => (

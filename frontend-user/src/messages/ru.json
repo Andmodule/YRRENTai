@@ -1149,7 +1149,7 @@
     "operatorReplyBadge": "Ответил оператор",
     "messageDeliveryRetry": "Повторить отправку",
     "messageChannelHint": "Канал: {channel}",
-    "attachmentsHeading": "Вложения ({count})",
+    "attachmentsGroupAria": "Файлы к сообщению: {count}",
     "attachmentOpenAria": "Открыть вложение {name}",
     "bookingComMessageTitle": "Сообщение {name}",
     "bookingComMoreToggleAria": "Показать или скрыть дополнительный текст письма",

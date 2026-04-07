@@ -34,13 +34,19 @@ describe('formatAttachmentsForAgent', () => {
     expect(formatAttachmentsForAgent([])).toBe('');
   });
 
-  it('formats lines with optional size', () => {
-    const lines = formatAttachmentsForAgent([
-      { filename: 'x.pdf', sizeBytes: 500 },
-      { filename: 'y.bin', sizeBytes: null },
-    ]);
-    expect(lines).toContain('[Attachment: x.pdf (~500 B)]');
-    expect(lines).toContain('[Attachment: y.bin]');
+  it('returns generic single-file hint', () => {
+    expect(formatAttachmentsForAgent([{ filename: 'x.pdf', sizeBytes: 500 }])).toBe(
+      'The guest attached a file to this email (content not inlined).',
+    );
+  });
+
+  it('returns generic multi-file hint', () => {
+    expect(
+      formatAttachmentsForAgent([
+        { filename: 'x.pdf', sizeBytes: 500 },
+        { filename: 'y.bin', sizeBytes: null },
+      ]),
+    ).toBe('The guest attached 2 files to this email (content not inlined).');
   });
 });
 
@@ -49,7 +55,7 @@ describe('buildGuestAgentText', () => {
 
   it('non-booking: inquiry + attachments', () => {
     const s = buildGuestAgentText('direct', 'Hello', '', [{ filename: 'a.pdf', sizeBytes: 100 }], id);
-    expect(s).toContain('[Attachment: a.pdf');
+    expect(s).toContain('attached a file');
     expect(s).toContain('Hello');
   });
 

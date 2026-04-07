@@ -65,17 +65,17 @@ export class TelegramEscalationSenderService {
     }
 
     const propertyId = escalation.propertyId;
-    const shortCode = propertyId.slice(0, 8).toUpperCase();
     const propertyName = escalation.propertyName;
     const guestQuestion = escalation.guestQuestion;
 
     const mdText =
       `🔔 *Вопрос гостя*\n` +
-      `Объект: *${this.escape(propertyName)}* \\[${shortCode}\\]\n\n` +
+      `Объект: *${this.escape(propertyName)}*\n` +
+      `ID объекта: ${this.escape(propertyId)}\n\n` +
       `«${this.escape(guestQuestion)}»\n\n` +
       `↩️ Ответьте _reply_ на это сообщение — ответ автоматически уйдёт гостю\\.`;
 
-    const plainText = this.buildEscalationPlainText(propertyName, shortCode, guestQuestion);
+    const plainText = this.buildEscalationPlainText(propertyName, propertyId, guestQuestion);
 
     const ok = await this.tryPostToChat(payload.telegramChatId, escalation, mdText, plainText);
     if (!ok) {
@@ -205,13 +205,14 @@ export class TelegramEscalationSenderService {
 
   private buildEscalationPlainText(
     propertyName: string,
-    shortCode: string,
+    propertyId: string,
     guestQuestion: string,
   ): string {
     const q = guestQuestion.length > 3500 ? `${guestQuestion.slice(0, 3497)}…` : guestQuestion;
     return (
       `🔔 Вопрос гостя\n` +
-      `Объект: ${propertyName} [${shortCode}]\n\n` +
+      `Объект: ${propertyName}\n` +
+      `ID объекта: ${propertyId}\n\n` +
       `«${q}»\n\n` +
       `↩️ Ответьте reply на это сообщение — ответ автоматически уйдёт гостю.`
     );

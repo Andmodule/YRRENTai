@@ -43,26 +43,14 @@ export function parseResendInboundAttachments(raw: unknown): InboundAttachmentMe
   return out;
 }
 
-function formatBytes(n: number | null): string {
-  if (n == null || !Number.isFinite(n) || n < 0) return '';
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) {
-    return `${(n / 1024).toFixed(n < 10 * 1024 ? 1 : 0)} KB`;
-  }
-  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 /**
- * MVP: one line per file for the LLM (no file content).
+ * Short hint for the LLM: guest sent file(s); filenames stay out of model text (UI shows chips / Telegram sends files).
  */
 export function formatAttachmentsForAgent(attachments: InboundAttachmentMeta[]): string {
   if (!attachments.length) return '';
-  return attachments
-    .map((a) => {
-      const sz = formatBytes(a.sizeBytes);
-      return `[Attachment: ${a.filename}${sz ? ` (~${sz})` : ''}]`;
-    })
-    .join('\n');
+  return attachments.length === 1
+    ? 'The guest attached a file to this email (content not inlined).'
+    : `The guest attached ${attachments.length} files to this email (content not inlined).`;
 }
 
 /**

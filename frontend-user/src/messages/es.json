@@ -850,6 +850,7 @@
     "guestAsUserHint": "Los mensajes van a esta conversación como pregunta del huésped.",
     "staffReply": "Respuesta del gestor",
     "operatorReplyBadge": "Respondió el operador",
+    "attachmentsGroupAria": "Archivos adjuntos: {count}",
     "messageDeliveryRetry": "Reintentar envío",
     "messageChannelHint": "Canal: {channel}",
     "bookingComMessageTitle": "Mensaje de {name}",
