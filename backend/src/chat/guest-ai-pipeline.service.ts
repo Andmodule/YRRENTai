@@ -99,11 +99,10 @@ export class GuestAiPipelineService {
 
           const escalationFallback = resolveGuestEscalationFallback(content);
 
+          /** Always use the fixed localized phrase for escalation — model wording is too variable. */
           let cleanText: string;
           if (!guestEscalationUi) {
             cleanText = textWithoutMarker;
-          } else if (rawEndsEscalate && !forcedByForbidden) {
-            cleanText = textWithoutMarker || escalationFallback;
           } else {
             cleanText = escalationFallback;
           }

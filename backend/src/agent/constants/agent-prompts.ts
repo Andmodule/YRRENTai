@@ -20,22 +20,40 @@ export function parseAssistantEscalation(fullText: string): {
   return { rawEndsEscalate: true, textWithoutMarker };
 }
 
-/** Russian fallback when the model did not return guest-safe text (escalation path). */
+/** Russian — fixed guest-visible text on escalation / auto-reply when KB cannot answer. */
 export const GUEST_ESCALATION_FALLBACK_MESSAGE =
-  'Я уточню это у хозяина и скоро отвечу вам. Если появятся другие вопросы — с удовольствием помогу!';
+  'Мне нужно уточнить детали у менеджера. Вернусь к вам с ответом в ближайшее время. Спасибо!';
 
-/** English fallback — same role as {@link GUEST_ESCALATION_FALLBACK_MESSAGE}. */
+/** English — same intent as {@link GUEST_ESCALATION_FALLBACK_MESSAGE}; default when language is unknown. */
 export const GUEST_ESCALATION_FALLBACK_MESSAGE_EN =
-  "I'll check this with the host and get back to you shortly. If you have any other questions, I'm happy to help!";
+  'I need to check the details with the manager. I will get back to you with an answer soon. Thanks!';
+
+export const GUEST_ESCALATION_FALLBACK_MESSAGE_DE =
+  'Ich muss die Details mit dem Manager klären. Ich melde mich in Kürze mit einer Antwort bei Ihnen. Vielen Dank!';
+
+export const GUEST_ESCALATION_FALLBACK_MESSAGE_PL =
+  'Muszę doprecyzować szczegóły z menedżerem. Wkrótce wrócę do Państwa z odpowiedzią. Dziękuję!';
+
+export const GUEST_ESCALATION_FALLBACK_MESSAGE_ES =
+  'Necesito aclarar los detalles con el gerente. Volveré con una respuesta en breve. ¡Gracias!';
+
+/** Ukrainian — distinct Cyrillic letters from Russian. */
+export const GUEST_ESCALATION_FALLBACK_MESSAGE_UK =
+  'Мені потрібно уточнити деталі у менеджера. Повернуся до вас з відповіддю найближчим часом. Дякую!';
 
 /**
- * Pick escalation fallback text to match the guest's message language (Latin vs Cyrillic heuristic).
+ * Pick escalation fallback text to match the guest's message language (lightweight heuristics).
  */
 export function resolveGuestEscalationFallback(userMessage: string): string {
   const t = userMessage.trim();
+  if (!t) return GUEST_ESCALATION_FALLBACK_MESSAGE_EN;
+  if (/[іїєґІЇЄҐ]/.test(t)) return GUEST_ESCALATION_FALLBACK_MESSAGE_UK;
+  if (/[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]/.test(t)) return GUEST_ESCALATION_FALLBACK_MESSAGE_PL;
+  if (/[äöüßÄÖÜ]/.test(t)) return GUEST_ESCALATION_FALLBACK_MESSAGE_DE;
+  if (/[ñ¿¡Ñ]/.test(t)) return GUEST_ESCALATION_FALLBACK_MESSAGE_ES;
   if (/[а-яА-ЯёЁ]/.test(t)) return GUEST_ESCALATION_FALLBACK_MESSAGE;
   if (/[a-zA-Z]/.test(t)) return GUEST_ESCALATION_FALLBACK_MESSAGE_EN;
-  return GUEST_ESCALATION_FALLBACK_MESSAGE;
+  return GUEST_ESCALATION_FALLBACK_MESSAGE_EN;
 }
 
 const LATIN_WORD = /[a-zA-Z]{3,}/;
@@ -68,8 +86,8 @@ export function isLikelyEscalationGuestReply(reply: string): boolean {
   if (/скоро\s+(?:отвечу|вернусь)/i.test(t) && /хозяин/i.test(t)) return true;
   const enNorm = t.replace(/\s+/g, ' ').toLowerCase();
   const ruNorm = t.replace(/\s+/g, ' ').toLowerCase();
-  if (enNorm.includes(GUEST_ESCALATION_FALLBACK_MESSAGE_EN.slice(0, 48).toLowerCase())) return true;
-  if (ruNorm.includes(GUEST_ESCALATION_FALLBACK_MESSAGE.slice(0, 36).toLowerCase())) return true;
+  if (enNorm.includes(GUEST_ESCALATION_FALLBACK_MESSAGE_EN.slice(0, 40).toLowerCase())) return true;
+  if (ruNorm.includes(GUEST_ESCALATION_FALLBACK_MESSAGE.slice(0, 32).toLowerCase())) return true;
   return false;
 }
 
@@ -110,6 +128,8 @@ export function assistantReplyIndicatesEscalationWithoutMarker(text: string): bo
   if (/\bcheck\s+(?:this\s+)?with\s+the\s+host\b/i.test(t)) return true;
   if (/уточню\s+(?:это\s+)?у\s+хозяин/i.test(t)) return true;
   if (/уточню\s+у\s+хозяин/i.test(t)) return true;
+  if (/I need to (?:clarify|check) the details with the manager/i.test(t)) return true;
+  if (/Мне нужно уточнить детали у менеджера/i.test(t)) return true;
   return false;
 }
 
@@ -177,9 +197,9 @@ export function buildSystemPrompt(propertyName: string, knowledgeBase: string): 
     '',
     'ESCALATION — WHEN YOU MUST USE IT:',
     '- Use escalation whenever the KB does not contain the specific information needed to answer, or you are unsure.',
-    '- Write ONE short, warm sentence that you will check with the host and reply soon (in the guest\'s language).',
-    '- Example (Russian): "Я уточню это у хозяина и скоро отвечу вам."',
-    '- Example (English): "I\'ll check this with the host and get back to you shortly."',
+    '- Write ONE short, warm sentence that staff will clarify with the manager and reply soon (in the guest\'s language).',
+    '- Example (Russian): "Мне нужно уточнить детали у менеджера. Вернусь к вам с ответом в ближайшее время. Спасибо!"',
+    '- Example (English): "I need to check the details with the manager. I will get back to you with an answer soon. Thanks!"',
     '- On a NEW LINE at the very end of your entire reply, add exactly this token and nothing after it: [ESCALATE]',
     '- The token [ESCALATE] is stripped before the guest sees the message — but you MUST include it for routing.',
     '- If you fully answered using ONLY facts from the knowledge base, do NOT add [ESCALATE].',

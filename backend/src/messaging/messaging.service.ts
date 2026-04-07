@@ -1016,15 +1016,12 @@ export class MessagingService {
 
       const escalationFallback = resolveGuestEscalationFallback(userText);
 
+      /** Always use the fixed localized phrase for escalation — model wording is too variable. */
       let guestSafe: string;
 
       if (!guestEscalationUi) {
 
         guestSafe = textWithoutMarker;
-
-      } else if (rawEndsEscalate && !forcedByForbidden) {
-
-        guestSafe = textWithoutMarker || escalationFallback;
 
       } else {
 
