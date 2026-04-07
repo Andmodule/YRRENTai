@@ -80,14 +80,13 @@ export function isLikelyEscalationGuestReply(reply: string): boolean {
   const t = reply.trim();
   if (!t) return false;
   if (assistantReplyIndicatesEscalationWithoutMarker(t)) return true;
-  if (/\bI(?:'ll| will)\s+check\s+(?:this\s+)?with\s+the\s+host\b/i.test(t)) return true;
-  if (/I'll\s+get\s+back\s+to\s+you\s+shortly/i.test(t)) return true;
-  if (/уточню\s+(?:это\s+)?у\s+хозяин/i.test(t)) return true;
   if (/скоро\s+(?:отвечу|вернусь)/i.test(t) && /хозяин/i.test(t)) return true;
-  const enNorm = t.replace(/\s+/g, ' ').toLowerCase();
-  const ruNorm = t.replace(/\s+/g, ' ').toLowerCase();
-  if (enNorm.includes(GUEST_ESCALATION_FALLBACK_MESSAGE_EN.slice(0, 40).toLowerCase())) return true;
-  if (ruNorm.includes(GUEST_ESCALATION_FALLBACK_MESSAGE.slice(0, 32).toLowerCase())) return true;
+  const collapsed = t.replace(/\s+/g, ' ').toLowerCase();
+  if (collapsed.includes(GUEST_ESCALATION_FALLBACK_MESSAGE_EN.slice(0, 40).toLowerCase())) return true;
+  if (collapsed.includes(GUEST_ESCALATION_FALLBACK_MESSAGE.slice(0, 32).toLowerCase())) return true;
+  if (collapsed.includes(GUEST_ESCALATION_FALLBACK_MESSAGE_DE.slice(0, 38).toLowerCase())) return true;
+  if (collapsed.includes(GUEST_ESCALATION_FALLBACK_MESSAGE_PL.slice(0, 36).toLowerCase())) return true;
+  if (collapsed.includes(GUEST_ESCALATION_FALLBACK_MESSAGE_ES.slice(0, 38).toLowerCase())) return true;
   return false;
 }
 
@@ -119,18 +118,49 @@ export function shouldForceEscalationGuestReply(text: string): boolean {
 }
 
 /**
+ * When the model omits `[ESCALATE]` but still sends an escalation-style reply (any supported
+ * language), we treat it as escalation so the guest only sees {@link resolveGuestEscalationFallback}.
+ *
+ * Covers: canonical wording, “no info in KB”, and common host/manager paraphrases per language.
+ */
+const ESCALATION_WITHOUT_MARKER_PATTERNS: readonly RegExp[] = [
+  // English
+  /\b(?:there\s+is|there's)\s+no\s+information\s+in\s+the\s+knowledge\s+base\b/i,
+  /\bno\s+information\s+in\s+the\s+knowledge\s+base\b/i,
+  /\bI need to (?:clarify|check) the details with the manager\b/i,
+  /\bI will get back to you with an answer soon\b/i,
+  /\bI(?:'ll| will)\s+check\s+(?:this\s+)?with\s+the\s+host\b/i,
+  /\bI(?:'ll| will)\s+get\s+back\s+to\s+you\s+shortly\b/i,
+  // Russian
+  /В\s+базе\s+знаний\s+нет\s+информации/i,
+  /Мне\s+нужно\s+уточнить\s+детали\s+у\s+менеджера/i,
+  /уточню(?:\s+это)?\s+у\s+хозяин/i,
+  /вернусь\s+к\s+вам\s+с\s+ответом\s+в\s+ближайшее\s+время/i,
+  // Polish
+  /W\s+bazie\s+wiedzy\s+nie\s+ma/i,
+  /Sprawdzę\s+to\s+u\s+gospodarza/i,
+  /Muszę\s+doprecyzować\s+szczegóły\s+z\s+menedżerem/i,
+  /wkrótce\s+wrócę\s+do\s+państwa\s+z\s+odpowiedzią/i,
+  // German
+  /\bIn\s+der\s+Wissensdatenbank\b.*\b(?:keine|fehlt|nicht)\b/is,
+  /\bIch\s+muss\s+die\s+Details\s+mit\s+dem\s+Manager\s+klären/i,
+  /\bIch\s+kläre\s+das\s+(?:bei|mit)\s+dem\s+Gastgeber/i,
+  /\b(?:beim|mit\s+dem)\s+Gastgeber\s+(?:nach)?fragen/i,
+  // Spanish
+  /\bno\s+(?:hay|existe)\s+informaci[oó]n\s+en\s+la\s+base\s+de\s+conocimientos?\b/i,
+  /\bNecesito\s+aclarar\s+los\s+detalles\s+con\s+el\s+gerente/i,
+  /\bConsultaré\s+con\s+el\s+(?:gerente|anfitrión|propietario)/i,
+  /\bVolveré\s+con\s+una\s+respuesta\s+en\s+breve/i,
+];
+
+/**
  * The model is instructed to end with [ESCALATE] but often omits it while still echoing the
  * escalation phrase. Without this, `notifyStaff` stays false when KB looks "strong" and Telegram never fires.
  */
 export function assistantReplyIndicatesEscalationWithoutMarker(text: string): boolean {
   const t = text.trim();
   if (!t) return false;
-  if (/\bcheck\s+(?:this\s+)?with\s+the\s+host\b/i.test(t)) return true;
-  if (/уточню\s+(?:это\s+)?у\s+хозяин/i.test(t)) return true;
-  if (/уточню\s+у\s+хозяин/i.test(t)) return true;
-  if (/I need to (?:clarify|check) the details with the manager/i.test(t)) return true;
-  if (/Мне нужно уточнить детали у менеджера/i.test(t)) return true;
-  return false;
+  return ESCALATION_WITHOUT_MARKER_PATTERNS.some((re) => re.test(t));
 }
 
 /** Short hints so the model maps each KB block to the right topic (reduces cross-topic number misuse). */
