@@ -16,11 +16,14 @@ export class StorageService {
       this.s3 = null;
       return;
     }
+    /** R2 is S3-compatible but does not implement flexible checksum headers (SDK ≥3.729 defaults break PutObject). */
     this.s3 = new S3Client({
       region: 'auto',
       endpoint,
       credentials: { accessKeyId, secretAccessKey },
       forcePathStyle: true,
+      requestChecksumCalculation: 'WHEN_REQUIRED',
+      responseChecksumValidation: 'WHEN_REQUIRED',
     });
   }
 

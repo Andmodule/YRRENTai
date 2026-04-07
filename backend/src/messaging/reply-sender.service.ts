@@ -7,6 +7,20 @@ import {
   parseResendInboundAttachments,
 } from './inbound-attachments.util';
 
+function logAggregateOrError(logger: Logger, context: string, err: unknown): void {
+  if (err instanceof AggregateError) {
+    const parts =
+      err.errors?.map((e, i) => {
+        const m = e instanceof Error ? e.message : String(e);
+        return `[${i}] ${m}`;
+      }) ?? [];
+    logger.error(`${context}: AggregateError (${parts.join('; ')})`, err.stack);
+    return;
+  }
+  const e = err instanceof Error ? err : new Error(String(err));
+  logger.error(`${context}: ${e.message}`, e.stack);
+}
+
 @Injectable()
 export class ReplySenderService implements OnModuleInit {
   private readonly logger = new Logger(ReplySenderService.name);
@@ -113,16 +127,38 @@ export class ReplySenderService implements OnModuleInit {
         attachments,
       };
     } catch (err) {
-      this.logger.error(`fetchReceivedEmailBody failed for ${emailId}`, err as Error);
+      logAggregateOrError(this.logger, `fetchReceivedEmailBody failed for ${emailId}`, err);
       return null;
     }
   }
 
   /**
    * Lists attachments for a received email and downloads each via `download_url` (short-lived CDN URL).
+   * When the webhook already listed attachments but the list API returns empty, retries briefly (eventual consistency).
    * @see https://resend.com/docs/api-reference/emails/list-received-email-attachments
    */
-  async fetchReceivedEmailAttachmentFiles(emailId: string): Promise<InboundAttachmentFile[]> {
+  async fetchReceivedEmailAttachmentFiles(
+    emailId: string,
+    opts?: { retryIfEmpty?: boolean },
+  ): Promise<InboundAttachmentFile[]> {
+    const retryIfEmpty = opts?.retryIfEmpty === true;
+    const maxAttempts = retryIfEmpty ? 5 : 1;
+    const delayMs = 600;
+    let last: InboundAttachmentFile[] = [];
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      last = await this.fetchReceivedEmailAttachmentFilesOnce(emailId);
+      if (last.length > 0) return last;
+      if (attempt < maxAttempts) {
+        this.logger.warn(
+          `Resend attachments list returned 0 files for ${emailId} (attempt ${attempt}/${maxAttempts}); retrying in ${delayMs}ms`,
+        );
+        await new Promise((r) => setTimeout(r, delayMs));
+      }
+    }
+    return last;
+  }
+
+  private async fetchReceivedEmailAttachmentFilesOnce(emailId: string): Promise<InboundAttachmentFile[]> {
     const key = this.config.get<string>('RESEND_API_KEY');
     if (!key?.trim()) {
       this.logger.warn('fetchReceivedEmailAttachmentFiles: RESEND_API_KEY missing');
@@ -150,27 +186,31 @@ export class ReplySenderService implements OnModuleInit {
           '';
         const downloadUrl = typeof o.download_url === 'string' ? o.download_url.trim() : '';
         if (!filename || !downloadUrl) continue;
-        const dl = await fetch(downloadUrl);
-        if (!dl.ok) {
-          this.logger.error(
-            `Attachment download failed ${filename}: HTTP ${dl.status} ${(await dl.text()).slice(0, 200)}`,
-          );
-          continue;
+        try {
+          const dl = await fetch(downloadUrl);
+          if (!dl.ok) {
+            this.logger.error(
+              `Attachment download failed ${filename}: HTTP ${dl.status} ${(await dl.text()).slice(0, 200)}`,
+            );
+            continue;
+          }
+          const buffer = Buffer.from(await dl.arrayBuffer());
+          const contentType =
+            typeof o.content_type === 'string' && o.content_type.trim()
+              ? o.content_type.trim()
+              : dl.headers.get('content-type')?.trim() || 'application/octet-stream';
+          let sizeBytes = buffer.length;
+          if (typeof o.size === 'number' && Number.isFinite(o.size)) {
+            sizeBytes = o.size;
+          }
+          out.push({ filename, contentType, sizeBytes, buffer });
+        } catch (dlErr) {
+          logAggregateOrError(this.logger, `Attachment download fetch failed ${filename}`, dlErr);
         }
-        const buffer = Buffer.from(await dl.arrayBuffer());
-        const contentType =
-          typeof o.content_type === 'string' && o.content_type.trim()
-            ? o.content_type.trim()
-            : dl.headers.get('content-type')?.trim() || 'application/octet-stream';
-        let sizeBytes = buffer.length;
-        if (typeof o.size === 'number' && Number.isFinite(o.size)) {
-          sizeBytes = o.size;
-        }
-        out.push({ filename, contentType, sizeBytes, buffer });
       }
       return out;
     } catch (err) {
-      this.logger.error(`fetchReceivedEmailAttachmentFiles failed for ${emailId}`, err as Error);
+      logAggregateOrError(this.logger, `fetchReceivedEmailAttachmentFiles failed for ${emailId}`, err);
       return [];
     }
   }

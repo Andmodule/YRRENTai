@@ -180,7 +180,15 @@ export class MessagingService {
       await this.processInboundCore(dto, ownerId);
     } catch (e) {
       const err = e instanceof Error ? e : new Error(String(e));
-      this.logger.error(`processInbound failed eventId=${eventId ?? 'n/a'}: ${err.message}`, err.stack);
+      if (e instanceof AggregateError && e.errors?.length) {
+        const detail = e.errors.map((x, i) => `[${i}] ${x instanceof Error ? x.message : String(x)}`).join('; ');
+        this.logger.error(
+          `processInbound failed eventId=${eventId ?? 'n/a'} (AggregateError): ${detail}`,
+          err.stack,
+        );
+      } else {
+        this.logger.error(`processInbound failed eventId=${eventId ?? 'n/a'}: ${err.message}`, err.stack);
+      }
       await this.telegramService
         .notifyOwnerOpsMessage(
           ownerId,
@@ -216,7 +224,9 @@ export class MessagingService {
       }
       return;
     }
-    const files = await this.replySender.fetchReceivedEmailAttachmentFiles(emailId);
+    const files = await this.replySender.fetchReceivedEmailAttachmentFiles(emailId, {
+      retryIfEmpty: hadAttachmentMetadataHint,
+    });
     if (files.length === 0) {
       if (hadAttachmentMetadataHint) {
         this.logger.warn(
@@ -259,7 +269,14 @@ export class MessagingService {
 
     let html: string | null | undefined = dto.data.html ?? null;
 
-    const resendInboundId = resendEmailId?.trim() ?? resendDataId?.trim();
+    const resendEmailIdTrim = resendEmailId?.trim() ?? null;
+    const resendDataIdTrim = resendDataId?.trim() ?? null;
+    const resendInboundId = resendEmailIdTrim ?? resendDataIdTrim;
+    if (!resendEmailIdTrim && resendDataIdTrim) {
+      this.logger.warn(
+        'Inbound: data.email_id missing; using data.id for Resend receiving API — if attachments fail, confirm webhook includes email_id (see Resend email.received docs).',
+      );
+    }
 
     let didFetchInboundBody = false;
 
