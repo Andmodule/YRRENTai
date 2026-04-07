@@ -4,10 +4,12 @@ import {
   Column,
   CreateDateColumn,
   ManyToOne,
+  OneToMany,
   JoinColumn,
   Index,
 } from 'typeorm';
 import { MessagingThreadEntity } from './messaging-thread.entity';
+import { MessagingAttachmentEntity } from './messaging_attachments.entity';
 
 export type MessagingMessageRole = 'guest' | 'ai_draft' | 'sent';
 
@@ -45,4 +47,7 @@ export class MessagingMessageEntity {
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
+
+  @OneToMany(() => MessagingAttachmentEntity, (a) => a.message)
+  attachments!: MessagingAttachmentEntity[];
 }

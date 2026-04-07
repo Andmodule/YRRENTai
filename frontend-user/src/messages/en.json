@@ -1149,6 +1149,8 @@
     "operatorReplyBadge": "Operator replied",
     "messageDeliveryRetry": "Retry sending",
     "messageChannelHint": "Channel: {channel}",
+    "attachmentsHeading": "Attachments ({count})",
+    "attachmentOpenAria": "Open attachment {name}",
     "bookingComMessageTitle": "Message {name}",
     "bookingComMoreToggleAria": "Show or hide more from the email",
     "bookingComGuest": "Guest",

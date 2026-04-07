@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { BookingComMessageMetadata } from '@rentai/shared';
+import type { ChatMessageMetadata } from '@rentai/shared';
 import { connectChatSocket, getChatSocket } from '@/lib/socket/client';
 import { apiClient } from '@/lib/api/client';
 
@@ -27,8 +27,8 @@ export interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
   /** Present for messages loaded from API / socket; staff = manual manager reply. */
   source?: ChatMessageSource;
-  /** OTA template parse (e.g. Booking.com email). */
-  metadata?: BookingComMessageMetadata | null;
+  /** OTA parse (Booking.com) or inbound email + R2 attachments. */
+  metadata?: ChatMessageMetadata | null;
   /** Outbound routing channel (guest + assistant rows). */
   channel?: MessageChannelCode;
   /** Staff outbound delivery to guest (Booking/email/Telegram/…); AI/user rows are usually SENT. */
@@ -71,7 +71,7 @@ function mapApiRowsToMessages(
     source?: string;
     channel?: string;
     deliveryStatus?: string;
-    metadata?: BookingComMessageMetadata | null;
+    metadata?: ChatMessageMetadata | null;
     createdAt: string;
   }>,
 ): ChatMessage[] {
@@ -164,7 +164,7 @@ export function useChat(propertyId: string | null, opts?: UseChatOpts | null): U
             source?: string;
             channel?: string;
             deliveryStatus?: string;
-            metadata?: BookingComMessageMetadata | null;
+            metadata?: ChatMessageMetadata | null;
             createdAt: string;
           }>;
         }>(`/chats/conversations/${encodeURIComponent(targetConversationId)}/messages`, {

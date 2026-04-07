@@ -13,6 +13,8 @@ import {
   listPreviewForInbox,
   stripEscalationForGuestDisplay,
   type BookingComMessageMetadata,
+  type EmailInboundAttachment,
+  type EmailInboundMessageMetadata,
 } from '@rentai/shared';
 
 import { AgentService } from '../agent/agent.service';
@@ -47,13 +49,18 @@ import { TelegramService } from '../telegram/telegram.service';
 
 import { MessagingMessageEntity } from './entities/messaging-message.entity';
 
+import { MessagingAttachmentEntity } from './entities/messaging_attachments.entity';
+
 import { MessagingThreadEntity, type MessagingChannel } from './entities/messaging-thread.entity';
+
+import { StorageService } from '../modules/storage/storage.service';
 
 import { MessageParserService } from './message-parser.service';
 
 import { ReplySenderService } from './reply-sender.service';
 
 import type { ResendWebhookDto } from './dto/resend-webhook.dto';
+import type { MessagingMessagePublicDto } from './dto/messaging-thread-public.dto';
 
 import { shouldDropInboundByMailHeaders } from './inbound-email-heuristics';
 
@@ -102,6 +109,12 @@ export class MessagingService {
     @InjectRepository(MessagingMessageEntity)
 
     private readonly messageRepo: Repository<MessagingMessageEntity>,
+
+    @InjectRepository(MessagingAttachmentEntity)
+
+    private readonly attachmentRepo: Repository<MessagingAttachmentEntity>,
+
+    private readonly storageService: StorageService,
 
     private readonly parser: MessageParserService,
 
@@ -175,6 +188,66 @@ export class MessagingService {
         )
         .catch(() => undefined);
       throw err;
+    }
+  }
+
+  /**
+   * Downloads files from Resend (list + `download_url`), uploads to R2, persists `messaging_attachments` rows.
+   */
+  private async persistInboundAttachmentsToR2(
+    messageId: string,
+    resendInboundId: string | null | undefined,
+    hadAttachmentMetadataHint: boolean,
+  ): Promise<void> {
+    const emailId = resendInboundId?.trim();
+    if (!emailId) {
+      if (hadAttachmentMetadataHint) {
+        this.logger.warn(
+          'Inbound attachment metadata present but no Resend email id — cannot download attachments',
+        );
+      }
+      return;
+    }
+    if (!this.storageService.isConfigured()) {
+      if (hadAttachmentMetadataHint) {
+        this.logger.warn(
+          'Inbound attachments skipped: configure R2 (R2_ENDPOINT, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME)',
+        );
+      }
+      return;
+    }
+    const files = await this.replySender.fetchReceivedEmailAttachmentFiles(emailId);
+    if (files.length === 0) {
+      if (hadAttachmentMetadataHint) {
+        this.logger.warn(
+          `No attachment files returned from Resend for email ${emailId} (metadata had attachments)`,
+        );
+      }
+      return;
+    }
+    for (const f of files) {
+      try {
+        const { key } = await this.storageService.uploadAttachment(
+          f.buffer,
+          f.filename,
+          f.contentType,
+        );
+        await this.attachmentRepo.save(
+          this.attachmentRepo.create({
+            messageId,
+            fileName: f.filename,
+            contentType: f.contentType,
+            sizeBytes: f.sizeBytes,
+            storageKey: key,
+          }),
+        );
+      } catch (e) {
+        const err = e instanceof Error ? e : new Error(String(e));
+        this.logger.error(
+          `Inbound attachment upload failed for ${f.filename}: ${err.message}`,
+          err.stack,
+        );
+      }
     }
   }
 
@@ -482,30 +555,41 @@ export class MessagingService {
 
     const { thread, guestMessage } = result;
 
+    await this.persistInboundAttachmentsToR2(
+      guestMessage.id,
+      resendInboundId,
+      inboundAttachments.length > 0,
+    );
 
+    const emailAttachmentRows = await this.attachmentRepo.find({
+      where: { messageId: guestMessage.id },
+    });
+    if (inboundAttachments.length > 0 && emailAttachmentRows.length === 0) {
+      this.logger.warn(
+        `Inbound: webhook listed ${inboundAttachments.length} attachment(s) but no rows in messaging_attachments after R2 persist (messageId=${guestMessage.id}). ` +
+          `Usually Resend GET .../attachments returned empty, or R2 upload failed — check logs above and RESEND_API_KEY.`,
+      );
+    }
+    const emailInboundAttachments: EmailInboundAttachment[] = emailAttachmentRows.map((a) => ({
+      id: a.id,
+      fileName: a.fileName,
+      contentType: a.contentType,
+      sizeBytes: a.sizeBytes,
+    }));
 
     this.chatGateway.server.to(`messaging:${thread.id}`).emit('new_message', { message: guestMessage });
 
-
-
     const syncInbox = await this.syncInboundToChatInbox(
-
       ownerId,
-
       thread.id,
-
       guestEmail,
-
       guestDisplayText,
-
       thread.propertyId,
-
       thread.guestName,
-
       channel,
-
       thread.reservationId,
-
+      guestMessage.id,
+      emailInboundAttachments,
     );
 
     const inboundAiAutoReplyEnabled =
@@ -715,23 +799,16 @@ export class MessagingService {
    */
 
   private async syncInboundToChatInbox(
-
     ownerId: string,
-
     threadId: string,
-
     guestEmail: string,
-
     previewText: string,
-
     threadPropertyId: string | null | undefined,
-
     guestDisplayName: string | null | undefined,
-
     channel: MessagingChannel,
-
     reservationId: string | null,
-
+    messagingGuestMessageId: string,
+    emailAttachments: EmailInboundAttachment[],
   ): Promise<{ chatGuestMessageId: string; listPreview: string } | null> {
 
     try {
@@ -811,17 +888,36 @@ export class MessagingService {
         );
       }
 
+      let chatMetadata: BookingComMessageMetadata | EmailInboundMessageMetadata | undefined;
+      if (emailAttachments.length > 0) {
+        const inbound: EmailInboundMessageMetadata = {
+          channel: 'email_inbound',
+          messagingMessageId: messagingGuestMessageId,
+          attachments: emailAttachments,
+          ...(bookingMeta ? { bookingCom: bookingMeta } : {}),
+        };
+        chatMetadata = inbound;
+      } else if (bookingMeta) {
+        chatMetadata = bookingMeta;
+      }
+
+      const listPreviewBookingArg =
+        chatMetadata?.channel === 'email_inbound' && chatMetadata.bookingCom
+          ? chatMetadata.bookingCom
+          : chatMetadata?.channel === 'booking_com'
+            ? chatMetadata
+            : null;
+      const listPreview = listPreviewForInbox(previewText, listPreviewBookingArg);
+
       const saved = await this.chatService.saveMessage({
         propertyId,
         conversationId: conv.id,
         content: previewText,
         role: 'user',
         source: 'ai',
-        metadata: bookingMeta ?? undefined,
+        metadata: chatMetadata,
         channel: conversationChannelToMessageChannel(conv.channel),
       });
-
-      const listPreview = listPreviewForInbox(previewText, bookingMeta);
 
       await this.conversationService.touch(conv.id, listPreview);
 
@@ -1553,28 +1649,37 @@ export class MessagingService {
 
 
 
-  async getThreadWithMessages(
-
-    threadId: string,
-
-    ownerId: string,
-
-  ): Promise<{ thread: MessagingThreadEntity; messages: MessagingMessageEntity[] }> {
-
-    const thread = await this.threadRepo.findOneOrFail({ where: { id: threadId, ownerId } });
-
-    const messages = await this.messageRepo.find({
-
-      where: { threadId },
-
-      order: { createdAt: 'ASC' },
-
-    });
-
-    return { thread, messages };
-
+  private toMessagingMessagePublic(m: MessagingMessageEntity): MessagingMessagePublicDto {
+    return {
+      id: m.id,
+      threadId: m.threadId,
+      role: m.role,
+      text: m.text,
+      agentText: m.agentText,
+      rawEmailId: m.rawEmailId,
+      sentAt: m.sentAt?.toISOString() ?? null,
+      createdAt: m.createdAt.toISOString(),
+      attachments: (m.attachments ?? []).map((a) => ({
+        id: a.id,
+        fileName: a.fileName,
+        contentType: a.contentType,
+        sizeBytes: a.sizeBytes,
+      })),
+    };
   }
 
+  async getThreadWithMessages(
+    threadId: string,
+    ownerId: string,
+  ): Promise<{ thread: MessagingThreadEntity; messages: MessagingMessagePublicDto[] }> {
+    const thread = await this.threadRepo.findOneOrFail({ where: { id: threadId, ownerId } });
+    const messages = await this.messageRepo.find({
+      where: { threadId },
+      order: { createdAt: 'ASC' },
+      relations: ['attachments'],
+    });
+    return { thread, messages: messages.map((m) => this.toMessagingMessagePublic(m)) };
+  }
 }
 
 

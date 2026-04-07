@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, FindOptionsWhere, Repository } from 'typeorm';
-import type { BookingComMessageMetadata, ConversationChannel } from '@rentai/shared';
+import type { ChatMessageMetadata, ConversationChannel } from '@rentai/shared';
 import { conversationChannelToMessageChannel } from './chat-channel.mapper';
 import { ChatMessageEntity, type MessageSource } from './entities/chat-message.entity';
 import { MessageChannel } from './enums/message-channel.enum';
@@ -41,7 +41,7 @@ export class ChatService {
     content: string;
     role: string;
     source?: MessageSource;
-    metadata?: BookingComMessageMetadata | null;
+    metadata?: ChatMessageMetadata | null;
     channel?: MessageChannel;
     deliveryStatus?: MessageDeliveryStatus;
   }): Promise<ChatMessageEntity> {
@@ -99,7 +99,7 @@ export class ChatService {
     source: MessageSource;
     channel: MessageChannel;
     deliveryStatus: MessageDeliveryStatus;
-    metadata?: BookingComMessageMetadata;
+    metadata?: ChatMessageMetadata;
     createdAt: string;
   } {
     return {

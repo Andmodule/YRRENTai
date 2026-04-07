@@ -14,17 +14,22 @@ import { InboundSenderFilterSettingsEntity } from './entities/inbound-sender-fil
 import { MessageParserService } from './message-parser.service';
 import { ReplySenderService } from './reply-sender.service';
 import { MessagingService } from './messaging.service';
+import { AttachmentsController } from './attachments.controller';
 import { MessagingRestController, MessagingWebhookController } from './messaging.controller';
 import { ResendWebhookGuard } from './guards/resend-webhook.guard';
 import { InboundEmailDedupService } from './inbound-email-dedup.service';
 import { InboundSenderFilterService } from './inbound-sender-filter.service';
 import { InboundSenderFilterSettingsController } from './inbound-sender-filter-settings.controller';
+import { MessagingAttachmentEntity } from './entities/messaging_attachments.entity';
+import { StorageModule } from '../modules/storage/storage.module';
 
 @Module({
   imports: [
+    StorageModule,
     TypeOrmModule.forFeature([
       MessagingThreadEntity,
       MessagingMessageEntity,
+      MessagingAttachmentEntity,
       InboundEmailDedupEntity,
       InboundSenderFilterSettingsEntity,
     ]),
@@ -36,7 +41,12 @@ import { InboundSenderFilterSettingsController } from './inbound-sender-filter-s
     KnowledgeBaseModule,
     AgentModule,
   ],
-  controllers: [MessagingWebhookController, MessagingRestController, InboundSenderFilterSettingsController],
+  controllers: [
+    MessagingWebhookController,
+    MessagingRestController,
+    AttachmentsController,
+    InboundSenderFilterSettingsController,
+  ],
   providers: [
     MessagingService,
     MessageParserService,

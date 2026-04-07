@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Resend } from 'resend';
 import {
+  type InboundAttachmentFile,
   type InboundAttachmentMeta,
   parseResendInboundAttachments,
 } from './inbound-attachments.util';
@@ -114,6 +115,63 @@ export class ReplySenderService implements OnModuleInit {
     } catch (err) {
       this.logger.error(`fetchReceivedEmailBody failed for ${emailId}`, err as Error);
       return null;
+    }
+  }
+
+  /**
+   * Lists attachments for a received email and downloads each via `download_url` (short-lived CDN URL).
+   * @see https://resend.com/docs/api-reference/emails/list-received-email-attachments
+   */
+  async fetchReceivedEmailAttachmentFiles(emailId: string): Promise<InboundAttachmentFile[]> {
+    const key = this.config.get<string>('RESEND_API_KEY');
+    if (!key?.trim()) {
+      this.logger.warn('fetchReceivedEmailAttachmentFiles: RESEND_API_KEY missing');
+      return [];
+    }
+    const listUrl = `https://api.resend.com/emails/receiving/${encodeURIComponent(emailId)}/attachments`;
+    try {
+      const res = await fetch(listUrl, {
+        headers: { Authorization: `Bearer ${key}` },
+      });
+      const raw = await res.text();
+      if (!res.ok) {
+        this.logger.error(`Resend attachments list ${res.status}: ${raw.slice(0, 500)}`);
+        return [];
+      }
+      const json = JSON.parse(raw) as { data?: unknown };
+      const rows = Array.isArray(json.data) ? json.data : [];
+      const out: InboundAttachmentFile[] = [];
+      for (const row of rows) {
+        if (!row || typeof row !== 'object') continue;
+        const o = row as Record<string, unknown>;
+        const filename =
+          (typeof o.filename === 'string' && o.filename.trim()) ||
+          (typeof o.name === 'string' && o.name.trim()) ||
+          '';
+        const downloadUrl = typeof o.download_url === 'string' ? o.download_url.trim() : '';
+        if (!filename || !downloadUrl) continue;
+        const dl = await fetch(downloadUrl);
+        if (!dl.ok) {
+          this.logger.error(
+            `Attachment download failed ${filename}: HTTP ${dl.status} ${(await dl.text()).slice(0, 200)}`,
+          );
+          continue;
+        }
+        const buffer = Buffer.from(await dl.arrayBuffer());
+        const contentType =
+          typeof o.content_type === 'string' && o.content_type.trim()
+            ? o.content_type.trim()
+            : dl.headers.get('content-type')?.trim() || 'application/octet-stream';
+        let sizeBytes = buffer.length;
+        if (typeof o.size === 'number' && Number.isFinite(o.size)) {
+          sizeBytes = o.size;
+        }
+        out.push({ filename, contentType, sizeBytes, buffer });
+      }
+      return out;
+    } catch (err) {
+      this.logger.error(`fetchReceivedEmailAttachmentFiles failed for ${emailId}`, err as Error);
+      return [];
     }
   }
 }

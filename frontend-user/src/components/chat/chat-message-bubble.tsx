@@ -3,12 +3,23 @@
 import { useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import ReactMarkdown from 'react-markdown';
-import { AlertCircle, Check, Mail, MessageCircle, Send } from 'lucide-react';
+import { AlertCircle, Check, Mail, MessageCircle, Paperclip, Send } from 'lucide-react';
+import type { BookingComMessageMetadata } from '@rentai/shared';
 import { stripEscalationForGuestDisplay } from '@rentai/shared';
 import { cn } from '@/lib/utils';
 import { formatBubbleTimestamp } from '@/lib/format/conversation-meta';
 import type { ChatMessage, MessageChannelCode } from '@/hooks/use-chat';
+import { EmailAttachmentChip } from '@/components/inbox/email-attachment-chip';
 import { BookingComGuestMessage } from './booking-com-guest-message';
+
+function bookingMetaForGuestBubble(
+  metadata: ChatMessage['metadata'],
+): BookingComMessageMetadata | null {
+  if (!metadata) return null;
+  if (metadata.channel === 'booking_com') return metadata;
+  if (metadata.channel === 'email_inbound' && metadata.bookingCom) return metadata.bookingCom;
+  return null;
+}
 
 interface ChatMessageBubbleProps {
   message: ChatMessage;
@@ -33,6 +44,11 @@ export function ChatMessageBubble({ message, onRetryStaffDelivery }: ChatMessage
   const locale = useLocale();
   const t = useTranslations('inbox');
   const isUser = message.role === 'user';
+  const bookingMetaForUi = bookingMetaForGuestBubble(message.metadata);
+  const emailAttachments =
+    message.metadata?.channel === 'email_inbound' && message.metadata.attachments.length > 0
+      ? message.metadata.attachments
+      : null;
   const isStaffManual = message.role === 'assistant' && message.source === 'staff';
   /** Всё, что не ручной ответ оператора (AI и legacy без `source`). */
   const isNonStaffAssistant = message.role === 'assistant' && !isStaffManual;
@@ -83,8 +99,8 @@ export function ChatMessageBubble({ message, onRetryStaffDelivery }: ChatMessage
           </span>
         )}
         <div className="min-w-0">
-          {isUser && message.metadata?.channel === 'booking_com' ? (
-            <BookingComGuestMessage metadata={message.metadata} rawContent={displayContent} />
+          {isUser && bookingMetaForUi ? (
+            <BookingComGuestMessage metadata={bookingMetaForUi} rawContent={displayContent} />
           ) : isUser ? (
             <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{displayContent}</p>
           ) : (
@@ -93,6 +109,19 @@ export function ChatMessageBubble({ message, onRetryStaffDelivery }: ChatMessage
             </div>
           )}
         </div>
+        {isUser && emailAttachments && (
+          <div className="mt-3 border-t border-primary-foreground/15 pt-3 dark:border-zinc-600/50">
+            <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-primary-foreground/80 dark:text-zinc-400">
+              <Paperclip className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              {t('attachmentsHeading', { count: emailAttachments.length })}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {emailAttachments.map((att) => (
+                <EmailAttachmentChip key={att.id} attachment={att} />
+              ))}
+            </div>
+          </div>
+        )}
         <div
           className={cn(
             'mt-1 flex shrink-0 items-center justify-end gap-1.5 self-end pl-4',

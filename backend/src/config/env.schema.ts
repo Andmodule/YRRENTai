@@ -78,6 +78,16 @@ const whatsappEnvFields = z.object({
     .transform((v) => v === 'true' || v === '1' || v === 'yes'),
 });
 
+const r2EnvFields = z.object({
+  /** Cloudflare account id (dashboard); optional at runtime — R2 S3 API uses R2_ENDPOINT + keys. */
+  R2_ACCOUNT_ID: z.string().optional(),
+  R2_ACCESS_KEY_ID: z.string().optional(),
+  R2_SECRET_ACCESS_KEY: z.string().optional(),
+  R2_BUCKET_NAME: z.string().optional(),
+  /** S3 API endpoint, e.g. https://<ACCOUNT_ID>.r2.cloudflarestorage.com */
+  R2_ENDPOINT: optionalUrlEnv(),
+});
+
 const resendEnvFields = z.object({
   RESEND_API_KEY: z.string().optional(),
   /** Svix signing secret from Resend inbound webhook. Omit in dev to skip verification (not for production). */
@@ -195,10 +205,28 @@ export const envSchema = z
   .merge(icalEnvFields)
   .merge(whatsappEnvFields)
   .merge(resendEnvFields)
+  .merge(r2EnvFields)
   .refine(
     (d) => !d.ZODOMUS_ENABLED || (!!d.ZODOMUS_API_USER && !!d.ZODOMUS_API_PASSWORD),
     {
       message: 'ZODOMUS_API_USER and ZODOMUS_API_PASSWORD required when ZODOMUS_ENABLED=true',
+    },
+  )
+  .refine(
+    (d) => {
+      const r2Required = [
+        d.R2_ENDPOINT,
+        d.R2_ACCESS_KEY_ID,
+        d.R2_SECRET_ACCESS_KEY,
+        d.R2_BUCKET_NAME,
+      ];
+      const anySet = r2Required.some((v) => v != null && String(v).trim() !== '');
+      const allSet = r2Required.every((v) => v != null && String(v).trim() !== '');
+      return !anySet || allSet;
+    },
+    {
+      message:
+        'R2: set R2_ENDPOINT, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, and R2_BUCKET_NAME together, or omit all for local dev without inbound attachment uploads',
     },
   );
 

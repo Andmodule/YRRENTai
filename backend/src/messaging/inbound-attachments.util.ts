@@ -6,6 +6,14 @@ export interface InboundAttachmentMeta {
   sizeBytes: number | null;
 }
 
+/** Binary + MIME from Resend attachment list + `download_url` fetch (inbound pipeline). */
+export interface InboundAttachmentFile {
+  filename: string;
+  contentType: string;
+  sizeBytes: number;
+  buffer: Buffer;
+}
+
 /**
  * Normalize Resend inbound attachment objects (field names vary; extra keys ignored).
  */
