@@ -89,6 +89,12 @@ export class IncidentEntity {
   @Column({ type: 'bigint', nullable: true })
   telegramNotifyMessageId!: string | null;
 
+  /**
+   * Optional task fields extracted from staff voice (what / who / when) for manager "assign task" prefill.
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  suggestedTaskDraft!: Record<string, unknown> | null;
+
   @Column({ type: 'uuid', nullable: true })
   resolvedBy!: string | null;
 

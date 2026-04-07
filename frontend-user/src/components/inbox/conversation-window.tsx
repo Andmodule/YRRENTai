@@ -10,6 +10,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import type { ConversationDto } from '@/hooks/use-conversations';
 import { ConversationStatusDot } from '@/components/inbox/conversation-status-dot';
+import { ConversationChannelBadge } from '@/components/inbox/conversation-channel-badge';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { formatGuestAndProperty } from '@/lib/format/conversation-meta';
 import { TruncatedTooltipText } from '@/components/inbox/truncated-tooltip-text';
 import { CHAT_FRAME } from '@/components/inbox/inbox-ui-tokens';
@@ -72,6 +74,7 @@ export function ConversationWindow({ conversation, onStaffReplySuccess }: Conver
             text={headerTitle}
             className="min-w-0 flex-1 truncate text-sm font-normal text-foreground"
           />
+          <ConversationChannelBadge channel={conversation.channel} />
           <ConversationStatusDot status={conversation.status} />
         </div>
       </div>
@@ -80,6 +83,14 @@ export function ConversationWindow({ conversation, onStaffReplySuccess }: Conver
         ref={scrollRef}
         className="min-h-0 w-full min-w-0 flex-1 space-y-4 overflow-y-auto overscroll-y-contain touch-pan-y [-webkit-overflow-scrolling:touch] bg-slate-50 px-4 py-4 max-lg:pb-[calc(6.5rem+env(safe-area-inset-bottom,0px))] dark:bg-slate-900/50"
       >
+        {conversation.channel === 'whatsapp' && (
+          <Alert className="border-emerald-500/25 bg-emerald-500/5 text-foreground dark:bg-emerald-950/20 dark:border-emerald-500/20">
+            <AlertDescription className="space-y-2 text-xs leading-relaxed text-muted-foreground dark:text-slate-300">
+              <p className="font-medium text-foreground dark:text-slate-100">{t('whatsappPolicyTitle')}</p>
+              <p>{t('whatsappPolicyBody')}</p>
+            </AlertDescription>
+          </Alert>
+        )}
         {isHistoryLoading && (
           <div className="space-y-4 py-2" aria-busy="true" aria-live="polite">
             {Array.from({ length: 6 }).map((_, i) => (

@@ -20,6 +20,9 @@ export class StaffTelegramPendingVoiceIncidentEntity {
   @Column({ type: 'jsonb' })
   candidatePropertyIds!: string[];
 
+  @Column({ type: 'jsonb', nullable: true })
+  suggestedTaskDraft!: Record<string, unknown> | null;
+
   @Column({ type: 'timestamptz' })
   expiresAt!: Date;
 }

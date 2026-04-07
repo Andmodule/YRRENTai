@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import type { BookingComMessageMetadata } from './booking-com-email';
 import { bookingComMessageMetadataSchema } from './booking-com-email';
+import type { WhatsappInboundMessageMetadata } from './whatsapp-chat-metadata';
+import { whatsappInboundMessageMetadataSchema } from './whatsapp-chat-metadata';
 
 /** One file row mirrored into `chat_messages.metadata` for EMAIL channel (Unified Inbox). */
 export const emailInboundAttachmentSchema = z.object({
@@ -22,5 +24,14 @@ export const emailInboundMessageMetadataSchema = z.object({
 
 export type EmailInboundMessageMetadata = z.infer<typeof emailInboundMessageMetadataSchema>;
 
-/** Persisted JSON on `chat_messages.metadata` (Booking.com parse or inbound email + R2 attachments). */
-export type ChatMessageMetadata = BookingComMessageMetadata | EmailInboundMessageMetadata;
+/** Persisted JSON on `chat_messages.metadata` (Booking.com, email + R2, WhatsApp + R2). */
+export type ChatMessageMetadata =
+  | BookingComMessageMetadata
+  | EmailInboundMessageMetadata
+  | WhatsappInboundMessageMetadata;
+
+export const chatMessageMetadataUnionSchema = z.union([
+  bookingComMessageMetadataSchema,
+  emailInboundMessageMetadataSchema,
+  whatsappInboundMessageMetadataSchema,
+]);

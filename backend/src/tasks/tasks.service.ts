@@ -16,6 +16,7 @@ import { addDays, format } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
 import { TaskEntity } from './entities/task.entity';
 import { IncidentEntity, type IncidentType } from '../incidents/entities/incident.entity';
+import type { IncidentSuggestedTaskDraftDto } from '../incidents/incidents.service';
 import { BookingEntity } from '../booking/entities/booking.entity';
 import { PropertyService } from '../property/property.service';
 import { PropertyEntity } from '../property/entities/property.entity';
@@ -127,6 +128,7 @@ export interface StaffVoiceParseResultDto {
   propertyId?: string;
   transcript: string;
   candidatePropertyIds?: string[];
+  suggestedTaskDraft?: IncidentSuggestedTaskDraftDto;
 }
 
 interface LlmStaffVoiceJson {
@@ -135,6 +137,14 @@ interface LlmStaffVoiceJson {
   title?: string | null;
   propertyId?: string | null;
   candidatePropertyIds?: string[] | null;
+  suggestedTask?: {
+    title?: string | null;
+    type?: string | null;
+    priority?: string | null;
+    assigneeId?: string | null;
+    dueDate?: string | null;
+    notes?: string | null;
+  } | null;
 }
 
 @Injectable()
@@ -771,6 +781,7 @@ export class TasksService {
           linkIncident.dispatchedTaskId = saved.id;
           linkIncident.taskId = saved.id;
           linkIncident.status = 'in_review';
+          linkIncident.suggestedTaskDraft = null;
           await manager.save(IncidentEntity, linkIncident);
         }
       }
@@ -978,10 +989,13 @@ export class TasksService {
     }
 
     try {
-      const raw = await this.llmParseStaffVoiceTranscript(llm, trimmed, activeTasks, props);
+      const staff = await this.userService.findStaffByOwner(ownerId);
+      const staffIds = new Set(staff.map((s) => s.id));
+      const raw = await this.llmParseStaffVoiceTranscript(llm, trimmed, activeTasks, props, staff);
       const validTaskIds = new Set(activeTasks.map((t) => t.id));
       const validPropIds = new Set(props.map((p) => p.id));
       const activePropertyIds = [...new Set(activeTasks.map((t) => t.propertyId))];
+      const suggestedTaskDraft = this.normalizeStaffVoiceSuggestedTask(raw.suggestedTask, staffIds);
 
       if (raw.action === 'complete' && raw.taskId && validTaskIds.has(raw.taskId)) {
         return { action: 'complete', taskId: raw.taskId, transcript: trimmed };
@@ -998,6 +1012,7 @@ export class TasksService {
             title: raw.title.trim(),
             candidatePropertyIds: uniq,
             transcript: trimmed,
+            ...(suggestedTaskDraft ? { suggestedTaskDraft } : {}),
           };
         }
       }
@@ -1013,6 +1028,7 @@ export class TasksService {
           title: raw.title.trim(),
           propertyId: raw.propertyId,
           transcript: trimmed,
+          ...(suggestedTaskDraft ? { suggestedTaskDraft } : {}),
         };
       }
       return { action: 'fallback', transcript: trimmed };
@@ -1047,11 +1063,62 @@ export class TasksService {
     }
   }
 
+  private normalizeStaffVoiceSuggestedTask(
+    raw: LlmStaffVoiceJson['suggestedTask'],
+    staffIds: Set<string>,
+  ): IncidentSuggestedTaskDraftDto | undefined {
+    const TASK_TYPES = new Set([
+      'checkout_cleaning',
+      'mid_stay_cleaning',
+      'checkin_prep',
+      'maintenance',
+      'other',
+    ]);
+    const PRIOS = new Set(['normal', 'urgent', 'critical']);
+    const uuidRe =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+    if (!raw || typeof raw !== 'object') return undefined;
+    const out: IncidentSuggestedTaskDraftDto = {};
+    if (typeof raw.title === 'string' && raw.title.trim()) {
+      out.title = raw.title.trim().slice(0, 500);
+    }
+    if (typeof raw.type === 'string' && TASK_TYPES.has(raw.type)) {
+      out.type = raw.type as IncidentSuggestedTaskDraftDto['type'];
+    }
+    if (typeof raw.priority === 'string' && PRIOS.has(raw.priority)) {
+      out.priority = raw.priority as IncidentSuggestedTaskDraftDto['priority'];
+    }
+    if (typeof raw.assigneeId === 'string' && uuidRe.test(raw.assigneeId) && staffIds.has(raw.assigneeId)) {
+      out.assigneeId = raw.assigneeId;
+    } else if (raw.assigneeId === null) {
+      out.assigneeId = null;
+    }
+    if (typeof raw.dueDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw.dueDate)) {
+      out.dueDate = raw.dueDate;
+    }
+    if (typeof raw.notes === 'string' && raw.notes.trim()) {
+      out.notes = raw.notes.trim().slice(0, 8000);
+    }
+    if (
+      out.title === undefined &&
+      out.type === undefined &&
+      out.priority === undefined &&
+      out.assigneeId === undefined &&
+      out.dueDate === undefined &&
+      out.notes === undefined
+    ) {
+      return undefined;
+    }
+    return out;
+  }
+
   private async llmParseStaffVoiceTranscript(
     llm: { client: OpenAI; model: string },
     transcript: string,
     activeTasks: TaskEntity[],
     props: PropertyEntity[],
+    staff: StaffMemberDto[],
   ): Promise<LlmStaffVoiceJson> {
     const now = new Date();
     const tasksJson = JSON.stringify(
@@ -1074,6 +1141,12 @@ export class TasksService {
         localDateTime: `${formatInTimeZone(now, p.timezone, 'yyyy-MM-dd HH:mm')} (${p.timezone})`,
       })),
     );
+    const staffJson = JSON.stringify(
+      staff.map((s) => ({
+        id: s.id,
+        name: s.displayName,
+      })),
+    );
 
     const distinctActivePropertyCount = new Set(activeTasks.map((t) => t.propertyId)).size;
 
@@ -1086,11 +1159,23 @@ ${tasksJson}
 Properties catalog (valid property UUIDs for incidents):
 ${propsJson}
 
+Staff directory (use only these ids for suggestedTask.assigneeId):
+${staffJson}
+
 Return a single JSON object:
 - If they clearly finished a specific active task: { "action": "complete", "taskId": "<uuid>" }
 - If they report damage, breakage, lost item, emergency AND you can pick exactly one property: { "action": "incident", "title": "short title", "propertyId": "<uuid>" }
 - If they report an incident but the staff member has active work in ${distinctActivePropertyCount} different properties and you CANNOT confidently choose one property: { "action": "ambiguous_incident", "title": "short title", "candidatePropertyIds": ["<uuid>", "<uuid>"] } with 2–4 ids from active tasks' propertyIds only.
 - If unclear or small talk: { "action": "fallback", "taskId": null }
+
+For "incident" and "ambiguous_incident" only: if the same message also assigns follow-up work (what to do, who, when), add optional "suggestedTask": {
+  "title": string or null (task title, can differ from incident title),
+  "type": "checkout_cleaning"|"mid_stay_cleaning"|"checkin_prep"|"maintenance"|"other" or null,
+  "priority": "normal"|"urgent"|"critical" or null,
+  "assigneeId": "<uuid from staff list>" or null,
+  "dueDate": "YYYY-MM-DD" or null (use property local dates),
+  "notes": string or null
+}. If they did not mention follow-up work, omit "suggestedTask" or set it null.
 
 Reply with JSON only, no markdown.`;
 

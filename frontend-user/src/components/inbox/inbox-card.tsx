@@ -6,6 +6,7 @@ import type { ConversationDto } from '@/hooks/use-conversations';
 import { ConversationStatusDot } from '@/components/inbox/conversation-status-dot';
 import { formatGuestAndProperty, formatTelegramStyleTime } from '@/lib/format/conversation-meta';
 import { TruncatedTooltipText } from '@/components/inbox/truncated-tooltip-text';
+import { ConversationChannelBadge } from '@/components/inbox/conversation-channel-badge';
 
 interface InboxCardProps {
   conversation: ConversationDto;
@@ -43,6 +44,7 @@ export function InboxCard({ conversation, isActive, onClick }: InboxCardProps) {
               text={titleLine}
               className="min-w-0 flex-1 text-sm font-normal text-foreground dark:text-slate-200"
             />
+            <ConversationChannelBadge channel={conversation.channel} />
             <ConversationStatusDot status={conversation.status} />
           </div>
           {conversation.lastMessagePreview && (

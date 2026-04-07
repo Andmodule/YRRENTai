@@ -41,7 +41,7 @@ import {
 } from '../../utils/groupTasksByProperty';
 import { formatNameAndLastInitial } from '../../utils/staff-name-short';
 import type { StaffMember, Task, TaskPriority, TaskType } from '../../types';
-import type { Incident } from '@/modules/incidents/hooks/useIncidents';
+import type { Incident, IncidentSuggestedTaskDraft } from '@/modules/incidents/hooks/useIncidents';
 import type { Property } from '@/types';
 
 const TASK_TYPES: { type: TaskType; labelKey: string; shortIcon?: LucideIcon }[] = [
@@ -128,7 +128,12 @@ type SmartCreateSheetProps = {
   onOpenChange: (open: boolean) => void;
   propertyId: string;
   /** Skip voice capture; open review form with notes/title (e.g. from incident drawer). */
-  incidentPrefill?: { notes: string; title?: string; incidentUuid?: string } | null;
+  incidentPrefill?: {
+    notes: string;
+    title?: string;
+    incidentUuid?: string;
+    suggestedTaskDraft?: IncidentSuggestedTaskDraft | null;
+  } | null;
   /** Open directly to the form (no mic) — e.g. pencil FAB on mobile. */
   startWithManualForm?: boolean;
   /** When `startWithManualForm` is true: which flow to open (set from pencil menu). */
@@ -461,20 +466,35 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
       resetRecording();
     } else if (incidentPrefill?.notes?.trim() || incidentPrefill?.incidentUuid) {
       const base = (incidentPrefill.title ?? incidentPrefill.notes ?? '').trim();
+      const d = incidentPrefill.suggestedTaskDraft;
+      const defaultDispatchTitle = base
+        ? `${base.slice(0, 160)} ${tTasks('smartCreate.taskFromIncidentTitleSuffix')}`.trim()
+        : `${tTasks('smartCreate.sheetTitleDispatchFromIncident')} ${tTasks('smartCreate.taskFromIncidentTitleSuffix')}`.trim();
+      const titleFromDraft = d?.title?.trim();
+      const taskTitle = titleFromDraft
+        ? titleFromDraft.slice(0, 200)
+        : isIncidentDispatch
+          ? defaultDispatchTitle
+          : base.slice(0, 200);
+      const draftType = d?.type;
+      const resolvedType =
+        draftType && TASK_TYPES.some((x) => x.type === draftType) ? draftType : 'maintenance';
+      const resolvedPriority =
+        d?.priority && PRIORITIES.includes(d.priority)
+          ? d.priority
+          : isIncidentDispatch
+            ? 'critical'
+            : 'normal';
       reset({
         ...defaultForm(),
         entityTab: 'task',
-        title: isIncidentDispatch
-          ? (
-              base
-                ? `${base.slice(0, 160)} ${tTasks('smartCreate.taskFromIncidentTitleSuffix')}`.trim()
-                : `${tTasks('smartCreate.sheetTitleDispatchFromIncident')} ${tTasks('smartCreate.taskFromIncidentTitleSuffix')}`.trim()
-            )
-          : base.slice(0, 200),
-        notes: incidentPrefill.notes?.trim() ?? '',
+        title: taskTitle,
+        notes: (d?.notes?.trim() || incidentPrefill.notes?.trim() || '').trim(),
         propertyIds: contextPropertyId ? [contextPropertyId] : [],
-        type: 'maintenance',
-        priority: isIncidentDispatch ? 'critical' : 'normal',
+        type: resolvedType,
+        assigneeId: d?.assigneeId?.trim() ? d.assigneeId.trim() : '',
+        dueDate: d?.dueDate?.trim() || format(addDays(new Date(), 1), 'yyyy-MM-dd'),
+        priority: resolvedPriority,
       });
       setPhase('review');
       resetRecording();
@@ -499,6 +519,7 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
     incidentPrefill?.notes,
     incidentPrefill?.title,
     incidentPrefill?.incidentUuid,
+    incidentPrefill?.suggestedTaskDraft,
     isIncidentDispatch,
     dispatchPrefill?.uuid,
     startWithManualForm,

@@ -205,6 +205,7 @@ export class StaffTelegramBotService {
         taskId: null,
         description: pending.title,
         photoUrls: [],
+        suggestedTaskDraft: pending.suggestedTaskDraft ?? undefined,
       });
       await this.answerCallback(cb.id, 'Готово');
       await this.sendMessage(
@@ -267,6 +268,9 @@ export class StaffTelegramBotService {
           title: parsed.title,
           transcript: parsed.transcript,
           candidatePropertyIds: parsed.candidatePropertyIds,
+          suggestedTaskDraft: parsed.suggestedTaskDraft
+            ? ({ ...parsed.suggestedTaskDraft } as Record<string, unknown>)
+            : null,
           expiresAt: exp,
         }),
       );
@@ -325,6 +329,7 @@ export class StaffTelegramBotService {
         taskId: null,
         description: parsed.title,
         photoUrls: [],
+        suggestedTaskDraft: parsed.suggestedTaskDraft,
       });
       await this.sendMessage(
         chatId,

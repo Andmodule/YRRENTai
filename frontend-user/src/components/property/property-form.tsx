@@ -119,6 +119,10 @@ export function PropertyForm({ defaultValues, onSubmit, onCancel, submitLabel }:
       <div className="space-y-3 border-t border-border/60 pt-4">
         <p className="text-xs font-semibold tracking-tight text-foreground">{t('whatsappSection')}</p>
         <p className="text-xs text-muted-foreground">{t('whatsappSectionHint')}</p>
+        <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+          <p className="font-medium text-foreground">{t('whatsappRulesTitle')}</p>
+          <p className="mt-1 leading-relaxed">{t('whatsappRulesBody')}</p>
+        </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="space-y-1.5 sm:col-span-2">
             <Label htmlFor="whatsappPhoneNumberId" className="text-xs">

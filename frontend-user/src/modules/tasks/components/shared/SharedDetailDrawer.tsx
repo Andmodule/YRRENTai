@@ -1420,7 +1420,11 @@ function IncidentDetailMode({
         propertyId={incident.propertyId}
         incidentPrefill={
           voiceOpen
-            ? { notes: incident.description, incidentUuid: incident.uuid }
+            ? {
+                notes: incident.description,
+                incidentUuid: incident.uuid,
+                suggestedTaskDraft: incident.suggestedTaskDraft ?? undefined,
+              }
             : null
         }
       />

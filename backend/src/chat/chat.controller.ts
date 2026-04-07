@@ -8,8 +8,10 @@ import {
   Param,
   Post,
   Query,
+  Res,
   UseGuards,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { ConfigService } from '@nestjs/config';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
@@ -28,6 +30,7 @@ import {
   replyAnalyticsQuerySchema,
 } from '@rentai/shared';
 import type { ConversationStatus } from '@rentai/shared';
+import { StorageService } from '../modules/storage/storage.service';
 
 @ApiTags('Chat')
 @ApiBearerAuth()
@@ -42,6 +45,7 @@ export class ChatController {
     private readonly staffOutboundDelivery: StaffOutboundDeliveryService,
     private readonly config: ConfigService,
     private readonly userService: UserService,
+    private readonly storageService: StorageService,
   ) {}
 
   /** Static paths must be registered before `:propertyId/messages` so they are not captured as UUIDs. */
@@ -92,6 +96,42 @@ export class ChatController {
     const conv = await this.conversationService.findById(id);
     const lim = Number(limit) || 100;
     return this.chatService.getLastMessagesForConversation(conv.propertyId, conv.id, lim);
+  }
+
+  @Get('messages/:messageId/whatsapp-file')
+  @Roles('OWNER', 'MANAGER')
+  @ApiOperation({
+    summary: 'Redirect to a short-lived signed URL for WhatsApp media stored in R2 (inbox message)',
+  })
+  async downloadWhatsappInboundFile(
+    @Param('messageId') messageId: string,
+    @CurrentUser() user: JwtPayload,
+    @Res() res: Response,
+  ): Promise<void> {
+    const msg = await this.chatService.findMessageById(messageId);
+    if (!msg?.conversationId) {
+      throw new NotFoundException('Message not found');
+    }
+    const meta = msg.metadata;
+    if (
+      !meta ||
+      typeof meta !== 'object' ||
+      !('channel' in meta) ||
+      (meta as { channel?: string }).channel !== 'whatsapp_inbound'
+    ) {
+      throw new BadRequestException('Not a WhatsApp inbound attachment message');
+    }
+    const storageKey = (meta as { storageKey?: string }).storageKey?.trim();
+    if (!storageKey) {
+      throw new NotFoundException('No file stored for this message (configure R2 or media unavailable)');
+    }
+    const conv = await this.conversationService.findById(msg.conversationId);
+    await this.propertyService.findOneForUser(conv.propertyId, user.sub, user.role);
+    if (!this.storageService.isConfigured()) {
+      throw new BadRequestException('File storage is not configured');
+    }
+    const url = await this.storageService.getPresignedDownloadUrl(storageKey, 900);
+    res.redirect(302, url);
   }
 
   @Get('analytics/reply-stats')

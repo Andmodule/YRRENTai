@@ -86,6 +86,7 @@ export class IncidentsController {
       itemDescription?: string | null;
       damageLocation?: string | null;
       reservationId?: string | null;
+      suggestedTaskDraft?: unknown;
     },
   ) {
     const incident = await this.incidentsService.createForStaff(user.sub, body);

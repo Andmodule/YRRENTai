@@ -18,6 +18,25 @@ import { TasksGateway } from '../tasks/tasks.gateway';
 import { UserService } from '../user/user.service';
 import { TasksService } from '../tasks/tasks.service';
 
+const SUGGESTED_TASK_TYPES = new Set([
+  'checkout_cleaning',
+  'mid_stay_cleaning',
+  'checkin_prep',
+  'maintenance',
+  'other',
+]);
+const SUGGESTED_PRIORITIES = new Set(['normal', 'urgent', 'critical']);
+
+/** Task prefill from staff voice (stored on incident for manager UI). */
+export interface IncidentSuggestedTaskDraftDto {
+  title?: string;
+  type?: 'checkout_cleaning' | 'mid_stay_cleaning' | 'checkin_prep' | 'maintenance' | 'other';
+  priority?: 'normal' | 'urgent' | 'critical';
+  assigneeId?: string | null;
+  dueDate?: string | null;
+  notes?: string | null;
+}
+
 export interface IncidentDto {
   uuid: string;
   type: IncidentType;
@@ -45,6 +64,7 @@ export interface IncidentDto {
   /** Technician assigned to the dispatched maintenance task (when any). */
   dispatchedAssigneeId: string | null;
   dispatchedAssigneeName: string | null;
+  suggestedTaskDraft: IncidentSuggestedTaskDraftDto | null;
 }
 
 @Injectable()
@@ -85,6 +105,54 @@ export class IncidentsService {
     return map;
   }
 
+  private sanitizeSuggestedTaskDraft(
+    input: unknown,
+    validStaffIds: Set<string> | null,
+  ): IncidentSuggestedTaskDraftDto | null {
+    if (!input || typeof input !== 'object') return null;
+    const o = input as Record<string, unknown>;
+    const uuidRe =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    const out: IncidentSuggestedTaskDraftDto = {};
+    if (typeof o.title === 'string' && o.title.trim()) {
+      out.title = o.title.trim().slice(0, 500);
+    }
+    if (typeof o.type === 'string' && SUGGESTED_TASK_TYPES.has(o.type)) {
+      out.type = o.type as IncidentSuggestedTaskDraftDto['type'];
+    }
+    if (typeof o.priority === 'string' && SUGGESTED_PRIORITIES.has(o.priority)) {
+      out.priority = o.priority as IncidentSuggestedTaskDraftDto['priority'];
+    }
+    if (typeof o.assigneeId === 'string' && uuidRe.test(o.assigneeId)) {
+      if (validStaffIds === null || validStaffIds.has(o.assigneeId)) {
+        out.assigneeId = o.assigneeId;
+      }
+    } else if (o.assigneeId === null) {
+      out.assigneeId = null;
+    }
+    if (typeof o.dueDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(o.dueDate)) {
+      out.dueDate = o.dueDate;
+    }
+    if (typeof o.notes === 'string' && o.notes.trim()) {
+      out.notes = o.notes.trim().slice(0, 8000);
+    }
+    if (
+      out.title === undefined &&
+      out.type === undefined &&
+      out.priority === undefined &&
+      out.assigneeId === undefined &&
+      out.dueDate === undefined &&
+      out.notes === undefined
+    ) {
+      return null;
+    }
+    return out;
+  }
+
+  private draftFromEntity(row: IncidentEntity): IncidentSuggestedTaskDraftDto | null {
+    return this.sanitizeSuggestedTaskDraft(row.suggestedTaskDraft, null);
+  }
+
   private toDto(row: IncidentEntity, lastStay?: BookingEntity | null): IncidentDto {
     return {
       uuid: row.id,
@@ -115,6 +183,7 @@ export class IncidentsService {
       dispatchedAssigneeName: row.dispatchedTask?.assignee
         ? `${row.dispatchedTask.assignee.firstName} ${row.dispatchedTask.assignee.lastName}`.trim()
         : null,
+      suggestedTaskDraft: this.draftFromEntity(row),
     };
   }
 
@@ -174,24 +243,6 @@ export class IncidentsService {
     });
     if (!full) throw new NotFoundException();
 
-    const title = property.name;
-    const reporterLabel = full.reporter
-      ? `${full.reporter.firstName} ${full.reporter.lastName}`.trim()
-      : actingUserId;
-    const descriptionForManager = body.description.trim();
-
-    const tgMsgId = await this.telegramService.notifyIncident({
-      incidentId: saved.id,
-      ownerId: property.ownerId,
-      reporterName: reporterLabel,
-      propertyName: title,
-      description: descriptionForManager,
-      photoUrls: body.photoUrls?.length ? body.photoUrls : undefined,
-    });
-    if (tgMsgId != null) {
-      await this.incidentRepo.update(saved.id, { telegramNotifyMessageId: String(tgMsgId) });
-    }
-
     this.tasksGateway.emitIncidentCreated({
       incidentId: full.id,
       propertyOwnerId: property.ownerId,
@@ -213,10 +264,15 @@ export class IncidentsService {
       itemDescription?: string | null;
       damageLocation?: string | null;
       reservationId?: string | null;
+      suggestedTaskDraft?: unknown;
     },
   ): Promise<IncidentDto> {
     const property = await this.propertyRepo.findOne({ where: { id: body.propertyId } });
     if (!property) throw new NotFoundException('Property not found');
+
+    const staffList = await this.userService.findStaffByOwner(property.ownerId);
+    const staffIds = new Set(staffList.map((s) => s.id));
+    const suggestedDraft = this.sanitizeSuggestedTaskDraft(body.suggestedTaskDraft, staffIds);
 
     if (body.taskId) {
       const task = await this.taskRepo.findOne({
@@ -250,6 +306,7 @@ export class IncidentsService {
       managerNote: null,
       resolvedBy: null,
       resolvedAt: null,
+      suggestedTaskDraft: suggestedDraft ? { ...suggestedDraft } : null,
     });
     const saved = await this.incidentRepo.save(row);
 

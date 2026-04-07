@@ -1,9 +1,9 @@
 import { z } from 'zod';
-import { bookingComMessageMetadataSchema } from '../booking-com-email';
+import { chatMessageMetadataUnionSchema } from '../email-inbound-metadata';
 
 export const chatMessageRoleSchema = z.enum(['user', 'assistant', 'system']);
 
-export const chatMessageMetadataSchema = bookingComMessageMetadataSchema;
+export const chatMessageMetadataSchema = chatMessageMetadataUnionSchema;
 
 export const sendChatMessageSchema = z
   .object({

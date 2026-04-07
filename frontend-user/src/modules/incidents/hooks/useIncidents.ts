@@ -3,6 +3,15 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api/client';
 
+export interface IncidentSuggestedTaskDraft {
+  title?: string;
+  type?: 'checkout_cleaning' | 'mid_stay_cleaning' | 'checkin_prep' | 'maintenance' | 'other';
+  priority?: 'normal' | 'urgent' | 'critical';
+  assigneeId?: string | null;
+  dueDate?: string | null;
+  notes?: string | null;
+}
+
 export interface Incident {
   uuid: string;
   type: 'lost_item' | 'damage' | 'rule_violation' | 'emergency';
@@ -32,6 +41,7 @@ export interface Incident {
   dispatchedTaskId: string | null;
   dispatchedAssigneeId?: string | null;
   dispatchedAssigneeName?: string | null;
+  suggestedTaskDraft?: IncidentSuggestedTaskDraft | null;
 }
 
 export function useIncidents() {

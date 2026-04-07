@@ -18,6 +18,7 @@ import { UserModule } from '../user/user.module';
 import { KnowledgeBaseModule } from '../knowledge-base/knowledge-base.module';
 import { TelegramModule } from '../telegram/telegram.module';
 import { MessagingModule } from '../messaging/messaging.module';
+import { StorageModule } from '../modules/storage/storage.module';
 import { WhatsappWebhookController } from './whatsapp-webhook.controller';
 import { WhatsappInboundService } from './whatsapp-inbound.service';
 import { WhatsappCloudApiService } from './whatsapp-cloud-api.service';
@@ -39,6 +40,7 @@ import { ChatRealtimeService } from './chat-realtime.service';
     KnowledgeBaseModule,
     forwardRef(() => TelegramModule),
     forwardRef(() => MessagingModule),
+    StorageModule,
   ],
   controllers: [ChatController, WhatsappWebhookController],
   providers: [

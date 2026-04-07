@@ -392,13 +392,8 @@ export class MessagingService {
 
     /** UI + chat_messages: plain body first; if empty (HTML-only, delayed fetch), show subject — avoids "(empty message)" when subject carries the text. */
     const guestDisplayBase = cleanText.trim() || subjectTrim || '(empty message)';
-    /** No filenames in bubble text — chips below carry files; Telegram/list preview stay clean. */
-    const inboundAttachmentNoticeRu =
-      inboundAttachments.length === 1
-        ? 'ниже прилагается вложение к письму'
-        : 'ниже прилагаются вложения к письму';
-    const guestDisplayText =
-      inboundAttachments.length > 0 ? `${guestDisplayBase}\n\n${inboundAttachmentNoticeRu}` : guestDisplayBase;
+    /** Attachments only in metadata + chips — never append attachment boilerplate to bubble text. */
+    const guestDisplayText = guestDisplayBase;
 
     /** Normalized for LLM / KB (Booking strip + attachment placeholders). Stored as `agent_text`. */
     const guestAgentText = buildGuestAgentText(

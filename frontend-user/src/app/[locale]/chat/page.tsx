@@ -28,6 +28,7 @@ import {
 } from '@/hooks/use-conversations';
 import { formatGuestAndProperty } from '@/lib/format/conversation-meta';
 import { ConversationStatusDot } from '@/components/inbox/conversation-status-dot';
+import { ConversationChannelBadge } from '@/components/inbox/conversation-channel-badge';
 import { TooltipProvider } from '@/components/ui/tooltip';
 
 /** Sync with URL so Android / browser «back» returns to inbox list before leaving /chat */
@@ -234,7 +235,10 @@ function ChatPageContent() {
     : t('title');
 
   const mobileRight = activeConversation ? (
-    <ConversationStatusDot status={activeConversation.status} className="size-3 ring-2 ring-background" />
+    <span className="flex shrink-0 items-center gap-1.5">
+      <ConversationChannelBadge channel={activeConversation.channel} />
+      <ConversationStatusDot status={activeConversation.status} className="size-3 ring-2 ring-background" />
+    </span>
   ) : undefined;
 
   return (

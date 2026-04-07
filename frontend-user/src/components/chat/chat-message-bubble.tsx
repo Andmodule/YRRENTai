@@ -3,13 +3,14 @@
 import { useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import ReactMarkdown from 'react-markdown';
-import { AlertCircle, Check, Mail, MessageCircle, Paperclip, Send } from 'lucide-react';
+import { AlertCircle, Check, Mail, MessageCircle, Send } from 'lucide-react';
 import type { BookingComMessageMetadata } from '@rentai/shared';
 import { stripEscalationForGuestDisplay } from '@rentai/shared';
 import { cn } from '@/lib/utils';
 import { formatBubbleTimestamp } from '@/lib/format/conversation-meta';
 import type { ChatMessage, MessageChannelCode } from '@/hooks/use-chat';
 import { EmailAttachmentChip } from '@/components/inbox/email-attachment-chip';
+import { WhatsappInboundAttachmentChip } from '@/components/inbox/whatsapp-inbound-attachment-chip';
 import { BookingComGuestMessage } from './booking-com-guest-message';
 
 function bookingMetaForGuestBubble(
@@ -49,6 +50,11 @@ export function ChatMessageBubble({ message, onRetryStaffDelivery }: ChatMessage
     message.metadata?.channel === 'email_inbound' && message.metadata.attachments.length > 0
       ? message.metadata.attachments
       : null;
+  const whatsappInboundMeta =
+    isUser && message.metadata?.channel === 'whatsapp_inbound' ? message.metadata : null;
+  const whatsappShowAttachment =
+    whatsappInboundMeta &&
+    ['image', 'audio', 'video', 'document', 'sticker'].includes(whatsappInboundMeta.waType);
   const isStaffManual = message.role === 'assistant' && message.source === 'staff';
   /** Всё, что не ручной ответ оператора (AI и legacy без `source`). */
   const isNonStaffAssistant = message.role === 'assistant' && !isStaffManual;
@@ -115,15 +121,20 @@ export function ChatMessageBubble({ message, onRetryStaffDelivery }: ChatMessage
             role="group"
             aria-label={t('attachmentsGroupAria', { count: emailAttachments.length })}
           >
-            <div className="mb-2 flex items-center gap-1.5 text-[11px] font-medium tabular-nums text-primary-foreground/75 dark:text-zinc-400">
-              <Paperclip className="h-3.5 w-3.5 shrink-0" aria-hidden />
-              <span aria-hidden>{emailAttachments.length}</span>
-            </div>
             <div className="flex flex-wrap gap-2">
               {emailAttachments.map((att) => (
                 <EmailAttachmentChip key={att.id} attachment={att} />
               ))}
             </div>
+          </div>
+        )}
+        {isUser && whatsappShowAttachment && whatsappInboundMeta && (
+          <div
+            className="mt-3 border-t border-primary-foreground/15 pt-3 dark:border-zinc-600/50"
+            role="group"
+            aria-label={t('whatsappAttachmentGroupAria')}
+          >
+            <WhatsappInboundAttachmentChip messageId={message.id} meta={whatsappInboundMeta} />
           </div>
         )}
         <div

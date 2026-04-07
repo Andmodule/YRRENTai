@@ -73,4 +73,60 @@ export class WhatsappCloudApiService {
   ): Promise<void> {
     await this.sendTextToGuest(propertyId, externalGuestKey, text);
   }
+
+  private graphApiRoot(): string {
+    const ver = this.configService.get<string>('WHATSAPP_GRAPH_API_VERSION') ?? 'v21.0';
+    return `https://graph.facebook.com/${ver}`;
+  }
+
+  /**
+   * Download binary for a Meta media id (image/audio/video/document/sticker).
+   */
+  async fetchMediaBinary(
+    propertyId: string,
+    mediaId: string,
+  ): Promise<{ buffer: Buffer; mimeType: string; fileName: string }> {
+    const property = await this.propertyService.findByIdBare(propertyId);
+    if (!property) {
+      throw new Error(`Property ${propertyId} not found`);
+    }
+    const token = this.resolveToken(property);
+    if (!token) {
+      throw new Error('WhatsApp token not configured');
+    }
+    const metaUrl = `${this.graphApiRoot()}/${encodeURIComponent(mediaId)}`;
+    const r1 = await axios.get<{ url?: string; mime_type?: string }>(metaUrl, {
+      headers: { Authorization: `Bearer ${token}` },
+      timeout: 30000,
+    });
+    const downloadUrl = r1.data.url;
+    if (!downloadUrl || typeof downloadUrl !== 'string') {
+      throw new Error('Meta media response missing url');
+    }
+    const r2 = await axios.get<ArrayBuffer>(downloadUrl, {
+      responseType: 'arraybuffer',
+      headers: { Authorization: `Bearer ${token}` },
+      timeout: 120_000,
+      maxContentLength: 100 * 1024 * 1024,
+      maxBodyLength: 100 * 1024 * 1024,
+    });
+    const mimeType = r1.data.mime_type?.trim() || 'application/octet-stream';
+    const ext = WhatsappCloudApiService.mimeToExt(mimeType);
+    const fileName = `whatsapp-${mediaId}${ext}`;
+    return { buffer: Buffer.from(r2.data), mimeType, fileName };
+  }
+
+  private static mimeToExt(mime: string): string {
+    const m = mime.toLowerCase();
+    if (m.includes('jpeg') || m === 'image/jpg') return '.jpg';
+    if (m.includes('png')) return '.png';
+    if (m.includes('webp')) return '.webp';
+    if (m.includes('gif')) return '.gif';
+    if (m.includes('pdf')) return '.pdf';
+    if (m.includes('ogg')) return '.ogg';
+    if (m.includes('mpeg') || m.includes('mp3')) return '.mp3';
+    if (m.includes('mp4')) return '.mp4';
+    if (m.includes('opus')) return '.opus';
+    return '';
+  }
 }
