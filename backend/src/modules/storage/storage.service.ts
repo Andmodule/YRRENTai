@@ -9,21 +9,29 @@ export class StorageService {
   private readonly s3: S3Client | null;
 
   constructor(private readonly config: ConfigService) {
-    const endpoint = this.config.get<string>('R2_ENDPOINT')?.trim();
+    const rawEndpoint = this.config.get<string>('R2_ENDPOINT')?.trim();
+    const endpoint = rawEndpoint?.replace(/\/+$/, '') ?? '';
     const accessKeyId = this.config.get<string>('R2_ACCESS_KEY_ID')?.trim();
     const secretAccessKey = this.config.get<string>('R2_SECRET_ACCESS_KEY')?.trim();
     if (!endpoint || !accessKeyId || !secretAccessKey) {
       this.s3 = null;
       return;
     }
-    /** R2 is S3-compatible but does not implement flexible checksum headers (SDK ≥3.729 defaults break PutObject). */
+    /**
+     * R2: use virtual-hosted-style URLs (`bucket.<account>.r2.cloudflarestorage.com`) like Cloudflare docs.
+     * `forcePathStyle: true` can break signing or compatibility on some hosts.
+     *
+     * AWS SDK ≥3.729 adds optional flexible checksums; R2 does not fully support them.
+     * Default SDK mode is `WHEN_SUPPORTED` — **do not** use `WHEN_REQUIRED` here: it tends to attach
+     * checksum headers on PutObject and triggers Smithy/R2 errors in production.
+     */
     this.s3 = new S3Client({
       region: 'auto',
       endpoint,
       credentials: { accessKeyId, secretAccessKey },
-      forcePathStyle: true,
-      requestChecksumCalculation: 'WHEN_REQUIRED',
-      responseChecksumValidation: 'WHEN_REQUIRED',
+      forcePathStyle: false,
+      requestChecksumCalculation: 'WHEN_SUPPORTED',
+      responseChecksumValidation: 'WHEN_SUPPORTED',
     });
   }
 
