@@ -86,6 +86,15 @@ const r2EnvFields = z.object({
   R2_BUCKET_NAME: z.string().optional(),
   /** S3 API endpoint, e.g. https://<ACCOUNT_ID>.r2.cloudflarestorage.com */
   R2_ENDPOINT: optionalUrlEnv(),
+  /**
+   * Path-style requests: `https://<account>.r2.cloudflarestorage.com/<bucket>/<key>`.
+   * Default true — many R2 S3 API tokens return AccessDenied with virtual-hosted style only.
+   * Set false only if you explicitly need `bucket.<account>.r2.cloudflarestorage.com`.
+   */
+  R2_FORCE_PATH_STYLE: z
+    .enum(['true', 'false', '1', '0', 'yes', 'no'])
+    .default('true')
+    .transform((v) => v === 'true' || v === '1' || v === 'yes'),
 });
 
 const resendEnvFields = z.object({

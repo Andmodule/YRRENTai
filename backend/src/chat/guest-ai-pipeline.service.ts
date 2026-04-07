@@ -1,4 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { AgentService } from '../agent/agent.service';
 import { KnowledgeBaseService } from '../knowledge-base/knowledge-base.service';
 import { TelegramService } from '../telegram/telegram.service';
@@ -9,6 +11,9 @@ import { WhatsappCloudApiService } from './whatsapp-cloud-api.service';
 import { conversationChannelToMessageChannel } from './chat-channel.mapper';
 import { ChatMessageEntity } from './entities/chat-message.entity';
 import { ConversationEntity } from './entities/conversation.entity';
+import { MessagingAttachmentEntity } from '../messaging/entities/messaging_attachments.entity';
+import type { EscalationAttachmentRef } from '../telegram/types/escalation-attachments.types';
+import type { EmailInboundMessageMetadata } from '@rentai/shared';
 import {
   resolveGuestEscalationFallback,
   formatKnowledgeBaseEntriesForAgent,
@@ -35,6 +40,8 @@ export class GuestAiPipelineService {
     private readonly telegramService: TelegramService,
     private readonly chatRealtime: ChatRealtimeService,
     private readonly whatsappCloudApi: WhatsappCloudApiService,
+    @InjectRepository(MessagingAttachmentEntity)
+    private readonly messagingAttachmentRepo: Repository<MessagingAttachmentEntity>,
   ) {}
 
   /**
@@ -169,6 +176,20 @@ export class GuestAiPipelineService {
               lastMessagePreview: cleanText.slice(0, 200),
               lastActivityAt: agentMessage.createdAt.toISOString(),
             });
+            let escalationAttachments: EscalationAttachmentRef[] | undefined;
+            const inboundMeta = userMessage.metadata as EmailInboundMessageMetadata | undefined;
+            if (inboundMeta?.channel === 'email_inbound' && inboundMeta.messagingMessageId) {
+              const rows = await this.messagingAttachmentRepo.find({
+                where: { messageId: inboundMeta.messagingMessageId },
+              });
+              if (rows.length > 0) {
+                escalationAttachments = rows.map((a) => ({
+                  storageKey: a.storageKey,
+                  contentType: a.contentType,
+                  fileName: a.fileName,
+                }));
+              }
+            }
             void this.telegramService.sendEscalationIfConfigured({
               propertyId: property.id,
               ownerId: property.ownerId,
@@ -176,6 +197,7 @@ export class GuestAiPipelineService {
               guestQuestion: listPreview,
               guestMessageId: userMessage.id,
               conversationId: conversation.id,
+              escalationAttachments,
             });
           } else {
             await this.conversationService.setStatus(conversation.id, 'resolved');

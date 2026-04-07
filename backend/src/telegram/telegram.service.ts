@@ -27,6 +27,7 @@ import { TelegramMetricsService } from './telegram-metrics.service';
 import { sleep } from './telegram-retries.util';
 import { StaffTelegramBotService } from './staff-telegram-bot.service';
 import { escapeTelegramHtml } from './utils/telegram-html.util';
+import type { EscalationAttachmentRef } from './types/escalation-attachments.types';
 
 interface TelegramSendMessageResponse {
   ok: boolean;
@@ -122,6 +123,8 @@ export class TelegramService {
     conversationId?: string;
     /** Почтовый поток: привязка к `messaging_threads` до появления `conversationId` в инбоксе. */
     messagingThreadId?: string | null;
+    /** R2 keys for Telegram delivery after the text alert (inbound email attachments). */
+    escalationAttachments?: EscalationAttachmentRef[];
   }): Promise<void> {
     const {
       propertyId,
@@ -131,6 +134,7 @@ export class TelegramService {
       guestMessageId,
       conversationId,
       messagingThreadId,
+      escalationAttachments,
     } = params;
     const convTrim = conversationId?.trim();
     const threadTrim = messagingThreadId?.trim();
@@ -156,6 +160,7 @@ export class TelegramService {
         chatId,
         convTrim,
         threadTrim,
+        escalationAttachments,
       );
     } catch (err) {
       this.logger.error(`Escalation Telegram failed for property ${propertyId}`, err as Error);
@@ -171,6 +176,7 @@ export class TelegramService {
     telegramChatId: string,
     conversationId?: string,
     messagingThreadId?: string | null,
+    escalationAttachments?: EscalationAttachmentRef[],
   ): Promise<EscalationEntity | null> {
     const convTrim = conversationId?.trim();
     const threadTrim = messagingThreadId?.trim();
@@ -180,6 +186,8 @@ export class TelegramService {
       );
       return null;
     }
+    const att =
+      escalationAttachments?.filter((a) => a.storageKey?.trim() && a.contentType?.trim()) ?? [];
     const escalation = this.escalationRepository.create({
       propertyId,
       propertyName,
@@ -187,6 +195,7 @@ export class TelegramService {
       guestQuestion,
       ...(convTrim ? { conversationId: convTrim } : {}),
       ...(threadTrim ? { messagingThreadId: threadTrim } : {}),
+      ...(att.length > 0 ? { escalationAttachments: att } : {}),
     });
     await this.escalationRepository.save(escalation);
 

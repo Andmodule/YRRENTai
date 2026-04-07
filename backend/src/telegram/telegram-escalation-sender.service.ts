@@ -5,6 +5,8 @@ import { Repository } from 'typeorm';
 import axios from 'axios';
 import { EscalationEntity } from './entities/escalation.entity';
 import { TelegramMetricsService } from './telegram-metrics.service';
+import { StorageService } from '../modules/storage/storage.service';
+import type { EscalationAttachmentRef } from './types/escalation-attachments.types';
 
 interface TelegramSendMessageResponse {
   ok: boolean;
@@ -15,6 +17,9 @@ export interface TelegramEscalationDeliveryPayload {
   escalationId: string;
   telegramChatId: string;
 }
+
+const TELEGRAM_ESCALATION_MAX_ATTACHMENTS = 10;
+const PRESIGN_TTL_SECONDS = 3600;
 
 /**
  * HTTP delivery of escalation alerts to Telegram (used by BullMQ worker and inline retry path).
@@ -29,6 +34,7 @@ export class TelegramEscalationSenderService {
     @InjectRepository(EscalationEntity)
     private readonly escalationRepository: Repository<EscalationEntity>,
     private readonly metrics: TelegramMetricsService,
+    private readonly storageService: StorageService,
   ) {
     const token = configService.get<string>('TELEGRAM_BOT_TOKEN') ?? '';
     this.apiBase = `https://api.telegram.org/bot${token}`;
@@ -79,6 +85,82 @@ export class TelegramEscalationSenderService {
       );
     }
     this.metrics.escalationDelivery.inc({ status: 'success' });
+    await this.deliverEscalationAttachments(payload.telegramChatId, escalation);
+  }
+
+  /**
+   * After the text alert, send R2 files as Telegram photo/document (reply thread).
+   * Uses presigned GET URLs so Telegram can pull bytes from R2.
+   */
+  private async deliverEscalationAttachments(
+    telegramChatId: string,
+    escalation: EscalationEntity,
+  ): Promise<void> {
+    const list = escalation.escalationAttachments;
+    if (!list?.length) {
+      return;
+    }
+    if (!this.storageService.isConfigured()) {
+      this.logger.warn(
+        `Escalation ${escalation.id}: ${list.length} attachment(s) on record but R2 not configured — skip Telegram media`,
+      );
+      return;
+    }
+    const replyTo = escalation.tgBotMessageId;
+    if (replyTo == null) {
+      return;
+    }
+    const slice = list.slice(0, TELEGRAM_ESCALATION_MAX_ATTACHMENTS);
+    if (list.length > TELEGRAM_ESCALATION_MAX_ATTACHMENTS) {
+      this.logger.warn(
+        `Escalation ${escalation.id}: sending first ${TELEGRAM_ESCALATION_MAX_ATTACHMENTS} of ${list.length} attachments`,
+      );
+    }
+    for (const ref of slice) {
+      await this.sendOneEscalationAttachment(telegramChatId, replyTo, ref);
+    }
+  }
+
+  private useTelegramPhotoApi(ref: EscalationAttachmentRef): boolean {
+    const ct = ref.contentType.toLowerCase();
+    if (!ct.startsWith('image/')) {
+      return false;
+    }
+    return !ct.includes('svg');
+  }
+
+  private async sendOneEscalationAttachment(
+    telegramChatId: string,
+    replyToMessageId: number,
+    ref: EscalationAttachmentRef,
+  ): Promise<void> {
+    try {
+      const url = await this.storageService.getPresignedDownloadUrl(ref.storageKey, PRESIGN_TTL_SECONDS);
+      const asPhoto = this.useTelegramPhotoApi(ref);
+      const endpoint = asPhoto ? `${this.apiBase}/sendPhoto` : `${this.apiBase}/sendDocument`;
+      const caption = ref.fileName.trim().slice(0, 1024) || undefined;
+      const body = asPhoto
+        ? {
+            chat_id: telegramChatId,
+            photo: url,
+            reply_to_message_id: replyToMessageId,
+          }
+        : {
+            chat_id: telegramChatId,
+            document: url,
+            reply_to_message_id: replyToMessageId,
+            ...(caption ? { caption } : {}),
+          };
+      await axios.post(endpoint, body, { timeout: 120_000 });
+    } catch (err) {
+      const detail =
+        axios.isAxiosError(err) && err.response?.data != null
+          ? JSON.stringify(err.response.data)
+          : (err as Error).message;
+      this.logger.error(
+        `Telegram escalation attachment failed file=${ref.fileName} key=${ref.storageKey}: ${detail}`,
+      );
+    }
   }
 
   private async tryPostToChat(

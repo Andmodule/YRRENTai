@@ -1211,6 +1211,17 @@ export class MessagingService {
 
           const property = await this.propertyService.findOne(propertyIdForTg, thread.ownerId);
 
+          const attRows = await this.attachmentRepo.find({ where: { messageId: guestMessageId } });
+
+          const escalationAttachments =
+            attRows.length > 0
+              ? attRows.map((a) => ({
+                  storageKey: a.storageKey,
+                  contentType: a.contentType,
+                  fileName: a.fileName,
+                }))
+              : undefined;
+
           await this.telegramService.sendEscalationIfConfigured({
 
             propertyId: propertyIdForTg,
@@ -1226,6 +1237,8 @@ export class MessagingService {
             conversationId: fresh?.conversationId ?? undefined,
 
             messagingThreadId: thread.id,
+
+            escalationAttachments,
 
           });
 

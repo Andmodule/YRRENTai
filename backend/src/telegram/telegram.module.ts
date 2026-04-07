@@ -23,9 +23,11 @@ import { StaffNotificationService } from './staff-notification.service';
 import { StaffTelegramBotService } from './staff-telegram-bot.service';
 import { UnmappedReportsService } from './unmapped-reports.service';
 import { UnmappedReportsController } from './unmapped-reports.controller';
+import { StorageModule } from '../modules/storage/storage.module';
 
 @Module({
   imports: [
+    StorageModule,
     TypeOrmModule.forFeature([
       EscalationEntity,
       IncidentEntity,

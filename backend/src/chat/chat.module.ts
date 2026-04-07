@@ -10,6 +10,7 @@ import { StaffOutboundDeliveryService } from './staff-outbound-delivery.service'
 import { ChatMessageEntity } from './entities/chat-message.entity';
 import { ConversationEntity } from './entities/conversation.entity';
 import { WhatsappProcessedMessageEntity } from './entities/whatsapp-processed-message.entity';
+import { MessagingAttachmentEntity } from '../messaging/entities/messaging_attachments.entity';
 import { ConversationService } from './conversation.service';
 import { AgentModule } from '../agent/agent.module';
 import { PropertyModule } from '../property/property.module';
@@ -25,7 +26,12 @@ import { ChatRealtimeService } from './chat-realtime.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([ChatMessageEntity, ConversationEntity, WhatsappProcessedMessageEntity]),
+    TypeOrmModule.forFeature([
+      ChatMessageEntity,
+      ConversationEntity,
+      WhatsappProcessedMessageEntity,
+      MessagingAttachmentEntity,
+    ]),
     JwtModule.register({}),
     AgentModule,
     PropertyModule,

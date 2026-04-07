@@ -4,6 +4,7 @@ import {
   Column,
   CreateDateColumn,
 } from 'typeorm';
+import type { EscalationAttachmentRef } from '../types/escalation-attachments.types';
 
 /** Whether this resolved escalation is still queued for KB improvement */
 export type KbProcessingStatus = 'pending' | 'added_to_kb' | 'ignored';
@@ -31,6 +32,10 @@ export class EscalationEntity {
 
   @Column({ type: 'text' })
   guestQuestion!: string;
+
+  /** R2-backed files to deliver via Telegram Bot API after the text alert (e.g. inbound email photos). */
+  @Column({ type: 'jsonb', nullable: true })
+  escalationAttachments?: EscalationAttachmentRef[] | null;
 
   /** Telegram message_id of the bot alert — used to match manager replies */
   @Column({ type: 'bigint', nullable: true })
