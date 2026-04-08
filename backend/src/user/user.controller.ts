@@ -1,4 +1,13 @@
-import { Controller, Get, Patch, Post, Body, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Patch,
+  Post,
+  Body,
+  Param,
+  ParseUUIDPipe,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { UserService } from './user.service';
@@ -6,10 +15,13 @@ import { CurrentUser, JwtPayload } from '../common/decorators/current-user.decor
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CreateStaffInviteDto } from './dto/create-staff-invite.dto';
+import { UpdateStaffDto } from './dto/update-staff.dto';
 import type {
   StaffMemberDto,
   StaffPersonnelPayloadDto,
   StaffInviteCreatedDto,
+  StaffInviteLinkPayloadDto,
+  StaffDirectoryRowDto,
 } from './interfaces/public-user.interface';
 
 @ApiTags('Users')
@@ -50,6 +62,50 @@ export class UserController {
       jobType: body.jobType,
       telegramUsername: body.telegramUsername,
     });
+    return { data };
+  }
+
+  @Patch('staff/:id')
+  @UseGuards(RolesGuard)
+  @Roles('OWNER', 'MANAGER')
+  async updateStaff(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) staffId: string,
+    @Body() body: UpdateStaffDto,
+  ): Promise<{ data: StaffDirectoryRowDto }> {
+    const ownerId = await this.userService.resolveTenantOwnerId(user.sub, user.role);
+    const data = await this.userService.updateStaffMember(ownerId, staffId, {
+      firstName: body.firstName,
+      lastName: body.lastName,
+      email: body.email,
+      phone: body.phone,
+      jobType: body.jobType,
+      telegramUsername: body.telegramUsername,
+    });
+    return { data };
+  }
+
+  @Get('staff/:id/invite')
+  @UseGuards(RolesGuard)
+  @Roles('OWNER', 'MANAGER')
+  async getStaffInvite(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) staffId: string,
+  ): Promise<{ data: StaffInviteLinkPayloadDto }> {
+    const ownerId = await this.userService.resolveTenantOwnerId(user.sub, user.role);
+    const data = await this.userService.getActiveStaffInviteLink(ownerId, staffId);
+    return { data };
+  }
+
+  @Post('staff/:id/invite/regenerate')
+  @UseGuards(RolesGuard)
+  @Roles('OWNER', 'MANAGER')
+  async regenerateStaffInvite(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) staffId: string,
+  ): Promise<{ data: StaffInviteCreatedDto }> {
+    const ownerId = await this.userService.resolveTenantOwnerId(user.sub, user.role);
+    const data = await this.userService.regenerateStaffInviteLink(ownerId, staffId);
     return { data };
   }
 

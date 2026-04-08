@@ -19,6 +19,7 @@ import { UserService } from '../user/user.service';
 import { PropertyService } from '../property/property.service';
 import { TelegramProcessedUpdateEntity } from './entities/telegram-processed-update.entity';
 import { UnmappedReportEntity } from './entities/unmapped-report.entity';
+import { resolveStaffMiniAppUrl, resolveStaffTelegramBotToken } from './telegram-staff-env';
 import { StaffTelegramPendingAttachmentEntity } from './entities/staff-telegram-pending-attachment.entity';
 import { StaffTelegramPendingVoiceIncidentEntity } from './entities/staff-telegram-pending-voice-incident.entity';
 
@@ -76,20 +77,20 @@ export class StaffTelegramBotService {
     @Inject(forwardRef(() => IncidentsService))
     private readonly incidentsService: IncidentsService,
   ) {
-    const token = configService.get<string>('TELEGRAM_BOT_TOKEN') ?? '';
+    const token = resolveStaffTelegramBotToken(configService);
     this.apiBase = `https://api.telegram.org/bot${token}`;
   }
 
   private get enabled(): boolean {
-    return !!this.configService.get<string>('TELEGRAM_BOT_TOKEN')?.trim();
+    return !!resolveStaffTelegramBotToken(this.configService);
   }
 
   /**
    * @returns true if this update should be processed (first time); false if duplicate.
    */
-  async tryMarkProcessed(updateId: number): Promise<boolean> {
+  async tryMarkProcessed(updateId: number, scope: 'main' | 'staff' = 'main'): Promise<boolean> {
     try {
-      await this.processedRepo.insert({ updateId: String(updateId) });
+      await this.processedRepo.insert({ updateId: String(updateId), botScope: scope });
       void this.pruneProcessedUpdatesOlderThan48h().catch((err: unknown) => {
         this.logger.warn(`telegram_processed_updates prune: ${(err as Error).message}`);
       });
@@ -111,6 +112,20 @@ export class StaffTelegramBotService {
     await this.processedRepo.query(
       `DELETE FROM telegram_processed_updates WHERE "createdAt" < NOW() - INTERVAL '48 hours'`,
     );
+  }
+
+  /**
+   * Staff-bot webhook only: idempotency (scoped) + staff branch. Main client bot must not call this.
+   */
+  async handleStaffBotWebhook(update: StaffTelegramRawUpdate): Promise<void> {
+    if (!resolveStaffTelegramBotToken(this.configService)) {
+      return;
+    }
+    const first = await this.tryMarkProcessed(update.update_id, 'staff');
+    if (!first) {
+      return;
+    }
+    await this.tryHandleStaffBranch(update);
   }
 
   /**
@@ -143,6 +158,11 @@ export class StaffTelegramBotService {
         await this.sendMessage(chatId, text);
         return true;
       }
+      await this.sendMessage(
+        chatId,
+        'Чтобы привязать профиль, откройте ссылку-приглашение из кабинета управляющего (кнопка «Ссылка в бот» у вашего имени) и нажмите Start в этом окне. Если открыли бота из поиска — ссылка без кода не сработает. Нужна новая ссылка — попросите «Новая ссылка» у управляющего.',
+      );
+      return true;
     }
 
     const linked = await this.userService.findByTelegramChatId(chatId);
@@ -338,7 +358,7 @@ export class StaffTelegramBotService {
       return;
     }
 
-    const tma = this.configService.get<string>('TELEGRAM_MINI_APP_URL')?.trim();
+    const tma = resolveStaffMiniAppUrl(this.configService);
     const hint = tma
       ? `Не совсем понял. Откройте приложение: ${tma}`
       : 'Не совсем понял. Попробуйте ещё раз или сообщите менеджеру.';
@@ -398,7 +418,10 @@ export class StaffTelegramBotService {
     if (!path) {
       throw new Error('getFile: no path');
     }
-    const token = this.configService.get<string>('TELEGRAM_BOT_TOKEN')!;
+    const token = resolveStaffTelegramBotToken(this.configService);
+    if (!token) {
+      throw new Error('Staff Telegram bot token is not configured');
+    }
     const fileUrl = `https://api.telegram.org/file/bot${token}/${path}`;
     const res = await axios.get<ArrayBuffer>(fileUrl, {
       responseType: 'arraybuffer',

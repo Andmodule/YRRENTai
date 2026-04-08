@@ -6,6 +6,7 @@ import { toZonedTime } from 'date-fns-tz';
 import { TaskEntity } from '../tasks/entities/task.entity';
 import { UserService } from '../user/user.service';
 import { escapeTelegramHtml } from './utils/telegram-html.util';
+import { resolveStaffMiniAppUrl, resolveStaffTelegramBotToken } from './telegram-staff-env';
 
 interface TelegramSendMessageResponse {
   ok: boolean;
@@ -20,12 +21,12 @@ export class StaffNotificationService {
     private readonly configService: ConfigService,
     private readonly userService: UserService,
   ) {
-    const token = configService.get<string>('TELEGRAM_BOT_TOKEN') ?? '';
+    const token = resolveStaffTelegramBotToken(configService);
     this.apiBase = `https://api.telegram.org/bot${token}`;
   }
 
   private get isEnabled(): boolean {
-    return !!this.configService.get<string>('TELEGRAM_BOT_TOKEN')?.trim();
+    return !!resolveStaffTelegramBotToken(this.configService);
   }
 
   /**
@@ -36,12 +37,33 @@ export class StaffNotificationService {
     reason: 'assign' | 'deadline',
     assigneeId: string,
   ): Promise<void> {
-    if (!this.isEnabled) return;
+    if (!this.isEnabled) {
+      this.logger.debug(
+        `Staff TG notify skipped: TELEGRAM_STAFF_BOT_TOKEN (or legacy TELEGRAM_BOT_TOKEN) not set (task=${task.id})`,
+      );
+      return;
+    }
     const assignee = await this.userService.findById(assigneeId);
     const chatId = assignee?.telegramChatId?.trim();
-    if (!assignee || assignee.role !== 'STAFF' || !chatId) return;
+    if (!assignee) {
+      this.logger.warn(`Staff TG notify skipped: assignee user not found (task=${task.id} assigneeId=${assigneeId})`);
+      return;
+    }
+    if (assignee.role !== 'STAFF') {
+      this.logger.debug(
+        `Staff TG notify skipped: assignee is not STAFF (task=${task.id} role=${assignee.role})`,
+      );
+      return;
+    }
+    if (!chatId) {
+      this.logger.log(
+        `Staff TG notify skipped: no telegramChatId for STAFF ${assigneeId} (task=${task.id}). ` +
+          `Employee must open the bot via invite link and press /start to link the chat.`,
+      );
+      return;
+    }
 
-    const tma = this.configService.get<string>('TELEGRAM_MINI_APP_URL')?.trim().replace(/\/$/, '');
+    const tma = resolveStaffMiniAppUrl(this.configService);
     const propName = escapeTelegramHtml(task.property?.name?.trim() || 'Объект');
     const reasonLine =
       reason === 'assign' ? '✨ Вам назначена задача.' : '⏰ Изменён срок задачи.';
@@ -86,6 +108,7 @@ export class StaffNotificationService {
         },
         { timeout: 15000 },
       );
+      this.logger.log(`Staff TG notify sent task=${task.id} assignee=${assigneeId} reason=${reason}`);
     } catch (err) {
       this.logger.warn(`Staff Telegram notify failed task=${task.id}: ${(err as Error).message}`);
     }
@@ -96,7 +119,7 @@ export class StaffNotificationService {
    */
   async sendMorningDigest(chatId: string, lines: string[]): Promise<void> {
     if (!this.isEnabled) return;
-    const tma = this.configService.get<string>('TELEGRAM_MINI_APP_URL')?.trim().replace(/\/$/, '');
+    const tma = resolveStaffMiniAppUrl(this.configService);
     const text = lines.join('\n');
     const keyboard =
       tma && tma.startsWith('https://')

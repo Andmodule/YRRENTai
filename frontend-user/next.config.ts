@@ -5,6 +5,10 @@ import createNextIntlPlugin from 'next-intl/plugin';
 const withNextIntl = createNextIntlPlugin('./src/i18n/request.ts');
 
 const nextConfig: NextConfig = {
+  /** Smaller dev graphs: tree-shake heavy icon/date packages (fewer OOMs on Windows). */
+  experimental: {
+    optimizePackageImports: ['lucide-react', 'date-fns'],
+  },
   /** Avoid broken webpack vendor-chunks for axios on the server (MODULE_NOT_FOUND ./vendor-chunks/axios@…). */
   serverExternalPackages: ['axios'],
   transpilePackages: ['@rentai/shared'],

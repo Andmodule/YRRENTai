@@ -14,11 +14,13 @@ import { randomUUID } from 'crypto';
 import { UserEntity } from './entities/user.entity';
 import { StaffInviteTokenEntity } from './entities/staff-invite-token.entity';
 import { CompanyEntity } from './entities/company.entity';
+import { resolveStaffInviteBotUsername } from '../telegram/telegram-staff-env';
 import type {
   PublicUser,
   StaffMemberDto,
   StaffDirectoryRowDto,
   StaffInviteCreatedDto,
+  StaffInviteLinkPayloadDto,
   StaffPersonnelPayloadDto,
 } from './interfaces/public-user.interface';
 
@@ -293,24 +295,14 @@ export class UserService {
    * STAFF users for this tenant (strict `employerOwnerId` match).
    */
   async findStaffDirectoryForTenant(tenantOwnerId: string): Promise<StaffPersonnelPayloadDto> {
-    const botRaw = this.configService.get<string>('TELEGRAM_BOT_USERNAME')?.trim();
-    const telegramBotConfigured = !!botRaw?.replace(/^@/, '');
+    const normalizedInvite = resolveStaffInviteBotUsername(this.configService);
+    const telegramBotConfigured = normalizedInvite.length > 0;
 
     const rows = await this.userRepository.find({
       where: { role: 'STAFF', employerOwnerId: tenantOwnerId },
       order: { firstName: 'ASC', lastName: 'ASC' },
     });
-    const members: StaffDirectoryRowDto[] = rows.map((u) => ({
-      id: u.id,
-      firstName: u.firstName,
-      lastName: u.lastName,
-      email: u.email,
-      phone: u.phone?.trim() ? u.phone.trim() : null,
-      jobType: u.staffJobType ?? null,
-      telegramUsername: u.telegramUsername?.trim() ? u.telegramUsername.trim() : null,
-      telegramLinked: !!u.telegramChatId?.trim(),
-      createdAt: u.createdAt.toISOString(),
-    }));
+    const members: StaffDirectoryRowDto[] = rows.map((u) => this.toStaffDirectoryRow(u));
 
     return { members, telegramBotConfigured };
   }
@@ -335,8 +327,7 @@ export class UserService {
       throw new ConflictException('Email already registered');
     }
 
-    const botRaw = this.configService.get<string>('TELEGRAM_BOT_USERNAME')?.trim();
-    const normalizedBot = botRaw?.replace(/^@/, '') ?? '';
+    const normalizedBot = resolveStaffInviteBotUsername(this.configService);
     const telegramBotConfigured = normalizedBot.length > 0;
 
     const owner = await this.findById(tenantOwnerId);
@@ -427,5 +418,135 @@ export class UserService {
       return null;
     }
     return { invite, user: invite.user };
+  }
+
+  private toStaffDirectoryRow(u: UserEntity): StaffDirectoryRowDto {
+    return {
+      id: u.id,
+      firstName: u.firstName,
+      lastName: u.lastName,
+      email: u.email,
+      phone: u.phone?.trim() ? u.phone.trim() : null,
+      jobType: u.staffJobType ?? null,
+      telegramUsername: u.telegramUsername?.trim() ? u.telegramUsername.trim() : null,
+      telegramLinked: !!u.telegramChatId?.trim(),
+      createdAt: u.createdAt.toISOString(),
+    };
+  }
+
+  private async getStaffInTenantOrThrow(staffId: string, tenantOwnerId: string): Promise<UserEntity> {
+    const u = await this.findById(staffId);
+    if (!u || u.role !== 'STAFF' || u.employerOwnerId !== tenantOwnerId) {
+      throw new NotFoundException('Staff member not found');
+    }
+    return u;
+  }
+
+  async updateStaffMember(
+    tenantOwnerId: string,
+    staffId: string,
+    input: {
+      firstName: string;
+      lastName: string;
+      email: string;
+      phone?: string;
+      jobType: 'cleaner' | 'maintenance' | 'driver' | 'other';
+      telegramUsername?: string;
+    },
+  ): Promise<StaffDirectoryRowDto> {
+    const user = await this.getStaffInTenantOrThrow(staffId, tenantOwnerId);
+    const emailNorm = input.email.trim().toLowerCase();
+    if (emailNorm !== user.email) {
+      const dup = await this.findByEmail(emailNorm);
+      if (dup) {
+        throw new ConflictException('Email already registered');
+      }
+    }
+    user.firstName = input.firstName.trim();
+    user.lastName = input.lastName.trim();
+    user.email = emailNorm;
+    user.phone = input.phone?.trim() || undefined;
+    user.staffJobType = input.jobType;
+    user.telegramUsername = input.telegramUsername?.trim() || undefined;
+    const saved = await this.userRepository.save(user);
+    return this.toStaffDirectoryRow(saved);
+  }
+
+  private normalizedTelegramBotUsername(): string {
+    return resolveStaffInviteBotUsername(this.configService);
+  }
+
+  /**
+   * Returns the current valid unused invite link for this staff user, if any.
+   */
+  async getActiveStaffInviteLink(
+    tenantOwnerId: string,
+    staffId: string,
+  ): Promise<StaffInviteLinkPayloadDto> {
+    await this.getStaffInTenantOrThrow(staffId, tenantOwnerId);
+    const normalizedBot = this.normalizedTelegramBotUsername();
+    if (!normalizedBot.length) {
+      return { inviteLink: null, expiresAt: null, telegramBotConfigured: false };
+    }
+    const now = new Date();
+    const row = await this.staffInviteTokenRepository
+      .createQueryBuilder('t')
+      .where('t.userId = :userId', { userId: staffId })
+      .andWhere('t.isUsed = false')
+      .andWhere('t.expiresAt > :now', { now })
+      .orderBy('t.createdAt', 'DESC')
+      .getOne();
+    if (!row) {
+      return { inviteLink: null, expiresAt: null, telegramBotConfigured: true };
+    }
+    const inviteLink = `https://t.me/${normalizedBot}?start=${row.token}`;
+    return {
+      inviteLink,
+      expiresAt: row.expiresAt.toISOString(),
+      telegramBotConfigured: true,
+    };
+  }
+
+  /**
+   * Invalidates unused invites for this user and creates a new 24h token.
+   */
+  async regenerateStaffInviteLink(
+    tenantOwnerId: string,
+    staffId: string,
+  ): Promise<StaffInviteCreatedDto> {
+    const user = await this.getStaffInTenantOrThrow(staffId, tenantOwnerId);
+    const normalizedBot = this.normalizedTelegramBotUsername();
+    if (!normalizedBot.length) {
+      return {
+        userId: user.id,
+        inviteLink: null,
+        expiresAt: null,
+        telegramBotConfigured: false,
+      };
+    }
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const tokenStr = randomUUID();
+    await this.dataSource.transaction(async (em) => {
+      await em.update(
+        StaffInviteTokenEntity,
+        { userId: user.id, isUsed: false },
+        { isUsed: true },
+      );
+      const inviteRow = em.create(StaffInviteTokenEntity, {
+        token: tokenStr,
+        userId: user.id,
+        expiresAt,
+        isUsed: false,
+      });
+      await em.save(inviteRow);
+    });
+    const inviteLink = `https://t.me/${normalizedBot}?start=${tokenStr}`;
+    this.logger.log(`Staff invite regenerated for user ${user.id} (owner ${tenantOwnerId})`);
+    return {
+      userId: user.id,
+      inviteLink,
+      expiresAt: expiresAt.toISOString(),
+      telegramBotConfigured: true,
+    };
   }
 }

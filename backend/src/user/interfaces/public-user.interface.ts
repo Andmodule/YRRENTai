@@ -43,13 +43,20 @@ export interface StaffDirectoryRowDto {
 
 export interface StaffPersonnelPayloadDto {
   members: StaffDirectoryRowDto[];
-  /** True when `TELEGRAM_BOT_USERNAME` is set — invite links can be generated. */
+  /** True when staff invite bot username is set (`TELEGRAM_STAFF_BOT_USERNAME` or legacy `TELEGRAM_BOT_USERNAME`). */
   telegramBotConfigured: boolean;
 }
 
 export interface StaffInviteCreatedDto {
   userId: string;
   /** Null when bot username is not configured (user is still created). */
+  inviteLink: string | null;
+  expiresAt: string | null;
+  telegramBotConfigured: boolean;
+}
+
+/** Active unused non-expired invite for a staff user (GET …/invite). */
+export interface StaffInviteLinkPayloadDto {
   inviteLink: string | null;
   expiresAt: string | null;
   telegramBotConfigured: boolean;

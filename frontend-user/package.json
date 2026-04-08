@@ -4,9 +4,10 @@
   "private": true,
   "scripts": {
     "predev": "pnpm --filter @rentai/shared build",
-    "dev": "next dev -p 3012",
+    "dev": "node --max-old-space-size=12288 ./node_modules/next/dist/bin/next dev -p 3012 --turbo",
+    "dev:webpack": "node --max-old-space-size=12288 ./node_modules/next/dist/bin/next dev -p 3012",
     "prebuild": "pnpm --filter @rentai/shared build",
-    "build": "next build",
+    "build": "node --max-old-space-size=12288 ./node_modules/next/dist/bin/next build",
     "start": "next start -p 3012",
     "lint": "next lint"
   },

@@ -10,6 +10,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { ApiTags, ApiExcludeEndpoint } from '@nestjs/swagger';
 import { TelegramService } from './telegram.service';
+import { StaffTelegramBotService } from './staff-telegram-bot.service';
 
 @ApiTags('Telegram')
 @Controller('telegram')
@@ -18,6 +19,7 @@ export class TelegramWebhookController implements OnModuleInit {
 
   constructor(
     private readonly telegramService: TelegramService,
+    private readonly staffTelegramBot: StaffTelegramBotService,
     private readonly configService: ConfigService,
   ) {}
 
@@ -25,9 +27,13 @@ export class TelegramWebhookController implements OnModuleInit {
     const port = this.configService.get<number>('PORT') ?? 3000;
     const publicBase =
       this.configService.get<string>('API_PUBLIC_URL')?.replace(/\/$/, '') ?? `http://127.0.0.1:${port}`;
-    const path = '/api/v1/telegram/webhook';
+    const mainPath = '/api/v1/telegram/webhook';
+    const staffPath = '/api/v1/telegram/staff-webhook';
     this.logger.log(
-      `Telegram: setWebhook must POST to ${publicBase}${path} — until then, replies in Telegram never reach this server (only chat UI / API do). Use cloudflared/ngrok for local HTTPS or deploy.`,
+      `Telegram (client/manager bot): setWebhook → ${publicBase}${mainPath} (TELEGRAM_WEBHOOK_SECRET).`,
+    );
+    this.logger.log(
+      `Telegram (staff bot): setWebhook → ${publicBase}${staffPath} (TELEGRAM_STAFF_WEBHOOK_SECRET).`,
     );
   }
 
@@ -69,6 +75,44 @@ export class TelegramWebhookController implements OnModuleInit {
       await this.telegramService.handleWebhookUpdate(body as Parameters<TelegramService['handleWebhookUpdate']>[0]);
     } catch (err) {
       this.logger.error(`Webhook processing error: ${(err as Error).message}`);
+    }
+
+    return { ok: true };
+  }
+
+  @ApiExcludeEndpoint()
+  @Post('staff-webhook')
+  async handleStaffWebhook(
+    @Body() body: unknown,
+    @Headers('x-telegram-bot-api-secret-token') secret: string | undefined,
+  ) {
+    const expectedSecret = this.configService.get<string>('TELEGRAM_STAFF_WEBHOOK_SECRET');
+    const raw = body as {
+      update_id?: number;
+      message?: {
+        message_id?: number;
+        reply_to_message?: { message_id?: number };
+        text?: string;
+      };
+    };
+    const hasReply = !!raw?.message?.reply_to_message;
+    this.logger.log(
+      `Telegram staff webhook: update_id=${raw?.update_id ?? '?'} has_message=${!!raw?.message} reply_to=${hasReply}`,
+    );
+
+    if (expectedSecret && secret !== expectedSecret) {
+      this.logger.warn(
+        'Telegram staff webhook: rejected (set TELEGRAM_STAFF_WEBHOOK_SECRET empty or match setWebhook secret_token + X-Telegram-Bot-Api-Secret-Token)',
+      );
+      throw new UnauthorizedException('Invalid webhook secret');
+    }
+
+    try {
+      await this.staffTelegramBot.handleStaffBotWebhook(
+        body as Parameters<StaffTelegramBotService['handleStaffBotWebhook']>[0],
+      );
+    } catch (err) {
+      this.logger.error(`Staff webhook processing error: ${(err as Error).message}`);
     }
 
     return { ok: true };

@@ -1,9 +1,18 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { Suspense } from 'react';
-import { ManagerKanban } from '@/modules/tasks/components/manager/ManagerKanban';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useTasksFiltersStore } from '@/stores/tasks-filters.store';
+
+/** Code-split: full kanban graph is heavy; avoids dev compile OOM on low-RAM machines. */
+const ManagerKanban = dynamic(
+  () =>
+    import('@/modules/tasks/components/manager/ManagerKanban').then((m) => ({
+      default: m.ManagerKanban,
+    })),
+  { loading: () => <TasksBoardFallback /> },
+);
 
 function TasksBoardFallback() {
   return (

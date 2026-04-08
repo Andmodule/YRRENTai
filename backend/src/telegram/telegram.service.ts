@@ -419,12 +419,8 @@ export class TelegramService {
       return;
     }
 
-    const firstTime = await this.staffTelegramBot.tryMarkProcessed(update.update_id);
+    const firstTime = await this.staffTelegramBot.tryMarkProcessed(update.update_id, 'main');
     if (!firstTime) {
-      return;
-    }
-
-    if (await this.staffTelegramBot.tryHandleStaffBranch(update)) {
       return;
     }
 

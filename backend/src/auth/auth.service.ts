@@ -20,6 +20,7 @@ import {
 } from './constants/auth.constants';
 import { parseDurationToMs } from './utils/parse-duration-to-ms';
 import { validateTelegramWebAppInitData } from './utils/telegram-init-data';
+import { resolveStaffTelegramBotToken } from '../telegram/telegram-staff-env';
 
 const BCRYPT_ROUNDS = 12;
 
@@ -129,9 +130,11 @@ export class AuthService {
    * Telegram Mini App: validate `initData`, resolve STAFF user by `telegramChatId`, issue JWT cookies.
    */
   async loginWithTelegramMiniApp(initData: string, res: Response) {
-    const botToken = this.configService.get<string>('TELEGRAM_BOT_TOKEN')?.trim();
+    const botToken = resolveStaffTelegramBotToken(this.configService);
     if (!botToken) {
-      throw new UnauthorizedException('Telegram bot is not configured');
+      throw new UnauthorizedException(
+        'Staff Telegram bot is not configured (TELEGRAM_STAFF_BOT_TOKEN or legacy TELEGRAM_BOT_TOKEN)',
+      );
     }
     const v = validateTelegramWebAppInitData(initData, botToken);
     if (!v.ok) {

@@ -181,17 +181,24 @@ export const envSchema = z
       .string()
       .default('http://localhost:3001,http://localhost:3012,http://localhost:3013'),
 
+    /** Client/manager bot: guest chat escalations, owner alerts. Webhook: POST /api/v1/telegram/webhook */
     TELEGRAM_BOT_TOKEN: z.string().optional(),
-    /** Bot @username without "t.me/" — used for staff invite deep links `https://t.me/<username>?start=`. */
+    TELEGRAM_WEBHOOK_SECRET: z.string().optional(),
+    /** Legacy: staff invite username if TELEGRAM_STAFF_BOT_USERNAME unset. Prefer staff-specific vars. */
     TELEGRAM_BOT_USERNAME: z.string().optional(),
+    /** Staff bot: tasks, invites, TMA, cleaner notifications. Webhook: POST /api/v1/telegram/staff-webhook */
+    TELEGRAM_STAFF_BOT_TOKEN: z.string().optional(),
+    TELEGRAM_STAFF_BOT_USERNAME: z.string().optional(),
+    TELEGRAM_STAFF_WEBHOOK_SECRET: z.string().optional(),
     /** Public HTTPS URL of the Telegram Mini App (e.g. https://app.example.com/ru/tma/tasks). */
     TELEGRAM_MINI_APP_URL: optionalUrlEnv(),
+    /** Staff Mini App base URL; falls back to TELEGRAM_MINI_APP_URL when unset. */
+    TELEGRAM_STAFF_MINI_APP_URL: optionalUrlEnv(),
     /**
      * Manager web dashboard base URL for Telegram incident buttons (e.g. https://app.example.com/en/dashboard).
      * Must be HTTPS in production. Path `/incidents?incident=<uuid>` is appended.
      */
     MANAGER_WEB_APP_URL: optionalUrlEnv(),
-    TELEGRAM_WEBHOOK_SECRET: z.string().optional(),
 
     /** Redis URL for BullMQ (Telegram escalation queue). If unset, escalations use inline retries only. */
     REDIS_URL: z.string().optional(),

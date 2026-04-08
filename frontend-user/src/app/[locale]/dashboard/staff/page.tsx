@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import useSWR from 'swr';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from '@/i18n/navigation';
 import { useAuth } from '@/hooks/use-auth';
 import { apiClient } from '@/lib/api/client';
@@ -13,7 +13,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Copy, Loader2 } from 'lucide-react';
+import { Copy, Link2, Loader2, Pencil } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { isValidStaffInvitePhone, isValidStaffTelegramUsername } from '@/lib/staff/staff-invite-validation';
 
 const JOB_TYPES = ['cleaner', 'maintenance', 'driver', 'other'] as const;
 type JobType = (typeof JOB_TYPES)[number];
@@ -42,13 +44,32 @@ interface InviteResponse {
   telegramBotConfigured: boolean;
 }
 
+interface InviteLinkPayload {
+  inviteLink: string | null;
+  expiresAt: string | null;
+  telegramBotConfigured: boolean;
+}
+
 async function fetchStaffPersonnel(): Promise<PersonnelResponse> {
   const res = await apiClient.get<{ data: PersonnelResponse }>('/users/staff/personnel');
   return res.data.data;
 }
 
+async function fetchStaffInviteLink(staffId: string): Promise<InviteLinkPayload> {
+  const res = await apiClient.get<{ data: InviteLinkPayload }>(`/users/staff/${staffId}/invite`);
+  return res.data.data;
+}
+
+async function regenerateStaffInviteLink(staffId: string): Promise<InviteResponse> {
+  const res = await apiClient.post<{ data: InviteResponse }>(
+    `/users/staff/${staffId}/invite/regenerate`,
+  );
+  return res.data.data;
+}
+
 export default function StaffPage() {
   const t = useTranslations('staff');
+  const locale = useLocale();
   const router = useRouter();
   const { user, isLoading: authLoading } = useAuth();
   const { data: personnel, isLoading, error, mutate } = useSWR(
@@ -73,6 +94,33 @@ export default function StaffPage() {
   const [submitting, setSubmitting] = useState(false);
   const [inviteResult, setInviteResult] = useState<InviteResponse | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+
+  const [editOpen, setEditOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [efn, setEfn] = useState('');
+  const [eln, setEln] = useState('');
+  const [eem, setEem] = useState('');
+  const [ephone, setEphone] = useState('');
+  const [ejob, setEjob] = useState<JobType>('cleaner');
+  const [etg, setEtg] = useState('');
+  const [editSubmitting, setEditSubmitting] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
+  const [inviteRowOpen, setInviteRowOpen] = useState(false);
+  const [inviteTargetId, setInviteTargetId] = useState<string | null>(null);
+  const [invitePayload, setInvitePayload] = useState<InviteLinkPayload | null>(null);
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const [inviteRowError, setInviteRowError] = useState<string | null>(null);
+  const [inviteRegenerating, setInviteRegenerating] = useState(false);
+
+  const phoneInvalid = phone.trim().length > 0 && !isValidStaffInvitePhone(phone);
+  const telegramInvalid =
+    telegramUsername.trim().length > 0 && !isValidStaffTelegramUsername(telegramUsername);
+  const fieldsBlockingSubmit = phoneInvalid || telegramInvalid;
+
+  const ephoneInvalid = ephone.trim().length > 0 && !isValidStaffInvitePhone(ephone);
+  const etgInvalid = etg.trim().length > 0 && !isValidStaffTelegramUsername(etg);
+  const editFieldsBlocking = ephoneInvalid || etgInvalid;
 
   const resetForm = () => {
     setFirstName('');
@@ -113,6 +161,7 @@ export default function StaffPage() {
       setFormError(t('emailRequired'));
       return;
     }
+    if (fieldsBlockingSubmit) return;
     setSubmitting(true);
     setFormError(null);
     try {
@@ -143,6 +192,105 @@ export default function StaffPage() {
       await navigator.clipboard.writeText(link);
     } catch {
       /* ignore */
+    }
+  };
+
+  const openEdit = (row: StaffDirectoryRow) => {
+    setEditingId(row.id);
+    setEfn(row.firstName);
+    setEln(row.lastName);
+    setEem(row.email);
+    setEphone(row.phone ?? '');
+    setEjob((row.jobType as JobType) || 'cleaner');
+    setEtg(row.telegramUsername ?? '');
+    setEditError(null);
+    setEditOpen(true);
+  };
+
+  const submitEdit = async () => {
+    const fn = efn.trim();
+    const ln = eln.trim();
+    const em = eem.trim().toLowerCase();
+    if (!fn || !ln || !em) {
+      setEditError(t('formRequired'));
+      return;
+    }
+    if (editFieldsBlocking || !editingId) return;
+    setEditSubmitting(true);
+    setEditError(null);
+    try {
+      await apiClient.patch(`/users/staff/${editingId}`, {
+        firstName: fn,
+        lastName: ln,
+        email: em,
+        phone: ephone.trim() || undefined,
+        jobType: ejob,
+        telegramUsername: etg.trim() || undefined,
+      });
+      await mutate();
+      setEditOpen(false);
+      setEditingId(null);
+    } catch (e: unknown) {
+      const axiosErr = e as { response?: { data?: { message?: string | string[] } } };
+      const raw = axiosErr.response?.data?.message;
+      const msg = Array.isArray(raw) ? raw.join(', ') : raw;
+      setEditError(msg ?? t('editError'));
+    } finally {
+      setEditSubmitting(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!inviteRowOpen || !inviteTargetId) return;
+    let cancelled = false;
+    setInviteLoading(true);
+    setInviteRowError(null);
+    setInvitePayload(null);
+    void fetchStaffInviteLink(inviteTargetId)
+      .then((data) => {
+        if (!cancelled) setInvitePayload(data);
+      })
+      .catch(() => {
+        if (!cancelled) setInviteRowError('fetch');
+      })
+      .finally(() => {
+        if (!cancelled) setInviteLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [inviteRowOpen, inviteTargetId]);
+
+  const openInviteForRow = (row: StaffDirectoryRow) => {
+    setInviteTargetId(row.id);
+    setInviteRowOpen(true);
+  };
+
+  const copyRowInviteLink = async () => {
+    const link = invitePayload?.inviteLink;
+    if (!link) return;
+    try {
+      await navigator.clipboard.writeText(link);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const regenerateRowInvite = async () => {
+    if (!inviteTargetId) return;
+    setInviteRegenerating(true);
+    setInviteRowError(null);
+    try {
+      const data = await regenerateStaffInviteLink(inviteTargetId);
+      setInvitePayload({
+        inviteLink: data.inviteLink,
+        expiresAt: data.expiresAt,
+        telegramBotConfigured: data.telegramBotConfigured,
+      });
+    } catch {
+      setInviteRowError('fetch');
+    } finally {
+      setInviteRegenerating(false);
     }
   };
 
@@ -186,7 +334,7 @@ export default function StaffPage() {
         <>
         {/* Таблица только на большом экране; до lg — карточки (планшеты тоже «мобильный» UX) */}
         <div className="hidden overflow-x-auto rounded-xl border border-slate-200/80 bg-white shadow-sm dark:border-border dark:bg-card lg:block">
-          <table className="w-full min-w-[720px] text-left text-sm">
+          <table className="w-full min-w-[880px] text-left text-sm">
             <thead className="border-b border-border bg-muted/40">
               <tr>
                 <th className="px-4 py-3 font-medium">{t('colName')}</th>
@@ -195,12 +343,13 @@ export default function StaffPage() {
                 <th className="px-4 py-3 font-medium">{t('colEmail')}</th>
                 <th className="px-4 py-3 font-medium">{t('colTelegram')}</th>
                 <th className="hidden px-4 py-3 font-medium xl:table-cell">{t('colAdded')}</th>
+                <th className="px-4 py-3 text-right font-medium">{t('colActions')}</th>
               </tr>
             </thead>
             <tbody>
               {list.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-10 text-center text-muted-foreground">
+                  <td colSpan={7} className="px-4 py-10 text-center text-muted-foreground">
                     {t('empty')}
                   </td>
                 </tr>
@@ -222,6 +371,13 @@ export default function StaffPage() {
                     </td>
                     <td className="hidden px-4 py-3 text-muted-foreground xl:table-cell">
                       {new Date(row.createdAt).toLocaleDateString()}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <StaffRowActions
+                        telegramBotConfigured={telegramBotConfigured}
+                        onEdit={() => openEdit(row)}
+                        onInvite={() => openInviteForRow(row)}
+                      />
                     </td>
                   </tr>
                 ))
@@ -269,6 +425,13 @@ export default function StaffPage() {
                     </dd>
                   </div>
                 </dl>
+                <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-4 dark:border-slate-200/80">
+                  <StaffRowActions
+                    telegramBotConfigured={telegramBotConfigured}
+                    onEdit={() => openEdit(row)}
+                    onInvite={() => openInviteForRow(row)}
+                  />
+                </div>
               </article>
             ))
           )}
@@ -316,7 +479,11 @@ export default function StaffPage() {
                 <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
                   {t('cancel')}
                 </Button>
-                <Button type="button" disabled={submitting} onClick={() => void onSubmit()}>
+                <Button
+                  type="button"
+                  disabled={submitting || fieldsBlockingSubmit}
+                  onClick={() => void onSubmit()}
+                >
                   {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   {telegramBotConfigured ? t('createInvite') : t('saveStaff')}
                 </Button>
@@ -352,30 +519,62 @@ export default function StaffPage() {
                   />
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="staff-email">{t('email')}</Label>
-                <Input
-                  id="staff-email"
-                  type="email"
-                  inputMode="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  autoComplete="email"
-                  placeholder="name@company.com"
-                />
+
+              <div className="border-t border-border/60 pt-3">
+                <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  {t('contactsSection')}
+                </p>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="staff-email">{t('email')}</Label>
+                    <Input
+                      id="staff-email"
+                      type="email"
+                      inputMode="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      autoComplete="email"
+                      placeholder="name@company.com"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="staff-phone">{t('phone')}</Label>
+                    <Input
+                      id="staff-phone"
+                      type="tel"
+                      inputMode="tel"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      autoComplete="tel"
+                      placeholder={t('phonePlaceholder')}
+                      aria-invalid={phoneInvalid}
+                      className={cn(phoneInvalid && 'border-destructive focus-visible:ring-destructive/40')}
+                    />
+                    {phoneInvalid ? (
+                      <p className="text-xs text-destructive">{t('phoneInvalid')}</p>
+                    ) : null}
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="staff-tg">{t('telegramUsername')}</Label>
+                    <Input
+                      id="staff-tg"
+                      value={telegramUsername}
+                      onChange={(e) => setTelegramUsername(e.target.value.replace(/^@+/, ''))}
+                      autoComplete="off"
+                      placeholder={t('telegramPlaceholder')}
+                      aria-invalid={telegramInvalid}
+                      className={cn(
+                        telegramInvalid && 'border-destructive focus-visible:ring-destructive/40',
+                      )}
+                    />
+                    <p className="text-xs text-muted-foreground">{t('telegramHint')}</p>
+                    {telegramInvalid ? (
+                      <p className="text-xs text-destructive">{t('telegramInvalid')}</p>
+                    ) : null}
+                  </div>
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="staff-phone">{t('phone')}</Label>
-                <Input
-                  id="staff-phone"
-                  type="tel"
-                  inputMode="tel"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  autoComplete="tel"
-                  placeholder={t('phonePlaceholder')}
-                />
-              </div>
+
               <div className="space-y-2">
                 <Label htmlFor="staff-job">{t('jobType')}</Label>
                 <Select
@@ -390,19 +589,207 @@ export default function StaffPage() {
                   ))}
                 </Select>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="staff-tg">{t('telegramUsername')}</Label>
-                <Input
-                  id="staff-tg"
-                  value={telegramUsername}
-                  onChange={(e) => setTelegramUsername(e.target.value.replace(/^@+/, ''))}
-                  autoComplete="off"
-                  placeholder={t('telegramPlaceholder')}
-                />
-                <p className="text-xs text-muted-foreground">{t('telegramHint')}</p>
-              </div>
               {formError && <p className="text-sm text-destructive">{formError}</p>}
             </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={editOpen}
+        onOpenChange={(open) => {
+          setEditOpen(open);
+          if (!open) setEditingId(null);
+        }}
+      >
+        <DialogContent
+          className="max-h-[min(90dvh,720px)] max-w-lg overflow-y-auto sm:max-w-xl"
+          title={t('editDialogTitle')}
+          description={t('dialogDescription')}
+          footer={
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>
+                {t('cancel')}
+              </Button>
+              <Button
+                type="button"
+                disabled={editSubmitting || editFieldsBlocking}
+                onClick={() => void submitEdit()}
+              >
+                {editSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {t('saveChanges')}
+              </Button>
+            </div>
+          }
+        >
+          <div className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="staff-edit-fn">{t('firstName')}</Label>
+                <Input
+                  id="staff-edit-fn"
+                  value={efn}
+                  onChange={(e) => setEfn(e.target.value)}
+                  autoComplete="given-name"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="staff-edit-ln">{t('lastName')}</Label>
+                <Input
+                  id="staff-edit-ln"
+                  value={eln}
+                  onChange={(e) => setEln(e.target.value)}
+                  autoComplete="family-name"
+                />
+              </div>
+            </div>
+
+            <div className="border-t border-border/60 pt-3">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                {t('contactsSection')}
+              </p>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="staff-edit-email">{t('email')}</Label>
+                  <Input
+                    id="staff-edit-email"
+                    type="email"
+                    inputMode="email"
+                    value={eem}
+                    onChange={(e) => setEem(e.target.value)}
+                    autoComplete="email"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="staff-edit-phone">{t('phone')}</Label>
+                  <Input
+                    id="staff-edit-phone"
+                    type="tel"
+                    inputMode="tel"
+                    value={ephone}
+                    onChange={(e) => setEphone(e.target.value)}
+                    autoComplete="tel"
+                    placeholder={t('phonePlaceholder')}
+                    aria-invalid={ephoneInvalid}
+                    className={cn(ephoneInvalid && 'border-destructive focus-visible:ring-destructive/40')}
+                  />
+                  {ephoneInvalid ? (
+                    <p className="text-xs text-destructive">{t('phoneInvalid')}</p>
+                  ) : null}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="staff-edit-tg">{t('telegramUsername')}</Label>
+                  <Input
+                    id="staff-edit-tg"
+                    value={etg}
+                    onChange={(e) => setEtg(e.target.value.replace(/^@+/, ''))}
+                    autoComplete="off"
+                    placeholder={t('telegramPlaceholder')}
+                    aria-invalid={etgInvalid}
+                    className={cn(etgInvalid && 'border-destructive focus-visible:ring-destructive/40')}
+                  />
+                  <p className="text-xs text-muted-foreground">{t('telegramHint')}</p>
+                  {etgInvalid ? (
+                    <p className="text-xs text-destructive">{t('telegramInvalid')}</p>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="staff-edit-job">{t('jobType')}</Label>
+              <Select
+                id="staff-edit-job"
+                value={ejob}
+                onChange={(e) => setEjob(e.target.value as JobType)}
+              >
+                {JOB_TYPES.map((j) => (
+                  <option key={j} value={j}>
+                    {t(`jobTypes.${j}`)}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            {editError && <p className="text-sm text-destructive">{editError}</p>}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={inviteRowOpen}
+        onOpenChange={(open) => {
+          setInviteRowOpen(open);
+          if (!open) {
+            setInviteTargetId(null);
+            setInvitePayload(null);
+            setInviteRowError(null);
+          }
+        }}
+      >
+        <DialogContent
+          className="max-w-lg sm:max-w-xl"
+          title={t('inviteDialogTitle')}
+          description={
+            invitePayload?.inviteLink
+              ? t('inviteReady')
+              : invitePayload?.telegramBotConfigured
+                ? t('inviteNoLink')
+                : t('savedWithoutInvite')
+          }
+          footer={
+            <div className="flex flex-wrap justify-end gap-2">
+              {invitePayload?.inviteLink ? (
+                <Button type="button" variant="secondary" onClick={() => void copyRowInviteLink()}>
+                  <Copy className="mr-2 h-4 w-4" />
+                  {t('copyLink')}
+                </Button>
+              ) : null}
+              <Button
+                type="button"
+                variant="outline"
+                disabled={inviteRegenerating || inviteLoading || !telegramBotConfigured}
+                onClick={() => void regenerateRowInvite()}
+              >
+                {inviteRegenerating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {t('inviteRegenerate')}
+              </Button>
+              <Button type="button" onClick={() => setInviteRowOpen(false)}>
+                {t('done')}
+              </Button>
+            </div>
+          }
+        >
+          {inviteLoading ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              {t('inviteLoadingShort')}
+            </div>
+          ) : inviteRowError ? (
+            <p className="text-sm text-destructive">{t('inviteFetchError')}</p>
+          ) : (
+            <>
+              {invitePayload?.inviteLink ? (
+                <>
+                  <div className="break-all rounded-lg border border-border bg-muted/50 p-3 font-mono text-xs">
+                    {invitePayload.inviteLink}
+                  </div>
+                  {invitePayload.expiresAt ? (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      {t('inviteExpires', {
+                        date: new Date(invitePayload.expiresAt).toLocaleString(locale, {
+                          dateStyle: 'medium',
+                          timeStyle: 'short',
+                        }),
+                      })}
+                    </p>
+                  ) : null}
+                </>
+              ) : !invitePayload?.telegramBotConfigured ? (
+                <p className="text-sm text-muted-foreground">{t('savedWithoutInvite')}</p>
+              ) : (
+                <p className="text-sm text-muted-foreground">{t('inviteNoLink')}</p>
+              )}
+            </>
           )}
         </DialogContent>
       </Dialog>
@@ -411,26 +798,64 @@ export default function StaffPage() {
   );
 }
 
+function StaffRowActions({
+  telegramBotConfigured,
+  onEdit,
+  onInvite,
+}: {
+  telegramBotConfigured: boolean;
+  onEdit: () => void;
+  onInvite: () => void;
+}) {
+  const t = useTranslations('staff');
+  return (
+    <div className="flex flex-wrap items-center justify-end gap-1">
+      <Button type="button" variant="outline" size="sm" className="h-8" onClick={onEdit}>
+        <Pencil className="mr-1 h-3.5 w-3.5" />
+        {t('editStaff')}
+      </Button>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="h-8"
+        disabled={!telegramBotConfigured}
+        onClick={onInvite}
+      >
+        <Link2 className="mr-1 h-3.5 w-3.5" />
+        {t('inviteLinkAction')}
+      </Button>
+    </div>
+  );
+}
+
 function TelegramCell({ row }: { row: StaffDirectoryRow }) {
   const t = useTranslations('staff');
   if (row.telegramLinked) {
     return (
-      <span className="inline-flex flex-wrap items-center gap-1">
-        <span className="rounded-md bg-emerald-500/15 px-2 py-0.5 text-xs text-emerald-600 dark:text-emerald-400">
-          {t('telegramInBot')}
+      <div className="flex min-w-[10rem] flex-col gap-1">
+        <span className="inline-flex w-fit items-center rounded-md border border-emerald-500/30 bg-emerald-500/15 px-2 py-0.5 text-xs font-semibold text-emerald-800 dark:text-emerald-300">
+          {t('telegramStatusConnected')}
         </span>
         {row.telegramUsername ? (
           <span className="text-xs text-muted-foreground">@{row.telegramUsername}</span>
-        ) : null}
-      </span>
+        ) : (
+          <span className="text-[11px] text-muted-foreground">{t('telegramLinkedNoUsername')}</span>
+        )}
+      </div>
     );
   }
-  if (row.telegramUsername) {
-    return (
-      <span className="text-xs text-muted-foreground" title={t('telegramExpected')}>
-        @{row.telegramUsername}
+  return (
+    <div className="flex min-w-[10rem] flex-col gap-1">
+      <span className="inline-flex w-fit items-center rounded-md border border-amber-500/35 bg-amber-500/10 px-2 py-0.5 text-xs font-semibold text-amber-900 dark:text-amber-200/95">
+        {t('telegramStatusNotLinked')}
       </span>
-    );
-  }
-  return <span className="text-xs text-muted-foreground">—</span>;
+      {row.telegramUsername ? (
+        <span className="text-xs text-muted-foreground" title={t('telegramExpected')}>
+          @{row.telegramUsername}
+        </span>
+      ) : null}
+      <span className="text-[11px] leading-snug text-muted-foreground">{t('telegramInviteHint')}</span>
+    </div>
+  );
 }
