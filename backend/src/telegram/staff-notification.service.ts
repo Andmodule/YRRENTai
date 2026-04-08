@@ -83,6 +83,7 @@ export class StaffNotificationService {
 
     /** `startapp` allows only [A-Za-z0-9_]; UUID hyphens → underscores. */
     const startParam = `task_${task.id.replace(/-/g, '_')}`;
+    /** `web_app` — Mini App с initData; обычный `url` открывает ссылку как браузер → вход в приложении не работает. */
     const keyboard =
       tma && tma.startsWith('https://')
         ? {
@@ -90,7 +91,9 @@ export class StaffNotificationService {
               [
                 {
                   text: '🚀 Открыть задачу',
-                  url: `${tma}${tma.includes('?') ? '&' : '?'}startapp=${encodeURIComponent(startParam)}`,
+                  web_app: {
+                    url: `${tma}${tma.includes('?') ? '&' : '?'}startapp=${encodeURIComponent(startParam)}`,
+                  },
                 },
               ],
             ],
@@ -128,7 +131,9 @@ export class StaffNotificationService {
               [
                 {
                   text: '📅 Открыть расписание',
-                  url: `${tma}${tma.includes('?') ? '&' : '?'}startapp=tasks`,
+                  web_app: {
+                    url: `${tma}${tma.includes('?') ? '&' : '?'}startapp=tasks`,
+                  },
                 },
               ],
             ],

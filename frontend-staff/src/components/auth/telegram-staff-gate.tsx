@@ -135,7 +135,16 @@ export function TelegramStaffGate({ children }: { children: React.ReactNode }) {
         window.clearInterval(t);
         setTgInitGate('missing_init');
         setLocalErr(
-          'Нет данных Telegram для входа. Откройте мини-приложение через кнопку в боте (Menu / Open), а не обычную ссылку в чате.',
+          [
+            'Telegram не передал данные для входа в мини-приложение.',
+            '',
+            'Как правильно:',
+            '1) Дождитесь уведомления о задаче и нажмите кнопку «Открыть задачу» под ним.',
+            '2) Или «Открыть расписание» в утренней сводке.',
+            '3) Не открывайте адрес сайта из чата/браузера — там другой режим.',
+            '',
+            'Вход с компьютера: откройте ту же ссылку Staff в обычном браузере и войдите email + пароль.',
+          ].join('\n'),
         );
         setTgPhase('err');
         tmaStarted.current = true;
@@ -155,7 +164,14 @@ export function TelegramStaffGate({ children }: { children: React.ReactNode }) {
       setTgPhase('ready');
     } catch {
       setLocalErr(
-        'Не удалось войти. Откройте приложение по ссылке-приглашению из бота Staff и привяжите Telegram к аккаунту персонала.',
+        [
+          'Не удалось войти по Telegram.',
+          '',
+          'Проверьте: профиль персонала привязан к этому аккаунту (ссылка-приглашение из кабинета → Start в боте).',
+          'Затем откройте задачи кнопкой «Открыть задачу» под уведомлением.',
+          '',
+          'Или войдите в браузере: email и пароль Staff на странице входа.',
+        ].join('\n'),
       );
       setTgPhase('err');
     }
@@ -241,7 +257,10 @@ export function TelegramStaffGate({ children }: { children: React.ReactNode }) {
           backgroundColor: '#f8fafc',
         }}
       >
-        <p className="max-w-sm text-sm text-slate-600" style={{ fontSize: 14, color: '#475569' }}>
+        <p
+          className="max-w-md text-sm text-slate-600"
+          style={{ fontSize: 14, color: '#475569', whiteSpace: 'pre-line', lineHeight: 1.5 }}
+        >
           {localErr ?? 'Ошибка входа'}
         </p>
         <button

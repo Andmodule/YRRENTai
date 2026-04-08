@@ -37,6 +37,10 @@ export default function LoginPage() {
             В <strong className="font-semibold text-slate-800">браузере</strong> используйте email и пароль
             учётной записи Staff (тот же API, что и в мини-приложении).
           </p>
+          <p className="mt-2 text-sm leading-relaxed text-slate-600">
+            В <strong className="font-semibold text-slate-800">Telegram</strong> список задач открывается кнопкой
+            «Открыть задачу» под уведомлением бота — не ссылкой на сайт в чате.
+          </p>
         </div>
         <LoginForm />
         <p className="mt-8 text-center text-xs text-slate-500">

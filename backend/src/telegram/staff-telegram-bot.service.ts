@@ -161,7 +161,7 @@ export class StaffTelegramBotService {
       if (payload) {
         const result = await this.userService.bindStaffTelegramFromInvite(chatId, payload);
         const text = result.ok
-          ? `Привет, ${result.firstName}! Я твой ИИ-помощник от RentAI. Сюда будут приходить твои задачи на уборку. Тебе не нужно ничего настраивать — просто жди уведомлений.`
+          ? `Привет, ${result.firstName}! Я твой ИИ-помощник от RentAI. Сюда будут приходить твои задачи на уборку.\n\n📱 Список задач в приложении: когда придёт уведомление о задаче — нажми кнопку «Открыть задачу» под сообщением (так открывается мини-приложение с автоматическим входом). Ссылку на сайт из чата открывать не нужно.`
           : result.message;
         await this.sendMessage(chatId, text);
         return true;
@@ -195,7 +195,7 @@ export class StaffTelegramBotService {
 
     await this.sendMessage(
       chatId,
-      'Отправьте голосовое сообщение или фото по задаче. Или откройте мини-приложение из кнопки в уведомлении.',
+      'Отправьте голосовое или фото по задаче.\n\n📱 Мини-приложение со списком задач: откройте его кнопкой «Открыть задачу» / «Открыть расписание» под уведомлением от бота — не через обычную ссылку в чате.',
     );
     return true;
   }
@@ -366,10 +366,8 @@ export class StaffTelegramBotService {
       return;
     }
 
-    const tma = resolveStaffMiniAppUrl(this.configService);
-    const hint = tma
-      ? `Не совсем понял. Откройте приложение: ${tma}`
-      : 'Не совсем понял. Попробуйте ещё раз или сообщите менеджеру.';
+    const hint =
+      'Не совсем понял. Список задач — кнопка «Открыть задачу» под уведомлением о задаче. Либо голос/фото сюда в чат.';
     await this.sendMessage(chatId, hint);
   }
 
