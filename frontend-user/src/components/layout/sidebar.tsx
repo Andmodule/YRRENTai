@@ -209,14 +209,14 @@ export function Sidebar() {
                     <Icon className="h-4 w-4" />
                     {showCollapsedChrome && key === 'tasks' && openIncidents > 0 && (
                       <span
-                        className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-amber-500 ring-2 ring-slate-900"
+                        className="absolute -right-0.5 -top-0.5 size-[5px] rounded-full bg-amber-500 ring-1 ring-slate-900"
                         title={t('tasksIncidentsHint')}
                         aria-label={t('tasksIncidentsHint')}
                       />
                     )}
                     {showCollapsedChrome && key === 'chat' && chatNeedsHuman && (
                       <span
-                        className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-amber-500 ring-2 ring-slate-900"
+                        className="absolute -right-0.5 -top-0.5 size-[5px] rounded-full bg-amber-500 ring-1 ring-slate-900"
                         title={t('chatNeedsHumanHint')}
                         aria-label={t('chatNeedsHumanHint')}
                       />
@@ -232,14 +232,14 @@ export function Sidebar() {
                   </span>
                   {!showCollapsedChrome && key === 'tasks' && openIncidents > 0 && (
                     <span
-                      className="h-2 w-2 shrink-0 rounded-full bg-amber-500"
+                      className="inline-block size-[5px] shrink-0 rounded-full bg-amber-500 ring-1 ring-slate-900/80"
                       title={t('tasksIncidentsHint')}
                       aria-label={t('tasksIncidentsHint')}
                     />
                   )}
                   {!showCollapsedChrome && key === 'chat' && chatNeedsHuman && (
                     <span
-                      className="h-2 w-2 shrink-0 rounded-full bg-amber-500"
+                      className="inline-block size-[5px] shrink-0 rounded-full bg-amber-500 ring-1 ring-slate-900/80"
                       title={t('chatNeedsHumanHint')}
                       aria-label={t('chatNeedsHumanHint')}
                     />

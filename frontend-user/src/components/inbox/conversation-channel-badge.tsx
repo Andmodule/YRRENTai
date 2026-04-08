@@ -58,14 +58,17 @@ export function ConversationChannelBadge({
   return (
     <span
       className={cn(
-        'inline-flex shrink-0 items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-medium leading-none',
+        'inline-flex shrink-0 items-center justify-center gap-1 rounded-md border px-1 py-0.5 text-[10px] font-medium leading-none',
         cfg.className,
         className,
       )}
       title={cfg.label}
+      aria-label={cfg.label}
     >
       {cfg.icon}
-      <span className="max-w-[5.5rem] truncate">{cfg.label}</span>
+      {!cfg.icon && (
+        <span className="max-w-[5.5rem] truncate">{cfg.label}</span>
+      )}
     </span>
   );
 }

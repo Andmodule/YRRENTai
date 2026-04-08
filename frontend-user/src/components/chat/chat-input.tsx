@@ -4,6 +4,7 @@ import { useState, type FormEvent, type KeyboardEvent } from 'react';
 import { Send } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
 interface ChatInputProps {
   onSend: (message: string) => void;
@@ -47,7 +48,17 @@ export function ChatInput({ onSend, disabled, placeholder }: ChatInputProps) {
           target.style.height = `${Math.min(target.scrollHeight, 120)}px`;
         }}
       />
-      <Button type="submit" disabled={disabled || !value.trim()} size="icon" className="h-12 w-12 shrink-0">
+      <Button
+        type="submit"
+        variant="ghost"
+        disabled={disabled || !value.trim()}
+        size="icon"
+        className={cn(
+          'h-12 w-12 shrink-0 rounded-lg border border-transparent p-0',
+          'bg-[#0f172a] text-[#008CA4] hover:bg-[#008CA4]/10 hover:text-[#007a90] hover:border-[#008CA4]/25',
+          'dark:bg-[#0d1421] dark:text-[#00d4ff] dark:hover:bg-[#00d4ff]/10 dark:hover:border-[#00d4ff]/20',
+        )}
+      >
         <Send className="h-4 w-4" />
       </Button>
     </form>
