@@ -27,6 +27,9 @@ function applyTelegramTheme(wa: NonNullable<Window['Telegram']>['WebApp']) {
 
 type Surface = 'unknown' | 'browser' | 'telegram';
 
+/** Ждём initData: в WebView он иногда пустой один кадр; нельзя считать это «браузером». */
+type TelegramInitGate = 'waiting_init' | 'has_init' | 'missing_init';
+
 /**
  * В Telegram Mini App: `initData` → POST /auth/tma/login.
  * В обычном браузере: без блокировки.
@@ -37,6 +40,7 @@ export function TelegramStaffGate({ children }: { children: React.ReactNode }) {
   const { user, mutate } = useAuth();
   const [scriptReady, setScriptReady] = useState(false);
   const [surface, setSurface] = useState<Surface>('unknown');
+  const [tgInitGate, setTgInitGate] = useState<TelegramInitGate>('waiting_init');
   const [tgPhase, setTgPhase] = useState<'idle' | 'working' | 'ready' | 'err'>('idle');
   const [localErr, setLocalErr] = useState<string | null>(null);
   const tmaStarted = useRef(false);
@@ -107,13 +111,38 @@ export function TelegramStaffGate({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!scriptReady) return;
-    const init = window.Telegram?.WebApp?.initData?.trim() ?? '';
-    if (!init) {
+    const wa = window.Telegram?.WebApp;
+    if (!wa) {
       setSurface('browser');
       return;
     }
+    applyTelegramTheme(wa);
     setSurface('telegram');
-    applyTelegramTheme(window.Telegram!.WebApp);
+
+    const hasInit = () => (wa.initData?.trim() ?? '').length > 0;
+    if (hasInit()) {
+      setTgInitGate('has_init');
+      return;
+    }
+
+    let n = 0;
+    const t = window.setInterval(() => {
+      n += 1;
+      if (hasInit()) {
+        window.clearInterval(t);
+        setTgInitGate('has_init');
+      } else if (n >= 63) {
+        window.clearInterval(t);
+        setTgInitGate('missing_init');
+        setLocalErr(
+          'Нет данных Telegram для входа. Откройте мини-приложение через кнопку в боте (Menu / Open), а не обычную ссылку в чате.',
+        );
+        setTgPhase('err');
+        tmaStarted.current = true;
+      }
+    }, 80);
+
+    return () => window.clearInterval(t);
   }, [scriptReady]);
 
   const runTmaLogin = useCallback(async () => {
@@ -135,6 +164,7 @@ export function TelegramStaffGate({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (surface !== 'telegram') return;
     if (tgPhase === 'err') return;
+    if (tgInitGate !== 'has_init') return;
 
     if (user?.role === 'STAFF') {
       setTgPhase('ready');
@@ -152,12 +182,14 @@ export function TelegramStaffGate({ children }: { children: React.ReactNode }) {
     if (tmaStarted.current) return;
     tmaStarted.current = true;
     void runTmaLogin();
-  }, [surface, user, tgPhase, runTmaLogin]);
+  }, [surface, tgInitGate, user, tgPhase, runTmaLogin]);
 
   const showBlockingSpinner =
     !scriptReady ||
     surface === 'unknown' ||
+    (surface === 'telegram' && tgInitGate === 'waiting_init') ||
     (surface === 'telegram' &&
+      tgInitGate === 'has_init' &&
       tgPhase !== 'ready' &&
       tgPhase !== 'err' &&
       (tgPhase === 'idle' || tgPhase === 'working'));
@@ -187,7 +219,11 @@ export function TelegramStaffGate({ children }: { children: React.ReactNode }) {
           aria-hidden
         />
         <p className="text-center text-sm text-slate-600" style={{ fontSize: 14, color: '#475569' }}>
-          {!scriptReady ? 'Загрузка…' : 'Вход через Telegram…'}
+          {!scriptReady
+            ? 'Загрузка…'
+            : surface === 'telegram' && tgInitGate === 'waiting_init'
+              ? 'Подключение к Telegram…'
+              : 'Вход через Telegram…'}
         </p>
       </div>
     );
