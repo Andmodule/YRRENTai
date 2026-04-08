@@ -26,9 +26,16 @@ apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401 && typeof window !== 'undefined') {
-      if (!window.location.pathname.includes('/login')) {
-        window.location.href = '/login';
+      const path = window.location.pathname;
+      if (path.includes('/login')) {
+        return Promise.reject(error);
       }
+      /** `GET /users/me` без сессии — норма до POST /auth/tma/login; редирект ломает Mini App (TelegramStaffGate). */
+      const reqUrl = String(error.config?.url ?? '');
+      if (reqUrl.includes('/users/me')) {
+        return Promise.reject(error);
+      }
+      window.location.href = '/login';
     }
     return Promise.reject(error);
   },

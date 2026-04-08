@@ -37,11 +37,31 @@ async function proxy(request: NextRequest): Promise<NextResponse> {
     (init as RequestInit & { duplex?: string }).duplex = 'half';
   }
   const res = await fetch(url, init);
-  return new NextResponse(res.body, {
+  /** `new Headers(res.headers)` схлопывает несколько Set-Cookie → пропадает refresh_token после логина. */
+  const out = new NextResponse(res.body, {
     status: res.status,
     statusText: res.statusText,
-    headers: new Headers(res.headers),
   });
+  const hopByHop = new Set([
+    'connection',
+    'content-encoding',
+    'content-length',
+    'keep-alive',
+    'transfer-encoding',
+    'trailer',
+  ]);
+  res.headers.forEach((value, key) => {
+    const k = key.toLowerCase();
+    if (hopByHop.has(k) || k === 'set-cookie') return;
+    out.headers.append(key, value);
+  });
+  const withGetSetCookie = res.headers as Headers & { getSetCookie?: () => string[] };
+  const cookies =
+    typeof withGetSetCookie.getSetCookie === 'function' ? withGetSetCookie.getSetCookie() : [];
+  for (const c of cookies) {
+    out.headers.append('Set-Cookie', c);
+  }
+  return out;
 }
 
 export async function GET(request: NextRequest) {
