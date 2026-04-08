@@ -1,7 +1,11 @@
 import axios from 'axios';
 
+/** Зависший прокси/API без таймаута оставляет SWR и Mini App на вечной загрузке (белый экран). */
+const REQUEST_TIMEOUT_MS = 28_000;
+
 export const apiClient = axios.create({
   baseURL: '/api/v1',
+  timeout: REQUEST_TIMEOUT_MS,
   withCredentials: true,
   headers: { 'Content-Type': 'application/json' },
 });

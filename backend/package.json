@@ -21,6 +21,7 @@
     "seed:kb-arbat": "ts-node src/database/seed-kb-arbat.ts",
     "seed:test-booking": "ts-node src/database/seed-test-booking.ts",
     "seed:staff-tasks": "ts-node src/database/seed-staff-tasks.ts",
+    "seed:staff-web-test": "ts-node --transpile-only src/database/seed-staff-web-test-user.ts",
     "cleanup:test-conversations": "ts-node scripts/cleanup-test-conversations.ts"
   },
   "dependencies": {

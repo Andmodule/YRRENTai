@@ -30,7 +30,12 @@ export default function LoginPage() {
             RentAI Staff
           </h1>
           <p className="mt-2 text-sm leading-relaxed text-slate-600">
-            Вход в мобильное приложение для смены: задачи на сегодня, статусы и фото.
+            В <strong className="font-semibold text-slate-800">Telegram</strong> откройте приложение по
+            кнопке или ссылке из бота — вход выполняется автоматически после приглашения.
+          </p>
+          <p className="mt-3 text-sm leading-relaxed text-slate-600">
+            В <strong className="font-semibold text-slate-800">браузере</strong> используйте email и пароль
+            учётной записи Staff (тот же API, что и в мини-приложении).
           </p>
         </div>
         <LoginForm />

@@ -18,6 +18,8 @@ const SWIPE_THRESHOLD = 60;
 
 interface ChecklistItemProps {
   task: Task;
+  /** Показать дату, если задача не на «сегодня» (как в списке после широкого запроса задач). */
+  dueDayHint?: string;
   deadlineUrgency: DeadlineUrgency;
   onMarkDone: (uuid: string) => void;
   onMarkIssue: (uuid: string) => void;
@@ -52,6 +54,7 @@ const urgencyRing: Record<DeadlineUrgency, string> = {
 
 export const ChecklistItem = memo(function ChecklistItem({
   task,
+  dueDayHint,
   deadlineUrgency,
   onMarkDone,
   onMarkIssue,
@@ -185,6 +188,9 @@ export const ChecklistItem = memo(function ChecklistItem({
             {typeLabels[task.type] ?? task.type}
             {task.contextLabel ? ` · ${task.contextLabel}` : ''}
           </p>
+          {dueDayHint ? (
+            <p className="mt-0.5 text-xs font-medium capitalize text-teal-700">{dueDayHint}</p>
+          ) : null}
         </div>
 
         <div className="flex shrink-0 flex-col items-end gap-1">

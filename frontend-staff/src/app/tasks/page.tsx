@@ -11,15 +11,16 @@ import { apiClient } from '@/lib/api/client';
 import { LogOut } from 'lucide-react';
 
 export default function TasksPage() {
-  const { user, isLoading, isAuthenticated, isStaff } = useAuth();
+  const { user, error, isLoading, isAuthenticated, isStaff } = useAuth();
   const router = useRouter();
   const { mutate: globalMutate } = useSWRConfig();
 
   useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
+    if (isLoading) return;
+    if (error || !isAuthenticated) {
       router.replace('/login');
     }
-  }, [isLoading, isAuthenticated, router]);
+  }, [isLoading, error, isAuthenticated, router]);
 
   const handleLogout = async () => {
     try {
@@ -30,7 +31,7 @@ export default function TasksPage() {
     }
   };
 
-  if (isLoading) {
+  if (isLoading && !error) {
     return (
       <div className="flex min-h-screen flex-col gap-4 p-4">
         <Skeleton className="h-16 w-full rounded-2xl" />

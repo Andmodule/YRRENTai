@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
-import { format, startOfDay } from 'date-fns';
+import { format, startOfDay, parseISO } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import {
   CalendarDays,
@@ -99,13 +99,27 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
     });
   }, [data?.tasks, todayStr]);
 
+  /** Как в TMA: невыполненные задачи на любую дату из ответа API (широкий диапазон дат). */
+  const activeTasks = useMemo(() => {
+    const list = (data?.tasks ?? []).filter((t) => t.status !== 'done');
+    const pr: Record<string, number> = { urgent: 0, normal: 1, low: 2 };
+    return [...list].sort((a, b) => {
+      const dd = a.dueDate.localeCompare(b.dueDate);
+      if (dd !== 0) return dd;
+      const pa = pr[a.priority] ?? 1;
+      const pb = pr[b.priority] ?? 1;
+      if (pa !== pb) return pa - pb;
+      return (a.dueTime ?? '99:99').localeCompare(b.dueTime ?? '99:99');
+    });
+  }, [data?.tasks]);
+
   const doneCount = todayTasks.filter((t) => t.status === 'done').length;
   const verifiedCount = todayTasks.filter((t) => t.status === 'done' && t.hasVerificationPhoto).length;
   const total = todayTasks.length;
   const allDone = total > 0 && doneCount === total;
   const shiftEst = estimateShiftEnd(todayTasks);
 
-  const nextTask = useMemo(() => pickNextTaskByDueTime(todayTasks), [todayTasks]);
+  const nextTask = useMemo(() => pickNextTaskByDueTime(activeTasks), [activeTasks]);
 
   const [sessionShiftStartMs, setSessionShiftStartMs] = useState<number | null>(null);
   useEffect(() => {
@@ -113,13 +127,13 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
     setSessionShiftStartMs(raw ? Number(raw) : null);
   }, [todayStr]);
 
-  const incidentPropertyId = todayTasks[0]?.propertyId ?? null;
+  const incidentPropertyId = activeTasks[0]?.propertyId ?? null;
 
   const routeSorted = useMemo(() => {
-    return [...todayTasks].sort((a, b) =>
+    return [...activeTasks].sort((a, b) =>
       (a.streetAddress || a.propertyAddress).localeCompare(b.streetAddress || b.propertyAddress, 'ru'),
     );
-  }, [todayTasks]);
+  }, [activeTasks]);
 
   const initials = `${user.firstName[0] ?? ''}${user.lastName[0] ?? ''}`.toUpperCase();
 
@@ -150,7 +164,7 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
   );
 
   const handleMarkDone = (uuid: string) => {
-    const t = todayTasks.find((x) => x.uuid === uuid);
+    const t = activeTasks.find((x) => x.uuid === uuid);
     if (t) handleMarkDoneTask(t);
   };
 
@@ -269,14 +283,15 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
           </div>
         )}
 
-        {!isLoading && !isError && total === 0 && (
+        {!isLoading && !isError && activeTasks.length === 0 && (
           <div className="staff-card flex flex-col items-center px-6 py-12 text-center">
             <div className="mb-5 flex h-20 w-20 items-center justify-center rounded-3xl bg-gradient-to-br from-slate-100 to-slate-50 ring-1 ring-slate-200/80">
               <ClipboardList className="h-10 w-10 text-teal-600" strokeWidth={1.5} aria-hidden />
             </div>
-            <h2 className="text-lg font-semibold text-slate-900">Нет задач на сегодня</h2>
+            <h2 className="text-lg font-semibold text-slate-900">Нет активных задач</h2>
             <p className="mt-2 max-w-xs text-sm leading-relaxed text-slate-600">
-              Когда менеджер назначит вам объекты, задачи появятся здесь.
+              Назначенные вам задачи (на любую дату) появятся здесь. Проверьте, что в кабинете менеджера у задачи
+              выбраны вы как исполнитель.
             </p>
           </div>
         )}
@@ -320,7 +335,7 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
           </div>
         )}
 
-        {!isLoading && !isError && total > 0 && nextTask && !allDone && (
+        {!isLoading && !isError && activeTasks.length > 0 && nextTask && !allDone && (
           <div className="mb-4 rounded-2xl border-2 border-teal-500 bg-gradient-to-br from-teal-50/90 to-white p-4 shadow-sm">
             <p className="text-xs font-bold uppercase tracking-wide text-teal-800">Следующая задача</p>
             <p className="mt-2 text-sm font-semibold text-slate-900">
@@ -346,16 +361,21 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
           </div>
         )}
 
-        {!isLoading && !isError && total > 0 && (
+        {!isLoading && !isError && activeTasks.length > 0 && (
           <div className="flex flex-col gap-3">
             <h2 className="flex items-center gap-2 px-0.5 text-sm font-semibold text-slate-700">
               <ClipboardList className="h-4 w-4 text-slate-400" aria-hidden />
-              Список ({total})
+              Список ({activeTasks.length})
             </h2>
-            {todayTasks.map((task) => (
+            {activeTasks.map((task) => (
               <ChecklistItem
                 key={task.uuid}
                 task={task}
+                dueDayHint={
+                  task.dueDate !== todayStr
+                    ? format(parseISO(`${task.dueDate}T12:00:00`), 'd MMMM', { locale: ru })
+                    : undefined
+                }
                 deadlineUrgency={deadlineUrgency(task)}
                 onMarkDone={handleMarkDone}
                 onMarkIssue={(uuid) => setIssueUuid(uuid)}
@@ -453,7 +473,7 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
 
       <IssueDrawer taskUuid={issueUuid} open={!!issueUuid} onOpenChange={(o) => !o && setIssueUuid(null)} />
 
-      {todayTasks.length > 0 && incidentPropertyId && (
+      {activeTasks.length > 0 && incidentPropertyId && (
         <>
           <button
             type="button"

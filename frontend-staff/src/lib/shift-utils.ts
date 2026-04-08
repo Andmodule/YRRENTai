@@ -54,12 +54,16 @@ export function dueTimeSortKey(dueTime: string | null): string {
 }
 
 /**
- * Pick the next task: pending or in_progress, nearest dueTime first.
+ * Pick the next task: pending or in_progress, earliest due date then due time.
  */
 export function pickNextTaskByDueTime(tasks: Task[]): Task | null {
   const active = tasks.filter((t) => t.status === 'pending' || t.status === 'in_progress');
   if (active.length === 0) return null;
-  return [...active].sort((a, b) => dueTimeSortKey(a.dueTime).localeCompare(dueTimeSortKey(b.dueTime)))[0] ?? null;
+  return [...active].sort((a, b) => {
+    const byDate = a.dueDate.localeCompare(b.dueDate);
+    if (byDate !== 0) return byDate;
+    return dueTimeSortKey(a.dueTime).localeCompare(dueTimeSortKey(b.dueTime));
+  })[0] ?? null;
 }
 
 /**

@@ -1,7 +1,6 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { format } from 'date-fns';
 import { apiClient } from '@/lib/api/client';
 
 export interface Task {
@@ -55,13 +54,16 @@ export interface TaskNote {
   createdAt: string;
 }
 
+/** Same wide window as frontend-user TMA (`DEFAULT_TASK_FILTERS`), so STAFF sees all assigned tasks, not only due today. */
+const STAFF_TASKS_FROM = '2000-01-01';
+const STAFF_TASKS_TO = '2100-12-31';
+
 export function useTodayTasks() {
-  const today = format(new Date(), 'yyyy-MM-dd');
   return useQuery<{ tasks: Task[] }>({
-    queryKey: ['tasks', today],
+    queryKey: ['tasks', 'staff'],
     queryFn: async () => {
       const res = await apiClient.get<{ data: { tasks: Task[] } }>(
-        `/tasks?from=${today}&to=${today}`,
+        `/tasks?from=${STAFF_TASKS_FROM}&to=${STAFF_TASKS_TO}`,
       );
       return { tasks: res.data.data.tasks };
     },

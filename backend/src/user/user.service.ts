@@ -29,7 +29,7 @@ const STAFF_INVITE_BCRYPT_ROUNDS = 12;
 const INVITE_LINK_INVALID =
   '❌ Срок действия ссылки истёк или она уже использована. Попросите управляющего новую.';
 const TELEGRAM_CHAT_COLLISION =
-  '⚠️ Этот Telegram-аккаунт уже привязан к другому профилю.';
+  '⚠️ Этот Telegram уже привязан к другому пользователю RentAI. Часто так, если тот же чат подключён в кабинете владельца (Настройки → Telegram). Отвяжите там или используйте другой Telegram для персонала.';
 
 export interface CreateUserInput {
   email: string;

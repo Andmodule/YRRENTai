@@ -127,12 +127,19 @@ frontend-staff/
 
 ## Auth-поток персонала
 
-1. Открыть `http://localhost:3013`
-2. Редирект → `/login`
-3. Ввести email + пароль аккаунта с ролью `STAFF`
-4. `POST /api/v1/auth/login` — cookies `access_token` / `refresh_token` устанавливаются на домен `:3013`
-5. Проверка роли: если `user.role !== 'STAFF'` — logout + сообщение "только для персонала"
-6. Успех → `/tasks` (чеклист на сегодня)
+**Браузер (PWA / десктоп):**
+
+1. Открыть `http://localhost:3013` → `/login`
+2. Email + пароль аккаунта с ролью `STAFF` → `POST /api/v1/auth/login` (httpOnly cookies на `:3013`)
+3. Если роль не `STAFF` — logout и сообщение «только для персонала»
+4. Успех → `/tasks`
+
+**Telegram Mini App (основной сценарий для персонала):**
+
+1. В BotFather / `.env` указать `TELEGRAM_STAFF_MINI_APP_URL` на **HTTPS-оригин** деплоя `frontend-staff` (не путь `/ru/tma/...` из `frontend-user`).
+2. Пользователь открывает Web App из бота (приглашение `/start=…` привязывает `telegramChatId`).
+3. `frontend-staff` загружает `telegram-web-app.js`, читает `initData` → `POST /api/v1/auth/tma/login` — те же cookies, что и в старом TMA.
+4. Успех → `/tasks` (чеклист).
 
 **Сессии изолированы:** cookies привязаны к источнику (`localhost:3012` vs `localhost:3013` — разные origins, разные cookie-jar в браузере).
 

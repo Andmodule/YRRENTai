@@ -79,6 +79,14 @@ export class StaffTelegramBotService {
   ) {
     const token = resolveStaffTelegramBotToken(configService);
     this.apiBase = `https://api.telegram.org/bot${token}`;
+    const staffTma = resolveStaffMiniAppUrl(configService);
+    if (staffTma) {
+      this.logger.log(`Staff Mini App URL (кнопки / Web App): ${staffTma}`);
+    } else {
+      this.logger.warn(
+        'Staff Mini App URL пустой — задайте TELEGRAM_STAFF_MINI_APP_URL (или TELEGRAM_MINI_APP_URL) на Render.',
+      );
+    }
   }
 
   private get enabled(): boolean {
