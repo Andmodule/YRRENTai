@@ -85,7 +85,9 @@ export class ManagerReportsService {
       .innerJoin('i.property', 'p')
       .where('p.ownerId = :ownerId', { ownerId })
       .andWhere('i.createdAt BETWEEN :df AND :dt', { df: incFrom, dt: incTo })
-      .andWhere('i.status IN (:...st)', { st: ['open', 'in_review'] })
+      .andWhere('i.status IN (:...st)', {
+        st: ['awaiting_dispatch', 'assigned', 'open', 'in_review'],
+      })
       .getCount();
 
     const bookings = await this.bookingRepo

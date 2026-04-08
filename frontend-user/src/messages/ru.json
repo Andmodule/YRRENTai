@@ -460,7 +460,7 @@
     "back": "Назад"
   },
   "nav": {
-    "tasksIncidentsHint": "Активные инциденты показаны в колонке «Проблема» на доске задач",
+    "tasksIncidentsHint": "Активные инциденты показаны в колонке «Инцидент» на доске задач",
     "chatNeedsHumanHint": "В чате есть сообщение, ожидающее вашего ответа",
     "dashboard": "Панель управления",
     "properties": "Объекты",
@@ -648,6 +648,7 @@
   "tasks": {
     "pageTitle": "Задачи",
     "incidentSocketToastTitle": "Новый инцидент создан",
+    "incidentSocketToastDescription": "Он на странице «Задачи» — блок «Инциденты» вверху доски.",
     "newFromBooking": {
       "title": "Новая задача",
       "subtitle": "Создать задачу, привязанную к этой брони.",
@@ -777,6 +778,7 @@
       "typeLostItem": "Забытая вещь",
       "typeRuleViolation": "Нарушение правил",
       "typeEmergency": "Авария",
+      "typeTaskReport": "Сообщение по задаче",
       "estimatedCostLabel": "Оценка ущерба / сумма",
       "estimatedCostPlaceholder": "напр. 5000",
       "create": "Создать",
@@ -786,7 +788,7 @@
       "incidentNeedsProperty": "Выберите объект для инцидента.",
       "incidentCreatedTitle": "Новый инцидент создан",
       "incidentCreatedCostLine": "Ущерб: {amount} руб.",
-      "incidentCreatedNextPrompt": "Хотите сразу отправить кого-то устранить проблему?",
+      "incidentCreatedNextPrompt": "Хотите сразу отправить кого-то устранить инцидент?",
       "assignTask": "Назначить задачу",
       "closeAfterIncident": "Закрыть"
     },
@@ -802,7 +804,7 @@
       "pending": "Ожидает",
       "in_progress": "В процессе",
       "done": "Готово",
-      "issue": "Проблема"
+      "issue": "Инцидент"
     },
     "type": {
       "checkout_cleaning": "Уборка (выезд)",
@@ -860,6 +862,7 @@
       "incidentCount": "{count, plural, one {# инцидент} few {# инцидента} many {# инцидентов} other {# инцидентов}}",
       "summarySeparator": " · ",
       "addTask": "+ Добавить задачу",
+      "addIncident": "+ Добавить инцидент",
       "markDoneAria": "Отметить задачу выполненной",
       "swipeToCompleteAria": "Смахните вправо, чтобы отметить выполненной",
       "swipeToDeleteAria": "Смахните влево, чтобы удалить.",
@@ -895,7 +898,7 @@
       "pending": "Ожидает",
       "in_progress": "В процессе",
       "done": "Готово",
-      "issue": "Проблема",
+      "issue": "Инцидент",
       "columnAria": "{title}: {count} задач",
       "columnAriaMixed": "{title}: {taskCount} задач, {incidentCount} инцидентов"
     },
@@ -909,6 +912,9 @@
         "typeDamage": "Повреждение",
         "typeRuleViolation": "Нарушение правил",
         "typeEmergency": "Авария",
+        "typeTaskReport": "Сообщение по задаче",
+        "statusAwaitingDispatch": "Ожидает назначения",
+        "statusAssigned": "Назначено, не начато",
         "statusOpen": "В работе",
         "statusPendingVerify": "На проверке",
         "statusResolved": "Решён",
@@ -922,6 +928,7 @@
         "typeDamage": "Повреждение",
         "typeRuleViolation": "Нарушение правил",
         "typeEmergency": "Авария",
+        "typeTaskReport": "Сообщение по задаче",
         "guest": "Гость",
         "item": "Вещь",
         "location": "Где",
@@ -940,7 +947,7 @@
         "contactCall": "Позвонить",
         "contactWhatsApp": "WhatsApp",
         "takeInWork": "Взять в работу",
-        "takeInWorkHint": "Ставит статус «В работе» — карточка остаётся в колонке «Проблемы», но видно, что кейс уже кто-то ведёт.",
+        "takeInWorkHint": "Ставит статус «В работе» — карточка остаётся в колонке «Инцидент», но видно, что кейс уже кто-то ведёт.",
         "markResolved": "Решено",
         "markClosed": "Закрыть",
         "closePanel": "Закрыть окно"
@@ -950,18 +957,18 @@
       "emptyPending": "Нет задач в очереди",
       "emptyProgress": "Никто не работает",
       "emptyDone": "Пока нет выполненных",
-      "emptyIssue": "Проблем нет 👍"
+      "emptyIssue": "Инцидентов нет 👍"
     },
     "detail": {
       "generalTaskFallback": "Общая задача",
       "duePrefix": "Срок",
       "reportedPrefix": "Сообщено",
-      "issueBlockTitle": "Сообщение о проблеме",
+      "issueBlockTitle": "Сообщение об инциденте",
       "taskTitleAria": "Название задачи",
       "taskTitleLabel": "Задача",
       "staffTakeWork": "Взять в работу",
       "staffComplete": "Завершить",
-      "staffReportIssue": "Сообщить о проблеме",
+      "staffReportIssue": "Сообщить об инциденте",
       "editTask": "Редактировать / новая задача",
       "deleteTask": "Удалить",
       "moreMenuAria": "Дополнительные действия",
@@ -999,13 +1006,13 @@
       "photosUploadError": "Не удалось загрузить фото"
     },
     "issue": {
-      "title": "Сообщить о проблеме",
-      "description": "Опишите, что не так",
-      "label": "Описание проблемы",
+      "title": "Сообщить об инциденте",
+      "description": "Добавьте описание инцидента",
+      "label": "Описание инцидента",
       "placeholder": "Например: сломано кресло в гостиной",
       "photos": "Прикрепить фото",
       "cancel": "Отмена",
-      "submit": "Сообщить о проблеме"
+      "submit": "Сообщить об инциденте"
     },
     "staff": {
       "title": "Задачи на сегодня",
@@ -1279,7 +1286,7 @@
       "emailHint": "Подписка на события на почту.",
       "emailNewBooking": "Новая бронь",
       "emailCheckout": "Выезд гостя",
-      "emailHousekeeping": "Проблема от горничной",
+      "emailHousekeeping": "Инцидент от горничной",
       "escalationCard": "Эскалация ИИ",
       "escalationHint": "Ниже этого порога бот не отвечает сам и ждёт человека.",
       "escalationThreshold": "Порог уверенности",

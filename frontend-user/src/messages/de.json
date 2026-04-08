@@ -534,6 +534,7 @@
   "tasks": {
     "pageTitle": "Aufgaben",
     "incidentSocketToastTitle": "Neuer Vorfall erstellt",
+    "incidentSocketToastDescription": "Unter Aufgaben — der Vorfälle-Bereich oben am Board.",
     "voiceCreate": {
       "sheetTitle": "Neue Aufgabe",
       "voiceSheetTitle": "Aufgabe ansagen",
@@ -617,6 +618,7 @@
       "typeLostItem": "Fundsache / vergessen",
       "typeRuleViolation": "Regelverstoß",
       "typeEmergency": "Notfall / Havarie",
+      "typeTaskReport": "Meldung zur Aufgabe",
       "estimatedCostLabel": "Geschätzter Schaden / Betrag",
       "estimatedCostPlaceholder": "z. B. 5000",
       "create": "Erstellen",
@@ -695,6 +697,7 @@
       "incidentCount": "{count, plural, one {# Vorfall} other {# Vorfälle}}",
       "summarySeparator": " · ",
       "addTask": "+ Aufgabe hinzufügen",
+      "addIncident": "+ Vorfall hinzufügen",
       "markDoneAria": "Aufgabe als erledigt markieren",
       "swipeToCompleteAria": "Nach rechts wischen, um als erledigt zu markieren",
       "swipeToDeleteAria": "Nach links wischen, um zu löschen.",

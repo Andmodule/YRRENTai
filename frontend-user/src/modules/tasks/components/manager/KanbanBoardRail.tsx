@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { useMatchMedia } from '@/hooks/use-match-media';
@@ -8,8 +8,8 @@ import { cn } from '@/lib/utils';
 import type { Task, TaskStatus } from '../../types';
 import { KANBAN_COLUMNS } from '../../constants';
 import { KanbanColumn } from './KanbanColumn';
-import { KanbanIncidentsStrip } from './KanbanIncidentsStrip';
 import type { Incident } from '@/modules/incidents/hooks/useIncidents';
+import { incidentStatusToKanbanColumn } from '../../utils/incident-kanban-column';
 
 export function KanbanBoardRail({
   byStatus,
@@ -64,7 +64,22 @@ export function KanbanBoardRail({
     return () => rail.removeEventListener('scroll', onScroll);
   }, [isMd, updateActiveFromScroll]);
 
-  const columnCounts = KANBAN_COLUMNS.map((col) => byStatus[col.status].length);
+  const incidentsByColumn = useMemo(() => {
+    const buckets: Record<TaskStatus, Incident[]> = {
+      pending: [],
+      in_progress: [],
+      done: [],
+      issue: [],
+    };
+    for (const inc of boardIncidents) {
+      buckets[incidentStatusToKanbanColumn(inc.status)].push(inc);
+    }
+    return buckets;
+  }, [boardIncidents]);
+
+  const columnCounts = KANBAN_COLUMNS.map(
+    (col) => byStatus[col.status].length + incidentsByColumn[col.status].length,
+  );
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-1">
@@ -92,13 +107,11 @@ export function KanbanBoardRail({
         </>
       )}
 
-      <KanbanIncidentsStrip incidents={boardIncidents} onOpenIncident={onOpenIncident} />
-
       <div
         ref={boardRef}
         className={cn(
-          'flex min-h-0 flex-1 gap-3 pb-2',
-          'md:flex-row md:flex-nowrap md:overflow-x-auto',
+          'flex min-h-0 min-w-0 flex-1 gap-3 pb-2',
+          'md:w-full md:flex-row md:flex-nowrap md:overflow-x-hidden',
           'max-md:snap-x max-md:snap-mandatory max-md:flex-row max-md:flex-nowrap max-md:overflow-x-auto max-md:overflow-y-visible',
           'max-md:-mx-4 max-md:scroll-pl-4 max-md:scroll-pr-4 max-md:px-4',
           '[scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
@@ -111,15 +124,17 @@ export function KanbanBoardRail({
               columnRefs.current[i] = el;
             }}
             className={cn(
-              'flex min-h-0 flex-col',
+              'flex min-h-0 min-w-0 flex-col',
               'max-md:snap-center max-md:shrink-0 max-md:w-[min(22rem,calc(100svw-2rem))]',
-              'md:w-auto md:min-w-0 md:snap-none md:shrink-0',
+              'md:min-w-0 md:flex-1 md:snap-none',
             )}
           >
             <KanbanColumn
               column={col}
               tasks={byStatus[col.status]}
+              incidents={incidentsByColumn[col.status]}
               onOpenTask={onOpenTask}
+              onOpenIncident={onOpenIncident}
             />
           </div>
         ))}

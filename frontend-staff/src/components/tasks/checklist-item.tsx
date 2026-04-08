@@ -13,6 +13,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import type { Task } from '@/hooks/use-tasks';
 import type { DeadlineUrgency } from '@/lib/shift-utils';
 import { formatElapsedMs } from '@/lib/shift-utils';
+import { useStaffStrings } from '@/locales/staff-strings';
 
 const SWIPE_THRESHOLD = 60;
 
@@ -60,6 +61,7 @@ export const ChecklistItem = memo(function ChecklistItem({
   onMarkIssue,
   onQuickOpen,
 }: ChecklistItemProps) {
+  const str = useStaffStrings();
   const isDone = task.status === 'done';
   const isIssue = task.status === 'issue';
   const inProgress = task.status === 'in_progress';
@@ -188,6 +190,13 @@ export const ChecklistItem = memo(function ChecklistItem({
             {typeLabels[task.type] ?? task.type}
             {task.contextLabel ? ` · ${task.contextLabel}` : ''}
           </p>
+          {isIssue ? (
+            <p className="mt-1">
+              <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-950">
+                {str.tasks.taskStatusIssue}
+              </span>
+            </p>
+          ) : null}
           {dueDayHint ? (
             <p className="mt-0.5 text-xs font-medium capitalize text-teal-700">{dueDayHint}</p>
           ) : null}
@@ -209,7 +218,10 @@ export const ChecklistItem = memo(function ChecklistItem({
             <span className="h-2 w-2 rounded-full bg-amber-500 ring-2 ring-amber-200/80" title="Срочно" />
           )}
           {isIssue && (
-            <AlertCircle className="h-4 w-4 text-amber-600" aria-label="Нужно внимание менеджера" />
+            <AlertCircle
+              className="h-4 w-4 text-amber-600"
+              aria-label={str.tasks.checklist.taskIncidentNeedsManagerAria}
+            />
           )}
         </div>
       </div>

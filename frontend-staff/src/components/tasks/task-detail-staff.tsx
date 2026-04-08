@@ -12,7 +12,7 @@ import {
   useTaskChecklist,
   usePatchTaskChecklistItem,
 } from '@/hooks/use-tasks';
-import { strings } from '@/strings/tasks';
+import { useStaffStrings } from '@/locales/staff-strings';
 import { stripStaffSeedTaskMarker } from '@rentai/shared';
 
 interface TaskDetailStaffProps {
@@ -29,6 +29,7 @@ export function TaskDetailStaff({
   onClose,
   checklistScrollNonce = 0,
 }: TaskDetailStaffProps) {
+  const strings = useStaffStrings();
   const { data: notesData } = useTaskNotes(task?.uuid ?? null, open && !!task);
   const { data: checklistData } = useTaskChecklist(task?.uuid ?? null, open && !!task);
   const { mutate: patchChecklist, isPending: checklistPending } = usePatchTaskChecklistItem();
@@ -110,6 +111,26 @@ export function TaskDetailStaff({
             {task.contextLabel}
           </div>
         )}
+
+        {task.status === 'issue' && (
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <span className="inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-950">
+              {strings.tasks.taskStatusIssue}
+            </span>
+          </div>
+        )}
+
+        {task.status === 'issue' && task.issueDescription?.trim() ? (
+          <div
+            className="mb-4 rounded-2xl border border-amber-200/90 bg-amber-50/90 p-4 text-sm text-amber-950"
+            role="status"
+          >
+            <p className="text-xs font-semibold uppercase tracking-wide text-amber-900">
+              {strings.tasks.taskIssueReportHeading}
+            </p>
+            <p className="mt-2 whitespace-pre-wrap text-amber-950">{task.issueDescription.trim()}</p>
+          </div>
+        ) : null}
 
         {checklistTotal > 0 && (
           <div className="mb-4 rounded-2xl border border-slate-200 bg-white p-4" aria-live="polite">

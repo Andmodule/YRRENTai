@@ -269,19 +269,23 @@ export class IncidentsService {
   ): Promise<IncidentDto> {
     const property = await this.propertyRepo.findOne({ where: { id: body.propertyId } });
     if (!property) throw new NotFoundException('Property not found');
+    if (body.type === 'task_report' && !body.taskId) {
+      throw new BadRequestException('task_report requires taskId');
+    }
 
     const staffList = await this.userService.findStaffByOwner(property.ownerId);
     const staffIds = new Set(staffList.map((s) => s.id));
     const suggestedDraft = this.sanitizeSuggestedTaskDraft(body.suggestedTaskDraft, staffIds);
 
+    let linkedTask: TaskEntity | null = null;
     if (body.taskId) {
-      const task = await this.taskRepo.findOne({
+      linkedTask = await this.taskRepo.findOne({
         where: { id: body.taskId },
         relations: ['property'],
       });
-      if (!task) throw new NotFoundException('Task not found');
-      if (task.assigneeId !== staffId) throw new ForbiddenException();
-      if (task.propertyId !== body.propertyId) throw new BadRequestException('taskId does not match property');
+      if (!linkedTask) throw new NotFoundException('Task not found');
+      if (linkedTask.assigneeId !== staffId) throw new ForbiddenException();
+      if (linkedTask.propertyId !== body.propertyId) throw new BadRequestException('taskId does not match property');
     } else {
       const hasAccess = await this.taskRepo.exist({
         where: { propertyId: body.propertyId, assigneeId: staffId },
@@ -291,7 +295,7 @@ export class IncidentsService {
 
     const row = this.incidentRepo.create({
       type: body.type,
-      status: 'open',
+      status: 'awaiting_dispatch',
       propertyId: body.propertyId,
       companyId: property.companyId,
       taskId: body.taskId,
@@ -326,10 +330,15 @@ export class IncidentsService {
             .filter(Boolean)
             .join('\n')
             .trim() || body.description.trim()
-        : [body.description, body.damageLocation ? `Где: ${body.damageLocation}` : '']
-            .filter(Boolean)
-            .join('\n')
-            .trim();
+        : body.type === 'task_report'
+          ? [linkedTask?.title ? `Задача: ${linkedTask.title}` : '', body.description.trim()]
+              .filter(Boolean)
+              .join('\n')
+              .trim()
+          : [body.description, body.damageLocation ? `Где: ${body.damageLocation}` : '']
+              .filter(Boolean)
+              .join('\n')
+              .trim();
 
     const tgMsgId = await this.telegramService.notifyIncident({
       incidentId: saved.id,
@@ -465,7 +474,9 @@ export class IncidentsService {
       .createQueryBuilder('i')
       .innerJoin('i.property', 'p')
       .where('p.ownerId = :ownerId', { ownerId })
-      .andWhere('i.status IN (:...st)', { st: ['open', 'in_review'] })
+      .andWhere('i.status IN (:...st)', {
+        st: ['awaiting_dispatch', 'assigned', 'open', 'in_review'],
+      })
       .getCount();
   }
 }

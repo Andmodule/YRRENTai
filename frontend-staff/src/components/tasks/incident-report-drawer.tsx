@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { useUploadIncidentPhotos, useCreateIncident } from '@/hooks/use-tasks';
-import { strings } from '@/strings/tasks';
+import { useStaffStrings } from '@/locales/staff-strings';
 import { toast } from 'sonner';
 
 interface IncidentReportDrawerProps {
@@ -26,6 +26,8 @@ export function IncidentReportDrawer({
   taskId,
   initialType = 'lost_item',
 }: IncidentReportDrawerProps) {
+  const s = useStaffStrings();
+  const si = s.tasks.incident;
   const [type, setType] = useState<'lost_item' | 'damage'>(initialType);
   const [files, setFiles] = useState<File[]>([]);
   const [description, setDescription] = useState('');
@@ -47,11 +49,11 @@ export function IncidentReportDrawer({
 
   const submit = async () => {
     if (type === 'damage' && !description.trim()) {
-      toast.error('Опишите повреждение');
+      toast.error(si.describeDamage);
       return;
     }
     if (type === 'lost_item' && !itemDescription.trim() && !description.trim()) {
-      toast.error('Опишите находку');
+      toast.error(si.describeFind);
       return;
     }
     try {
@@ -66,7 +68,9 @@ export function IncidentReportDrawer({
         itemDescription: type === 'lost_item' ? itemDescription.trim() || null : null,
         damageLocation: type === 'damage' ? damageLocation.trim() || null : null,
       });
-      toast.success(strings.tasks.incident.success);
+      toast.success(si.success, {
+        description: si.successDescription,
+      });
       reset();
       onOpenChange(false);
     } catch (e) {
@@ -78,13 +82,13 @@ export function IncidentReportDrawer({
           return;
         }
       }
-      toast.error('Не удалось отправить');
+      toast.error(si.sendFailed);
     }
   };
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
-      <DrawerContent title="Инцидент">
+      <DrawerContent title={si.drawerTitle}>
         <div className="space-y-4">
           <div className="flex gap-2">
             <Button
@@ -94,7 +98,7 @@ export function IncidentReportDrawer({
               onClick={() => setType('lost_item')}
             >
               <KeyRound className="h-4 w-4" />
-              {strings.tasks.incident.lostItem}
+              {si.lostItem}
             </Button>
             <Button
               type="button"
@@ -103,12 +107,12 @@ export function IncidentReportDrawer({
               onClick={() => setType('damage')}
             >
               <AlertTriangle className="h-4 w-4" />
-              {strings.tasks.incident.damage}
+              {si.damage}
             </Button>
           </div>
 
           <div>
-            <label className="text-xs font-medium text-slate-600">Фото (необязательно, до 5)</label>
+            <label className="text-xs font-medium text-slate-600">{si.photosOptional}</label>
             <input
               type="file"
               accept="image/*"
@@ -121,16 +125,16 @@ export function IncidentReportDrawer({
           {type === 'lost_item' && (
             <>
               <div>
-                <label className="text-xs font-medium text-slate-600">Что нашли</label>
+                <label className="text-xs font-medium text-slate-600">{si.whatFound}</label>
                 <Textarea
                   value={itemDescription}
                   onChange={(e) => setItemDescription(e.target.value)}
                   rows={3}
-                  placeholder="Опишите вещь"
+                  placeholder={si.thingPlaceholder}
                 />
               </div>
               <div>
-                <label className="text-xs font-medium text-slate-600">Имя гостя (если знаете)</label>
+                <label className="text-xs font-medium text-slate-600">{si.guestName}</label>
                 <Input value={guestName} onChange={(e) => setGuestName(e.target.value)} />
               </div>
             </>
@@ -139,7 +143,7 @@ export function IncidentReportDrawer({
           {type === 'damage' && (
             <>
               <div>
-                <label className="text-xs font-medium text-slate-600">Что повреждено</label>
+                <label className="text-xs font-medium text-slate-600">{si.whatDamaged}</label>
                 <Textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
@@ -148,7 +152,7 @@ export function IncidentReportDrawer({
                 />
               </div>
               <div>
-                <label className="text-xs font-medium text-slate-600">Где</label>
+                <label className="text-xs font-medium text-slate-600">{si.where}</label>
                 <Input value={damageLocation} onChange={(e) => setDamageLocation(e.target.value)} />
               </div>
             </>
@@ -159,7 +163,7 @@ export function IncidentReportDrawer({
             disabled={uploadPending || createPending}
             onClick={() => void submit()}
           >
-            {strings.tasks.incident.submit}
+            {si.submit}
           </Button>
         </div>
       </DrawerContent>

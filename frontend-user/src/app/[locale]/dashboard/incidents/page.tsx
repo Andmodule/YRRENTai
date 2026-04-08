@@ -95,7 +95,7 @@ function IncidentsPageInner() {
                   Задача технику создана (id: {i.dispatchedTaskId.slice(0, 8)}…)
                 </p>
               )}
-              {i.status === 'open' && !i.dispatchedTaskId && (
+              {(i.status === 'awaiting_dispatch' || (i.status === 'open' && !i.dispatchedTaskId)) && (
                 <div className="mt-3 flex flex-wrap items-end gap-2">
                   <div className="min-w-[200px] flex-1 space-y-1">
                     <p className="text-xs text-muted-foreground">Назначить техника</p>
@@ -135,7 +135,7 @@ function IncidentsPageInner() {
                     size="sm"
                     variant="outline"
                     disabled={isPending}
-                    onClick={() => patch({ uuid: i.uuid, status: 'in_review' })}
+                    onClick={() => patch({ uuid: i.uuid, status: 'open' })}
                   >
                     Взять в работу
                   </Button>

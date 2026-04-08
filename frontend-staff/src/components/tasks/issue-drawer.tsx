@@ -6,22 +6,25 @@ import { toast } from 'sonner';
 import { Drawer, DrawerContent, DrawerClose } from '@/components/ui/drawer';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { useUpdateTaskStatus, useUploadTaskPhotos } from '@/hooks/use-tasks';
+import { useCreateIncident, useUploadIncidentPhotos } from '@/hooks/use-tasks';
 import { compressImageFile } from '@/lib/compress-image';
+import { useStaffStrings } from '@/locales/staff-strings';
+import type { Task } from '@/hooks/use-tasks';
 
 interface IssueDrawerProps {
-  taskUuid: string | null;
+  task: Task | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
-export function IssueDrawer({ taskUuid, open, onOpenChange }: IssueDrawerProps) {
+export function IssueDrawer({ task, open, onOpenChange }: IssueDrawerProps) {
+  const ti = useStaffStrings().tasks.taskIssue;
   const [description, setDescription] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
-  const { mutate: updateStatus, isPending: isUpdating } = useUpdateTaskStatus();
-  const { mutate: uploadPhotos, isPending: isUploading } = useUploadTaskPhotos();
+  const { mutateAsync: createIncident, isPending: createPending } = useCreateIncident();
+  const { mutateAsync: uploadIncidentPhotos, isPending: uploadPending } = useUploadIncidentPhotos();
 
-  const isPending = isUpdating || isUploading;
+  const isPending = createPending || uploadPending;
 
   const handleClose = () => {
     setDescription('');
@@ -29,54 +32,51 @@ export function IssueDrawer({ taskUuid, open, onOpenChange }: IssueDrawerProps) 
   };
 
   const handleSubmit = async () => {
-    if (!taskUuid) return;
+    if (!task) return;
     if (!description.trim()) {
-      toast.error('Опишите проблему');
+      toast.error(ti.describeRequired);
       return;
     }
 
     try {
-      await new Promise<void>((resolve, reject) =>
-        updateStatus(
-          { uuid: taskUuid, status: 'issue', issueDescription: description.trim() },
-          { onSuccess: () => resolve(), onError: reject },
-        ),
-      );
-
       const files = fileRef.current?.files;
+      let photoUrls: string[] = [];
       if (files?.length) {
         const compressed: File[] = [];
         for (const f of Array.from(files)) {
           const blob = await compressImageFile(f);
           compressed.push(new File([blob], f.name, { type: 'image/jpeg' }));
         }
-        await new Promise<void>((resolve, reject) =>
-          uploadPhotos(
-            { uuid: taskUuid, files: compressed },
-            { onSuccess: () => resolve(), onError: reject },
-          ),
-        );
+        photoUrls = await uploadIncidentPhotos(compressed);
       }
 
-      toast.success('Проблема зафиксирована');
+      await createIncident({
+        type: 'task_report',
+        propertyId: task.propertyId,
+        taskId: task.uuid,
+        description: description.trim(),
+        photoUrls,
+      });
+
+      toast.success(ti.success);
       handleClose();
     } catch {
-      toast.error('Ошибка. Попробуйте ещё раз');
+      toast.error(ti.errorGeneric);
     }
   };
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
-      <DrawerContent title="Сообщить о проблеме">
+      <DrawerContent title={ti.drawerTitle}>
         <div className="space-y-4">
           <div className="space-y-1.5">
             <label className="text-sm font-medium text-gray-700">
-              Описание проблемы <span className="text-slate-400">*</span>
+              {ti.descriptionLabel} <span className="text-slate-400">*</span>
             </label>
             <Textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Опишите что произошло…"
+              placeholder={ti.descriptionPlaceholder}
               rows={4}
               required
               aria-required="true"
@@ -84,9 +84,9 @@ export function IssueDrawer({ taskUuid, open, onOpenChange }: IssueDrawerProps) 
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-sm font-medium text-gray-700">Фото (необязательно)</label>
-            <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-gray-300 bg-gray-50 px-4 py-3 text-sm text-gray-500 hover:bg-gray-100 transition-colors">
-              <span>📷 Сфотографировать / выбрать из галереи</span>
+            <label className="text-sm font-medium text-gray-700">{ti.photosOptional}</label>
+            <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-gray-300 bg-gray-50 px-4 py-3 text-sm text-gray-500 transition-colors hover:bg-gray-100">
+              <span>{ti.photoPicker}</span>
               <input
                 ref={fileRef}
                 type="file"
@@ -102,7 +102,7 @@ export function IssueDrawer({ taskUuid, open, onOpenChange }: IssueDrawerProps) 
         <div className="mt-6 flex gap-3">
           <DrawerClose asChild>
             <Button variant="outline" className="flex-1" onClick={handleClose}>
-              Отмена
+              {ti.cancel}
             </Button>
           </DrawerClose>
           <Button
@@ -111,7 +111,7 @@ export function IssueDrawer({ taskUuid, open, onOpenChange }: IssueDrawerProps) 
             onClick={() => void handleSubmit()}
           >
             {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-            Сообщить
+            {ti.submit}
           </Button>
         </div>
       </DrawerContent>

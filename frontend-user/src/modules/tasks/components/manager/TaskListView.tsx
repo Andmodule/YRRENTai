@@ -235,28 +235,35 @@ export const TaskListView = memo(function TaskListView({
 
               <CollapsibleContent className="bg-white dark:bg-transparent">
                 <ul className="flex min-w-0 flex-col px-0" role="list">
-                  {group.incidents.map((incident) => (
-                    <li
-                      key={`inc-${incident.uuid}`}
-                      className={cn(
-                        'min-w-0 border-l-2 border-l-red-500/55',
-                        'bg-red-500/[0.05] dark:bg-red-950/30',
-                      )}
-                    >
-                      <IncidentListRow
-                        incident={incident}
-                        onOpen={handleOpenIncident}
-                        swipeOpenRowId={swipeOpenRowId}
-                        onSwipeRowOpenChange={setSwipeOpenRowId}
-                        onSwipeCloseIncident={onSwipeCloseIncident}
-                        hidePropertyContext={
-                          group.propertyId !== GENERAL_TASK_PROPERTY_GROUP_KEY &&
-                          group.propertyId !== INCIDENTS_BOARD_GROUP_KEY
-                        }
-                        className="border-b border-red-500/15 hover:bg-red-500/10 dark:hover:bg-red-950/40"
-                      />
-                    </li>
-                  ))}
+                  {group.incidents.map((incident) => {
+                    const isReviewHighlight = incident.status === 'open';
+                    return (
+                      <li
+                        key={`inc-${incident.uuid}`}
+                        className={cn(
+                          'min-w-0',
+                          isReviewHighlight && 'border-l-2 border-l-red-500/55 bg-red-500/[0.05] dark:bg-red-950/30',
+                        )}
+                      >
+                        <IncidentListRow
+                          incident={incident}
+                          onOpen={handleOpenIncident}
+                          swipeOpenRowId={swipeOpenRowId}
+                          onSwipeRowOpenChange={setSwipeOpenRowId}
+                          onSwipeCloseIncident={onSwipeCloseIncident}
+                          hidePropertyContext={
+                            group.propertyId !== GENERAL_TASK_PROPERTY_GROUP_KEY &&
+                            group.propertyId !== INCIDENTS_BOARD_GROUP_KEY
+                          }
+                          className={
+                            isReviewHighlight
+                              ? 'border-b border-red-500/15 hover:bg-red-500/10 dark:hover:bg-red-950/40'
+                              : undefined
+                          }
+                        />
+                      </li>
+                    );
+                  })}
                   {group.tasks.map((task) => (
                     <li key={task.uuid} className="min-w-0">
                       <TaskListRow
@@ -287,7 +294,9 @@ export const TaskListView = memo(function TaskListView({
                         'dark:text-[#00d4ff] dark:hover:bg-[#00d4ff]/10',
                       )}
                     >
-                      {tList('addTask')}
+                      {tList(
+                        group.propertyId === INCIDENTS_BOARD_GROUP_KEY ? 'addIncident' : 'addTask',
+                      )}
                     </button>
                   </div>
                 ) : null}

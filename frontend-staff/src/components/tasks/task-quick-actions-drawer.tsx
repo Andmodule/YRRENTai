@@ -4,6 +4,7 @@ import { Play, CheckCircle2, AlertCircle, MessageSquareText } from 'lucide-react
 import { Drawer, DrawerContent } from '@/components/ui/drawer';
 import { Button } from '@/components/ui/button';
 import type { Task } from '@/hooks/use-tasks';
+import { useStaffStrings } from '@/locales/staff-strings';
 
 const typeLabels: Record<string, string> = {
   checkout_cleaning: 'Уборка (выезд)',
@@ -33,6 +34,7 @@ export function TaskQuickActionsDrawer({
   onOpenDetails,
   startPending = false,
 }: TaskQuickActionsDrawerProps) {
+  const ti = useStaffStrings().tasks.taskIssue;
   if (!task) return null;
 
   const isDone = task.status === 'done';
@@ -86,7 +88,7 @@ export function TaskQuickActionsDrawer({
                 onClick={() => onMarkIssue(task.uuid)}
               >
                 <AlertCircle className="h-5 w-5" />
-                Проблема
+                {ti.quickActionLabel}
               </Button>
             )}
             <Button

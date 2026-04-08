@@ -134,7 +134,14 @@ export function ManagerKanban({
     end.setHours(23, 59, 59, 999);
     const q = filters.propertyQuery.trim().toLowerCase();
     return incidentsRaw.filter((i) => {
-      if (i.status !== 'open' && i.status !== 'in_review') return false;
+      if (
+        i.status !== 'awaiting_dispatch' &&
+        i.status !== 'assigned' &&
+        i.status !== 'open' &&
+        i.status !== 'in_review'
+      ) {
+        return false;
+      }
       if (filters.dateRangeEnabled) {
         const t0 = new Date(i.createdAt).getTime();
         if (t0 < start.getTime() || t0 > end.getTime()) return false;

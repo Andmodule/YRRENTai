@@ -96,7 +96,11 @@ export const IncidentListRow = memo(function IncidentListRow({
   }, [onOpen, incident]);
 
   const canSwipe =
-    !isMdUp && (incident.status === 'open' || incident.status === 'in_review');
+    !isMdUp &&
+    (incident.status === 'awaiting_dispatch' ||
+      incident.status === 'assigned' ||
+      incident.status === 'open' ||
+      incident.status === 'in_review');
 
   /** Same close action: swipe right «Готово» (as tasks) or trash after left-swipe peek */
   const closeIncidentBySwipe = useCallback(() => {

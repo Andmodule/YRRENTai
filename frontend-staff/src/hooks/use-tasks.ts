@@ -67,7 +67,11 @@ export function useTodayTasks() {
       );
       return { tasks: res.data.data.tasks };
     },
-    staleTime: 30_000,
+    staleTime: 15_000,
+    /** Подстраховка, если сокет недоступен (фон Telegram, сеть). */
+    refetchInterval: 45_000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
     placeholderData: (prev) => prev,
   });
 }
@@ -129,7 +133,7 @@ export function useCreateIncident() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (body: {
-      type: 'lost_item' | 'damage';
+      type: 'lost_item' | 'damage' | 'task_report';
       propertyId: string;
       taskId: string | null;
       description: string;

@@ -28,7 +28,9 @@ export function TasksSocketProvider({ children }: { children: React.ReactNode })
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
     });
     socket.on('incident_created', () => {
-      toast.info(t('incidentSocketToastTitle'));
+      toast.info(t('incidentSocketToastTitle'), {
+        description: t('incidentSocketToastDescription'),
+      });
       queryClient.invalidateQueries({ queryKey: ['incidents'] });
       queryClient.invalidateQueries({ queryKey: ['incidents-open-count'] });
     });

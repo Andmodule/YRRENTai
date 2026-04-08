@@ -14,8 +14,14 @@ export interface IncidentSuggestedTaskDraft {
 
 export interface Incident {
   uuid: string;
-  type: 'lost_item' | 'damage' | 'rule_violation' | 'emergency';
-  status: 'open' | 'in_review' | 'resolved' | 'closed';
+  type: 'lost_item' | 'damage' | 'rule_violation' | 'emergency' | 'task_report';
+  status:
+    | 'awaiting_dispatch'
+    | 'assigned'
+    | 'open'
+    | 'in_review'
+    | 'resolved'
+    | 'closed';
   propertyId: string;
   propertyTitle: string;
   /** When API sends address without title match. */
@@ -53,6 +59,9 @@ export function useIncidents() {
     },
     /** Avoid empty board while refetching after PATCH (invalidate). */
     placeholderData: (previousData) => previousData,
+    /** Fallback when realtime socket misses an event (e.g. mobile / flaky WS). */
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
   });
 }
 
@@ -63,6 +72,8 @@ export function useOpenIncidentsCount() {
       const res = await apiClient.get<{ data: { count: number } }>('/incidents/open-count');
       return res.data.data.count;
     },
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
   });
 }
 

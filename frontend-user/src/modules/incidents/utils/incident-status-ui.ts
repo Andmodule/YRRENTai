@@ -2,6 +2,8 @@ import type { Incident } from '../hooks/useIncidents';
 
 /** Label keys under `tasks.kanban.incidentCard`. */
 export type IncidentCardStatusKey =
+  | 'statusAwaitingDispatch'
+  | 'statusAssigned'
   | 'statusOpen'
   | 'statusPendingVerify'
   | 'statusResolved'
@@ -9,6 +11,10 @@ export type IncidentCardStatusKey =
 
 export function incidentStatusLabelKey(status: Incident['status']): IncidentCardStatusKey {
   switch (status) {
+    case 'awaiting_dispatch':
+      return 'statusAwaitingDispatch';
+    case 'assigned':
+      return 'statusAssigned';
     case 'open':
       return 'statusOpen';
     case 'in_review':
@@ -27,6 +33,20 @@ export function incidentStatusUi(status: Incident['status']): {
   pill: string;
 } {
   switch (status) {
+    case 'awaiting_dispatch':
+      return {
+        strip: 'border-l-[4px] border-l-slate-400',
+        dot: 'bg-slate-400',
+        pill:
+          'bg-slate-100 text-slate-800 dark:bg-slate-800/90 dark:text-slate-200 ring-1 ring-slate-400/25',
+      };
+    case 'assigned':
+      return {
+        strip: 'border-l-[4px] border-l-sky-500',
+        dot: 'bg-sky-500',
+        pill:
+          'bg-sky-100 text-sky-950 dark:bg-sky-950/70 dark:text-sky-100 ring-1 ring-sky-500/25',
+      };
     case 'open':
       return {
         strip: 'border-l-[4px] border-l-orange-500',
@@ -59,6 +79,10 @@ export function incidentStatusUi(status: Incident['status']): {
 /** Dot next to title in list row: open = orange, in_review = green, else red. */
 export function incidentListStatusDotClass(status: Incident['status']): string {
   switch (status) {
+    case 'awaiting_dispatch':
+      return 'bg-slate-400';
+    case 'assigned':
+      return 'bg-sky-500';
     case 'open':
       return 'bg-orange-500';
     case 'in_review':

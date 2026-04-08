@@ -11,6 +11,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { useMatchMedia } from '@/hooks/use-match-media';
 import type { Task, TaskStatus } from '../../types';
 import { TaskListTypePill } from './TaskListTypePill';
+import { TaskStatusBadge } from '../shared/TaskStatusBadge';
 import { formatNameAndLastInitial } from '../../utils/staff-name-short';
 import { TaskListRowMobile } from './TaskListRowMobile';
 
@@ -218,6 +219,7 @@ export const TaskListRow = memo(function TaskListRow({
                 <span className="truncate">{tKanban('taskFromIncidentBadge')}</span>
               </span>
             ) : null}
+            {task.status === 'issue' ? <TaskStatusBadge status="issue" size="sm" /> : null}
             {task.contextLabel ? (
               <span
                 className={cn(

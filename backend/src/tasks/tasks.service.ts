@@ -329,6 +329,7 @@ export class TasksService {
       [task.id],
     );
     await this.taskRepo.delete({ id: task.id });
+    this.tasksGateway.emitTaskUpdated({ uuid: task.id, status: task.status });
   }
 
   async update(
@@ -423,8 +424,11 @@ export class TasksService {
     if (
       reloaded.incidentId &&
       patch.status !== undefined &&
-      (patch.status === 'done' || patch.status === 'issue') &&
-      prevStatus !== patch.status
+      prevStatus !== patch.status &&
+      (patch.status === 'done' ||
+        patch.status === 'issue' ||
+        patch.status === 'in_progress' ||
+        patch.status === 'pending')
     ) {
       await this.syncLinkedIncidentAfterTaskStatus(reloaded, patch.status);
     }
@@ -461,13 +465,18 @@ export class TasksService {
       where: { id: task.incidentId },
       relations: ['property'],
     });
-    if (!inc) return;
+    if (!inc || inc.dispatchedTaskId !== task.id) return;
 
     if (newStatus === 'done') {
       inc.status = 'in_review';
     } else if (newStatus === 'issue') {
       inc.status = 'open';
+    } else if (newStatus === 'in_progress') {
+      inc.status = 'open';
+    } else if (newStatus === 'pending') {
+      inc.status = 'assigned';
     }
+
     await this.incidentRepo.save(inc);
     this.tasksGateway.emitIncidentUpdated({
       incidentId: inc.id,
@@ -780,7 +789,8 @@ export class TasksService {
         if (linkIncident) {
           linkIncident.dispatchedTaskId = saved.id;
           linkIncident.taskId = saved.id;
-          linkIncident.status = 'in_review';
+          /** Исполнитель назначен, но задача ещё в pending — «В работе» только после in_progress на задаче. */
+          linkIncident.status = 'assigned';
           linkIncident.suggestedTaskDraft = null;
           await manager.save(IncidentEntity, linkIncident);
         }
@@ -795,13 +805,19 @@ export class TasksService {
     }
 
     const out: TaskDto[] = [];
+    let lastCreatedForSocket: { uuid: string; status: string } | null = null;
     for (const id of createdIds) {
       await this.checklistService.applyAutoTemplateIfAny(id);
       const row = await this.reloadTask(id);
+      lastCreatedForSocket = { uuid: row.id, status: row.status };
       if (row.assigneeId && TasksService.isStaffNotifiableTaskStatus(row.status)) {
         void this.staffNotification.notifyTaskAssignOrDeadline(row, 'assign', row.assigneeId);
       }
       out.push(await this.toDtoForRole(row, 'MANAGER'));
+    }
+    /** Staff / TMA listen for `task_updated` to refetch lists — without this, new assignments never appear live. */
+    if (lastCreatedForSocket) {
+      this.tasksGateway.emitTaskUpdated(lastCreatedForSocket);
     }
     return out;
   }

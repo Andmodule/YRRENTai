@@ -37,6 +37,11 @@ export function useTasksSocket(staffUserId?: string) {
       void queryClient.invalidateQueries({ queryKey: ['task-checklist'] });
     });
 
+    socket.on('task_note_added', () => {
+      void queryClient.invalidateQueries({ queryKey: STAFF_TASKS_QUERY_KEY });
+      void queryClient.invalidateQueries({ queryKey: ['task-notes'] });
+    });
+
     socket.on('incident_manager_note', (payload: { incidentId: string; text: string; reportedByUserId: string }) => {
       if (staffUserId && payload.reportedByUserId !== staffUserId) return;
       toast.info('Ответ менеджера по инциденту', { description: payload.text });

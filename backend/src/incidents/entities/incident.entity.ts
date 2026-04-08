@@ -11,8 +11,20 @@ import { TaskEntity } from '../../tasks/entities/task.entity';
 import { UserEntity } from '../../user/entities/user.entity';
 import { CompanyEntity } from '../../user/entities/company.entity';
 
-export type IncidentType = 'lost_item' | 'damage' | 'rule_violation' | 'emergency';
-export type IncidentStatus = 'open' | 'in_review' | 'resolved' | 'closed';
+export type IncidentType =
+  | 'lost_item'
+  | 'damage'
+  | 'rule_violation'
+  | 'emergency'
+  /** Staff reported a problem on an assigned task (not a kanban «issue» status). */
+  | 'task_report';
+export type IncidentStatus =
+  | 'awaiting_dispatch'
+  | 'assigned'
+  | 'open'
+  | 'in_review'
+  | 'resolved'
+  | 'closed';
 
 @Entity('incidents')
 export class IncidentEntity {

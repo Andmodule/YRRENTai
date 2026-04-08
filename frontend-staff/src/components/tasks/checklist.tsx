@@ -29,7 +29,7 @@ import { PhotoVerificationDrawer } from './photo-verification-drawer';
 import { TaskDetailStaff } from './task-detail-staff';
 import { TaskQuickActionsDrawer } from './task-quick-actions-drawer';
 import { IncidentReportDrawer } from './incident-report-drawer';
-import { strings } from '@/strings/tasks';
+import { useStaffStrings } from '@/locales/staff-strings';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { Drawer, DrawerContent } from '@/components/ui/drawer';
@@ -49,6 +49,7 @@ interface StaffChecklistProps {
 
 export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
   useTasksSocket(user.id);
+  const strings = useStaffStrings();
 
   const today = useMemo(() => startOfDay(new Date()), []);
   const todayStr = format(today, 'yyyy-MM-dd');
@@ -58,7 +59,7 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
   const { mutate: updateStatus, isPending: statusPending } = useUpdateTaskStatus();
   const { mutateAsync: completeShift, isPending: shiftPending } = useCompleteShift();
 
-  const [issueUuid, setIssueUuid] = useState<string | null>(null);
+  const [issueTask, setIssueTask] = useState<Task | null>(null);
   const [detailTask, setDetailTask] = useState<Task | null>(null);
   const [quickTask, setQuickTask] = useState<Task | null>(null);
   const [photoTaskUuid, setPhotoTaskUuid] = useState<string | null>(null);
@@ -113,6 +114,15 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
     });
   }, [data?.tasks]);
 
+  const resolveTaskByUuid = useCallback(
+    (uuid: string) =>
+      activeTasks.find((t) => t.uuid === uuid) ??
+      todayTasks.find((t) => t.uuid === uuid) ??
+      data?.tasks?.find((t) => t.uuid === uuid) ??
+      null,
+    [activeTasks, todayTasks, data?.tasks],
+  );
+
   const doneCount = todayTasks.filter((t) => t.status === 'done').length;
   const verifiedCount = todayTasks.filter((t) => t.status === 'done' && t.hasVerificationPhoto).length;
   const total = todayTasks.length;
@@ -160,7 +170,7 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
         },
       );
     },
-    [updateStatus],
+    [updateStatus, strings],
   );
 
   const handleMarkDone = (uuid: string) => {
@@ -187,7 +197,8 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
 
   const handleQuickIssue = (uuid: string) => {
     setQuickTask(null);
-    setIssueUuid(uuid);
+    const t = resolveTaskByUuid(uuid);
+    if (t) setIssueTask(t);
   };
 
   const handleStartNextCard = () => {
@@ -378,7 +389,10 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
                 }
                 deadlineUrgency={deadlineUrgency(task)}
                 onMarkDone={handleMarkDone}
-                onMarkIssue={(uuid) => setIssueUuid(uuid)}
+                onMarkIssue={(uuid) => {
+                  const t = resolveTaskByUuid(uuid);
+                  if (t) setIssueTask(t);
+                }}
                 onQuickOpen={setQuickTask}
               />
             ))}
@@ -471,7 +485,7 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
 
       </main>
 
-      <IssueDrawer taskUuid={issueUuid} open={!!issueUuid} onOpenChange={(o) => !o && setIssueUuid(null)} />
+      <IssueDrawer task={issueTask} open={!!issueTask} onOpenChange={(o) => !o && setIssueTask(null)} />
 
       {activeTasks.length > 0 && incidentPropertyId && (
         <>

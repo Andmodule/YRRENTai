@@ -24,6 +24,7 @@ import {
   MoreVertical,
   Package,
   Pencil,
+  ClipboardList,
   ShieldAlert,
   Zap,
 } from 'lucide-react';
@@ -1167,6 +1168,12 @@ function IncidentDetailMode({
           className: 'bg-violet-500/20 text-violet-950 dark:text-violet-100',
           label: t('typeEmergency'),
         };
+      case 'task_report':
+        return {
+          Icon: ClipboardList,
+          className: 'bg-sky-500/15 text-sky-950 dark:text-sky-100',
+          label: t('typeTaskReport'),
+        };
     }
   })();
 
@@ -1212,7 +1219,12 @@ function IncidentDetailMode({
     if (!isManagerView) {
       return null;
     }
-    if (incident.status === 'open' || incident.status === 'in_review') {
+    if (
+      incident.status === 'awaiting_dispatch' ||
+      incident.status === 'assigned' ||
+      incident.status === 'open' ||
+      incident.status === 'in_review'
+    ) {
       return (
         <div className="flex w-full flex-col gap-2">
           <Button
@@ -1297,6 +1309,8 @@ function IncidentDetailMode({
                   'border-orange-500/30 bg-orange-50/85 text-orange-950 dark:bg-orange-950/25 dark:text-orange-50',
                 incident.type === 'emergency' &&
                   'border-violet-500/35 bg-violet-50/90 text-violet-950 dark:bg-violet-950/30 dark:text-violet-50',
+                incident.type === 'task_report' &&
+                  'border-sky-500/30 bg-sky-50/85 text-sky-950 dark:bg-sky-950/25 dark:text-sky-50',
               )}
             >
               <p className="whitespace-pre-wrap">{incident.description}</p>
