@@ -236,13 +236,14 @@ export const TaskListView = memo(function TaskListView({
               <CollapsibleContent className="bg-white dark:bg-transparent">
                 <ul className="flex min-w-0 flex-col px-0" role="list">
                   {group.incidents.map((incident) => {
-                    const isReviewHighlight = incident.status === 'open';
+                    const isAwaitingDispatchHighlight = incident.status === 'awaiting_dispatch';
                     return (
                       <li
                         key={`inc-${incident.uuid}`}
                         className={cn(
                           'min-w-0',
-                          isReviewHighlight && 'border-l-2 border-l-red-500/55 bg-red-500/[0.05] dark:bg-red-950/30',
+                          isAwaitingDispatchHighlight &&
+                            'border-l-2 border-l-red-500/55 bg-red-500/[0.05] dark:bg-red-950/30',
                         )}
                       >
                         <IncidentListRow
@@ -256,7 +257,7 @@ export const TaskListView = memo(function TaskListView({
                             group.propertyId !== INCIDENTS_BOARD_GROUP_KEY
                           }
                           className={
-                            isReviewHighlight
+                            isAwaitingDispatchHighlight
                               ? 'border-b border-red-500/15 hover:bg-red-500/10 dark:hover:bg-red-950/40'
                               : undefined
                           }
