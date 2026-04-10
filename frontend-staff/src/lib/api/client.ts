@@ -1,4 +1,4 @@
-import axios from 'axios';
+import axios, { AxiosHeaders } from 'axios';
 
 /** Зависший прокси/API без таймаута оставляет SWR и Mini App на вечной загрузке (белый экран). */
 const REQUEST_TIMEOUT_MS = 28_000;
@@ -12,7 +12,9 @@ export const apiClient = axios.create({
 
 apiClient.interceptors.request.use((config) => {
   if (config.data instanceof FormData) {
-    config.headers.delete('Content-Type');
+    const headers = AxiosHeaders.from(config.headers ?? {});
+    headers.set('Content-Type', false);
+    config.headers = headers;
   }
   // SSR: same-origin URL so Next middleware can proxy to the API (cookies stay on :3013).
   if (typeof window === 'undefined') {

@@ -20,17 +20,26 @@ const loginSchema = z.object({
 
 type LoginValues = z.infer<typeof loginSchema>;
 
-export function LoginForm() {
+type LoginFormProps = {
+  /**
+   * Встроено в TelegramStaffGate: без редиректа — родитель переключает экран по SWR после входа.
+   * Иначе двойной router.replace (onSubmit + useEffect) ломал клиент в dev (Turbopack).
+   */
+  embedded?: boolean;
+};
+
+export function LoginForm({ embedded = false }: LoginFormProps = {}) {
   const router = useRouter();
   const { mutate } = useSWRConfig();
   const { isAuthenticated, isStaff, isLoading } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
+    if (embedded) return;
     if (!isLoading && isAuthenticated && isStaff) {
       router.replace('/tasks');
     }
-  }, [isAuthenticated, isStaff, isLoading, router]);
+  }, [embedded, isAuthenticated, isStaff, isLoading, router]);
 
   const {
     register,
@@ -52,7 +61,6 @@ export function LoginForm() {
         return;
       }
       toast.success('Добро пожаловать!');
-      router.replace('/tasks');
     } catch {
       toast.error('Неверный email или пароль');
     }

@@ -57,6 +57,7 @@ export interface TaskDto {
   lastManagerSeenAt: string | null;
   unseenNotesCount: number;
   createdAt: string;
+  updatedAt: string;
   completedAt: string | null;
   /** null if no checklist rows for this task */
   checklistSummary: {
@@ -208,6 +209,7 @@ export class TasksService {
       lastManagerSeenAt: t.lastManagerSeenAt ? t.lastManagerSeenAt.toISOString() : null,
       unseenNotesCount: extras.unseenNotesCount,
       createdAt: t.createdAt.toISOString(),
+      updatedAt: t.updatedAt.toISOString(),
       completedAt: t.completedAt ? t.completedAt.toISOString() : null,
       checklistSummary: extras.checklistSummary,
       incidentId: t.incidentId ?? null,
@@ -308,6 +310,14 @@ export class TasksService {
 
   private static readonly PATCHABLE_PRIORITIES = new Set(['urgent', 'normal', 'critical']);
 
+  private static readonly PATCHABLE_TASK_TYPES = new Set([
+    'checkout_cleaning',
+    'mid_stay_cleaning',
+    'checkin_prep',
+    'maintenance',
+    'other',
+  ]);
+
   /** Staff Telegram notifications: only for active work, not done/issue. */
   private static isStaffNotifiableTaskStatus(status: string): boolean {
     return status === 'pending' || status === 'in_progress';
@@ -344,6 +354,7 @@ export class TasksService {
       title: string;
       priority: string;
       propertyId: string;
+      type: string;
       dueDate: string;
       dueTime: string | null;
     }>,
@@ -381,6 +392,12 @@ export class TasksService {
       if (patch.dueTime !== undefined) {
         task.dueTime = patch.dueTime?.trim() ? patch.dueTime.trim().slice(0, 8) : null;
       }
+      if (patch.type !== undefined) {
+        if (!TasksService.PATCHABLE_TASK_TYPES.has(patch.type)) {
+          throw new BadRequestException('Invalid type');
+        }
+        task.type = patch.type;
+      }
     }
 
     if (patch.status === 'done') {
@@ -400,7 +417,23 @@ export class TasksService {
     }
 
     if (patch.status !== undefined) task.status = patch.status;
-    if (patch.assigneeId !== undefined && role !== 'STAFF') task.assigneeId = patch.assigneeId;
+    if (patch.assigneeId !== undefined && role === 'STAFF') {
+      const want = patch.assigneeId?.trim() ? patch.assigneeId.trim() : null;
+      const have = task.assigneeId?.trim() ? task.assigneeId.trim() : null;
+      if (want !== have) {
+        throw new ForbiddenException('Staff cannot change task assignee');
+      }
+    }
+    if (patch.assigneeId !== undefined && role !== 'STAFF') {
+      const raw = patch.assigneeId;
+      if (raw === null || (typeof raw === 'string' && !raw.trim())) {
+        task.assigneeId = null;
+      } else if (typeof raw === 'string') {
+        task.assigneeId = raw.trim();
+      } else {
+        task.assigneeId = null;
+      }
+    }
     if (patch.notes !== undefined) task.notes = patch.notes;
     if (patch.issueDescription !== undefined) task.issueDescription = patch.issueDescription;
 

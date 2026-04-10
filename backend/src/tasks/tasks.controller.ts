@@ -301,6 +301,8 @@ export class TasksController {
       title: string;
       priority: string;
       propertyId: string;
+      /** checkout_cleaning | mid_stay_cleaning | checkin_prep | maintenance | other */
+      type: string;
       dueDate: string;
       dueTime: string | null;
     }>,

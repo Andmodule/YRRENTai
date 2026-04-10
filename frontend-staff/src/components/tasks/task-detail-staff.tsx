@@ -112,6 +112,14 @@ export function TaskDetailStaff({
           </div>
         )}
 
+        <div className="mb-4">
+          <p className="text-xs font-semibold uppercase text-slate-500">{strings.tasks.assigneeLabel}</p>
+          <p className="mt-1 text-sm font-medium text-slate-900">
+            {task.assigneeName?.trim() ? task.assigneeName : strings.tasks.assigneeUnassigned}
+          </p>
+          <p className="mt-1 text-xs leading-snug text-slate-500">{strings.tasks.assigneeReassignHint}</p>
+        </div>
+
         {task.status === 'issue' && (
           <div className="mb-4 flex flex-wrap items-center gap-2">
             <span className="inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-950">

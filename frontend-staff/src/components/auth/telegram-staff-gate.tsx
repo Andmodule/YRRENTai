@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { apiClient } from '@/lib/api/client';
+import { LoginForm } from '@/components/auth/login-form';
 
 const TG_SCRIPT_SRC = 'https://telegram.org/js/telegram-web-app.js';
 
@@ -143,7 +144,7 @@ export function TelegramStaffGate({ children }: { children: React.ReactNode }) {
             '2) Или «Открыть расписание» в утренней сводке.',
             '3) Не открывайте адрес сайта из чата/браузера — там другой режим.',
             '',
-            'Вход с компьютера: откройте ту же ссылку Staff в обычном браузере и войдите email + пароль.',
+            'Либо войдите email и паролем персонала ниже.',
           ].join('\n'),
         );
         setTgPhase('err');
@@ -200,6 +201,16 @@ export function TelegramStaffGate({ children }: { children: React.ReactNode }) {
     void runTmaLogin();
   }, [surface, tgInitGate, user, tgPhase, runTmaLogin]);
 
+  /** После входа email/паролем с экрана ошибки — иначе остаёмся в tgPhase === 'err'. */
+  useEffect(() => {
+    if (surface !== 'telegram') return;
+    if (tgPhase !== 'err') return;
+    if (user?.role === 'STAFF') {
+      setTgPhase('ready');
+      setLocalErr(null);
+    }
+  }, [surface, tgPhase, user]);
+
   const showBlockingSpinner =
     !scriptReady ||
     surface === 'unknown' ||
@@ -246,23 +257,21 @@ export function TelegramStaffGate({ children }: { children: React.ReactNode }) {
   } else if (surface === 'telegram' && tgPhase === 'err') {
     body = (
       <div
-        className="flex min-h-dvh flex-col items-center justify-center gap-4 bg-background px-4 text-center"
+        className="flex min-h-dvh flex-col items-center justify-start gap-4 overflow-y-auto bg-background px-4 py-6 text-center sm:justify-center sm:py-8"
         style={{
           minHeight: '100dvh',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: 16,
           backgroundColor: '#f8fafc',
         }}
       >
         <p
-          className="max-w-md text-sm text-slate-600"
+          className="max-w-md shrink-0 text-sm text-slate-600"
           style={{ fontSize: 14, color: '#475569', whiteSpace: 'pre-line', lineHeight: 1.5 }}
         >
           {localErr ?? 'Ошибка входа'}
         </p>
+        <div className="w-full max-w-md shrink-0 text-left">
+          <LoginForm embedded />
+        </div>
         <button
           type="button"
           className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-800 shadow-sm"

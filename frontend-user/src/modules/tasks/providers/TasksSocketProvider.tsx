@@ -18,14 +18,17 @@ export function TasksSocketProvider({ children }: { children: React.ReactNode })
     const socket = connectTasksSocket();
     socket.on('task_updated', () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['task'] });
     });
     socket.on('task_note_added', () => {
       toast.info('Новая заметка по задаче', { description: 'Откройте карточку, чтобы прочитать.' });
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['task'] });
       queryClient.invalidateQueries({ queryKey: ['task-notes'] });
     });
     socket.on('checklist_item_updated', () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['task'] });
     });
     socket.on('incident_created', () => {
       toast.info(t('incidentSocketToastTitle'), {

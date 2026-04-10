@@ -47,6 +47,10 @@ export interface StaffStrings {
     /** Task workflow status `issue` — same word as in manager UI («Инцидент», not «Проблема»). */
     taskStatusIssue: string;
     taskIssueReportHeading: string;
+    assigneeLabel: string;
+    assigneeUnassigned: string;
+    /** Explains that reassignment is done in the manager web app (API allows OWNER/MANAGER only). */
+    assigneeReassignHint: string;
   };
 }
 
@@ -94,6 +98,10 @@ const MESSAGES: Record<StaffLocale, StaffStrings> = {
       },
       taskStatusIssue: 'Инцидент',
       taskIssueReportHeading: 'Сообщение об инциденте',
+      assigneeLabel: 'Исполнитель',
+      assigneeUnassigned: 'Не назначено',
+      assigneeReassignHint:
+        'Сменить исполнителя может менеджер в веб-панели. После смены список задач обновится у всех.',
     },
   },
   en: {
@@ -139,6 +147,10 @@ const MESSAGES: Record<StaffLocale, StaffStrings> = {
       },
       taskStatusIssue: 'Incident',
       taskIssueReportHeading: 'Incident report',
+      assigneeLabel: 'Assignee',
+      assigneeUnassigned: 'Unassigned',
+      assigneeReassignHint:
+        'Only a manager can change the assignee in the web dashboard. Everyone’s task list updates after that.',
     },
   },
 };

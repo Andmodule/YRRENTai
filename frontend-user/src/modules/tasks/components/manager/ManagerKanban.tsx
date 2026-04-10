@@ -18,8 +18,9 @@ import { useTranslations } from 'next-intl';
 import { AlertCircle } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { idEquals } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useTasks, useUpdateTaskStatus } from '../../hooks/useTasks';
+import { useTasks, useUpdateTaskStatus, useTaskDetail } from '../../hooks/useTasks';
 import { useTaskFilters } from '../../hooks/useTaskFilters';
 import { useTasksViewMode } from '../../hooks/useTasksViewMode';
 import type { Task, TaskFilters, TaskStatus } from '../../types';
@@ -77,10 +78,21 @@ export function ManagerKanban({
   const filtered = useTaskFilters(data?.tasks ?? [], filters);
   const { mutate: updateStatus } = useUpdateTaskStatus();
 
+  const listTask = useMemo((): Task | null => {
+    if (!taskId) return null;
+    return data?.tasks?.find((x) => idEquals(x.uuid, taskId)) ?? null;
+  }, [taskId, data?.tasks]);
+
+  const { data: taskDetail, isError: taskDetailError } = useTaskDetail(taskId, {
+    enabled: Boolean(taskId),
+    placeholderData: listTask,
+  });
+
   const detailTask = useMemo((): Task | null => {
     if (!taskId) return null;
-    return data?.tasks?.find((x) => x.uuid === taskId) ?? null;
-  }, [taskId, data?.tasks]);
+    if (taskDetail && idEquals(taskDetail.uuid, taskId)) return taskDetail;
+    return listTask;
+  }, [taskId, taskDetail, listTask]);
 
   const detailIncident = useMemo((): Incident | null => {
     if (!incidentId) return null;
@@ -112,12 +124,12 @@ export function ManagerKanban({
     }
   }, [taskId, rawIncidentId, pathname, router, searchParams]);
 
+  /** Раньше: задача не в ответе списка (другой исполнитель при фильтре доски) → сразу закрывали URL. Теперь источник карточки — GET /tasks/:uuid (useTaskDetail). */
   useEffect(() => {
     if (!taskId || isLoading) return;
-    if (data?.tasks && !data.tasks.some((x) => x.uuid === taskId)) {
-      clearTaskFromUrl();
-    }
-  }, [taskId, isLoading, data?.tasks, clearTaskFromUrl]);
+    if (data?.tasks?.some((x) => idEquals(x.uuid, taskId))) return;
+    if (taskDetailError) clearTaskFromUrl();
+  }, [taskId, isLoading, data?.tasks, taskDetailError, clearTaskFromUrl]);
 
   useEffect(() => {
     if (!incidentId || incidentsLoading) return;

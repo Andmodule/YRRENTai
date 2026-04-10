@@ -9,28 +9,27 @@ import {
   useState,
   type CSSProperties,
 } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
-import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import axios from 'axios';
+import { getApiErrorMessage } from '@/lib/api/error-message';
 import { useLocale, useTranslations } from 'next-intl';
 import { format, parseISO } from 'date-fns';
 import { enUS, ru } from 'date-fns/locale';
 import {
   AlertTriangle,
+  ArrowDownLeft,
+  ArrowUpRight,
+  Calendar,
   Camera,
   Clock,
-  ImagePlus,
-  MapPin,
-  MoreVertical,
+  Plus,
   Package,
-  Pencil,
   ClipboardList,
+  RefreshCw,
   ShieldAlert,
   Zap,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Link } from '@/i18n/navigation';
-import { apiClient } from '@/lib/api/client';
+import type { LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible';
@@ -44,15 +43,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/hooks/use-auth';
 import { useDateLocale } from '@/hooks/useDateLocale';
 import { useMediaQuery } from '@/hooks/use-media-query';
-import { useProperties } from '@/hooks/use-properties';
 import { useStaffUsers } from '@/hooks/use-staff-users';
-import { cn } from '@/lib/utils';
+import { cn, idEquals } from '@/lib/utils';
 import { usePatchIncident, type Incident } from '@/modules/incidents/hooks/useIncidents';
 import {
   incidentStatusLabelKey,
   incidentStatusUi as getIncidentStatusUi,
 } from '@/modules/incidents/utils/incident-status-ui';
-import { VoiceTaskCreateSheet } from '@/modules/tasks/components/manager/VoiceTaskCreateSheet';
 import { stripStaffSeedTaskMarker } from '@rentai/shared';
 import {
   useMarkTaskSeen,
@@ -64,13 +61,32 @@ import {
   useUpdateTaskStatus,
   useUploadTaskPhotos,
 } from '../../hooks/useTasks';
-import type { Task, TaskPriority, TaskStatus } from '../../types';
-import { formatNameAndLastInitial } from '../../utils/staff-name-short';
+import type { Task, TaskPriority, TaskStatus, TaskType } from '../../types';
+import { AssigneePickerField } from './AssigneePickerField';
 import { TaskStatusBadge } from './TaskStatusBadge';
 import { TaskTypeBadge } from './TaskTypeBadge';
 
-const STATUS_ORDER: TaskStatus[] = ['pending', 'in_progress', 'done', 'issue'];
+/** В редакторе менеджера нельзя перевести задачу в issue — только pending / in_progress / done. */
+const MANAGER_STATUS_ORDER: TaskStatus[] = ['pending', 'in_progress', 'done'];
 const PRIORITY_ORDER: TaskPriority[] = ['normal', 'urgent', 'critical'];
+
+/** Inline type picker in task detail (same labels as SmartCreateSheet, compact pills). */
+const DETAIL_EDIT_TYPES: { type: TaskType; labelKey: string; shortIcon?: LucideIcon }[] = [
+  { type: 'checkout_cleaning', labelKey: 'checkout_cleaning', shortIcon: ArrowDownLeft },
+  { type: 'mid_stay_cleaning', labelKey: 'mid_stay_cleaning', shortIcon: RefreshCw },
+  { type: 'checkin_prep', labelKey: 'checkin_prep', shortIcon: ArrowUpRight },
+  { type: 'maintenance', labelKey: 'maintenance' },
+  { type: 'other', labelKey: 'other' },
+];
+
+function detailTypePillClass(active: boolean) {
+  return cn(
+    'inline-flex shrink-0 items-center justify-center rounded-full border px-2 py-1 text-[10px] font-medium transition-colors md:px-3 md:py-1.5 md:text-[11px]',
+    active
+      ? 'border-primary/50 bg-primary/10 text-foreground shadow-sm'
+      : 'border-border/60 text-muted-foreground hover:border-border hover:bg-muted/50 hover:text-foreground',
+  );
+}
 
 const MD_UP = '(min-width: 768px)';
 
@@ -113,6 +129,23 @@ function taskStickyTitle(task: Task, tType: (key: string) => string, tDetail: (k
   if (pa) return pa;
   const typeLabel = tType(task.type);
   return typeLabel || tDetail('generalTaskFallback');
+}
+
+/** Сравнение времени: пикер даёт HH:mm, API — HH:mm:ss; нативный UI часто не вызывает blur после выбора. */
+function canonicalDueTimeValue(t: string | null | undefined): string | null {
+  if (t == null) return null;
+  const s = String(t).trim();
+  if (s === '') return null;
+  const m = s.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+  if (!m) return null;
+  const hh = m[1]!.padStart(2, '0');
+  const mm = m[2]!.padStart(2, '0');
+  const ss = ((m[3] ?? '00').replace(/\D/g, '').slice(0, 2) || '00').padStart(2, '0');
+  return `${hh}:${mm}:${ss}`;
+}
+
+function dueTimesMatch(a: string | null | undefined, b: string | null | undefined): boolean {
+  return canonicalDueTimeValue(a) === canonicalDueTimeValue(b);
 }
 
 export type SharedDetailDrawerProps =
@@ -165,11 +198,11 @@ function TaskDetailMode({
   isStaffView?: boolean;
 }) {
   const t = useTranslations('tasks.detail');
+  const tVoice = useTranslations('tasks.voiceCreate');
   const tStatus = useTranslations('tasks.status');
   const tPriority = useTranslations('tasks.priority');
   const tType = useTranslations('tasks.type');
   const tIssue = useTranslations('tasks.issue');
-  const queryClient = useQueryClient();
   const { user: authUser } = useAuth();
   const locale = useLocale();
   const dfLocale = locale === 'ru' ? ru : enUS;
@@ -180,11 +213,17 @@ function TaskDetailMode({
 
   const [title, setTitle] = useState(() => task?.title ?? '');
   const [notes, setNotes] = useState(() => (task ? stripStaffSeedTaskMarker(task.notes) : ''));
+  const [dueDateStr, setDueDateStr] = useState(() =>
+    task?.dueDate && /^\d{4}-\d{2}-\d{2}$/.test(task.dueDate) ? task.dueDate : '',
+  );
+  const [dueTimeStr, setDueTimeStr] = useState(() => (task?.dueTime ? task.dueTime.slice(0, 5) : ''));
   const [issueReportOpen, setIssueReportOpen] = useState(false);
   const [issueText, setIssueText] = useState('');
   const issueFilesRef = useRef<HTMLInputElement>(null);
   const notesRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const dateInputRef = useRef<HTMLInputElement>(null);
+  const timeInputRef = useRef<HTMLInputElement>(null);
 
   const { mutateAsync: saveNotes, isPending: notesSaving } = useUpdateTaskNotes();
   const { mutateAsync: patchTask, isPending: patchPending } = usePatchTask();
@@ -195,13 +234,14 @@ function TaskDetailMode({
   const { data: staffNotes } = useTaskNotes(task?.uuid ?? null, open && !!task && !effectiveStaffView);
   const { mutate: markSeen } = useMarkTaskSeen();
   const { data: checklistData } = useTaskChecklist(task?.uuid ?? null, open && !!task);
-  const { properties } = useProperties({ enabled: !effectiveStaffView });
-  const { staff } = useStaffUsers({ enabled: !effectiveStaffView });
+  const { staff, isLoading: staffLoading } = useStaffUsers({ enabled: !effectiveStaffView });
 
   useLayoutEffect(() => {
     if (task && open) {
       setTitle(task.title || '');
       setNotes(stripStaffSeedTaskMarker(task.notes));
+      setDueDateStr(/^\d{4}-\d{2}-\d{2}$/.test(task.dueDate) ? task.dueDate : '');
+      setDueTimeStr(task.dueTime ? task.dueTime.slice(0, 5) : '');
       setIssueReportOpen(false);
       setIssueText('');
     }
@@ -235,7 +275,63 @@ function TaskDetailMode({
 
   const timeStr = task?.dueTime ?? '—';
 
-  const stickyTitle = task ? taskStickyTitle(task, (k) => tType(k), (k) => t(k)) : '';
+  const createdAtFormatted = useMemo(() => {
+    if (!task?.createdAt) return '';
+    try {
+      return format(parseISO(task.createdAt), 'd.MM.yyyy, HH:mm', { locale: dfLocale });
+    } catch {
+      return task.createdAt;
+    }
+  }, [task?.createdAt, dfLocale]);
+
+  const updatedAtFormatted = useMemo(() => {
+    if (!task?.updatedAt) return '';
+    try {
+      return format(parseISO(task.updatedAt), 'd.MM.yyyy, HH:mm', { locale: dfLocale });
+    } catch {
+      return task.updatedAt;
+    }
+  }, [task?.updatedAt, dfLocale]);
+
+  const showUpdatedMeta = useMemo(() => {
+    if (!task?.createdAt || !task?.updatedAt) return false;
+    try {
+      return new Date(task.updatedAt).getTime() - new Date(task.createdAt).getTime() > 3000;
+    } catch {
+      return false;
+    }
+  }, [task?.createdAt, task?.updatedAt]);
+
+  const managerDateDisplay = useMemo(() => {
+    if (!dueDateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dueDateStr)) return '—';
+    try {
+      return format(parseISO(dueDateStr), 'd.MM.yyyy', { locale: dfLocale });
+    } catch {
+      return dueDateStr;
+    }
+  }, [dueDateStr, dfLocale]);
+
+  const managerTimeDisplay = dueTimeStr.trim() ? dueTimeStr : '—:—';
+
+  const openDatePicker = () => {
+    const el = dateInputRef.current;
+    if (!el) return;
+    if (typeof el.showPicker === 'function') {
+      el.showPicker();
+    } else {
+      el.focus();
+    }
+  };
+
+  const openTimePicker = () => {
+    const el = timeInputRef.current;
+    if (!el) return;
+    if (typeof el.showPicker === 'function') {
+      el.showPicker();
+    } else {
+      el.focus();
+    }
+  };
 
   const onTitleBlur = async () => {
     if (!task || effectiveStaffView) return;
@@ -244,8 +340,8 @@ function TaskDetailMode({
     try {
       await patchTask({ uuid: task.uuid, title: next });
       setTitle(next);
-    } catch {
-      toast.error(t('saveError'));
+    } catch (err) {
+      toast.error(getApiErrorMessage(err) ?? t('saveError'));
     }
   };
 
@@ -255,14 +351,14 @@ function TaskDetailMode({
     if (cleaned === stripStaffSeedTaskMarker(task.notes)) return;
     try {
       await saveNotes({ uuid: task.uuid, notes: cleaned });
-    } catch {
-      toast.error(t('saveError'));
+    } catch (err) {
+      toast.error(getApiErrorMessage(err) ?? t('saveError'));
     }
   };
 
-  const onStatusChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+  const onStatusPick = async (status: TaskStatus) => {
     if (!task || effectiveStaffView) return;
-    const status = e.target.value as TaskStatus;
+    if (status === task.status) return;
     try {
       await updateStatus({ uuid: task.uuid, status });
     } catch (err) {
@@ -270,45 +366,84 @@ function TaskDetailMode({
         toast.error(t('checklistIncomplete'));
         return;
       }
-      toast.error(t('saveError'));
+      toast.error(getApiErrorMessage(err) ?? t('saveError'));
     }
   };
 
-  const onPriorityChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
-    if (!task || effectiveStaffView) return;
-    const priority = e.target.value as TaskPriority;
+  const onPriorityPick = async (priority: TaskPriority) => {
+    if (!task || effectiveStaffView || priority === task.priority) return;
     try {
       await patchTask({ uuid: task.uuid, priority });
-    } catch {
-      toast.error(t('saveError'));
+    } catch (err) {
+      toast.error(getApiErrorMessage(err) ?? t('saveError'));
     }
   };
 
-  const onPickProperty = async (propertyId: string) => {
-    if (!task || effectiveStaffView || propertyId === task.propertyId) return;
+  const onPatchTaskType = async (nextType: TaskType) => {
+    if (!task || effectiveStaffView || nextType === task.type) return;
     try {
-      await patchTask({ uuid: task.uuid, propertyId });
-    } catch {
-      toast.error(t('saveError'));
+      await patchTask({ uuid: task.uuid, type: nextType });
+    } catch (err) {
+      toast.error(getApiErrorMessage(err) ?? t('saveError'));
     }
   };
 
-  const onPickAssignee = async (assigneeId: string | null) => {
-    if (!task || effectiveStaffView) return;
-    if (assigneeId === task.assigneeId) return;
-    try {
-      await patchTask({ uuid: task.uuid, assigneeId });
-    } catch {
-      toast.error(t('saveError'));
-    }
-  };
+  const onPickAssignee = useCallback(
+    async (assigneeId: string | null) => {
+      if (!task || effectiveStaffView) return;
+      const next = assigneeId?.trim() || null;
+      const cur = task.assigneeId?.trim() || null;
+      if (idEquals(next, cur)) return;
+      try {
+        await patchTask({ uuid: task.uuid, assigneeId: next });
+      } catch (err) {
+        toast.error(getApiErrorMessage(err) ?? t('saveError'));
+      }
+    },
+    [task, effectiveStaffView, patchTask, t],
+  );
+
+  const commitDueDate = useCallback(
+    async (next: string) => {
+      if (!task || effectiveStaffView) return;
+      const trimmed = next.trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+        setDueDateStr(/^\d{4}-\d{2}-\d{2}$/.test(task.dueDate) ? task.dueDate : '');
+        return;
+      }
+      if (trimmed === task.dueDate) return;
+      try {
+        await patchTask({ uuid: task.uuid, dueDate: trimmed });
+      } catch (err) {
+        toast.error(getApiErrorMessage(err) ?? t('saveError'));
+        setDueDateStr(/^\d{4}-\d{2}-\d{2}$/.test(task.dueDate) ? task.dueDate : '');
+      }
+    },
+    [task, effectiveStaffView, patchTask, t],
+  );
+
+  const commitDueTime = useCallback(
+    async (rawInput: string) => {
+      if (!task || effectiveStaffView) return;
+      const raw = rawInput.trim();
+      const nextNull = raw === '' ? null : raw.slice(0, 8);
+      if (dueTimesMatch(nextNull, task.dueTime)) return;
+      try {
+        await patchTask({ uuid: task.uuid, dueTime: nextNull });
+      } catch (err) {
+        toast.error(getApiErrorMessage(err) ?? t('saveError'));
+        setDueTimeStr(task.dueTime ? task.dueTime.slice(0, 5) : '');
+      }
+    },
+    [task, effectiveStaffView, patchTask, t],
+  );
 
   const onToggleChecklist = async (itemId: string, checked: boolean) => {
     if (!task) return;
     try {
       await patchChecklistItem({ taskUuid: task.uuid, itemId, checked });
-    } catch {
-      toast.error(t('saveError'));
+    } catch (err) {
+      toast.error(getApiErrorMessage(err) ?? t('saveError'));
     }
   };
 
@@ -343,25 +478,13 @@ function TaskDetailMode({
         await uploadPhotos({ uuid: task.uuid, files: Array.from(files) });
       }
       onOpenChange(false);
-    } catch {
-      toast.error(t('saveError'));
+    } catch (err) {
+      toast.error(getApiErrorMessage(err) ?? t('saveError'));
     }
   };
 
-  const handleDeleteTask = useCallback(async () => {
-    if (!task) return;
-    if (typeof window !== 'undefined' && !window.confirm(t('deleteTaskConfirm'))) return;
-    try {
-      await apiClient.delete(`/tasks/${task.uuid}`);
-      await queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      onOpenChange(false);
-      toast.success(t('deleteTaskSuccess'));
-    } catch {
-      toast.error(t('deleteTaskError'));
-    }
-  }, [task, queryClient, onOpenChange, t]);
-
-  const headerAdornment = task ? (
+  /** Шапка: только персонал — тип, статус, приоритет, срок. У менеджера тип и срок редактируются в теле панели. */
+  const staffHeaderAdornment = task ? (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-2">
         <TaskTypeBadge type={task.type} variant="dense" />
@@ -448,104 +571,52 @@ function TaskDetailMode({
     );
   })();
 
-  const managerDesktopFooter = task && !effectiveStaffView && (
-    <div className="flex w-full flex-col gap-2.5">
-      <Button
-        type="button"
-        variant="default"
-        className="h-auto min-h-12 w-full rounded-xl py-3 text-base font-semibold shadow-sm"
-        asChild
-      >
-        <Link href={`/dashboard/tasks/new?propertyId=${encodeURIComponent(task.propertyId ?? '')}`}>
-          {t('editTask')}
-        </Link>
-      </Button>
-      <Button
-        type="button"
-        variant="outline"
-        className="h-auto min-h-12 w-full rounded-xl border-border/80 py-3 text-base"
-        onClick={() => onOpenChange(false)}
-      >
-        {t('close')}
-      </Button>
-      <Button
-        type="button"
-        variant="destructive"
-        className="h-auto min-h-12 w-full rounded-xl py-3 text-base"
-        onClick={() => void handleDeleteTask()}
-      >
-        {t('deleteTask')}
-      </Button>
-    </div>
-  );
+  /*
+   * Резерв: нижняя кнопка «Сохранить / Закрыть» для менеджера (сейчас не показываем — автосохранение).
+   * Вернуть в ResponsiveModalContent: footer={
+   *   !effectiveStaffView && task ? (
+   *     <div className="pb-safe">
+   *       <Button type="button" variant="secondary" className="h-10 w-full" onClick={() => { blur active; onOpenChange(false); }}>
+   *         {t('saveClose')}
+   *       </Button>
+   *     </div>
+   *   ) : ...
+   * }
+   */
 
   const modalFooter =
     effectiveStaffView && staffFooter ? (
       <div className="pb-safe">{staffFooter}</div>
-    ) : isDesktop && managerDesktopFooter ? (
-      <div className="pb-safe">{managerDesktopFooter}</div>
     ) : undefined;
-
-  const managerMobileHeaderActions =
-    task && !effectiveStaffView && !isDesktop ? (
-      <div className="flex shrink-0 items-center gap-0.5">
-        <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full text-muted-foreground" asChild>
-          <Link href={`/dashboard/tasks/new?propertyId=${encodeURIComponent(task.propertyId ?? '')}`}>
-            <Pencil className="h-5 w-5" aria-hidden />
-            <span className="sr-only">{t('editTask')}</span>
-          </Link>
-        </Button>
-        <DropdownMenu.Root>
-          <DropdownMenu.Trigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="h-9 w-9 rounded-full text-muted-foreground"
-            >
-              <MoreVertical className="h-5 w-5" aria-hidden />
-              <span className="sr-only">{t('moreMenuAria')}</span>
-            </Button>
-          </DropdownMenu.Trigger>
-          <DropdownMenu.Portal>
-            <DropdownMenu.Content
-              align="end"
-              sideOffset={8}
-              className="z-[200] min-w-[11rem] overflow-hidden rounded-xl border bg-popover p-1 text-popover-foreground shadow-md"
-            >
-              <DropdownMenu.Item
-                className="cursor-pointer rounded-md px-3 py-2 text-sm font-medium text-destructive outline-none focus:bg-destructive/10 data-[highlighted]:bg-destructive/10"
-                onSelect={() => void handleDeleteTask()}
-              >
-                {t('deleteTask')}
-              </DropdownMenu.Item>
-            </DropdownMenu.Content>
-          </DropdownMenu.Portal>
-        </DropdownMenu.Root>
-      </div>
-    ) : null;
 
   if (!task) {
     return null;
   }
 
+  const panelTitle =
+    task.propertyTitle?.trim() || taskStickyTitle(task, (k) => tType(k), (k) => t(k));
+  const headerDescription =
+    task.propertyTitle?.trim() && task.propertyAddress?.trim()
+      ? task.propertyAddress.trim()
+      : undefined;
+
   return (
     <ResponsiveModal open={open} onOpenChange={onOpenChange} desktopPresentation="side">
       <ResponsiveModalContent
-        title={stickyTitle}
-        headerAdornment={headerAdornment}
-        headerActions={managerMobileHeaderActions}
+        title={panelTitle}
+        description={headerDescription}
+        headerAdornment={effectiveStaffView ? staffHeaderAdornment : undefined}
         hideCloseButton={!isDesktop}
         contentStyle={TASK_DETAIL_PORTAL_STYLE}
         className={cn(
           TASK_MODAL_THEME,
           'flex w-full max-w-xl flex-col rounded-t-2xl sm:max-w-xl sm:rounded-xl',
-          'max-h-[85vh] md:max-h-[min(90dvh,90vh)] md:rounded-none md:rounded-l-2xl',
+          'max-h-[85vh] md:max-h-none md:min-h-0 md:h-full md:rounded-none md:rounded-l-2xl',
         )}
         bodyClassName="border-t border-border/50 px-4 pt-4 pb-4 max-md:border-t-0 max-md:px-4 max-md:pb-2"
         footer={modalFooter}
       >
-        <div className="detail-scroll-body flex flex-col gap-[var(--space-4,1rem)] max-md:gap-5">
+        <div className="detail-scroll-body flex flex-col gap-[var(--space-4,1rem)] max-md:gap-3">
           <div className="space-y-1.5 max-md:space-y-2">
             <p className={taskDetailFieldLabel}>{t('taskTitleLabel')}</p>
             {effectiveStaffView ? (
@@ -582,6 +653,192 @@ function TaskDetailMode({
               </div>
             )}
           </div>
+
+          <div className="space-y-1.5 rounded-xl border border-border/70 bg-muted/15 p-2.5 shadow-sm dark:border-border/60 dark:bg-muted/20 sm:p-3">
+            <label htmlFor="task-manager-note" className={taskDetailFieldLabel}>
+              {t('managerNote')}
+            </label>
+            <textarea
+              id="task-manager-note"
+              ref={notesRef}
+              value={notes}
+              onChange={(e) => {
+                setNotes(e.target.value);
+                requestAnimationFrame(resizeNotes);
+              }}
+              onBlur={() => void onNotesBlur()}
+              readOnly={effectiveStaffView}
+              disabled={notesSaving}
+              rows={2}
+              placeholder={t('managerNotePlaceholder')}
+              className={cn(
+                taskNotesTextareaClass,
+                'border-border/60 bg-background/80 dark:bg-card/80',
+                effectiveStaffView && 'cursor-default opacity-90',
+              )}
+            />
+          </div>
+
+          {!effectiveStaffView && (
+            <div className="space-y-1.5">
+              <p className={taskDetailFieldLabel}>{t('type')}</p>
+              <div className="flex flex-wrap gap-1">
+                {DETAIL_EDIT_TYPES.map(({ type: tt, labelKey, shortIcon: ShortIcon }) => (
+                  <button
+                    key={tt}
+                    type="button"
+                    disabled={patchPending}
+                    onClick={() => void onPatchTaskType(tt)}
+                    className={cn(
+                      detailTypePillClass(task.type === tt),
+                      patchPending && 'pointer-events-none opacity-60',
+                    )}
+                  >
+                    <span className="inline-flex max-w-[9rem] items-center gap-1 truncate sm:max-w-none">
+                      {ShortIcon ? (
+                        <ShortIcon
+                          className="h-3 w-3 shrink-0 stroke-[2.25] text-muted-foreground"
+                          aria-hidden
+                        />
+                      ) : null}
+                      <span className="truncate">{tType(labelKey)}</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {!effectiveStaffView && (
+            <div className="space-y-1.5">
+              <p className={taskDetailFieldLabel}>{t('status')}</p>
+              <div className="flex flex-wrap gap-1">
+                {MANAGER_STATUS_ORDER.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    disabled={headerDisabled || statusPending}
+                    onClick={() => void onStatusPick(s)}
+                    className={cn(
+                      detailTypePillClass(task.status === s),
+                      (headerDisabled || statusPending) && 'pointer-events-none opacity-60',
+                    )}
+                  >
+                    {tStatus(s)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {!effectiveStaffView && (
+            <div className="space-y-1.5">
+              <p className={taskDetailFieldLabel}>{t('assignee')}</p>
+              <AssigneePickerField
+                variant="compact"
+                staff={staff}
+                value={task.assigneeId}
+                fallbackName={task.assigneeName?.trim() ? task.assigneeName : null}
+                loading={staffLoading}
+                disabled={patchPending}
+                onChange={(id) => void onPickAssignee(id)}
+              />
+            </div>
+          )}
+
+          {!effectiveStaffView && (
+            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5 text-sm">
+              <span className={taskDetailFieldLabel}>{t('dueDate')}</span>
+              <button
+                type="button"
+                disabled={patchPending}
+                onClick={openDatePicker}
+                className="border-0 bg-transparent p-0 font-medium tabular-nums text-foreground underline-offset-2 hover:underline disabled:opacity-60"
+              >
+                {managerDateDisplay}
+              </button>
+              <button
+                type="button"
+                disabled={patchPending}
+                onClick={openDatePicker}
+                className="rounded p-0.5 text-muted-foreground hover:bg-muted/60 hover:text-foreground disabled:opacity-50"
+                aria-label={t('dueDate')}
+              >
+                <Calendar className="h-3.5 w-3.5" aria-hidden />
+              </button>
+              <input
+                ref={dateInputRef}
+                type="date"
+                value={dueDateStr}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setDueDateStr(v);
+                  void commitDueDate(v);
+                }}
+                onBlur={(e) => void commitDueDate(e.target.value)}
+                disabled={patchPending}
+                className="sr-only"
+                tabIndex={-1}
+              />
+              <span className="text-muted-foreground/40" aria-hidden>
+                ·
+              </span>
+              <span className={taskDetailFieldLabel}>{t('dueTime')}</span>
+              <button
+                type="button"
+                disabled={patchPending}
+                onClick={openTimePicker}
+                className="border-0 bg-transparent p-0 font-medium tabular-nums text-foreground underline-offset-2 hover:underline disabled:opacity-60"
+              >
+                {managerTimeDisplay}
+              </button>
+              <button
+                type="button"
+                disabled={patchPending}
+                onClick={openTimePicker}
+                className="rounded p-0.5 text-muted-foreground hover:bg-muted/60 hover:text-foreground disabled:opacity-50"
+                aria-label={t('dueTime')}
+              >
+                <Clock className="h-3.5 w-3.5" aria-hidden />
+              </button>
+              <input
+                ref={timeInputRef}
+                type="time"
+                value={dueTimeStr}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setDueTimeStr(v);
+                  void commitDueTime(v);
+                }}
+                onBlur={(e) => void commitDueTime(e.target.value)}
+                disabled={patchPending}
+                className="sr-only"
+                tabIndex={-1}
+              />
+            </div>
+          )}
+
+          {!effectiveStaffView && (
+            <div className="space-y-1.5">
+              <p className={taskDetailFieldLabel}>{tVoice('priorityLabel')}</p>
+              <div className="flex flex-wrap gap-1">
+                {PRIORITY_ORDER.map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    disabled={patchPending}
+                    onClick={() => void onPriorityPick(p)}
+                    className={cn(
+                      detailTypePillClass(task.priority === p),
+                      patchPending && 'pointer-events-none opacity-60',
+                    )}
+                  >
+                    {tPriority(p)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {task.status === 'issue' && task.issueDescription ? (
             <div
@@ -641,75 +898,66 @@ function TaskDetailMode({
             </div>
           )}
 
-          <div
-            className={cn(
-              'space-y-2',
-              taskDetailSurface,
-              'max-md:border-0 max-md:bg-transparent max-md:p-0 max-md:shadow-none',
-            )}
-          >
-            <p className={taskDetailFieldLabel}>{t('photos')}</p>
-            <div className="grid grid-cols-4 gap-2 max-md:flex max-md:flex-nowrap max-md:gap-2 max-md:overflow-x-auto max-md:pb-1.5 [-webkit-overflow-scrolling:touch]">
-              {task.photoUrls.map((url) => (
-                <a
-                  key={url}
-                  href={url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="relative aspect-square w-full shrink-0 overflow-hidden rounded-md border border-border bg-muted max-md:h-20 max-md:w-20 max-md:max-w-[5rem]"
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element -- external URLs */}
-                  <img src={url} alt="" className="h-full w-full object-cover" />
-                </a>
-              ))}
-              {!effectiveStaffView && (
-                <button
-                  type="button"
-                  disabled={uploadPending}
-                  onClick={() => fileRef.current?.click()}
-                  className="flex aspect-square w-full shrink-0 flex-col items-center justify-center gap-1 rounded-md border border-dashed border-muted-foreground/40 bg-muted/15 text-[10px] font-medium text-muted-foreground transition-colors hover:border-primary/45 hover:bg-primary/5 disabled:opacity-50 max-md:h-20 max-md:w-20 max-md:max-w-[5rem]"
-                >
-                  <ImagePlus className="h-5 w-5 opacity-70" aria-hidden />
-                  <span className="px-0.5 text-center leading-tight">{t('addPhoto')}</span>
-                </button>
-              )}
-            </div>
-            {(task.hasVerificationPhoto ?? false) && (
-              <p className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400">{t('verifiedPhoto')}</p>
-            )}
-            <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={onFiles} />
-          </div>
-
-          <div
-            className={cn(
-              'space-y-1.5',
-              !effectiveStaffView && 'max-md:rounded-xl max-md:bg-slate-50 max-md:p-4 dark:max-md:bg-slate-900/35',
-            )}
-          >
-            <label htmlFor="task-manager-note" className={taskDetailFieldLabel}>
-              {t('managerNote')}
-            </label>
-            <textarea
-              id="task-manager-note"
-              ref={notesRef}
-              value={notes}
-              onChange={(e) => {
-                setNotes(e.target.value);
-                requestAnimationFrame(resizeNotes);
-              }}
-              onBlur={() => void onNotesBlur()}
-              readOnly={effectiveStaffView}
-              disabled={notesSaving}
-              rows={2}
-              placeholder={t('managerNotePlaceholder')}
+          {(task.photoUrls.length > 0 || !effectiveStaffView) && (
+            <div
               className={cn(
-                taskNotesTextareaClass,
-                !effectiveStaffView &&
-                  'max-md:border-0 max-md:bg-transparent max-md:shadow-none dark:max-md:bg-transparent',
-                effectiveStaffView && 'cursor-default opacity-90',
+                'space-y-2',
+                taskDetailSurface,
+                'max-md:border-0 max-md:bg-transparent max-md:p-0 max-md:shadow-none',
               )}
-            />
-          </div>
+            >
+              {!effectiveStaffView && task.photoUrls.length === 0 ? (
+                <div className="flex items-center gap-2">
+                  <p className={taskDetailFieldLabel}>{t('photos')}</p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8 shrink-0"
+                    disabled={uploadPending}
+                    onClick={() => fileRef.current?.click()}
+                    aria-label={t('addPhoto')}
+                  >
+                    <Plus className="h-4 w-4" aria-hidden />
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <p className={taskDetailFieldLabel}>{t('photos')}</p>
+                  <div className="grid grid-cols-4 gap-2 max-md:flex max-md:flex-nowrap max-md:gap-2 max-md:overflow-x-auto max-md:pb-1.5 [-webkit-overflow-scrolling:touch]">
+                    {task.photoUrls.map((url) => (
+                      <a
+                        key={url}
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="relative aspect-square w-full shrink-0 overflow-hidden rounded-md border border-border bg-muted max-md:h-20 max-md:w-20 max-md:max-w-[5rem]"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element -- external URLs */}
+                        <img src={url} alt="" className="h-full w-full object-cover" />
+                      </a>
+                    ))}
+                    {!effectiveStaffView && (
+                      <button
+                        type="button"
+                        disabled={uploadPending}
+                        onClick={() => fileRef.current?.click()}
+                        title={t('addPhoto')}
+                        aria-label={t('addPhoto')}
+                        className="flex aspect-square w-full shrink-0 items-center justify-center rounded-md border border-dashed border-muted-foreground/40 bg-muted/15 text-muted-foreground transition-colors hover:border-primary/45 hover:bg-primary/5 disabled:opacity-50 max-md:h-20 max-md:w-20 max-md:max-w-[5rem]"
+                      >
+                        <Plus className="h-5 w-5 opacity-80" aria-hidden />
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
+              {(task.hasVerificationPhoto ?? false) && (
+                <p className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400">{t('verifiedPhoto')}</p>
+              )}
+              <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={onFiles} />
+            </div>
+          )}
 
           {!effectiveStaffView && staffNotes && staffNotes.length > 0 && (
             <div className="rounded-lg border border-amber-200/90 bg-amber-50/95 p-2.5 dark:border-amber-800/55 dark:bg-amber-950/45">
@@ -730,291 +978,38 @@ function TaskDetailMode({
             </div>
           )}
 
-          <div
-            className={cn(
-              taskDetailSurfaceBase,
-              'border-l-[3px] border-l-primary p-4',
-              'max-md:border-0 max-md:border-l-0 max-md:bg-transparent max-md:p-0 max-md:shadow-none',
-            )}
-          >
-            {!effectiveStaffView && (
-              <div className="mb-4 flex flex-wrap items-center gap-2 border-b border-border/50 pb-4 max-md:mb-3 max-md:border-0 max-md:pb-0">
-                <select
-                  aria-label={t('status')}
-                  disabled={headerDisabled}
-                  value={task.status}
-                  onChange={onStatusChange}
-                  className={cn(
-                    'h-9 max-w-[11rem] appearance-none rounded-full border border-input bg-background py-1.5 pl-3 pr-2 text-xs font-medium shadow-sm',
-                    taskControlFocus,
-                    headerDisabled && 'cursor-not-allowed opacity-60',
-                  )}
-                >
-                  {STATUS_ORDER.map((s) => (
-                    <option key={s} value={s}>
-                      {tStatus(s)}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  aria-label={t('priority')}
-                  disabled={headerDisabled}
-                  value={task.priority}
-                  onChange={onPriorityChange}
-                  className={cn(
-                    'h-9 rounded-full border border-input bg-background px-2.5 text-xs font-medium shadow-sm',
-                    taskControlFocus,
-                    headerDisabled && 'cursor-not-allowed opacity-60',
-                  )}
-                >
-                  {PRIORITY_ORDER.map((p) => (
-                    <option key={p} value={p}>
-                      {tPriority(p)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
+          <div className="space-y-3.5">
+              <p className="text-[11px] leading-relaxed text-muted-foreground">
+                <span>{t('creator')}</span>
+                {': '}
+                <span className="text-muted-foreground/90">
+                  {task.creatorName?.trim() ? task.creatorName : '—'}
+                </span>
+                {showUpdatedMeta && updatedAtFormatted ? (
+                  <>
+                    <span className="mx-1.5 text-muted-foreground/40">·</span>
+                    <span>{t('metaUpdated', { time: updatedAtFormatted })}</span>
+                  </>
+                ) : createdAtFormatted ? (
+                  <>
+                    <span className="mx-1.5 text-muted-foreground/40">·</span>
+                    <span>{t('metaCreated', { time: createdAtFormatted })}</span>
+                  </>
+                ) : null}
+              </p>
 
-            <div className="md:hidden divide-y divide-slate-100 dark:divide-slate-800">
-              <div className="flex items-center justify-between gap-3 py-3">
-                <span className="text-xs text-muted-foreground">{t('property')}</span>
-                <div className="min-w-0 max-w-[65%] text-right text-sm font-medium text-foreground">
-                  {effectiveStaffView ? (
-                    <span className="inline-flex max-w-full justify-end truncate text-right">
-                      {task.propertyTitle}
-                    </span>
-                  ) : (
-                    <DropdownMenu.Root>
-                      <DropdownMenu.Trigger asChild>
-                        <button
-                          type="button"
-                          disabled={patchPending}
-                          className={cn(
-                            'inline-flex max-w-full items-center justify-end gap-1 truncate rounded-md border border-input bg-background px-2 py-1 text-right text-sm font-medium shadow-sm transition-colors hover:bg-muted',
-                            taskControlFocus,
-                            'disabled:opacity-50',
-                          )}
-                        >
-                          {task.propertyTitle}
-                        </button>
-                      </DropdownMenu.Trigger>
-                      <DropdownMenu.Portal>
-                        <DropdownMenu.Content
-                          sideOffset={6}
-                          align="end"
-                          className="z-[200] max-h-[min(280px,45vh)] min-w-[10rem] overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
-                        >
-                          {properties.map((p) => (
-                            <DropdownMenu.Item
-                              key={p.id}
-                              onSelect={() => void onPickProperty(p.id)}
-                              className="cursor-pointer rounded-sm px-2 py-1.5 text-sm outline-none data-[highlighted]:bg-accent"
-                            >
-                              {p.name}
-                            </DropdownMenu.Item>
-                          ))}
-                        </DropdownMenu.Content>
-                      </DropdownMenu.Portal>
-                    </DropdownMenu.Root>
-                  )}
-                </div>
-              </div>
-
-              {!effectiveStaffView && (
-                <div className="flex items-center justify-between gap-3 py-3">
-                  <span className="text-xs text-muted-foreground">{t('assignee')}</span>
-                  <div className="min-w-0 max-w-[65%] text-right">
-                    <DropdownMenu.Root>
-                      <DropdownMenu.Trigger asChild>
-                        <button
-                          type="button"
-                          disabled={patchPending}
-                          className={cn(
-                            'inline-flex max-w-full items-center justify-end gap-2 rounded-md border border-input bg-background py-0.5 pl-1 pr-2 text-right text-sm font-medium shadow-sm transition-colors hover:bg-muted',
-                            taskControlFocus,
-                            'disabled:opacity-50',
-                          )}
-                        >
-                          <span className="inline-flex h-7 min-w-7 max-w-[5.5rem] shrink-0 items-center justify-center truncate rounded-full bg-primary/15 px-1 text-[10px] font-semibold text-primary">
-                            {task.assigneeName ? formatNameAndLastInitial(task.assigneeName) : '?'}
-                          </span>
-                          <span className="truncate">{task.assigneeName ?? t('unassigned')}</span>
-                        </button>
-                      </DropdownMenu.Trigger>
-                      <DropdownMenu.Portal>
-                        <DropdownMenu.Content
-                          sideOffset={6}
-                          align="end"
-                          className="z-[200] max-h-[min(280px,45vh)] min-w-[12rem] overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
-                        >
-                          <DropdownMenu.Item
-                            onSelect={() => void onPickAssignee(null)}
-                            className="cursor-pointer rounded-sm px-2 py-1.5 text-sm outline-none data-[highlighted]:bg-accent"
-                          >
-                            {t('unassigned')}
-                          </DropdownMenu.Item>
-                          {staff.map((s) => (
-                            <DropdownMenu.Item
-                              key={s.id}
-                              onSelect={() => void onPickAssignee(s.id)}
-                              className="cursor-pointer rounded-sm px-2 py-1.5 text-sm outline-none data-[highlighted]:bg-accent"
-                            >
-                              {s.displayName}
-                            </DropdownMenu.Item>
-                          ))}
-                        </DropdownMenu.Content>
-                      </DropdownMenu.Portal>
-                    </DropdownMenu.Root>
+              {effectiveStaffView && (
+                <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                  <div className="min-w-0 space-y-1">
+                    <span className={taskDetailFieldLabel}>{t('dueDate')}</span>
+                    <span className="block text-sm font-medium tabular-nums text-foreground">{dateOnly}</span>
+                  </div>
+                  <div className="min-w-0 space-y-1">
+                    <span className={taskDetailFieldLabel}>{t('dueTime')}</span>
+                    <span className="block text-sm font-medium tabular-nums text-foreground">{timeStr}</span>
                   </div>
                 </div>
               )}
-
-              <div className="flex items-center justify-between gap-3 py-3">
-                <span className="text-xs text-muted-foreground">{t('creator')}</span>
-                <span className="max-w-[65%] text-right text-sm font-medium text-foreground">
-                  {task.creatorName?.trim() ? task.creatorName : '—'}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between gap-3 py-3">
-                <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                  <Clock className="h-3 w-3 opacity-70" aria-hidden />
-                  {t('dueDate')}
-                </span>
-                <span className="text-xs font-medium tabular-nums text-foreground sm:text-sm">{dateOnly}</span>
-              </div>
-
-              <div className="flex items-center justify-between gap-3 py-3">
-                <span className="text-xs text-muted-foreground">{t('dueTime')}</span>
-                <span className="text-xs font-medium tabular-nums text-foreground sm:text-sm">{timeStr}</span>
-              </div>
-
-              <div className="flex items-start justify-between gap-3 py-3">
-                <span className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
-                  <MapPin className="h-3 w-3 opacity-70" aria-hidden />
-                  {t('location')}
-                </span>
-                <span className="max-w-[70%] text-right text-sm leading-snug text-foreground">{task.propertyAddress}</span>
-              </div>
-            </div>
-
-            <dl className="hidden grid-cols-[100px_1fr] gap-x-3 gap-y-2.5 text-sm md:grid">
-              <dt className={taskDetailFieldLabel}>{t('property')}</dt>
-              <dd className="min-w-0">
-                {effectiveStaffView ? (
-                  <span className="inline-flex max-w-full truncate rounded-md border border-input bg-background px-2 py-1 text-sm font-medium shadow-sm">
-                    {task.propertyTitle}
-                  </span>
-                ) : (
-                  <DropdownMenu.Root>
-                    <DropdownMenu.Trigger asChild>
-                      <button
-                        type="button"
-                        disabled={patchPending}
-                        className={cn(
-                          'inline-flex max-w-full items-center gap-1 truncate rounded-md border border-input bg-background px-2 py-1 text-left text-sm font-medium shadow-sm transition-colors hover:bg-muted',
-                          taskControlFocus,
-                          'disabled:opacity-50',
-                        )}
-                      >
-                        {task.propertyTitle}
-                      </button>
-                    </DropdownMenu.Trigger>
-                    <DropdownMenu.Portal>
-                      <DropdownMenu.Content
-                        sideOffset={6}
-                        align="start"
-                        className="z-[200] max-h-[min(280px,45vh)] min-w-[10rem] overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
-                      >
-                        {properties.map((p) => (
-                          <DropdownMenu.Item
-                            key={p.id}
-                            onSelect={() => void onPickProperty(p.id)}
-                            className="cursor-pointer rounded-sm px-2 py-1.5 text-sm outline-none data-[highlighted]:bg-accent"
-                          >
-                            {p.name}
-                          </DropdownMenu.Item>
-                        ))}
-                      </DropdownMenu.Content>
-                    </DropdownMenu.Portal>
-                  </DropdownMenu.Root>
-                )}
-              </dd>
-
-              {!effectiveStaffView && (
-                <>
-                  <dt className={taskDetailFieldLabel}>{t('assignee')}</dt>
-                  <dd className="min-w-0">
-                    <DropdownMenu.Root>
-                      <DropdownMenu.Trigger asChild>
-                        <button
-                          type="button"
-                          disabled={patchPending}
-                          className={cn(
-                            'inline-flex max-w-full items-center gap-2 rounded-md border border-input bg-background py-0.5 pl-1 pr-2 text-left text-sm font-medium shadow-sm transition-colors hover:bg-muted',
-                            taskControlFocus,
-                            'disabled:opacity-50',
-                          )}
-                        >
-                          <span className="inline-flex h-7 min-w-7 max-w-[5.5rem] shrink-0 items-center justify-center truncate rounded-full bg-primary/15 px-1 text-[10px] font-semibold text-primary">
-                            {task.assigneeName ? formatNameAndLastInitial(task.assigneeName) : '?'}
-                          </span>
-                          <span className="truncate">{task.assigneeName ?? t('unassigned')}</span>
-                        </button>
-                      </DropdownMenu.Trigger>
-                      <DropdownMenu.Portal>
-                        <DropdownMenu.Content
-                          sideOffset={6}
-                          align="start"
-                          className="z-[200] max-h-[min(280px,45vh)] min-w-[12rem] overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
-                        >
-                          <DropdownMenu.Item
-                            onSelect={() => void onPickAssignee(null)}
-                            className="cursor-pointer rounded-sm px-2 py-1.5 text-sm outline-none data-[highlighted]:bg-accent"
-                          >
-                            {t('unassigned')}
-                          </DropdownMenu.Item>
-                          {staff.map((s) => (
-                            <DropdownMenu.Item
-                              key={s.id}
-                              onSelect={() => void onPickAssignee(s.id)}
-                              className="cursor-pointer rounded-sm px-2 py-1.5 text-sm outline-none data-[highlighted]:bg-accent"
-                            >
-                              {s.displayName}
-                            </DropdownMenu.Item>
-                          ))}
-                        </DropdownMenu.Content>
-                      </DropdownMenu.Portal>
-                    </DropdownMenu.Root>
-                  </dd>
-                </>
-              )}
-
-              <dt className={taskDetailFieldLabel}>{t('creator')}</dt>
-              <dd className="text-sm font-medium text-foreground">
-                {task.creatorName?.trim() ? task.creatorName : '—'}
-              </dd>
-
-              <dt className={taskDetailFieldLabel}>
-                <span className="inline-flex items-center gap-1">
-                  <Clock className="h-3 w-3 opacity-70" aria-hidden />
-                  {t('dueDate')}
-                </span>
-              </dt>
-              <dd className="text-sm font-medium tabular-nums text-foreground">{dateOnly}</dd>
-
-              <dt className={taskDetailFieldLabel}>{t('dueTime')}</dt>
-              <dd className="text-sm font-medium tabular-nums text-foreground">{timeStr}</dd>
-
-              <dt className={taskDetailFieldLabel}>
-                <span className="inline-flex items-center gap-1">
-                  <MapPin className="h-3 w-3 opacity-70" aria-hidden />
-                  {t('location')}
-                </span>
-              </dt>
-              <dd className="text-sm leading-snug text-foreground">{task.propertyAddress}</dd>
-            </dl>
           </div>
 
           {effectiveStaffView && task.status === 'in_progress' && (
@@ -1078,10 +1073,10 @@ function IncidentDetailMode({
   const tCard = useTranslations('tasks.kanban.incidentCard');
   const tDetail = useTranslations('tasks.detail');
   const dateLocale = useDateLocale();
+  const isDesktop = useMediaQuery(MD_UP);
   const { mutate: patch, isPending } = usePatchIncident();
   const [managerNote, setManagerNote] = useState('');
   const [estimatedCost, setEstimatedCost] = useState('');
-  const [voiceOpen, setVoiceOpen] = useState(false);
 
   useEffect(() => {
     if (incident && open) {
@@ -1121,6 +1116,10 @@ function IncidentDetailMode({
   const created = format(new Date(incident.createdAt), 'd MMMM yyyy, HH:mm', { locale: dateLocale });
   const stickyTitle =
     incident.propertyTitle?.trim() || incident.propertyAddress?.trim() || tCard('badge');
+  const headerDescription =
+    incident.propertyTitle?.trim() && incident.propertyAddress?.trim()
+      ? incident.propertyAddress.trim()
+      : t('subtitle');
 
   const lastPhone = incident.lastStayGuestPhone?.trim();
   const lastPhoneDigits = lastPhone ? lastPhone.replace(/\D/g, '') : '';
@@ -1226,91 +1225,89 @@ function IncidentDetailMode({
       incident.status === 'in_review'
     ) {
       return (
-        <div className="flex w-full flex-col gap-2">
-          <Button
-            type="button"
-            className="w-full"
-            disabled={isPending || !!incident.dispatchedTaskId}
-            onClick={() => setVoiceOpen(true)}
-          >
-            {tDetail('createTaskFromIncident')}
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            className="w-full"
-            disabled={isPending}
-            onClick={() => patchStatus('resolved')}
-          >
-            {t('markResolved')}
-          </Button>
-          <Button type="button" variant="outline" className="w-full" onClick={() => onOpenChange(false)}>
-            {t('closePanel')}
-          </Button>
-        </div>
+        <Button
+          type="button"
+          variant="secondary"
+          className="w-full"
+          disabled={isPending}
+          onClick={() => patchStatus('resolved')}
+        >
+          {t('markResolved')}
+        </Button>
       );
     }
     if (incident.status === 'resolved' || incident.status === 'closed') {
       return (
-        <div className="flex w-full flex-col gap-2">
-          <Button
-            type="button"
-            variant="secondary"
-            className="w-full"
-            disabled={isPending}
-            onClick={() =>
-              patch(
-                { uuid: incident.uuid, status: 'in_review' },
-                { onError: () => toast.error(tDetail('saveError')) },
-              )
-            }
-          >
-            {tDetail('reopenIncident')}
-          </Button>
-          <Button type="button" variant="outline" className="w-full" onClick={() => onOpenChange(false)}>
-            {t('closePanel')}
-          </Button>
-        </div>
+        <Button
+          type="button"
+          variant="secondary"
+          className="w-full"
+          disabled={isPending}
+          onClick={() =>
+            patch(
+              { uuid: incident.uuid, status: 'in_review' },
+              { onError: () => toast.error(tDetail('saveError')) },
+            )
+          }
+        >
+          {tDetail('reopenIncident')}
+        </Button>
       );
     }
     return null;
   })();
 
   return (
-    <>
-      <ResponsiveModal open={open} onOpenChange={onOpenChange} desktopPresentation="side">
-        <ResponsiveModalContent
-          title={stickyTitle}
-          description={t('subtitle')}
-          headerAdornment={headerAdornment}
-          className="max-h-[85vh] max-w-xl rounded-t-2xl md:max-h-[min(90dvh,90vh)] md:rounded-none md:rounded-l-2xl"
-          bodyClassName="px-4 pt-4 pb-4"
-          footer={
-            incidentFooter ? (
-              <div className="pb-safe">{incidentFooter}</div>
-            ) : undefined
-          }
-        >
-          <div className="detail-scroll-body flex flex-col gap-[var(--space-4,1rem)]">
-            {incident.reporterName ? (
-              <p className="text-sm text-muted-foreground">
-                <span className="font-medium text-foreground">{t('reporter')}</span> {incident.reporterName}
-              </p>
-            ) : null}
+    <ResponsiveModal open={open} onOpenChange={onOpenChange} desktopPresentation="side">
+      <ResponsiveModalContent
+        title={stickyTitle}
+        description={headerDescription}
+        headerAdornment={headerAdornment}
+        hideCloseButton={!isDesktop}
+        contentStyle={TASK_DETAIL_PORTAL_STYLE}
+        className={cn(
+          TASK_MODAL_THEME,
+          'flex w-full max-w-xl flex-col rounded-t-2xl sm:max-w-xl sm:rounded-xl',
+          'max-h-[85vh] md:max-h-none md:min-h-0 md:h-full md:rounded-none md:rounded-l-2xl',
+        )}
+        bodyClassName="border-t border-border/50 px-4 pt-4 pb-4 max-md:border-t-0 max-md:px-4 max-md:pb-2"
+        footer={
+          incidentFooter ? (
+            <div className="pb-safe">{incidentFooter}</div>
+          ) : undefined
+        }
+      >
+        <div className="detail-scroll-body flex flex-col gap-[var(--space-4,1rem)] max-md:gap-3">
+          {incident.reporterName ? (
+            <div className="space-y-1.5">
+              <p className={taskDetailFieldLabel}>{t('reporter')}</p>
+              <div
+                className={cn(
+                  taskTitleShell,
+                  'max-md:border-0 max-md:bg-transparent max-md:px-0 max-md:py-0 max-md:shadow-none',
+                )}
+              >
+                <p className="text-base font-semibold leading-snug tracking-tight text-foreground sm:text-lg">
+                  {incident.reporterName}
+                </p>
+              </div>
+            </div>
+          ) : null}
 
             <div
               className={cn(
-                'rounded-xl border p-3 text-sm',
+                taskDetailSurfaceBase,
+                'p-3 text-sm shadow-sm',
                 incident.type === 'damage' &&
-                  'border-red-500/30 bg-red-50/80 text-red-950 dark:bg-red-950/15 dark:text-red-100',
+                  'border-red-500/35 bg-red-50/80 text-red-950 dark:border-red-500/25 dark:bg-red-950/15 dark:text-red-100',
                 incident.type === 'lost_item' &&
-                  'border-amber-500/30 bg-amber-50/80 text-amber-950 dark:bg-amber-950/20 dark:text-amber-50',
+                  'border-amber-500/35 bg-amber-50/80 text-amber-950 dark:border-amber-500/25 dark:bg-amber-950/20 dark:text-amber-50',
                 incident.type === 'rule_violation' &&
-                  'border-orange-500/30 bg-orange-50/85 text-orange-950 dark:bg-orange-950/25 dark:text-orange-50',
+                  'border-orange-500/35 bg-orange-50/85 text-orange-950 dark:border-orange-500/25 dark:bg-orange-950/25 dark:text-orange-50',
                 incident.type === 'emergency' &&
-                  'border-violet-500/35 bg-violet-50/90 text-violet-950 dark:bg-violet-950/30 dark:text-violet-50',
+                  'border-violet-500/40 bg-violet-50/90 text-violet-950 dark:border-violet-500/30 dark:bg-violet-950/30 dark:text-violet-50',
                 incident.type === 'task_report' &&
-                  'border-sky-500/30 bg-sky-50/85 text-sky-950 dark:bg-sky-950/25 dark:text-sky-50',
+                  'border-sky-500/35 bg-sky-50/85 text-sky-950 dark:border-sky-500/25 dark:bg-sky-950/25 dark:text-sky-50',
               )}
             >
               <p className="whitespace-pre-wrap">{incident.description}</p>
@@ -1393,8 +1390,10 @@ function IncidentDetailMode({
 
             {isManagerView && (
               <>
-                <div className="space-y-2">
-                  <Label htmlFor="incident-note">{t('managerNote')}</Label>
+                <div className="space-y-1.5 rounded-xl border border-border/70 bg-muted/15 p-2.5 shadow-sm dark:border-border/60 dark:bg-muted/20 sm:p-3">
+                  <label htmlFor="incident-note" className={taskDetailFieldLabel}>
+                    {t('managerNote')}
+                  </label>
                   <Textarea
                     id="incident-note"
                     value={managerNote}
@@ -1402,14 +1401,20 @@ function IncidentDetailMode({
                     onBlur={() => onManagerNoteBlur()}
                     rows={3}
                     placeholder={t('managerNotePlaceholder')}
+                    className={cn(
+                      taskNotesTextareaClass,
+                      'border-border/60 bg-background/80 dark:bg-card/80',
+                    )}
                   />
                 </div>
                 {incident.type === 'damage' && (
-                  <div className="space-y-2">
-                    <Label htmlFor="incident-cost">{t('estimatedCost')}</Label>
+                  <div className="space-y-1.5 rounded-xl border border-border/70 bg-muted/15 p-2.5 shadow-sm dark:border-border/60 dark:bg-muted/20 sm:p-3">
+                    <label htmlFor="incident-cost" className={taskDetailFieldLabel}>
+                      {t('estimatedCost')}
+                    </label>
                     <div className="relative">
                       <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                        ₽
+                        $
                       </span>
                       <Input
                         id="incident-cost"
@@ -1417,7 +1422,10 @@ function IncidentDetailMode({
                         onChange={(e) => setEstimatedCost(e.target.value)}
                         onBlur={() => onCostBlur()}
                         placeholder={t('estimatedCostPlaceholder')}
-                        className="pl-8"
+                        className={cn(
+                          'border-border/60 bg-background/80 pl-8 dark:bg-card/80',
+                          taskControlFocus,
+                        )}
                       />
                     </div>
                   </div>
@@ -1427,21 +1435,5 @@ function IncidentDetailMode({
           </div>
         </ResponsiveModalContent>
       </ResponsiveModal>
-
-      <VoiceTaskCreateSheet
-        open={voiceOpen}
-        onOpenChange={setVoiceOpen}
-        propertyId={incident.propertyId}
-        incidentPrefill={
-          voiceOpen
-            ? {
-                notes: incident.description,
-                incidentUuid: incident.uuid,
-                suggestedTaskDraft: incident.suggestedTaskDraft ?? undefined,
-              }
-            : null
-        }
-      />
-    </>
   );
 }

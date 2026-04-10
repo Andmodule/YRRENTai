@@ -1,4 +1,4 @@
-import axios from 'axios';
+import axios, { AxiosHeaders } from 'axios';
 import { getLocaleFromPathname, isAuthPath, isTmaPath } from '@/lib/auth/locale-from-path';
 
 export const apiClient = axios.create({
@@ -13,6 +13,12 @@ apiClient.interceptors.request.use((config) => {
   if (typeof window === 'undefined') {
     const site = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3012';
     config.baseURL = `${site.replace(/\/$/, '')}/api/v1`;
+  }
+  // Multipart: must not send `application/json` — Nest/multer otherwise receives zero files.
+  if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
+    const headers = AxiosHeaders.from(config.headers ?? {});
+    headers.set('Content-Type', false);
+    config.headers = headers;
   }
   return config;
 });

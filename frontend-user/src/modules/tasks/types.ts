@@ -39,6 +39,8 @@ export interface Task {
   lastManagerSeenAt?: string | null;
   unseenNotesCount?: number;
   createdAt: string;
+  /** Present after API exposes task update time (older clients may omit). */
+  updatedAt?: string;
   completedAt: string | null;
   checklistSummary?: {
     total: number;

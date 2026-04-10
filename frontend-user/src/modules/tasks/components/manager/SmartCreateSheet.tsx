@@ -39,8 +39,8 @@ import {
   GENERAL_TASK_PROPERTY_GROUP_KEY,
   INCIDENTS_BOARD_GROUP_KEY,
 } from '../../utils/groupTasksByProperty';
-import { formatNameAndLastInitial } from '../../utils/staff-name-short';
-import type { StaffMember, Task, TaskPriority, TaskType } from '../../types';
+import type { Task, TaskPriority, TaskType } from '../../types';
+import { AssigneePickerField } from '../shared/AssigneePickerField';
 import type { Incident, IncidentSuggestedTaskDraft } from '@/modules/incidents/hooks/useIncidents';
 import type { Property } from '@/types';
 
@@ -1066,45 +1066,14 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
                     name="assigneeId"
                     control={control}
                     render={({ field }) => (
-                      <div className="min-h-[2.5rem]">
-                        {staffLoading ? (
-                          <p className="text-xs text-muted-foreground">…</p>
-                        ) : staff.length === 0 ? (
-                          <p className="text-xs text-muted-foreground">{t('assigneeNoStaff')}</p>
-                        ) : (
-                          <div className="flex max-w-full flex-wrap gap-2">
-                            <button
-                              type="button"
-                              onClick={() => field.onChange('')}
-                              title={tTasks('unassigned')}
-                              className={cn(
-                                'flex h-10 min-w-10 max-w-[10rem] shrink-0 items-center justify-center rounded-full border-2 px-1.5 text-[10px] font-semibold leading-tight transition-colors',
-                                field.value === ''
-                                  ? 'border-primary bg-primary/15 text-foreground shadow-sm ring-2 ring-primary/25'
-                                  : 'border-border/70 bg-background text-muted-foreground hover:border-primary/40',
-                              )}
-                            >
-                              —
-                            </button>
-                            {staff.map((s: StaffMember) => (
-                              <button
-                                key={s.id}
-                                type="button"
-                                onClick={() => field.onChange(s.id)}
-                                title={s.displayName}
-                                className={cn(
-                                  'flex h-10 min-w-10 max-w-[10rem] shrink-0 items-center justify-center rounded-full border-2 px-1.5 text-[10px] font-semibold leading-tight transition-colors',
-                                  field.value === s.id
-                                    ? 'border-primary bg-primary/15 text-foreground shadow-sm ring-2 ring-primary/25'
-                                    : 'border-border/70 bg-background text-muted-foreground hover:border-primary/40',
-                                )}
-                              >
-                                <span className="truncate text-center">{formatNameAndLastInitial(s.displayName)}</span>
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
+                      <AssigneePickerField
+                        variant="full"
+                        staff={staff}
+                        value={field.value}
+                        onChange={(id) => field.onChange(id ?? '')}
+                        loading={staffLoading}
+                        disabled={isPending}
+                      />
                     )}
                   />
                 </div>

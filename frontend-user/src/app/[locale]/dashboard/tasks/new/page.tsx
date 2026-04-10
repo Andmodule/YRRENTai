@@ -24,8 +24,7 @@ import { apiClient } from '@/lib/api/client';
 import { useProperties } from '@/hooks/use-properties';
 import { useStaffUsers } from '@/hooks/use-staff-users';
 import type { Task, TaskType, TaskPriority } from '@/modules/tasks/types';
-import type { StaffMember } from '@/modules/tasks/types';
-import { formatNameAndLastInitial } from '@/modules/tasks/utils/staff-name-short';
+import { AssigneePickerField } from '@/modules/tasks/components/shared/AssigneePickerField';
 
 // ─── Task type config ────────────────────────────────────────────────────────
 
@@ -183,7 +182,6 @@ export default function NewTaskFromBookingPage() {
   const tType = useTranslations('tasks.type');
   const tTypeShort = useTranslations('tasks.newFromBooking.typeShort');
   const tPriority = useTranslations('tasks.priority');
-  const tTasks = useTranslations('tasks');
   const router = useRouter();
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
@@ -205,7 +203,6 @@ export default function NewTaskFromBookingPage() {
   const [selectedType, setSelectedType] = useState<TaskType>('checkout_cleaning');
   const [title, setTitle] = useState('');
   const [assigneeId, setAssigneeId] = useState('');
-  const [assigneeQuery, setAssigneeQuery] = useState('');
   const [dueDate, setDueDate] = useState(() => format(addDays(new Date(), 3), 'yyyy-MM-dd'));
   const [dueTime, setDueTime] = useState('14:00');
   const [omitDueDate, setOmitDueDate] = useState(false);
@@ -290,12 +287,6 @@ export default function NewTaskFromBookingPage() {
     [dueChip],
   );
 
-  const staffForAvatars = useMemo(() => {
-    const q = assigneeQuery.trim().toLowerCase();
-    if (!q) return staff;
-    return staff.filter((s) => s.displayName.toLowerCase().includes(q));
-  }, [staff, assigneeQuery]);
-
   const { mutate, isPending } = useMutation({
     mutationFn: async () => {
       if (!propertyId) throw new Error('NO_PROPERTY');
@@ -340,30 +331,6 @@ export default function NewTaskFromBookingPage() {
   );
 
   const canSubmit = Boolean(propertyId) && Boolean(title.trim()) && !propsLoading;
-
-  const AssigneeAvatarButton = ({
-    member,
-    selected,
-    onPick,
-  }: {
-    member: StaffMember | null;
-    selected: boolean;
-    onPick: () => void;
-  }) => (
-    <button
-      type="button"
-      onClick={onPick}
-      title={member ? member.displayName : tTasks('unassigned')}
-      className={cn(
-        'flex h-10 min-w-10 max-w-[10rem] shrink-0 items-center justify-center rounded-full border-2 px-1.5 text-[10px] font-semibold leading-tight transition-colors',
-        selected
-          ? 'border-primary bg-primary/15 text-foreground shadow-sm ring-2 ring-primary/25'
-          : 'border-border/70 bg-background text-muted-foreground hover:border-primary/40 hover:bg-muted/60 hover:text-foreground',
-      )}
-    >
-      <span className="truncate text-center">{member ? formatNameAndLastInitial(member.displayName) : '—'}</span>
-    </button>
-  );
 
   if (!propertyId) {
     return (
@@ -440,40 +407,14 @@ export default function NewTaskFromBookingPage() {
 
           <div className="grid gap-2 sm:grid-cols-2 sm:gap-3">
             <KeySection icon={User} label={t('assigneeLabel')} accentClass="border-l-[3px] border-l-primary">
-              {staffLoading ? (
-                <p className="text-xs text-muted-foreground">…</p>
-              ) : staff.length === 0 ? (
-                <p className="text-xs text-muted-foreground">{t('assigneeNoStaff')}</p>
-              ) : (
-                <>
-                  {staff.length > 5 ? (
-                    <input
-                      value={assigneeQuery}
-                      onChange={(e) => setAssigneeQuery(e.target.value)}
-                      placeholder={t('assigneeSearchPlaceholder')}
-                      className={cn(dateTimeFieldClass, 'mb-2 text-xs')}
-                      aria-label={t('assigneeSearchPlaceholder')}
-                    />
-                  ) : null}
-                  <div className="flex max-w-full flex-wrap gap-2">
-                    <AssigneeAvatarButton member={null} selected={assigneeId === ''} onPick={() => setAssigneeId('')} />
-                    {staffForAvatars.map((s) => (
-                      <AssigneeAvatarButton
-                        key={s.id}
-                        member={s}
-                        selected={assigneeId === s.id}
-                        onPick={() => {
-                          setAssigneeId(s.id);
-                          setAssigneeQuery('');
-                        }}
-                      />
-                    ))}
-                  </div>
-                  {assigneeQuery.trim() && staffForAvatars.length === 0 ? (
-                    <p className="mt-2 text-xs text-muted-foreground">—</p>
-                  ) : null}
-                </>
-              )}
+              <AssigneePickerField
+                variant="full"
+                staff={staff}
+                value={assigneeId}
+                onChange={(id) => setAssigneeId(id ?? '')}
+                loading={staffLoading}
+                disabled={isPending}
+              />
             </KeySection>
 
             <KeySection
