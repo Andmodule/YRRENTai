@@ -5,6 +5,7 @@ import { apiClient } from '@/lib/api/client';
 
 export interface Task {
   uuid: string;
+  title: string;
   type: string;
   status: 'pending' | 'in_progress' | 'done' | 'issue';
   priority: 'urgent' | 'normal' | 'low';
@@ -33,6 +34,8 @@ export interface Task {
     checked: number;
     requiredUnchecked: number;
   } | null;
+  /** Manager: задача без привязки к объекту (технически есть fallback propertyId). */
+  isGeneralTask?: boolean;
 }
 
 export interface TaskChecklistItem {
@@ -212,6 +215,74 @@ export function useUploadTaskPhotos() {
       return res.data.data.photoUrls;
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tasks'] }),
+  });
+}
+
+export interface StaffIncidentHistoryItem {
+  uuid: string;
+  type: string;
+  status: string;
+  propertyId: string;
+  propertyTitle: string;
+  taskId: string | null;
+  descriptionPreview: string;
+  photoUrls: string[];
+  createdAt: string;
+}
+
+export function useStaffIncidentHistory(enabled: boolean) {
+  return useQuery({
+    queryKey: ['incidents', 'staff-history'],
+    queryFn: async () => {
+      const res = await apiClient.get<{ data: { incidents: StaffIncidentHistoryItem[] } }>(
+        '/incidents/staff/history',
+      );
+      return res.data.data.incidents;
+    },
+    enabled,
+    staleTime: 30_000,
+  });
+}
+
+export function useStaffInterpretText() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: {
+      entryPoint: 'history_supplement';
+      targetType: 'task' | 'incident' | 'property';
+      targetId: string;
+      text: string;
+    }) => {
+      const res = await apiClient.post<{
+        data: { id: string; createdAt: string; llmStatus: string };
+      }>('/tasks/staff/interpret-text', body);
+      return res.data.data;
+    },
+    onSuccess: (_, v) => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['incidents', 'staff-history'] });
+      if (v.targetType === 'property') {
+        queryClient.invalidateQueries({ queryKey: ['tasks', 'staff-delivery-route'] });
+      }
+    },
+  });
+}
+
+export function useAppendStaffIncidentPhotos() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ uuid, files }: { uuid: string; files: File[] }) => {
+      const form = new FormData();
+      files.forEach((f) => form.append('files', f));
+      const res = await apiClient.post<{ data: { photoUrls: string[] } }>(
+        `/incidents/staff/${uuid}/photos`,
+        form,
+      );
+      return res.data.data.photoUrls;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['incidents', 'staff-history'] });
+    },
   });
 }
 

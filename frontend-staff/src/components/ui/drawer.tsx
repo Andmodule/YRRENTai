@@ -21,7 +21,7 @@ export function DrawerContent({
       <DrawerPrimitive.Overlay className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm" />
       <DrawerPrimitive.Content
         className={cn(
-          'fixed inset-x-0 bottom-0 z-50 flex max-h-[92svh] flex-col rounded-t-2xl bg-white shadow-xl',
+          'fixed inset-x-0 bottom-0 z-50 flex max-h-[92svh] flex-col rounded-t-2xl bg-white text-slate-900 shadow-xl',
           className,
         )}
       >
@@ -34,7 +34,7 @@ export function DrawerContent({
           </DrawerPrimitive.Title>
         </div>
         {/* Body */}
-        <div className="flex-1 overflow-y-auto p-5">{children}</div>
+        <div className="flex-1 overflow-y-auto p-5 text-base text-slate-900">{children}</div>
       </DrawerPrimitive.Content>
     </DrawerPrimitive.Portal>
   );

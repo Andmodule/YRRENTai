@@ -14,7 +14,7 @@ import { TaskDetailDrawer } from '@/modules/tasks/components/shared/TaskDetailDr
 import { parseTaskUuidFromTelegramStartParam } from '@/modules/tasks/utils/tma-start-param';
 import { TASK_DETAIL_URL_QUERY } from '@/modules/tasks/task-url-params';
 import { DEFAULT_TASK_FILTERS } from '@/stores/tasks-filters.store';
-import type { Task, TaskStatus } from '@/modules/tasks/types';
+import type { PendingSupplyInterpretationEvent, Task, TaskStatus } from '@/modules/tasks/types';
 import type { Incident } from '@/modules/incidents/hooks/useIncidents';
 
 export function TmaStaffTasksPage() {
@@ -121,6 +121,11 @@ export function TmaStaffTasksPage() {
     /* STAFF list endpoint does not include incidents; board stays empty. */
   }, []);
 
+  const noopOpenSupply = useCallback((_e: PendingSupplyInterpretationEvent) => {
+    void _e;
+    /* Manager-only supply queue — not used in TMA staff list. */
+  }, []);
+
   return (
     <div className="tasks-theme flex min-h-dvh flex-col">
       <header className="sticky top-0 z-30 border-b border-border/50 bg-background/90 px-3 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/75">
@@ -145,8 +150,11 @@ export function TmaStaffTasksPage() {
           <TaskListView
             tasks={filtered}
             boardIncidents={[]}
+            boardShortage={[]}
+            showShortageWhenEmpty={false}
             onOpenTask={openTask}
             onOpenIncident={noopOpenIncident}
+            onOpenSupplyInterpretation={noopOpenSupply}
             onStatusChange={patchStatus}
             onSwipeDeleteTask={enqueueDeleteAfterSwipe}
             onSwipeMarkDone={enqueueMarkDoneAfterSwipe}

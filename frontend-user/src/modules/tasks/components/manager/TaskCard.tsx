@@ -8,6 +8,7 @@ import { Clock, User, MessageCircle, BadgeCheck, Link2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Task } from '../../types';
 import { TaskTypeBadge } from '../shared/TaskTypeBadge';
+import { TaskManagerLinkBadges } from './TaskManagerLinkBadges';
 
 export const TaskCard = memo(function TaskCard({
   task,
@@ -79,6 +80,10 @@ export const TaskCard = memo(function TaskCard({
               <Link2 className="h-3 w-3 shrink-0 opacity-80" aria-hidden />
               <span className="truncate">{tKanban('taskFromIncidentBadge')}</span>
             </span>
+          ) : null}
+          {(task.pendingSupplyInterpretationIds?.length ?? 0) > 0 ||
+          (task.linkedIncidentIdsFromTask?.length ?? 0) > 0 ? (
+            <TaskManagerLinkBadges task={task} compact />
           ) : null}
         </div>
         <span className="flex items-center gap-1">

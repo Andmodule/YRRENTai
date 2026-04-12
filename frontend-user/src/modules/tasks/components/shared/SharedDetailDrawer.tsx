@@ -30,7 +30,11 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { LucideIcon } from 'lucide-react';
+import { apiClient } from '@/lib/api/client';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Link } from '@/i18n/navigation';
+import { Select } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible';
 import { Input } from '@/components/ui/input';
@@ -65,6 +69,7 @@ import type { Task, TaskPriority, TaskStatus, TaskType } from '../../types';
 import { AssigneePickerField } from './AssigneePickerField';
 import { TaskStatusBadge } from './TaskStatusBadge';
 import { TaskTypeBadge } from './TaskTypeBadge';
+import { TaskManagerLinkBadges } from '../manager/TaskManagerLinkBadges';
 
 /** В редакторе менеджера нельзя перевести задачу в issue — только pending / in_progress / done. */
 const MANAGER_STATUS_ORDER: TaskStatus[] = ['pending', 'in_progress', 'done'];
@@ -163,6 +168,8 @@ export type SharedDetailDrawerProps =
       onOpenChange: (open: boolean) => void;
       /** Default true (manager dashboard). */
       isManagerView?: boolean;
+      /** Open task detail (e.g. set `?task=` on the tasks board). */
+      onOpenRelatedTask?: (taskUuid: string) => void;
     };
 
 export function SharedDetailDrawer(props: SharedDetailDrawerProps) {
@@ -182,6 +189,7 @@ export function SharedDetailDrawer(props: SharedDetailDrawerProps) {
       open={props.open}
       onOpenChange={props.onOpenChange}
       isManagerView={props.isManagerView ?? true}
+      onOpenRelatedTask={props.onOpenRelatedTask}
     />
   );
 }
@@ -506,6 +514,14 @@ function TaskDetailMode({
     </div>
   ) : null;
 
+  const managerTaskLinkAdornment =
+    task &&
+    !effectiveStaffView &&
+    ((task.pendingSupplyInterpretationIds?.length ?? 0) > 0 ||
+      (task.linkedIncidentIdsFromTask?.length ?? 0) > 0) ? (
+      <TaskManagerLinkBadges task={task} className="max-w-full" />
+    ) : null;
+
   const checklistItems = checklistData?.items ?? [];
   const headerDisabled = effectiveStaffView || patchPending;
 
@@ -605,7 +621,9 @@ function TaskDetailMode({
       <ResponsiveModalContent
         title={panelTitle}
         description={headerDescription}
-        headerAdornment={effectiveStaffView ? staffHeaderAdornment : undefined}
+        headerAdornment={
+          effectiveStaffView ? staffHeaderAdornment : managerTaskLinkAdornment ?? undefined
+        }
         hideCloseButton={!isDesktop}
         contentStyle={TASK_DETAIL_PORTAL_STYLE}
         className={cn(
@@ -1058,25 +1076,51 @@ function TaskDetailMode({
   );
 }
 
+/** Статусы в выпадающем списке менеджера (без «Закрыт» — завершение через «Решено» → resolved). */
+const INCIDENT_STATUS_SELECT_ORDER: Incident['status'][] = [
+  'awaiting_dispatch',
+  'assigned',
+  'open',
+  'in_review',
+  'resolved',
+];
+
+function incidentTaskStatusLabel(
+  status: string,
+  tStatus: (key: string) => string,
+): string {
+  const known = ['pending', 'in_progress', 'done', 'issue'] as const;
+  if ((known as readonly string[]).includes(status)) {
+    return tStatus(status as (typeof known)[number]);
+  }
+  return status;
+}
+
 function IncidentDetailMode({
   incident,
   open,
   onOpenChange,
   isManagerView,
+  onOpenRelatedTask,
 }: {
   incident: Incident | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   isManagerView: boolean;
+  onOpenRelatedTask?: (taskUuid: string) => void;
 }) {
   const t = useTranslations('tasks.kanban.incidentDetail');
   const tCard = useTranslations('tasks.kanban.incidentCard');
   const tDetail = useTranslations('tasks.detail');
+  const tStatus = useTranslations('tasks.status');
+  const tType = useTranslations('tasks.type');
   const dateLocale = useDateLocale();
   const isDesktop = useMediaQuery(MD_UP);
   const { mutate: patch, isPending } = usePatchIncident();
   const [managerNote, setManagerNote] = useState('');
   const [estimatedCost, setEstimatedCost] = useState('');
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const managerPhotoInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (incident && open) {
@@ -1109,17 +1153,40 @@ function IncidentDetailMode({
     );
   };
 
+  const onManagerPhotosSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files?.length || !incident || !isManagerView) return;
+    const fd = new FormData();
+    for (const f of Array.from(files)) fd.append('files', f);
+    try {
+      const res = await apiClient.post<{ data: { photoUrls: string[] } }>('/incidents/upload-photos', fd);
+      const urls = res.data.data.photoUrls;
+      if (urls.length) {
+        patch(
+          { uuid: incident.uuid, appendPhotoUrls: urls },
+          { onError: () => toast.error(tDetail('saveError')) },
+        );
+      }
+    } catch {
+      toast.error(tDetail('saveError'));
+    }
+    e.target.value = '';
+  };
+
   if (!incident) {
     return null;
   }
 
+  const relatedTasks = incident.relatedTasks ?? [];
+
   const created = format(new Date(incident.createdAt), 'd MMMM yyyy, HH:mm', { locale: dateLocale });
-  const stickyTitle =
+  const panelTitle =
     incident.propertyTitle?.trim() || incident.propertyAddress?.trim() || tCard('badge');
-  const headerDescription =
+  /** Like task drawer: second line = address only, muted (no subtitle fallback). */
+  const headerAddress =
     incident.propertyTitle?.trim() && incident.propertyAddress?.trim()
       ? incident.propertyAddress.trim()
-      : t('subtitle');
+      : undefined;
 
   const lastPhone = incident.lastStayGuestPhone?.trim();
   const lastPhoneDigits = lastPhone ? lastPhone.replace(/\D/g, '') : '';
@@ -1139,7 +1206,7 @@ function IncidentDetailMode({
     );
   };
 
-  const incidentStatusVisual = getIncidentStatusUi(incident.status);
+  const incidentStatusVisual = !isManagerView ? getIncidentStatusUi(incident.status) : null;
 
   const typeBadge = (() => {
     switch (incident.type) {
@@ -1190,22 +1257,41 @@ function IncidentDetailMode({
           <TypeIcon className="h-3.5 w-3.5" />
           {typeBadge.label}
         </span>
-        <span
-          className={cn(
-            'inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium',
-            incidentStatusVisual.pill,
-          )}
-        >
+        {isManagerView ? (
+          <Select
+            aria-label={t('statusSelectAria')}
+            className="h-9 max-w-[min(100%,14rem)] text-xs font-medium"
+            value={incident.status}
+            disabled={isPending}
+            onChange={(e) => patchStatus(e.target.value as Incident['status'])}
+          >
+            {incident.status === 'closed' ? (
+              <option value="closed" disabled>
+                {tCard(incidentStatusLabelKey('closed'))}
+              </option>
+            ) : null}
+            {INCIDENT_STATUS_SELECT_ORDER.map((st) => (
+              <option key={st} value={st}>
+                {tCard(incidentStatusLabelKey(st))}
+              </option>
+            ))}
+          </Select>
+        ) : incidentStatusVisual ? (
           <span
-            className={cn('h-1.5 w-1.5 shrink-0 rounded-full', incidentStatusVisual.dot)}
-            aria-hidden
-          />
-          {tCard(incidentStatusLabelKey(incident.status))}
-        </span>
+            className={cn(
+              'inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium',
+              incidentStatusVisual.pill,
+            )}
+          >
+            <span
+              className={cn('h-1.5 w-1.5 shrink-0 rounded-full', incidentStatusVisual.dot)}
+              aria-hidden
+            />
+            {tCard(incidentStatusLabelKey(incident.status))}
+          </span>
+        ) : null}
       </div>
-      <p className="text-xs text-muted-foreground">
-        <span className="font-medium text-foreground/90">{tDetail('reportedPrefix')}</span> {created}
-      </p>
+      <p className="text-[11px] text-muted-foreground/80">{created}</p>
     </div>
   );
 
@@ -1214,54 +1300,39 @@ function IncidentDetailMode({
     !!incident.reservationId ||
     !!(incident.lastStayGuestName || incident.lastStayGuestPhone || incident.lastStayCheckOut);
 
-  const incidentFooter = (() => {
-    if (!isManagerView) {
-      return null;
-    }
-    if (
-      incident.status === 'awaiting_dispatch' ||
-      incident.status === 'assigned' ||
-      incident.status === 'open' ||
-      incident.status === 'in_review'
-    ) {
-      return (
-        <Button
-          type="button"
-          variant="secondary"
-          className="w-full"
-          disabled={isPending}
-          onClick={() => patchStatus('resolved')}
-        >
-          {t('markResolved')}
-        </Button>
-      );
-    }
-    if (incident.status === 'resolved' || incident.status === 'closed') {
-      return (
-        <Button
-          type="button"
-          variant="secondary"
-          className="w-full"
-          disabled={isPending}
-          onClick={() =>
-            patch(
-              { uuid: incident.uuid, status: 'in_review' },
-              { onError: () => toast.error(tDetail('saveError')) },
-            )
-          }
-        >
-          {tDetail('reopenIncident')}
-        </Button>
-      );
-    }
-    return null;
-  })();
+  const incidentFooter = isManagerView ? (
+    incident.status === 'in_review' ? (
+      <Button
+        type="button"
+        className="w-full"
+        disabled={isPending}
+        onClick={() => patchStatus('resolved')}
+      >
+        {t('markResolved')}
+      </Button>
+    ) : incident.status === 'resolved' || incident.status === 'closed' ? (
+      <Button
+        type="button"
+        variant="secondary"
+        className="w-full"
+        disabled={isPending}
+        onClick={() =>
+          patch(
+            { uuid: incident.uuid, status: 'in_review' },
+            { onError: () => toast.error(tDetail('saveError')) },
+          )
+        }
+      >
+        {tDetail('reopenIncident')}
+      </Button>
+    ) : null
+  ) : null;
 
   return (
     <ResponsiveModal open={open} onOpenChange={onOpenChange} desktopPresentation="side">
       <ResponsiveModalContent
-        title={stickyTitle}
-        description={headerDescription}
+        title={panelTitle}
+        description={headerAddress}
         headerAdornment={headerAdornment}
         hideCloseButton={!isDesktop}
         contentStyle={TASK_DETAIL_PORTAL_STYLE}
@@ -1278,22 +1349,6 @@ function IncidentDetailMode({
         }
       >
         <div className="detail-scroll-body flex flex-col gap-[var(--space-4,1rem)] max-md:gap-3">
-          {incident.reporterName ? (
-            <div className="space-y-1.5">
-              <p className={taskDetailFieldLabel}>{t('reporter')}</p>
-              <div
-                className={cn(
-                  taskTitleShell,
-                  'max-md:border-0 max-md:bg-transparent max-md:px-0 max-md:py-0 max-md:shadow-none',
-                )}
-              >
-                <p className="text-base font-semibold leading-snug tracking-tight text-foreground sm:text-lg">
-                  {incident.reporterName}
-                </p>
-              </div>
-            </div>
-          ) : null}
-
             <div
               className={cn(
                 taskDetailSurfaceBase,
@@ -1313,9 +1368,98 @@ function IncidentDetailMode({
               <p className="whitespace-pre-wrap">{incident.description}</p>
             </div>
 
+          {incident.reporterName ? (
+            <p className="text-[11px] leading-snug text-muted-foreground">
+              <span className="text-muted-foreground/70">{t('reporterInlinePrefix')}</span>{' '}
+              <span className="font-normal text-muted-foreground">{incident.reporterName}</span>
+            </p>
+          ) : null}
+
+            {isManagerView ? (
+              <div className="rounded-xl border border-border/60 bg-muted/10 px-2.5 py-2 shadow-sm dark:bg-muted/15">
+                <div className="flex min-h-8 items-center gap-2">
+                  <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                    <span className="text-foreground/85">{t('relatedTasksTitle')}</span>
+                    {relatedTasks.length === 0 ? (
+                      <>
+                        <span className="mx-1.5 text-muted-foreground/40" aria-hidden>
+                          ·
+                        </span>
+                        <span>{t('relatedTasksEmpty')}</span>
+                      </>
+                    ) : null}
+                  </p>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
+                    asChild
+                    title={t('createTaskAria')}
+                  >
+                    <Link
+                      href={`/dashboard/tasks/new?propertyId=${encodeURIComponent(incident.propertyId)}&incidentId=${encodeURIComponent(incident.uuid)}&prefillTitle=${encodeURIComponent(incident.description.slice(0, 160))}`}
+                    >
+                      <Plus className="h-4 w-4" aria-hidden />
+                      <span className="sr-only">{t('createTaskAria')}</span>
+                    </Link>
+                  </Button>
+                </div>
+                {relatedTasks.length > 0 ? (
+                  <ul className="mt-2 space-y-2 border-t border-border/40 pt-2">
+                    {relatedTasks.map((rt) => (
+                      <li key={rt.uuid}>
+                        <button
+                          type="button"
+                          className="flex w-full flex-col items-start gap-0.5 rounded-lg border border-border/50 bg-background/80 px-2.5 py-2 text-left text-sm transition-colors hover:bg-muted/40 dark:bg-card/60"
+                          onClick={() => onOpenRelatedTask?.(rt.uuid)}
+                          disabled={!onOpenRelatedTask}
+                        >
+                          <span className="line-clamp-2 font-medium leading-snug">{rt.title}</span>
+                          <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
+                            <span>{incidentTaskStatusLabel(rt.status, tStatus)}</span>
+                            {rt.assigneeName ? (
+                              <>
+                                <span aria-hidden>·</span>
+                                <span>{rt.assigneeName}</span>
+                              </>
+                            ) : null}
+                            <span className="rounded bg-muted/80 px-1.5 py-px text-[10px] font-medium text-foreground/80">
+                              {['checkout_cleaning', 'mid_stay_cleaning', 'checkin_prep', 'maintenance', 'other'].includes(
+                                rt.type,
+                              )
+                                ? tType(rt.type as TaskType)
+                                : rt.type}
+                            </span>
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            ) : null}
+
             {showBookingCard ? (
               <div className="rounded-xl border border-border/60 bg-card p-3 text-sm shadow-sm">
-                <p className="text-xs font-medium text-muted-foreground">{t('lastStayTitle')}</p>
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <p className="text-xs font-medium text-muted-foreground">{t('lastStayTitle')}</p>
+                  {incident.lastStayPaymentStatus ? (
+                    <span
+                      className={cn(
+                        'shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
+                        incident.lastStayPaymentStatus === 'paid' &&
+                          'bg-emerald-500/15 text-emerald-800 dark:text-emerald-200',
+                        incident.lastStayPaymentStatus === 'partial' &&
+                          'bg-amber-500/15 text-amber-900 dark:text-amber-200',
+                        incident.lastStayPaymentStatus === 'unpaid' &&
+                          'bg-slate-500/15 text-slate-800 dark:text-slate-200',
+                      )}
+                    >
+                      {t(`paymentStatus.${incident.lastStayPaymentStatus}`)}
+                    </span>
+                  ) : null}
+                </div>
                 {incident.guestName ? (
                   <p className="mt-1">
                     <span className="text-muted-foreground">{t('guest')}</span> {incident.guestName}
@@ -1357,36 +1501,79 @@ function IncidentDetailMode({
               </div>
             ) : null}
 
-            {(incident.itemDescription || incident.damageLocation) && (
+            {incident.itemDescription ? (
               <dl className="grid gap-2 text-sm">
-                {incident.itemDescription ? (
-                  <div>
-                    <dt className="text-xs font-medium text-muted-foreground">{t('item')}</dt>
-                    <dd>{incident.itemDescription}</dd>
-                  </div>
-                ) : null}
-                {incident.damageLocation ? (
-                  <div>
-                    <dt className="text-xs font-medium text-muted-foreground">{t('location')}</dt>
-                    <dd>{incident.damageLocation}</dd>
-                  </div>
-                ) : null}
+                <div>
+                  <dt className="text-xs font-medium text-muted-foreground">{t('item')}</dt>
+                  <dd>{incident.itemDescription}</dd>
+                </div>
               </dl>
-            )}
+            ) : null}
 
-            {incident.photoUrls?.length > 0 && (
-              <div>
-                <p className="mb-2 text-xs font-medium text-muted-foreground">{t('photos')}</p>
+            <div>
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs font-medium text-muted-foreground">{t('photos')}</p>
+                {isManagerView ? (
+                  <>
+                    <input
+                      ref={managerPhotoInputRef}
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      className="sr-only"
+                      onChange={onManagerPhotosSelected}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
+                      disabled={isPending}
+                      title={t('uploadPhotosAria')}
+                      onClick={() => managerPhotoInputRef.current?.click()}
+                    >
+                      <Plus className="h-4 w-4" aria-hidden />
+                      <span className="sr-only">{t('uploadPhotosAria')}</span>
+                    </Button>
+                  </>
+                ) : null}
+              </div>
+              {incident.photoUrls?.length > 0 ? (
                 <div className="flex flex-wrap gap-2">
                   {incident.photoUrls.map((url) => (
-                    <a key={url} href={url} target="_blank" rel="noopener noreferrer" className="block overflow-hidden rounded-md border">
+                    <button
+                      key={url}
+                      type="button"
+                      className="block overflow-hidden rounded-md border transition-opacity hover:opacity-90"
+                      onClick={() => setLightboxUrl(url)}
+                    >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={url} alt="" className="h-24 w-24 object-cover" />
-                    </a>
+                    </button>
                   ))}
                 </div>
-              </div>
-            )}
+              ) : (
+                <p className="text-xs text-muted-foreground">{t('photosEmpty')}</p>
+              )}
+            </div>
+
+            {lightboxUrl ? (
+              <Dialog open onOpenChange={(o) => !o && setLightboxUrl(null)}>
+                <DialogContent
+                  title={t('photoPreviewTitle')}
+                  stackAboveTaskLayer
+                  className="max-w-[min(100vw-2rem,48rem)] border-0 bg-transparent p-0 shadow-none"
+                  bodyClassName="p-0"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={lightboxUrl}
+                    alt=""
+                    className="max-h-[min(85vh,720px)] w-full rounded-lg object-contain"
+                  />
+                </DialogContent>
+              </Dialog>
+            ) : null}
 
             {isManagerView && (
               <>

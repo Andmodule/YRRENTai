@@ -109,6 +109,19 @@ export class UserController {
     return { data };
   }
 
+  /** Очистить `telegramChatId` у сотрудника (отвязать бота). */
+  @Post('staff/:id/telegram/unlink')
+  @UseGuards(RolesGuard)
+  @Roles('OWNER', 'MANAGER')
+  async unlinkStaffTelegram(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) staffId: string,
+  ): Promise<{ data: StaffDirectoryRowDto }> {
+    const ownerId = await this.userService.resolveTenantOwnerId(user.sub, user.role);
+    const data = await this.userService.unlinkStaffTelegramChat(ownerId, staffId);
+    return { data };
+  }
+
   /**
    * Returns STAFF/MANAGER users that belong to the calling owner's account.
    * Used to populate the assignee selector when creating/editing tasks.

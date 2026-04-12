@@ -23,28 +23,18 @@ import type {
 const API_WIDE_FROM = '2000-01-01';
 const API_WIDE_TO = '2100-12-31';
 
-/** Каноническое состояние задачи (GET). После PATCH список и дроер сверяем с этим — ответ PATCH иногда приходит в неожиданной форме или обгоняется сокетом. */
+/** Каноническое состояние задачи: один формат ответа `GET /tasks/:uuid`. После PATCH не разбираем тело — сразу перезагружаем так же. */
 export async function fetchTaskByUuid(uuid: string, signal?: AbortSignal): Promise<Task> {
   const res = await apiClient.get<{ data: { task: Task } }>(`/tasks/${uuid}`, { signal });
   return res.data.data.task;
 }
 
-/** Ответ PATCH: `{ data: Task }` или редко вложенный `{ data: { task: Task } }`. */
-function parseTaskFromPatchResponse(res: { data: { data?: unknown } }): Task | null {
-  const raw = res.data?.data;
-  if (raw && typeof raw === 'object' && 'uuid' in raw && typeof (raw as Task).uuid === 'string') {
-    return raw as Task;
-  }
-  if (
-    raw &&
-    typeof raw === 'object' &&
-    'task' in raw &&
-    (raw as { task: Task }).task &&
-    typeof (raw as { task: Task }).task.uuid === 'string'
-  ) {
-    return (raw as { task: Task }).task;
-  }
-  return null;
+/**
+ * Кэш списка задач менеджера (доска/список). Не совпадает с `['tasks', 'manager-supply-interpretations']`,
+ * `['tasks', …]` длиной 2 и т.п. — иначе ломаем чужие запросы и подменяем данные не тем merge.
+ */
+function isManagerTasksListQueryKey(key: QueryKey): boolean {
+  return Array.isArray(key) && key[0] === 'tasks' && key.length === 5;
 }
 
 export function useTasks(filters: TaskFilters, options?: { enabled?: boolean }) {
@@ -107,34 +97,38 @@ export function useUpdateTaskStatus() {
       status: TaskStatus;
       issueDescription?: string | null;
     }) => {
-      const res = await apiClient.patch<{ data: Task }>(`/tasks/${uuid}`, {
+      await apiClient.patch(`/tasks/${uuid}`, {
         status,
         ...(issueDescription !== undefined ? { issueDescription } : {}),
       });
-      return res.data.data;
+      return fetchTaskByUuid(uuid);
     },
     onMutate: async ({ uuid, status }) => {
       await queryClient.cancelQueries({ queryKey: ['tasks'] });
-      const prev = queryClient.getQueriesData<TasksApiResponse>({ queryKey: ['tasks'] });
+      await queryClient.cancelQueries({ queryKey: ['task', uuid] });
+      const prev = queryClient.getQueriesData<TasksApiResponse>({
+        predicate: (q) => isManagerTasksListQueryKey(q.queryKey),
+      });
+      const prevDetail = queryClient.getQueryData<Task>(['task', uuid]);
+      const row = (t: Task): Task => ({
+        ...t,
+        status,
+        completedAt: status === 'done' ? new Date().toISOString() : null,
+      });
       queryClient.setQueriesData<TasksApiResponse>(
-        { predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0] === 'tasks' },
+        { predicate: (q) => isManagerTasksListQueryKey(q.queryKey) },
         (old) => {
           if (!old) return old;
           return {
             ...old,
-            tasks: old.tasks.map((t) =>
-              idEquals(t.uuid, uuid)
-                ? {
-                    ...t,
-                    status,
-                    completedAt: status === 'done' ? new Date().toISOString() : null,
-                  }
-                : t,
-            ),
+            tasks: old.tasks.map((t) => (idEquals(t.uuid, uuid) ? row(t) : t)),
           };
         },
       );
-      return { prev };
+      if (prevDetail) {
+        queryClient.setQueryData<Task>(['task', uuid], row(prevDetail));
+      }
+      return { prev, prevDetail, detailUuid: uuid };
     },
     onError: (_err, _vars, ctx) => {
       if (ctx?.prev) {
@@ -142,12 +136,22 @@ export function useUpdateTaskStatus() {
           queryClient.setQueryData(key, data);
         });
       }
+      if (ctx?.detailUuid !== undefined && ctx.prevDetail !== undefined) {
+        queryClient.setQueryData(['task', ctx.detailUuid], ctx.prevDetail);
+      }
     },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      /** Linked incident may change (e.g. task → done → incident in_review); socket may be offline in dev. */
-      queryClient.invalidateQueries({ queryKey: ['incidents'] });
-      queryClient.invalidateQueries({ queryKey: ['incidents-open-count'] });
+    onSuccess: (final, { uuid }) => {
+      queryClient.setQueryData<Task>(['task', uuid], final);
+      void queryClient.invalidateQueries({
+        predicate: (q) => isManagerTasksListQueryKey(q.queryKey),
+      });
+    },
+    onSettled: (_data, err) => {
+      if (!err) {
+        /** Связанный инцидент мог сменить статус (например задача → done). */
+        queryClient.invalidateQueries({ queryKey: ['incidents'] });
+        queryClient.invalidateQueries({ queryKey: ['incidents-open-count'] });
+      }
     },
   });
 }
@@ -156,11 +160,15 @@ export function useUpdateTaskNotes() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ uuid, notes }: { uuid: string; notes: string }) => {
-      const res = await apiClient.patch<{ data: Task }>(`/tasks/${uuid}`, { notes });
-      return res.data.data;
+      await apiClient.patch(`/tasks/${uuid}`, { notes });
+      return fetchTaskByUuid(uuid);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    onSuccess: (task, { uuid }) => {
+      queryClient.setQueryData<Task>(['task', uuid], task);
+      void queryClient.invalidateQueries({
+        predicate: (q) => isManagerTasksListQueryKey(q.queryKey),
+      });
+      queryClient.invalidateQueries({ queryKey: ['task-notes', uuid] });
     },
   });
 }
@@ -190,10 +198,6 @@ function patchDeltaFromVariables(vars: PatchTaskVariables): Partial<Task> {
   ) as Partial<Task>;
 }
 
-function mergeTaskWithServerRow(prev: Task, server: Task): Task {
-  return { ...prev, ...server };
-}
-
 export function usePatchTask() {
   const queryClient = useQueryClient();
   return useMutation<
@@ -209,25 +213,23 @@ export function usePatchTask() {
     mutationFn: async (vars: PatchTaskVariables) => {
       const { uuid } = vars;
       const body = stripPatchToApiBody(vars);
-      const res = await apiClient.patch<{ data: Task }>(`/tasks/${uuid}`, body);
-      const task = parseTaskFromPatchResponse(res);
-      if (!task) {
-        throw new Error('TASK_PATCH_EMPTY_RESPONSE');
-      }
-      return task;
+      await apiClient.patch(`/tasks/${uuid}`, body);
+      return fetchTaskByUuid(uuid);
     },
     onMutate: async (variables: PatchTaskVariables) => {
       const { uuid } = variables;
       const delta = patchDeltaFromVariables(variables);
       await queryClient.cancelQueries({ queryKey: ['tasks'] });
       await queryClient.cancelQueries({ queryKey: ['task', uuid] });
-      const snapshots = queryClient.getQueriesData<TasksApiResponse>({ queryKey: ['tasks'] });
+      const snapshots = queryClient.getQueriesData<TasksApiResponse>({
+        predicate: (q) => isManagerTasksListQueryKey(q.queryKey),
+      });
       const detailSnapshot = queryClient.getQueryData<Task>(['task', uuid]);
       if (detailSnapshot) {
         queryClient.setQueryData<Task>(['task', uuid], { ...detailSnapshot, ...delta });
       }
       queryClient.setQueriesData<TasksApiResponse>(
-        { predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0] === 'tasks' },
+        { predicate: (q) => isManagerTasksListQueryKey(q.queryKey) },
         (old) => {
           if (!old?.tasks?.length) return old;
           const i = old.tasks.findIndex((t) => idEquals(t.uuid, uuid));
@@ -250,31 +252,12 @@ export function usePatchTask() {
         }
       }
     },
-    onSuccess: async (updated, variables: PatchTaskVariables) => {
+    onSuccess: (final, variables: PatchTaskVariables) => {
       const { uuid } = variables;
-      await queryClient.cancelQueries({ queryKey: ['tasks'] });
-      await queryClient.cancelQueries({ queryKey: ['task', uuid] });
-      let final = updated;
-      try {
-        final = await fetchTaskByUuid(uuid);
-      } catch {
-        /* PATCH уже вернул DTO; GET нужен для assignee/имени после сохранения в БД */
-      }
-      queryClient.setQueriesData<TasksApiResponse>(
-        { predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0] === 'tasks' },
-        (old) => {
-          if (!old?.tasks?.length) return old;
-          const i = old.tasks.findIndex((t) => idEquals(t.uuid, uuid));
-          if (i === -1) return old;
-          const prev = old.tasks[i]!;
-          const tasks = [...old.tasks];
-          tasks[i] = mergeTaskWithServerRow(prev, final);
-          return { ...old, tasks };
-        },
-      );
-      queryClient.setQueryData<Task>(['task', uuid], (prev) =>
-        prev ? mergeTaskWithServerRow(prev, final) : final,
-      );
+      queryClient.setQueryData<Task>(['task', uuid], final);
+      void queryClient.invalidateQueries({
+        predicate: (q) => isManagerTasksListQueryKey(q.queryKey),
+      });
     },
   });
 }
@@ -334,13 +317,14 @@ export function useMarkTaskSeen() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (uuid: string) => {
-      const res = await apiClient.patch<{ data: Task }>(`/tasks/${uuid}/seen`);
-      return { uuid, task: res.data.data };
+      await apiClient.patch(`/tasks/${uuid}/seen`);
+      const task = await fetchTaskByUuid(uuid);
+      return { uuid, task };
     },
     onSuccess: ({ uuid, task }) => {
       /** Не invalidateQueries: полный refetch GET /tasks может завершиться после PATCH и перезатереть assignee/дедлайн. Достаточно подмешать «просмотрено». */
       queryClient.setQueriesData<TasksApiResponse>(
-        { predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0] === 'tasks' },
+        { predicate: (q) => isManagerTasksListQueryKey(q.queryKey) },
         (old) => {
           if (!old?.tasks?.length) return old;
           const i = old.tasks.findIndex((t) => idEquals(t.uuid, uuid));
@@ -385,7 +369,7 @@ export function useUploadTaskPhotos() {
     onSuccess: async (photoUrls, { uuid }) => {
       await queryClient.cancelQueries({ queryKey: ['tasks'] });
       queryClient.setQueriesData<TasksApiResponse>(
-        { predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0] === 'tasks' },
+        { predicate: (q) => isManagerTasksListQueryKey(q.queryKey) },
         (old) => {
           if (!old?.tasks?.length) return old;
           const i = old.tasks.findIndex((t) => idEquals(t.uuid, uuid));

@@ -97,6 +97,8 @@ interface ResponsiveModalContentProps {
   bodyClassName?: string;
   /** Dialog/Drawer/Sheet root (portaled). Bind task accent tokens so primary is cyan, not global blue. */
   contentStyle?: CSSProperties;
+  /** Desktop `Dialog` only: z-[200] so this opens above side sheets / drawers (z-[100]). */
+  stackAboveTaskLayer?: boolean;
 }
 
 export function ResponsiveModalContent({
@@ -110,6 +112,7 @@ export function ResponsiveModalContent({
   className,
   bodyClassName,
   contentStyle,
+  stackAboveTaskLayer,
 }: ResponsiveModalContentProps) {
   const isDesktop = useResponsiveModalIsDesktop();
   const presentation = useResponsiveModalPresentation();
@@ -140,6 +143,7 @@ export function ResponsiveModalContent({
         className={className}
         bodyClassName={bodyClassName}
         style={contentStyle}
+        stackAboveTaskLayer={stackAboveTaskLayer}
       >
         {children}
       </DialogContent>

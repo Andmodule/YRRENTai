@@ -1,21 +1,12 @@
 'use client';
 
-import { memo, useRef, useState, useCallback, useEffect } from 'react';
-import {
-  CheckCircle2,
-  AlertCircle,
-  Clock,
-  Sparkles,
-  KeyRound,
-  Brush,
-} from 'lucide-react';
+import { memo, useState, useEffect } from 'react';
+import { Clock, Mic, Pencil } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import type { Task } from '@/hooks/use-tasks';
 import type { DeadlineUrgency } from '@/lib/shift-utils';
 import { formatElapsedMs } from '@/lib/shift-utils';
 import { useStaffStrings } from '@/locales/staff-strings';
-
-const SWIPE_THRESHOLD = 60;
 
 interface ChecklistItemProps {
   task: Task;
@@ -23,9 +14,12 @@ interface ChecklistItemProps {
   dueDayHint?: string;
   deadlineUrgency: DeadlineUrgency;
   onMarkDone: (uuid: string) => void;
-  onMarkIssue: (uuid: string) => void;
   /** Row tap (not checkbox): quick actions drawer */
   onQuickOpen: (task: Task) => void;
+  /** Голосовой отчёт с привязкой к этой задаче (кнопка на карточке). */
+  onVoiceForTask?: (task: Task) => void;
+  /** Текстовое дополнение к задаче — тот же interpret-text, что в «Истории». */
+  onTextForTask?: (task: Task) => void;
 }
 
 const typeLabels: Record<string, string> = {
@@ -33,18 +27,8 @@ const typeLabels: Record<string, string> = {
   checkin_prep: 'Подготовка к заезду',
   mid_stay_cleaning: 'Плановая уборка',
   manual: 'Задача',
+  other: 'Прочее',
 };
-
-function TypeIcon({ type }: { type: string }) {
-  if (type === 'checkout_cleaning') return <Brush className="h-4 w-4 shrink-0 text-teal-600" aria-hidden />;
-  if (type === 'checkin_prep') return <KeyRound className="h-4 w-4 shrink-0 text-teal-600" aria-hidden />;
-  if (type === 'mid_stay_cleaning') return <Sparkles className="h-4 w-4 shrink-0 text-teal-600" aria-hidden />;
-  return <ClipboardIcon />;
-}
-
-function ClipboardIcon() {
-  return <Sparkles className="h-4 w-4 shrink-0 text-teal-600" aria-hidden />;
-}
 
 const urgencyRing: Record<DeadlineUrgency, string> = {
   teal: 'ring-1 ring-teal-200/50',
@@ -53,21 +37,22 @@ const urgencyRing: Record<DeadlineUrgency, string> = {
   red: 'ring-2 ring-rose-500',
 };
 
+const cardActionBtnClass =
+  'flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-amber-200/90 bg-gradient-to-b from-amber-50 to-teal-50/80 text-teal-700 shadow-sm ring-1 ring-amber-100/80 transition-colors hover:border-amber-300 hover:bg-amber-50 active:scale-95 dark:border-amber-600/50 dark:from-teal-950/60 dark:to-amber-950/40 dark:text-teal-200 dark:ring-amber-900/40';
+
 export const ChecklistItem = memo(function ChecklistItem({
   task,
   dueDayHint,
   deadlineUrgency,
   onMarkDone,
-  onMarkIssue,
   onQuickOpen,
+  onVoiceForTask,
+  onTextForTask,
 }: ChecklistItemProps) {
   const str = useStaffStrings();
   const isDone = task.status === 'done';
   const isIssue = task.status === 'issue';
   const inProgress = task.status === 'in_progress';
-  const touchStartX = useRef<number | null>(null);
-  const [swipeDelta, setSwipeDelta] = useState(0);
-  const [leaving, setLeaving] = useState(false);
   const [, setTick] = useState(0);
 
   useEffect(() => {
@@ -76,77 +61,24 @@ export const ChecklistItem = memo(function ChecklistItem({
     return () => clearInterval(id);
   }, [inProgress, task.inProgressStartedAt]);
 
-  const triggerAction = useCallback(
-    (direction: 'done' | 'issue') => {
-      if (leaving) return;
-      setLeaving(true);
-      setTimeout(() => {
-        if (direction === 'done') onMarkDone(task.uuid);
-        else onMarkIssue(task.uuid);
-      }, 220);
-    },
-    [leaving, task.uuid, onMarkDone, onMarkIssue],
-  );
-
-  const handleTouchStart = (e: React.TouchEvent) => {
-    const x = e.touches[0]?.clientX;
-    if (x === undefined) return;
-    touchStartX.current = x;
-    setSwipeDelta(0);
-  };
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (touchStartX.current === null) return;
-    const x = e.touches[0]?.clientX;
-    if (x === undefined) return;
-    const delta = x - touchStartX.current;
-    setSwipeDelta(delta);
-  };
-
-  const handleTouchEnd = () => {
-    if (swipeDelta > SWIPE_THRESHOLD && !isDone) {
-      triggerAction('done');
-    } else if (swipeDelta < -SWIPE_THRESHOLD && !isDone && !isIssue) {
-      triggerAction('issue');
-    }
-    touchStartX.current = null;
-    setSwipeDelta(0);
-  };
-
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === ' ' && !e.shiftKey && !isDone) {
-      e.preventDefault();
-      triggerAction('done');
-    } else if (e.key === ' ' && e.shiftKey && !isDone && !isIssue) {
-      e.preventDefault();
-      triggerAction('issue');
-    } else if (e.key === 'Enter') {
+    if (e.key === 'Enter') {
       onQuickOpen(task);
     }
   };
 
-  const revealRight = swipeDelta > 20;
-  const revealLeft = swipeDelta < -20;
   const street = task.streetAddress || task.propertyAddress;
+  const isGeneral = task.isGeneralTask === true;
+  const placeLabel = isGeneral ? str.tasks.checklist.generalTaskLabel : task.propertyTitle;
+  const secondaryLine = isGeneral ? (task.title?.trim() || '') : street;
+  const showReportActions = !isDone && (onVoiceForTask || onTextForTask);
 
   return (
     <div className="relative overflow-hidden rounded-2xl">
-      <div className="absolute inset-0 flex rounded-2xl" aria-hidden>
-        <div className="flex flex-1 items-center bg-gradient-to-br from-teal-500 to-emerald-600 pl-4">
-          <CheckCircle2 className="h-6 w-6 text-white/95 drop-shadow-sm" />
-        </div>
-        <div className="flex flex-1 items-center justify-end bg-gradient-to-bl from-amber-400 to-amber-500 pr-4">
-          <AlertCircle className="h-6 w-6 text-white drop-shadow-sm" />
-        </div>
-      </div>
-
       <div
         role="button"
         tabIndex={0}
-        aria-label={`Задача: ${task.propertyTitle}`}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
+        aria-label={`Задача: ${placeLabel}`}
         onKeyDown={handleKeyDown}
         onClick={() => onQuickOpen(task)}
         className={`relative z-10 flex min-h-14 cursor-pointer select-none items-center gap-3 rounded-2xl border px-4 py-3 shadow-md shadow-slate-900/5 transition-all duration-200 hover:shadow-lg active:scale-[0.99] ${urgencyRing[deadlineUrgency]} ${
@@ -154,38 +86,33 @@ export const ChecklistItem = memo(function ChecklistItem({
             ? 'border-amber-200/90 bg-amber-50/90 hover:border-amber-300/80'
             : 'border-slate-200/90 bg-white hover:border-teal-200/80'
         }`}
-        style={{
-          transform: `translateX(${swipeDelta}px)`,
-          transition: swipeDelta !== 0 ? 'none' : 'transform 0.2s ease-out',
-          opacity: leaving ? 0 : 1,
-          backgroundColor: revealRight
-            ? 'rgba(236, 253, 245, 0.96)'
-            : revealLeft
-              ? 'rgba(255, 251, 235, 0.96)'
-              : undefined,
-        }}
       >
-        <span onClick={(e) => e.stopPropagation()}>
+        <span
+          className="flex shrink-0 flex-col items-center"
+          onClick={(e) => e.stopPropagation()}
+          title={str.tasks.checklist.markDoneCheckboxAria}
+        >
           <Checkbox
             checked={isDone}
-            aria-label={`Отметить выполненной: ${task.propertyTitle}`}
+            disabled={isDone}
+            aria-label={`${str.tasks.checklist.markDoneCheckboxAria}. ${placeLabel}`}
             onCheckedChange={(checked) => {
-              if (checked && !isDone) triggerAction('done');
+              if (checked && !isDone) onMarkDone(task.uuid);
             }}
           />
         </span>
-
-        <TypeIcon type={task.type} />
 
         <div className="min-w-0 flex-1">
           <p
             className={`truncate text-sm font-semibold ${isDone ? 'text-slate-400 line-through' : 'text-slate-900'}`}
           >
-            {task.propertyTitle}
+            {placeLabel}
           </p>
-          <p className="truncate text-xs text-slate-500" title={street}>
-            {street}
-          </p>
+          {secondaryLine ? (
+            <p className="truncate text-xs text-slate-500" title={secondaryLine}>
+              {secondaryLine}
+            </p>
+          ) : null}
           <p className="truncate text-xs text-slate-600">
             {typeLabels[task.type] ?? task.type}
             {task.contextLabel ? ` · ${task.contextLabel}` : ''}
@@ -202,6 +129,45 @@ export const ChecklistItem = memo(function ChecklistItem({
           ) : null}
         </div>
 
+        {showReportActions ? (
+          <div
+            className="relative z-20 flex shrink-0 flex-row items-center gap-2"
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            {onVoiceForTask ? (
+              <button
+                type="button"
+                className={cardActionBtnClass}
+                aria-label={str.tasks.checklist.cardVoiceAria}
+                title={str.tasks.checklist.cardVoiceAria}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onVoiceForTask(task);
+                }}
+                onPointerDown={(e) => e.stopPropagation()}
+              >
+                <Mic className="h-5 w-5" strokeWidth={2.1} aria-hidden />
+              </button>
+            ) : null}
+            {onTextForTask ? (
+              <button
+                type="button"
+                className={cardActionBtnClass}
+                aria-label={str.tasks.checklist.cardTextAria}
+                title={str.tasks.checklist.cardTextAria}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onTextForTask(task);
+                }}
+                onPointerDown={(e) => e.stopPropagation()}
+              >
+                <Pencil className="h-5 w-5" strokeWidth={2.1} aria-hidden />
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+
         <div className="flex shrink-0 flex-col items-end gap-1">
           {inProgress && task.inProgressStartedAt && (
             <span className="rounded-lg bg-teal-50 px-2 py-0.5 font-mono text-xs text-teal-800">
@@ -216,12 +182,6 @@ export const ChecklistItem = memo(function ChecklistItem({
           )}
           {task.priority === 'urgent' && (
             <span className="h-2 w-2 rounded-full bg-amber-500 ring-2 ring-amber-200/80" title="Срочно" />
-          )}
-          {isIssue && (
-            <AlertCircle
-              className="h-4 w-4 text-amber-600"
-              aria-label={str.tasks.checklist.taskIncidentNeedsManagerAria}
-            />
           )}
         </div>
       </div>

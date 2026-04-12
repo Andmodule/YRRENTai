@@ -7,7 +7,7 @@ import {
   forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { format } from 'date-fns';
 import { IncidentEntity, IncidentStatus, IncidentType } from './entities/incident.entity';
 import { TaskEntity } from '../tasks/entities/task.entity';
@@ -17,6 +17,7 @@ import { TelegramService } from '../telegram/telegram.service';
 import { TasksGateway } from '../tasks/tasks.gateway';
 import { UserService } from '../user/user.service';
 import { TasksService } from '../tasks/tasks.service';
+import { DeliveryRoutesService } from '../tasks/delivery-routes.service';
 
 const SUGGESTED_TASK_TYPES = new Set([
   'checkout_cleaning',
@@ -35,6 +36,15 @@ export interface IncidentSuggestedTaskDraftDto {
   assigneeId?: string | null;
   dueDate?: string | null;
   notes?: string | null;
+}
+
+/** Tasks linked via `task.incidentId` (includes dispatch + follow-ups). */
+export interface IncidentRelatedTaskDto {
+  uuid: string;
+  title: string;
+  status: string;
+  type: string;
+  assigneeName: string | null;
 }
 
 export interface IncidentDto {
@@ -60,11 +70,30 @@ export interface IncidentDto {
   lastStayGuestName: string | null;
   lastStayGuestPhone: string | null;
   lastStayCheckOut: string | null;
+  /** Booking id for last stay (open in calendar / task-from-booking). */
+  lastStayBookingId: string | null;
+  /** From last stay booking when available. */
+  lastStayPaymentStatus: 'unpaid' | 'partial' | 'paid' | null;
   dispatchedTaskId: string | null;
   /** Technician assigned to the dispatched maintenance task (when any). */
   dispatchedAssigneeId: string | null;
   dispatchedAssigneeName: string | null;
+  /** All tasks pointing at this incident (`task.incidentId`). */
+  relatedTasks: IncidentRelatedTaskDto[];
   suggestedTaskDraft: IncidentSuggestedTaskDraftDto | null;
+}
+
+/** Staff mini-app: own reported incidents (history + append photos). */
+export interface StaffIncidentHistoryItemDto {
+  uuid: string;
+  type: IncidentType;
+  status: IncidentStatus;
+  propertyId: string;
+  propertyTitle: string;
+  taskId: string | null;
+  descriptionPreview: string;
+  photoUrls: string[];
+  createdAt: string;
 }
 
 @Injectable()
@@ -84,6 +113,8 @@ export class IncidentsService {
     private readonly userService: UserService,
     @Inject(forwardRef(() => TasksService))
     private readonly tasksService: TasksService,
+    @Inject(forwardRef(() => DeliveryRoutesService))
+    private readonly deliveryRoutesService: DeliveryRoutesService,
   ) {}
 
   /** Latest stay per property (by check-out), excluding cancelled/declined. */
@@ -153,7 +184,11 @@ export class IncidentsService {
     return this.sanitizeSuggestedTaskDraft(row.suggestedTaskDraft, null);
   }
 
-  private toDto(row: IncidentEntity, lastStay?: BookingEntity | null): IncidentDto {
+  private toDto(
+    row: IncidentEntity,
+    lastStay: BookingEntity | null | undefined,
+    relatedTasks: IncidentRelatedTaskDto[],
+  ): IncidentDto {
     return {
       uuid: row.id,
       type: row.type,
@@ -178,13 +213,44 @@ export class IncidentsService {
       lastStayGuestName: lastStay?.guestName ?? null,
       lastStayGuestPhone: lastStay?.guestPhone?.trim() || null,
       lastStayCheckOut: lastStay?.checkOut ? lastStay.checkOut.toISOString() : null,
+      lastStayBookingId: lastStay?.id ?? null,
+      lastStayPaymentStatus: lastStay?.paymentStatus ?? null,
       dispatchedTaskId: row.dispatchedTaskId ?? null,
       dispatchedAssigneeId: row.dispatchedTask?.assigneeId ?? null,
       dispatchedAssigneeName: row.dispatchedTask?.assignee
         ? `${row.dispatchedTask.assignee.firstName} ${row.dispatchedTask.assignee.lastName}`.trim()
         : null,
+      relatedTasks,
       suggestedTaskDraft: this.draftFromEntity(row),
     };
+  }
+
+  private async loadRelatedTasksForIncidentIds(ids: string[]): Promise<Map<string, IncidentRelatedTaskDto[]>> {
+    const map = new Map<string, IncidentRelatedTaskDto[]>();
+    const uniq = [...new Set(ids)].filter(Boolean);
+    if (uniq.length === 0) return map;
+    const tasks = await this.taskRepo.find({
+      where: { incidentId: In(uniq) },
+      relations: ['assignee'],
+      order: { createdAt: 'ASC' },
+    });
+    for (const t of tasks) {
+      if (!t.incidentId) continue;
+      const assigneeName = t.assignee
+        ? `${t.assignee.firstName} ${t.assignee.lastName}`.trim() || null
+        : null;
+      const item: IncidentRelatedTaskDto = {
+        uuid: t.id,
+        title: t.title,
+        status: t.status,
+        type: t.type,
+        assigneeName,
+      };
+      const list = map.get(t.incidentId) ?? [];
+      list.push(item);
+      map.set(t.incidentId, list);
+    }
+    return map;
   }
 
   /**
@@ -249,7 +315,8 @@ export class IncidentsService {
     });
 
     const lastByProp = await this.loadLastStayByPropertyIds([full.propertyId]);
-    return this.toDto(full, lastByProp.get(full.propertyId));
+    const relatedByInc = await this.loadRelatedTasksForIncidentIds([full.id]);
+    return this.toDto(full, lastByProp.get(full.propertyId), relatedByInc.get(full.id) ?? []);
   }
 
   async createForStaff(
@@ -287,10 +354,16 @@ export class IncidentsService {
       if (linkedTask.assigneeId !== staffId) throw new ForbiddenException();
       if (linkedTask.propertyId !== body.propertyId) throw new BadRequestException('taskId does not match property');
     } else {
-      const hasAccess = await this.taskRepo.exist({
+      const hasTaskOnProperty = await this.taskRepo.exist({
         where: { propertyId: body.propertyId, assigneeId: staffId },
       });
-      if (!hasAccess) throw new ForbiddenException('No assignment on this property');
+      const onDriverRoute = await this.deliveryRoutesService.isDriverPropertyOnActiveRoute(
+        staffId,
+        body.propertyId,
+      );
+      if (!hasTaskOnProperty && !onDriverRoute) {
+        throw new ForbiddenException('No assignment on this property');
+      }
     }
 
     const row = this.incidentRepo.create({
@@ -358,7 +431,78 @@ export class IncidentsService {
     });
 
     const lastByProp = await this.loadLastStayByPropertyIds([full.propertyId]);
-    return this.toDto(full, lastByProp.get(full.propertyId));
+    const relatedByInc = await this.loadRelatedTasksForIncidentIds([full.id]);
+    return this.toDto(full, lastByProp.get(full.propertyId), relatedByInc.get(full.id) ?? []);
+  }
+
+  private mergeIncidentPhotoUrls(row: IncidentEntity, additional: string[]): void {
+    const cur = Array.isArray(row.photoUrls) ? row.photoUrls : [];
+    const seen = new Set(cur);
+    for (const u of additional) {
+      const s = typeof u === 'string' ? u.trim() : '';
+      if (s && !seen.has(s)) {
+        cur.push(s);
+        seen.add(s);
+      }
+    }
+    row.photoUrls = cur;
+  }
+
+  private toStaffHistoryItem(row: IncidentEntity): StaffIncidentHistoryItemDto {
+    const desc = row.description ?? '';
+    const descriptionPreview = desc.length > 200 ? `${desc.slice(0, 200)}…` : desc;
+    return {
+      uuid: row.id,
+      type: row.type,
+      status: row.status,
+      propertyId: row.propertyId,
+      propertyTitle: row.property?.name ?? '',
+      taskId: row.taskId,
+      descriptionPreview,
+      photoUrls: row.photoUrls ?? [],
+      createdAt: row.createdAt.toISOString(),
+    };
+  }
+
+  async listForStaffReported(staffUserId: string, take = 80): Promise<StaffIncidentHistoryItemDto[]> {
+    const rows = await this.incidentRepo.find({
+      where: { reportedBy: staffUserId },
+      relations: ['property'],
+      order: { createdAt: 'DESC' },
+      take,
+    });
+    return rows.map((r) => this.toStaffHistoryItem(r));
+  }
+
+  async appendPhotoUrlsForStaff(
+    incidentId: string,
+    staffUserId: string,
+    urls: string[],
+  ): Promise<StaffIncidentHistoryItemDto> {
+    if (!urls.length) {
+      throw new BadRequestException('No photos');
+    }
+    const row = await this.incidentRepo.findOne({
+      where: { id: incidentId },
+      relations: ['property'],
+    });
+    if (!row) throw new NotFoundException();
+    if (row.reportedBy !== staffUserId) throw new ForbiddenException();
+
+    this.mergeIncidentPhotoUrls(row, urls);
+    await this.incidentRepo.save(row);
+
+    this.tasksGateway.emitIncidentUpdated({
+      incidentId: row.id,
+      propertyOwnerId: row.property.ownerId,
+    });
+
+    const reloaded = await this.incidentRepo.findOne({
+      where: { id: row.id },
+      relations: ['property'],
+    });
+    if (!reloaded) throw new NotFoundException();
+    return this.toStaffHistoryItem(reloaded);
   }
 
   async listForOwner(
@@ -380,7 +524,10 @@ export class IncidentsService {
 
     const rows = await qb.getMany();
     const lastByProp = await this.loadLastStayByPropertyIds(rows.map((r) => r.propertyId));
-    return rows.map((row) => this.toDto(row, lastByProp.get(row.propertyId)));
+    const relatedByInc = await this.loadRelatedTasksForIncidentIds(rows.map((r) => r.id));
+    return rows.map((row) =>
+      this.toDto(row, lastByProp.get(row.propertyId), relatedByInc.get(row.id) ?? []),
+    );
   }
 
   async findOneForOwner(incidentId: string, ownerId: string): Promise<IncidentDto> {
@@ -390,16 +537,19 @@ export class IncidentsService {
     });
     if (!row || row.property.ownerId !== ownerId) throw new NotFoundException();
     const lastByProp = await this.loadLastStayByPropertyIds([row.propertyId]);
-    return this.toDto(row, lastByProp.get(row.propertyId));
+    const relatedByInc = await this.loadRelatedTasksForIncidentIds([row.id]);
+    return this.toDto(row, lastByProp.get(row.propertyId), relatedByInc.get(row.id) ?? []);
   }
 
   async patchForOwner(
     incidentId: string,
     ownerId: string,
+    actorUserId: string,
     patch: Partial<{
       status: IncidentStatus;
       managerNote: string | null;
       estimatedCost: string | null;
+      appendPhotoUrls: string[];
     }>,
   ): Promise<IncidentDto> {
     const row = await this.incidentRepo.findOne({
@@ -411,8 +561,15 @@ export class IncidentsService {
     if (patch.status !== undefined) row.status = patch.status;
     if (patch.managerNote !== undefined) row.managerNote = patch.managerNote;
     if (patch.estimatedCost !== undefined) row.estimatedCost = patch.estimatedCost;
+    if (patch.appendPhotoUrls !== undefined && patch.appendPhotoUrls.length > 0) {
+      this.mergeIncidentPhotoUrls(row, patch.appendPhotoUrls);
+    }
     if (patch.status === 'resolved' || patch.status === 'closed') {
       row.resolvedAt = new Date();
+      row.resolvedBy = actorUserId;
+    } else if (patch.status !== undefined) {
+      row.resolvedAt = null;
+      row.resolvedBy = null;
     }
 
     await this.incidentRepo.save(row);
@@ -422,7 +579,8 @@ export class IncidentsService {
     });
     if (!reloaded) throw new NotFoundException();
     const lastByProp = await this.loadLastStayByPropertyIds([reloaded.propertyId]);
-    return this.toDto(reloaded, lastByProp.get(reloaded.propertyId));
+    const relatedByInc = await this.loadRelatedTasksForIncidentIds([reloaded.id]);
+    return this.toDto(reloaded, lastByProp.get(reloaded.propertyId), relatedByInc.get(reloaded.id) ?? []);
   }
 
   /**
@@ -466,7 +624,8 @@ export class IncidentsService {
     });
     if (!reloaded) throw new NotFoundException();
     const lastByProp = await this.loadLastStayByPropertyIds([reloaded.propertyId]);
-    return this.toDto(reloaded, lastByProp.get(reloaded.propertyId));
+    const relatedByInc = await this.loadRelatedTasksForIncidentIds([reloaded.id]);
+    return this.toDto(reloaded, lastByProp.get(reloaded.propertyId), relatedByInc.get(reloaded.id) ?? []);
   }
 
   async countOpenForOwner(ownerId: string): Promise<number> {

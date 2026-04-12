@@ -38,6 +38,7 @@ import { parseVoiceTaskAudio } from '../../hooks/useVoiceTaskParse';
 import {
   GENERAL_TASK_PROPERTY_GROUP_KEY,
   INCIDENTS_BOARD_GROUP_KEY,
+  SHORTAGE_BOARD_GROUP_KEY,
 } from '../../utils/groupTasksByProperty';
 import type { Task, TaskPriority, TaskType } from '../../types';
 import { AssigneePickerField } from '../shared/AssigneePickerField';
@@ -292,7 +293,8 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
   const contextPropertyId = useMemo(() => {
     if (
       effectivePropertyId === GENERAL_TASK_PROPERTY_GROUP_KEY ||
-      effectivePropertyId === INCIDENTS_BOARD_GROUP_KEY
+      effectivePropertyId === INCIDENTS_BOARD_GROUP_KEY ||
+      effectivePropertyId === SHORTAGE_BOARD_GROUP_KEY
     ) {
       return null;
     }

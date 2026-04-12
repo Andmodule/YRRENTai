@@ -157,6 +157,7 @@ export class StaffTelegramBotService {
 
     if (message.text?.startsWith('/start')) {
       const parts = message.text.trim().split(/\s+/);
+      /** Payload после /start или /start@BotName (deep link из t.me/?start=...) */
       const payload = parts[1]?.trim();
       if (payload) {
         const result = await this.userService.bindStaffTelegramFromInvite(chatId, payload);

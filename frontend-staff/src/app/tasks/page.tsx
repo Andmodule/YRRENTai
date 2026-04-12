@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSWRConfig } from 'swr';
 import { useAuth } from '@/hooks/use-auth';
+import { resolveStaffAppShell } from '@/lib/staff-app-shell';
 import { StaffChecklist } from '@/components/tasks/checklist';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
@@ -19,8 +20,12 @@ export default function TasksPage() {
     if (isLoading) return;
     if (error || !isAuthenticated) {
       router.replace('/login');
+      return;
     }
-  }, [isLoading, error, isAuthenticated, router]);
+    if (user?.role === 'STAFF' && resolveStaffAppShell(user.staffJobType) === 'driver') {
+      router.replace('/driver');
+    }
+  }, [isLoading, error, isAuthenticated, user, router]);
 
   const handleLogout = async () => {
     try {

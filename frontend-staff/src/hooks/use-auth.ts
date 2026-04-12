@@ -9,6 +9,8 @@ export interface StaffUser {
   firstName: string;
   lastName: string;
   role: string;
+  /** Тип работы из панели менеджера «Персонал» (`cleaner`, `driver`, …). */
+  staffJobType?: string | null;
   staffShiftCompletedAt?: string | null;
 }
 

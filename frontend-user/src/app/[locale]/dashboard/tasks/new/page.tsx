@@ -190,6 +190,8 @@ export default function NewTaskFromBookingPage() {
 
   const initialBookingId = searchParams.get('bookingId')?.trim() ?? '';
   const propertyId = searchParams.get('propertyId')?.trim() ?? '';
+  const incidentIdFromQuery = searchParams.get('incidentId')?.trim() ?? '';
+  const prefillTitle = searchParams.get('prefillTitle')?.trim() ?? '';
 
   const [bookingId, setBookingId] = useState(initialBookingId);
 
@@ -200,8 +202,10 @@ export default function NewTaskFromBookingPage() {
     return p?.name ?? propertyId;
   }, [properties, propertyId]);
 
-  const [selectedType, setSelectedType] = useState<TaskType>('checkout_cleaning');
-  const [title, setTitle] = useState('');
+  const [selectedType, setSelectedType] = useState<TaskType>(
+    incidentIdFromQuery ? 'maintenance' : 'checkout_cleaning',
+  );
+  const [title, setTitle] = useState(prefillTitle);
   const [assigneeId, setAssigneeId] = useState('');
   const [dueDate, setDueDate] = useState(() => format(addDays(new Date(), 3), 'yyyy-MM-dd'));
   const [dueTime, setDueTime] = useState('14:00');
@@ -301,12 +305,16 @@ export default function NewTaskFromBookingPage() {
         dueTime: omitDueDate ? null : dueTime || null,
         reservationId: bookingId || null,
         notes: description.trim() || undefined,
+        ...(incidentIdFromQuery ? { incidentId: incidentIdFromQuery } : {}),
       });
       return res.data.data.tasks;
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['tasks'] });
       await queryClient.invalidateQueries({ queryKey: ['calendar'] });
+      if (incidentIdFromQuery) {
+        await queryClient.invalidateQueries({ queryKey: ['incidents'] });
+      }
       toast.success(t('success'));
       router.push('/dashboard/tasks');
     },

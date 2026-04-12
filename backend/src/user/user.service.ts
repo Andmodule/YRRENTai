@@ -28,6 +28,25 @@ const STAFF_INVITE_BCRYPT_ROUNDS = 12;
 
 const INVITE_LINK_INVALID =
   '❌ Срок действия ссылки истёк или она уже использована. Попросите управляющего новую.';
+
+/** UUID из payload /start (Telegram max 64 символа; иногда клеится второй URL при копировании). */
+function normalizeStaffInviteToken(raw: string): string {
+  const t = raw.trim();
+  if (!t) return t;
+  const m = t.match(
+    /^([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})/i,
+  );
+  if (m?.[1]) return m[1];
+  if (t.length >= 36) {
+    const prefix = t.slice(0, 36);
+    if (
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(prefix)
+    ) {
+      return prefix;
+    }
+  }
+  return t;
+}
 const TELEGRAM_CHAT_COLLISION =
   '⚠️ Этот Telegram уже привязан к другому пользователю RentAI. Часто так, если тот же чат подключён в кабинете владельца (Настройки → Telegram). Отвяжите там или используйте другой Telegram для персонала.';
 
@@ -116,7 +135,7 @@ export class UserService {
     chatId: string,
     rawToken: string,
   ): Promise<{ ok: true; firstName: string } | { ok: false; message: string }> {
-    const token = rawToken.trim();
+    const token = normalizeStaffInviteToken(rawToken);
     if (!token) {
       return { ok: false, message: INVITE_LINK_INVALID };
     }
@@ -406,7 +425,7 @@ export class UserService {
   async findStaffInviteByToken(
     token: string,
   ): Promise<{ invite: StaffInviteTokenEntity; user: UserEntity } | null> {
-    const trimmed = token.trim();
+    const trimmed = normalizeStaffInviteToken(token);
     if (!trimmed) {
       return null;
     }
@@ -510,6 +529,17 @@ export class UserService {
   /**
    * Invalidates unused invites for this user and creates a new 24h token.
    */
+  /**
+   * Сбрасывает привязку Telegram-чата у сотрудника (очищает `telegramChatId`).
+   * Нужно, если чат занят другим пользователем или требуется новая привязка по ссылке.
+   */
+  async unlinkStaffTelegramChat(tenantOwnerId: string, staffId: string): Promise<StaffDirectoryRowDto> {
+    const user = await this.getStaffInTenantOrThrow(staffId, tenantOwnerId);
+    user.telegramChatId = null;
+    const saved = await this.userRepository.save(user);
+    return this.toStaffDirectoryRow(saved);
+  }
+
   async regenerateStaffInviteLink(
     tenantOwnerId: string,
     staffId: string,

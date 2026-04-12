@@ -23,7 +23,9 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useTasks, useUpdateTaskStatus, useTaskDetail } from '../../hooks/useTasks';
 import { useTaskFilters } from '../../hooks/useTaskFilters';
 import { useTasksViewMode } from '../../hooks/useTasksViewMode';
-import type { Task, TaskFilters, TaskStatus } from '../../types';
+import type { PendingSupplyInterpretationEvent, Task, TaskFilters, TaskStatus } from '../../types';
+import { usePendingSupplyInterpretations } from '../../hooks/usePendingSupplyInterpretations';
+import { useSupplyMatrix } from '../../hooks/useSupplyMatrix';
 import { KANBAN_COLUMNS } from '../../constants';
 import { TaskCard } from './TaskCard';
 import { TaskListView } from './TaskListView';
@@ -39,7 +41,14 @@ import { TasksFiltersBar } from './TasksFiltersBar';
 import { usePendingTaskDelete } from '../../hooks/usePendingTaskDelete';
 import { usePendingTaskMarkDone } from '../../hooks/usePendingTaskMarkDone';
 import { usePendingIncidentClose } from '@/modules/incidents/hooks/usePendingIncidentClose';
-import { TASK_DETAIL_URL_QUERY, TASK_INCIDENT_URL_QUERY } from '../../task-url-params';
+import {
+  TASK_DETAIL_URL_QUERY,
+  TASK_INCIDENT_URL_QUERY,
+  TASK_MANAGER_PANEL_QUERY,
+} from '../../task-url-params';
+import { ManagerBoardPanelTabs } from './ManagerBoardPanelTabs';
+import { ManagerSupplyAttentionBanner } from './ManagerSupplyAttentionBanner';
+import { ManagerSupplyPanel } from './ManagerSupplyPanel';
 
 export function ManagerKanban({
   filters,
@@ -71,10 +80,21 @@ export function ManagerKanban({
   const taskId = searchParams.get(TASK_DETAIL_URL_QUERY);
   const rawIncidentId = searchParams.get(TASK_INCIDENT_URL_QUERY);
   const incidentId = taskId ? null : rawIncidentId;
+  const managerPanel =
+    searchParams.get(TASK_MANAGER_PANEL_QUERY) === 'supply' ? 'supply' : 'tasks';
 
   const { view } = useTasksViewMode();
-  const { data, isLoading, isError, refetch } = useTasks(filters);
-  const { data: incidentsRaw, isLoading: incidentsLoading } = useIncidents();
+  const { data, isLoading, isError, refetch } = useTasks(filters, {
+    enabled: managerPanel === 'tasks',
+  });
+  const { data: incidentsRaw, isLoading: incidentsLoading } = useIncidents({
+    enabled: managerPanel === 'tasks',
+  });
+  const { data: supplyQueue = [] } = usePendingSupplyInterpretations({
+    enabled: managerPanel === 'tasks',
+  });
+  const { data: supplyMatrixRows = [] } = useSupplyMatrix(managerPanel === 'tasks');
+  const supplyBadgeCount = Math.max(supplyMatrixRows.length, supplyQueue.length);
   const filtered = useTaskFilters(data?.tasks ?? [], filters);
   const { mutate: updateStatus } = useUpdateTaskStatus();
 
@@ -241,6 +261,27 @@ export function ManagerKanban({
     [pathname, router, searchParams],
   );
 
+  const openSupplyPanel = useCallback(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set(TASK_MANAGER_PANEL_QUERY, 'supply');
+    router.replace(`${pathname}?${params.toString()}`);
+  }, [pathname, router, searchParams]);
+
+  const openSupplyInterpretation = useCallback(
+    (e: PendingSupplyInterpretationEvent) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (e.targetType === 'incident') {
+        params.delete(TASK_DETAIL_URL_QUERY);
+        params.set(TASK_INCIDENT_URL_QUERY, e.targetId);
+      } else {
+        params.delete(TASK_INCIDENT_URL_QUERY);
+        params.set(TASK_DETAIL_URL_QUERY, e.targetId);
+      }
+      router.push(`${pathname}?${params.toString()}`);
+    },
+    [pathname, router, searchParams],
+  );
+
   const patchStatus = useCallback(
     (uuid: string, status: TaskStatus) => {
       const task =
@@ -252,15 +293,23 @@ export function ManagerKanban({
     [filtered, data?.tasks, updateStatus],
   );
 
+  /** Очередь нехватки всегда в списке — пустой борд только если нет задач и инцидентов. */
   const isEmptyBoard = filtered.length === 0 && boardIncidents.length === 0;
+  const tasksBoardLoading = managerPanel === 'tasks' && (isLoading || incidentsLoading);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-hidden md:gap-3">
-      <div className="flex shrink-0 items-center max-md:-mx-2">
-        <TasksFiltersBar filters={filters} onFiltersChange={onFiltersChange} />
-      </div>
+      <ManagerBoardPanelTabs panel={managerPanel} supplyBadgeCount={supplyBadgeCount} />
+      {managerPanel === 'tasks' && (
+        <ManagerSupplyAttentionBanner count={supplyBadgeCount} onOpenSupply={openSupplyPanel} />
+      )}
+      {managerPanel === 'tasks' && (
+        <div className="flex shrink-0 items-center max-md:-mx-2">
+          <TasksFiltersBar filters={filters} onFiltersChange={onFiltersChange} />
+        </div>
+      )}
 
-      {isError && (
+      {managerPanel === 'tasks' && isError && (
         <Alert variant="destructive" className="shrink-0">
           <AlertCircle className="h-4 w-4" />
           <AlertDescription className="flex flex-wrap items-center gap-2">
@@ -272,7 +321,7 @@ export function ManagerKanban({
         </Alert>
       )}
 
-      {(isLoading || incidentsLoading) && (
+      {tasksBoardLoading && (
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
           <Skeleton className="h-10 w-full max-w-md shrink-0 rounded-lg" />
           {Array.from({ length: 4 }).map((_, i) => (
@@ -281,7 +330,7 @@ export function ManagerKanban({
         </div>
       )}
 
-      {!isLoading && !isError && view === 'list' && (
+      {managerPanel === 'tasks' && !isLoading && !isError && view === 'list' && (
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           {isEmptyBoard ? (
             <p className="shrink-0 rounded-lg border border-dashed border-border/40 bg-muted/15 px-2 py-6 text-center text-sm text-muted-foreground md:rounded-xl md:px-4 md:py-10">
@@ -292,8 +341,10 @@ export function ManagerKanban({
               <TaskListView
                 tasks={filtered}
                 boardIncidents={boardIncidents}
+                boardShortage={supplyQueue}
                 onOpenTask={openTask}
                 onOpenIncident={openIncident}
+                onOpenSupplyInterpretation={openSupplyInterpretation}
                 onStatusChange={patchStatus}
                 onSwipeDeleteTask={enqueueDeleteAfterSwipe}
                 onSwipeMarkDone={enqueueMarkDoneAfterSwipe}
@@ -304,7 +355,7 @@ export function ManagerKanban({
         </div>
       )}
 
-      {!isLoading && !isError && view === 'table' && (
+      {managerPanel === 'tasks' && !isLoading && !isError && view === 'table' && (
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
           {filtered.length === 0 && boardIncidents.length === 0 ? (
             <p className="rounded-lg border border-dashed border-border/40 bg-muted/15 px-2 py-6 text-center text-sm text-muted-foreground md:rounded-xl md:px-4 md:py-10">
@@ -332,7 +383,7 @@ export function ManagerKanban({
         </div>
       )}
 
-      {!isLoading && !isError && view === 'kanban' && (
+      {managerPanel === 'tasks' && !isLoading && !isError && view === 'kanban' && (
         <div className="min-h-0 flex-1 overflow-auto">
           <DndContext
             sensors={sensors}
@@ -359,6 +410,16 @@ export function ManagerKanban({
         </div>
       )}
 
+      {managerPanel === 'supply' && (
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <ManagerSupplyPanel
+            onFocusPropertyByTitle={(title) =>
+              onFiltersChange((prev) => ({ ...prev, propertyQuery: title }))
+            }
+          />
+        </div>
+      )}
+
       <TaskDetailDrawer
         task={detailTask}
         open={Boolean(taskId && detailTask)}
@@ -371,6 +432,12 @@ export function ManagerKanban({
         open={Boolean(incidentId && detailIncident)}
         onOpenChange={(o) => {
           if (!o) clearIncidentFromUrl();
+        }}
+        onOpenRelatedTask={(taskUuid) => {
+          const params = new URLSearchParams(searchParams.toString());
+          params.delete(TASK_INCIDENT_URL_QUERY);
+          params.set(TASK_DETAIL_URL_QUERY, taskUuid);
+          router.push(`${pathname}?${params.toString()}`);
         }}
       />
     </div>

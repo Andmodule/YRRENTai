@@ -11,6 +11,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { useMatchMedia } from '@/hooks/use-match-media';
 import type { Task, TaskStatus } from '../../types';
 import { TaskListTypePill } from './TaskListTypePill';
+import { TaskManagerLinkBadges } from './TaskManagerLinkBadges';
 import { TaskStatusBadge } from '../shared/TaskStatusBadge';
 import { formatNameAndLastInitial } from '../../utils/staff-name-short';
 import { TaskListRowMobile } from './TaskListRowMobile';
@@ -72,6 +73,10 @@ export const TaskListRow = memo(function TaskListRow({
   /** Hide type pill when it repeats the title (same words, ignoring arrows). */
   const showTypePill =
     !task.title.trim() || norm(task.title) !== norm(pillLabel);
+
+  const hasManagerLinkBadges =
+    (task.pendingSupplyInterpretationIds?.length ?? 0) > 0 ||
+    (task.linkedIncidentIdsFromTask?.length ?? 0) > 0;
 
   const dueLabel = (() => {
     try {
@@ -202,7 +207,7 @@ export const TaskListRow = memo(function TaskListRow({
         >
           {titleDisplay}
         </span>
-        {showTypePill || task.contextLabel || task.incidentId ? (
+        {showTypePill || task.contextLabel || task.incidentId || hasManagerLinkBadges ? (
           <div
             className={cn(
               'flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5',
@@ -219,6 +224,7 @@ export const TaskListRow = memo(function TaskListRow({
                 <span className="truncate">{tKanban('taskFromIncidentBadge')}</span>
               </span>
             ) : null}
+            {hasManagerLinkBadges ? <TaskManagerLinkBadges task={task} compact /> : null}
             {task.status === 'issue' ? <TaskStatusBadge status="issue" size="sm" /> : null}
             {task.contextLabel ? (
               <span

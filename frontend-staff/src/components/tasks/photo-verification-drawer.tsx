@@ -1,6 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
+import { toast } from 'sonner';
 import { Drawer, DrawerContent } from '@/components/ui/drawer';
 import { Button } from '@/components/ui/button';
 import { useUploadTaskPhotos } from '@/hooks/use-tasks';
@@ -10,9 +11,20 @@ interface PhotoVerificationDrawerProps {
   taskUuid: string | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Из истории: другой заголовок (дополнить фото к уже завершённой задаче). */
+  variant?: 'default' | 'supplement';
+  title?: string;
+  description?: string;
 }
 
-export function PhotoVerificationDrawer({ taskUuid, open, onOpenChange }: PhotoVerificationDrawerProps) {
+export function PhotoVerificationDrawer({
+  taskUuid,
+  open,
+  onOpenChange,
+  variant = 'default',
+  title,
+  description,
+}: PhotoVerificationDrawerProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const { mutateAsync: upload } = useUploadTaskPhotos();
@@ -28,6 +40,7 @@ export function PhotoVerificationDrawer({ taskUuid, open, onOpenChange }: PhotoV
         compressed.push(new File([blob], f.name, { type: 'image/jpeg' }));
       }
       await upload({ uuid: taskUuid, files: compressed });
+      toast.success(variant === 'supplement' ? 'Фото добавлены к задаче' : 'Фото прикреплены');
       onOpenChange(false);
     } finally {
       setUploading(false);
@@ -35,12 +48,21 @@ export function PhotoVerificationDrawer({ taskUuid, open, onOpenChange }: PhotoV
     }
   };
 
+  const resolvedTitle =
+    title ??
+    (variant === 'supplement'
+      ? 'Добавить фото к задаче'
+      : 'Прикрепите фото готовой комнаты');
+  const resolvedDescription =
+    description ??
+    (variant === 'supplement'
+      ? 'Фото будут добавлены к уже завершённой задаче (верификация для менеджера).'
+      : 'Опционально: фото помогает менеджеру убедиться в качестве уборки.');
+
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
-      <DrawerContent title="Прикрепите фото готовой комнаты">
-        <p className="mb-4 text-sm text-slate-600">
-          Опционально: фото помогает менеджеру убедиться в качестве уборки.
-        </p>
+      <DrawerContent title={resolvedTitle}>
+        <p className="mb-4 text-sm text-slate-600">{resolvedDescription}</p>
         <input
           ref={inputRef}
           type="file"
@@ -65,7 +87,7 @@ export function PhotoVerificationDrawer({ taskUuid, open, onOpenChange }: PhotoV
           disabled={uploading}
           onClick={() => onOpenChange(false)}
         >
-          Пропустить
+          {variant === 'supplement' ? 'Отмена' : 'Пропустить'}
         </Button>
       </DrawerContent>
     </Drawer>

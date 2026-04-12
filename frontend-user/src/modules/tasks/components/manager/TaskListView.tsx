@@ -13,12 +13,18 @@ import {
   groupTasksAndIncidentsForBoard,
   GENERAL_TASK_PROPERTY_GROUP_KEY,
   INCIDENTS_BOARD_GROUP_KEY,
+  SHORTAGE_BOARD_GROUP_KEY,
 } from '../../utils/groupTasksByProperty';
+import type { PendingSupplyInterpretationEvent } from '../../types';
+import { SupplyShortageListRow } from './SupplyShortageListRow';
 import { useTaskListCollapsedGroups } from '../../hooks/useTaskListCollapsedGroups';
 import { TaskListRow } from './TaskListRow';
 import type { Incident } from '@/modules/incidents/hooks/useIncidents';
 import { IncidentListRow } from '@/modules/incidents/components/IncidentListRow';
 import { VoiceTaskCreateSheet, type VoiceTaskCreateSheetHandle } from './VoiceTaskCreateSheet';
+import { Link, usePathname } from '@/i18n/navigation';
+import { useSearchParams } from 'next/navigation';
+import { TASK_MANAGER_PANEL_QUERY } from '../../task-url-params';
 
 /** Короткий debounce только чтобы понять «скролл остановился» — показ включаем сразу после него. */
 const FAB_SCROLL_END_DEBOUNCE_MS = 100;
@@ -40,37 +46,63 @@ function getScrollableParent(el: HTMLElement | null): HTMLElement | null {
 export const TaskListView = memo(function TaskListView({
   tasks,
   boardIncidents,
+  boardShortage = [],
   onOpenTask,
   onOpenIncident,
+  onOpenSupplyInterpretation,
   onStatusChange,
   onSwipeDeleteTask,
   onSwipeMarkDone,
   onSwipeCloseIncident,
   voiceQuickAdd = true,
+  /** Manager list: всегда показывать свёртку «Нехватка» (пустую очередь тоже). В TMA — false. */
+  showShortageWhenEmpty = true,
 }: {
   tasks: Task[];
   boardIncidents: Incident[];
+  /** Очередь нехватки / снабжения (тот же источник, что вкладка «Снабжение и логистика»). */
+  boardShortage?: PendingSupplyInterpretationEvent[];
   onOpenTask: (t: Task) => void;
   onOpenIncident: (i: Incident) => void;
+  onOpenSupplyInterpretation: (e: PendingSupplyInterpretationEvent) => void;
   onStatusChange: (uuid: string, status: TaskStatus) => void;
   onSwipeDeleteTask?: (task: Task) => void;
   onSwipeMarkDone?: (task: Task) => void;
   onSwipeCloseIncident?: (incident: Incident) => void;
   /** Telegram Mini App staff list: hide manager-only voice create. */
   voiceQuickAdd?: boolean;
+  showShortageWhenEmpty?: boolean;
 }) {
   const tList = useTranslations('tasks.listByProperty');
   const tTasks = useTranslations('tasks');
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  const supplyTabHref = useMemo(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set(TASK_MANAGER_PANEL_QUERY, 'supply');
+    return `${pathname}?${params.toString()}`;
+  }, [pathname, searchParams]);
 
   const groups = useMemo(
-    () => groupTasksAndIncidentsForBoard(tasks, boardIncidents),
-    [tasks, boardIncidents],
+    () =>
+      groupTasksAndIncidentsForBoard(tasks, boardIncidents, boardShortage, {
+        alwaysShowShortageGroup: showShortageWhenEmpty,
+      }),
+    [tasks, boardIncidents, boardShortage, showShortageWhenEmpty],
   );
 
   /** Defensive: never render a property block with nothing to show (filters / data edge cases). */
   const visibleGroups = useMemo(
-    () => groups.filter((g) => g.tasks.length > 0 || g.incidents.length > 0),
-    [groups],
+    () =>
+      groups.filter(
+        (g) =>
+          (showShortageWhenEmpty && g.propertyId === SHORTAGE_BOARD_GROUP_KEY) ||
+          g.tasks.length > 0 ||
+          g.incidents.length > 0 ||
+          g.shortageEvents.length > 0,
+      ),
+    [groups, showShortageWhenEmpty],
   );
 
   const { collapsedById, setCollapsed } = useTaskListCollapsedGroups();
@@ -97,6 +129,14 @@ export const TaskListView = memo(function TaskListView({
       onOpenIncident(i);
     },
     [onOpenIncident],
+  );
+
+  const handleOpenSupply = useCallback(
+    (e: PendingSupplyInterpretationEvent) => {
+      setSwipeOpenRowId(null);
+      onOpenSupplyInterpretation(e);
+    },
+    [onOpenSupplyInterpretation],
   );
 
   const fabPropertyId = useMemo(() => {
@@ -158,21 +198,31 @@ export const TaskListView = memo(function TaskListView({
         const displayTitle =
           group.propertyId === INCIDENTS_BOARD_GROUP_KEY
             ? tList('incidentsTopHeading')
-            : group.propertyId === GENERAL_TASK_PROPERTY_GROUP_KEY
-              ? tList('generalTitle')
-              : group.propertyTitle || tList('unnamedProperty');
+            : group.propertyId === SHORTAGE_BOARD_GROUP_KEY
+              ? tList('shortageTopHeading')
+              : group.propertyId === GENERAL_TASK_PROPERTY_GROUP_KEY
+                ? tList('generalTitle')
+                : group.propertyTitle || tList('unnamedProperty');
 
         const addressLine =
-          group.propertyId === INCIDENTS_BOARD_GROUP_KEY || group.propertyId === GENERAL_TASK_PROPERTY_GROUP_KEY
+          group.propertyId === INCIDENTS_BOARD_GROUP_KEY ||
+          group.propertyId === SHORTAGE_BOARD_GROUP_KEY ||
+          group.propertyId === GENERAL_TASK_PROPERTY_GROUP_KEY
             ? null
             : group.propertyAddress || null;
 
         const isPropertySection =
           group.propertyId !== GENERAL_TASK_PROPERTY_GROUP_KEY &&
-          group.propertyId !== INCIDENTS_BOARD_GROUP_KEY;
-        /** Десктоп: «+ Добавить задачу» и для общих/инцидентов; мобайл — только FAB. */
+          group.propertyId !== INCIDENTS_BOARD_GROUP_KEY &&
+          group.propertyId !== SHORTAGE_BOARD_GROUP_KEY;
+        /** Десктоп: «+ Добавить задачу» и для общих/инцидентов; мобайл — только FAB. Блок нехватки — без FAB-футера. */
         const showAddTaskFooter =
-          voiceQuickAdd && (isPropertySection || (isMdUp && !isPropertySection));
+          voiceQuickAdd &&
+          group.propertyId !== SHORTAGE_BOARD_GROUP_KEY &&
+          (isPropertySection || (isMdUp && !isPropertySection));
+
+        const incidentsSectionCount =
+          group.propertyId === INCIDENTS_BOARD_GROUP_KEY ? group.incidents.length : 0;
 
         return (
           <section
@@ -213,9 +263,16 @@ export const TaskListView = memo(function TaskListView({
                       {group.propertyId === INCIDENTS_BOARD_GROUP_KEY ? (
                         <span
                           className="inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full bg-red-500/15 px-1 text-[10px] font-semibold tabular-nums leading-none text-red-700 dark:text-red-400"
-                          aria-label={tList('incidentCount', { count: group.incidents.length })}
+                          aria-label={tList('incidentCount', { count: incidentsSectionCount })}
                         >
-                          {group.incidents.length}
+                          {incidentsSectionCount}
+                        </span>
+                      ) : group.propertyId === SHORTAGE_BOARD_GROUP_KEY ? (
+                        <span
+                          className="inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full bg-[#008CA4]/15 px-1 text-[10px] font-semibold tabular-nums leading-none text-[#008CA4] dark:bg-[#00d4ff]/15 dark:text-[#7ee8ff]"
+                          aria-label={tList('shortageCount', { count: group.shortageEvents.length })}
+                        >
+                          {group.shortageEvents.length}
                         </span>
                       ) : (
                         <span
@@ -235,36 +292,84 @@ export const TaskListView = memo(function TaskListView({
 
               <CollapsibleContent className="bg-white dark:bg-transparent">
                 <ul className="flex min-w-0 flex-col px-0" role="list">
-                  {group.incidents.map((incident) => {
-                    const isAwaitingDispatchHighlight = incident.status === 'awaiting_dispatch';
-                    return (
-                      <li
-                        key={`inc-${incident.uuid}`}
-                        className={cn(
-                          'min-w-0',
-                          isAwaitingDispatchHighlight &&
-                            'border-l-2 border-l-red-500/55 bg-red-500/[0.05] dark:bg-red-950/30',
-                        )}
-                      >
-                        <IncidentListRow
-                          incident={incident}
-                          onOpen={handleOpenIncident}
-                          swipeOpenRowId={swipeOpenRowId}
-                          onSwipeRowOpenChange={setSwipeOpenRowId}
-                          onSwipeCloseIncident={onSwipeCloseIncident}
-                          hidePropertyContext={
-                            group.propertyId !== GENERAL_TASK_PROPERTY_GROUP_KEY &&
-                            group.propertyId !== INCIDENTS_BOARD_GROUP_KEY
-                          }
-                          className={
-                            isAwaitingDispatchHighlight
-                              ? 'border-b border-red-500/15 hover:bg-red-500/10 dark:hover:bg-red-950/40'
-                              : undefined
-                          }
-                        />
-                      </li>
-                    );
-                  })}
+                  {group.propertyId === SHORTAGE_BOARD_GROUP_KEY &&
+                  group.shortageEvents.length === 0 &&
+                  showShortageWhenEmpty ? (
+                    <li className="min-w-0 px-3 py-4">
+                      <p className="text-sm leading-relaxed text-muted-foreground">
+                        {tList('shortageEmptyHint')}{' '}
+                        <Link
+                          href={supplyTabHref}
+                          className="font-medium text-[#008CA4] underline underline-offset-2 hover:text-[#006d80] dark:text-[#7ee8ff] dark:hover:text-[#a5f3fc]"
+                        >
+                          {tList('shortageSupplyTabLink')}
+                        </Link>
+                      </p>
+                    </li>
+                  ) : null}
+                  {group.shortageEvents.map((ev) => (
+                    <li key={`sq-${ev.id}`} className="min-w-0">
+                      <SupplyShortageListRow event={ev} onOpen={handleOpenSupply} variant="supply" />
+                    </li>
+                  ))}
+                  {group.propertyId === INCIDENTS_BOARD_GROUP_KEY
+                    ? group.incidents.map((incident) => {
+                        const isAwaitingDispatchHighlight = incident.status === 'awaiting_dispatch';
+                        return (
+                          <li
+                            key={`inc-${incident.uuid}`}
+                            className={cn(
+                              'min-w-0',
+                              isAwaitingDispatchHighlight &&
+                                'border-l-2 border-l-red-500/55 bg-red-500/[0.05] dark:bg-red-950/30',
+                            )}
+                          >
+                            <IncidentListRow
+                              incident={incident}
+                              onOpen={handleOpenIncident}
+                              swipeOpenRowId={swipeOpenRowId}
+                              onSwipeRowOpenChange={setSwipeOpenRowId}
+                              onSwipeCloseIncident={onSwipeCloseIncident}
+                              hidePropertyContext={false}
+                              className={
+                                isAwaitingDispatchHighlight
+                                  ? 'border-b border-red-500/15 hover:bg-red-500/10 dark:hover:bg-red-950/40'
+                                  : undefined
+                              }
+                            />
+                          </li>
+                        );
+                      })
+                    : group.incidents.map((incident) => {
+                        const isAwaitingDispatchHighlight = incident.status === 'awaiting_dispatch';
+                        return (
+                          <li
+                            key={`inc-${incident.uuid}`}
+                            className={cn(
+                              'min-w-0',
+                              isAwaitingDispatchHighlight &&
+                                'border-l-2 border-l-red-500/55 bg-red-500/[0.05] dark:bg-red-950/30',
+                            )}
+                          >
+                            <IncidentListRow
+                              incident={incident}
+                              onOpen={handleOpenIncident}
+                              swipeOpenRowId={swipeOpenRowId}
+                              onSwipeRowOpenChange={setSwipeOpenRowId}
+                              onSwipeCloseIncident={onSwipeCloseIncident}
+                              hidePropertyContext={
+                                group.propertyId !== GENERAL_TASK_PROPERTY_GROUP_KEY &&
+                                group.propertyId !== INCIDENTS_BOARD_GROUP_KEY
+                              }
+                              className={
+                                isAwaitingDispatchHighlight
+                                  ? 'border-b border-red-500/15 hover:bg-red-500/10 dark:hover:bg-red-950/40'
+                                  : undefined
+                              }
+                            />
+                          </li>
+                        );
+                      })}
                   {group.tasks.map((task) => (
                     <li key={task.uuid} className="min-w-0">
                       <TaskListRow
@@ -295,9 +400,7 @@ export const TaskListView = memo(function TaskListView({
                         'dark:text-[#00d4ff] dark:hover:bg-[#00d4ff]/10',
                       )}
                     >
-                      {tList(
-                        group.propertyId === INCIDENTS_BOARD_GROUP_KEY ? 'addIncident' : 'addTask',
-                      )}
+                      {tList(group.propertyId === INCIDENTS_BOARD_GROUP_KEY ? 'addIncident' : 'addTask')}
                     </button>
                   </div>
                 ) : null}

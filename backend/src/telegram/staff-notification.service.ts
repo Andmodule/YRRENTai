@@ -118,6 +118,74 @@ export class StaffNotificationService {
   }
 
   /**
+   * Notify STAFF/MANAGER when a delivery route is assigned to them (Telegram; web uses WebSocket).
+   */
+  async notifyDeliveryRouteAssigned(
+    driverUserId: string,
+    routeId: string,
+    scheduledDate: string,
+  ): Promise<void> {
+    if (!this.isEnabled) {
+      this.logger.debug(`Delivery route TG notify skipped: bot not configured (route=${routeId})`);
+      return;
+    }
+    const assignee = await this.userService.findById(driverUserId);
+    const chatId = assignee?.telegramChatId?.trim();
+    if (!assignee) {
+      this.logger.warn(`Delivery route TG notify skipped: user not found (${driverUserId})`);
+      return;
+    }
+    if (!['STAFF', 'MANAGER'].includes(assignee.role)) {
+      return;
+    }
+    if (!chatId) {
+      this.logger.log(
+        `Delivery route TG notify skipped: no telegramChatId for user ${driverUserId} (route=${routeId})`,
+      );
+      return;
+    }
+
+    const tma = resolveStaffMiniAppUrl(this.configService);
+    const dateEsc = escapeTelegramHtml((scheduledDate ?? '').trim() || '—');
+    const text = `🚚 <b>Маршрут доставки</b>\n\nДата: ${dateEsc}.\n\nОткройте приложение — блок «Маршрут».`;
+
+    const startParam = `route_${routeId.replace(/-/g, '_')}`;
+    const keyboard =
+      tma && tma.startsWith('https://')
+        ? {
+            inline_keyboard: [
+              [
+                {
+                  text: '🚚 Открыть маршрут',
+                  web_app: {
+                    url: `${tma}${tma.includes('?') ? '&' : '?'}startapp=${encodeURIComponent(startParam)}`,
+                  },
+                },
+              ],
+            ],
+          }
+        : undefined;
+
+    try {
+      await axios.post<TelegramSendMessageResponse>(
+        `${this.apiBase}/sendMessage`,
+        {
+          chat_id: chatId,
+          text,
+          parse_mode: 'HTML',
+          ...(keyboard ? { reply_markup: keyboard } : {}),
+        },
+        { timeout: 15000 },
+      );
+      this.logger.log(`Staff TG delivery route notify sent route=${routeId} driver=${driverUserId}`);
+    } catch (err) {
+      this.logger.warn(
+        `Staff Telegram delivery route notify failed route=${routeId}: ${(err as Error).message}`,
+      );
+    }
+  }
+
+  /**
    * Morning digest (08:00 local property time). Omits inline keyboard if TMA URL is missing/invalid.
    */
   async sendMorningDigest(chatId: string, lines: string[]): Promise<void> {

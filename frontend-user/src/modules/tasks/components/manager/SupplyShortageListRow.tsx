@@ -1,0 +1,71 @@
+'use client';
+
+import { memo } from 'react';
+import { useTranslations } from 'next-intl';
+import { AlertTriangle, Package, ChevronRight } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import type { PendingSupplyInterpretationEvent } from '../../types';
+
+export const SupplyShortageListRow = memo(function SupplyShortageListRow({
+  event,
+  onOpen,
+  variant = 'supply',
+}: {
+  event: PendingSupplyInterpretationEvent;
+  onOpen: (event: PendingSupplyInterpretationEvent) => void;
+  variant?: 'supply' | 'incident';
+}) {
+  const t = useTranslations('tasks.listByProperty');
+  const preview =
+    event.textRaw.length > 140 ? `${event.textRaw.slice(0, 137).trim()}…` : event.textRaw;
+  const itemsPreview = event.items
+    .slice(0, 2)
+    .map((i) => i.name)
+    .filter(Boolean)
+    .join(', ');
+
+  const isIncident = variant === 'incident';
+
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(event)}
+      className={cn(
+        'flex w-full min-w-0 items-start gap-3 border-b border-border/50 px-3 py-3 text-left transition-colors',
+        isIncident
+          ? 'border-l-2 border-l-amber-500/55 bg-amber-500/[0.06] hover:bg-amber-500/[0.1] dark:border-l-amber-400/50 dark:bg-amber-500/[0.08] dark:hover:bg-amber-500/[0.12]'
+          : 'border-l-2 border-l-[#008CA4]/50 bg-[#008CA4]/[0.04] hover:bg-[#008CA4]/[0.08] dark:border-l-[#00d4ff]/45 dark:bg-[#00d4ff]/[0.06] dark:hover:bg-[#00d4ff]/[0.1]',
+      )}
+    >
+      <span
+        className={cn(
+          'flex h-9 w-9 shrink-0 items-center justify-center rounded-xl',
+          isIncident
+            ? 'bg-amber-500/15 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300'
+            : 'bg-[#008CA4]/12 text-[#008CA4] dark:bg-[#00d4ff]/15 dark:text-[#7ee8ff]',
+        )}
+      >
+        {isIncident ? (
+          <AlertTriangle className="h-4 w-4" aria-hidden />
+        ) : (
+          <Package className="h-4 w-4" aria-hidden />
+        )}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold text-foreground">{event.propertyTitle}</p>
+        <p className="mt-0.5 line-clamp-2 text-xs leading-snug text-muted-foreground">{preview}</p>
+        {itemsPreview ? (
+          <p
+            className={cn(
+              'mt-1 text-[11px] font-medium',
+              isIncident ? 'text-amber-700 dark:text-amber-300' : 'text-[#008CA4] dark:text-[#7ee8ff]',
+            )}
+          >
+            {t('shortageItemsPreview', { items: itemsPreview })}
+          </p>
+        ) : null}
+      </div>
+      <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+    </button>
+  );
+});

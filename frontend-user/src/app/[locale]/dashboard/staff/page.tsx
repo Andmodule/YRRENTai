@@ -13,9 +13,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Copy, Link2, Loader2, Pencil } from 'lucide-react';
+import { Copy, Link2, Link2Off, Loader2, Pencil } from 'lucide-react';
+import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { isValidStaffInvitePhone, isValidStaffTelegramUsername } from '@/lib/staff/staff-invite-validation';
+import { normalizeTelegramStaffInviteLink } from '@/lib/staff/telegram-invite-link';
 
 const JOB_TYPES = ['cleaner', 'maintenance', 'driver', 'other'] as const;
 type JobType = (typeof JOB_TYPES)[number];
@@ -112,6 +114,7 @@ export default function StaffPage() {
   const [inviteLoading, setInviteLoading] = useState(false);
   const [inviteRowError, setInviteRowError] = useState<string | null>(null);
   const [inviteRegenerating, setInviteRegenerating] = useState(false);
+  const [unlinkingId, setUnlinkingId] = useState<string | null>(null);
 
   const phoneInvalid = phone.trim().length > 0 && !isValidStaffInvitePhone(phone);
   const telegramInvalid =
@@ -189,7 +192,7 @@ export default function StaffPage() {
     const link = inviteResult?.inviteLink;
     if (!link) return;
     try {
-      await navigator.clipboard.writeText(link);
+      await navigator.clipboard.writeText(normalizeTelegramStaffInviteLink(link));
     } catch {
       /* ignore */
     }
@@ -266,11 +269,26 @@ export default function StaffPage() {
     setInviteRowOpen(true);
   };
 
+  const unlinkStaffTelegram = async (row: StaffDirectoryRow) => {
+    if (!row.telegramLinked) return;
+    if (!window.confirm(t('unlinkTelegramConfirm'))) return;
+    setUnlinkingId(row.id);
+    try {
+      await apiClient.post(`/users/staff/${row.id}/telegram/unlink`);
+      await mutate();
+      toast.success(t('unlinkTelegramSuccess'));
+    } catch {
+      toast.error(t('unlinkTelegramError'));
+    } finally {
+      setUnlinkingId(null);
+    }
+  };
+
   const copyRowInviteLink = async () => {
     const link = invitePayload?.inviteLink;
     if (!link) return;
     try {
-      await navigator.clipboard.writeText(link);
+      await navigator.clipboard.writeText(normalizeTelegramStaffInviteLink(link));
     } catch {
       /* ignore */
     }
@@ -375,8 +393,11 @@ export default function StaffPage() {
                     <td className="px-4 py-3 text-right">
                       <StaffRowActions
                         telegramBotConfigured={telegramBotConfigured}
+                        telegramLinked={row.telegramLinked}
+                        unlinking={unlinkingId === row.id}
                         onEdit={() => openEdit(row)}
                         onInvite={() => openInviteForRow(row)}
+                        onUnlinkTelegram={() => void unlinkStaffTelegram(row)}
                       />
                     </td>
                   </tr>
@@ -428,8 +449,11 @@ export default function StaffPage() {
                 <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-4 dark:border-slate-200/80">
                   <StaffRowActions
                     telegramBotConfigured={telegramBotConfigured}
+                    telegramLinked={row.telegramLinked}
+                    unlinking={unlinkingId === row.id}
                     onEdit={() => openEdit(row)}
                     onInvite={() => openInviteForRow(row)}
+                    onUnlinkTelegram={() => void unlinkStaffTelegram(row)}
                   />
                 </div>
               </article>
@@ -494,7 +518,7 @@ export default function StaffPage() {
           {inviteResult ? (
             inviteResult.inviteLink ? (
               <div className="break-all rounded-lg border border-border bg-muted/50 p-3 font-mono text-xs">
-                {inviteResult.inviteLink}
+                {normalizeTelegramStaffInviteLink(inviteResult.inviteLink)}
               </div>
             ) : null
           ) : (
@@ -771,7 +795,7 @@ export default function StaffPage() {
               {invitePayload?.inviteLink ? (
                 <>
                   <div className="break-all rounded-lg border border-border bg-muted/50 p-3 font-mono text-xs">
-                    {invitePayload.inviteLink}
+                    {normalizeTelegramStaffInviteLink(invitePayload.inviteLink)}
                   </div>
                   {invitePayload.expiresAt ? (
                     <p className="mt-2 text-xs text-muted-foreground">
@@ -800,12 +824,18 @@ export default function StaffPage() {
 
 function StaffRowActions({
   telegramBotConfigured,
+  telegramLinked,
+  unlinking,
   onEdit,
   onInvite,
+  onUnlinkTelegram,
 }: {
   telegramBotConfigured: boolean;
+  telegramLinked: boolean;
+  unlinking: boolean;
   onEdit: () => void;
   onInvite: () => void;
+  onUnlinkTelegram: () => void;
 }) {
   const t = useTranslations('staff');
   return (
@@ -814,6 +844,23 @@ function StaffRowActions({
         <Pencil className="mr-1 h-3.5 w-3.5" />
         {t('editStaff')}
       </Button>
+      {telegramLinked ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-8 text-amber-900 dark:text-amber-200/95"
+          disabled={unlinking}
+          onClick={onUnlinkTelegram}
+        >
+          {unlinking ? (
+            <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Link2Off className="mr-1 h-3.5 w-3.5" />
+          )}
+          {t('unlinkTelegram')}
+        </Button>
+      ) : null}
       <Button
         type="button"
         variant="outline"

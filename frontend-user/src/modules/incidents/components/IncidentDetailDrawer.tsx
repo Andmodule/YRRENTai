@@ -9,6 +9,7 @@ interface IncidentDetailDrawerProps {
   onOpenChange: (open: boolean) => void;
   /** Manager dashboard (default true). Set false for read-only staff / TMA. */
   isManagerView?: boolean;
+  onOpenRelatedTask?: (taskUuid: string) => void;
 }
 
 export function IncidentDetailDrawer({
@@ -16,6 +17,7 @@ export function IncidentDetailDrawer({
   open,
   onOpenChange,
   isManagerView = true,
+  onOpenRelatedTask,
 }: IncidentDetailDrawerProps) {
   return (
     <SharedDetailDrawer
@@ -24,6 +26,7 @@ export function IncidentDetailDrawer({
       open={open}
       onOpenChange={onOpenChange}
       isManagerView={isManagerView}
+      onOpenRelatedTask={onOpenRelatedTask}
     />
   );
 }

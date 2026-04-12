@@ -81,6 +81,16 @@ export class TasksGateway implements OnGatewayConnection {
     this.server.emit('incident_updated', payload);
   }
 
+  /** Staff text/voice interpretation finished or manager cleared an item — refresh supply queue without reload. */
+  emitSupplyInterpretationsChanged() {
+    this.server.emit('supply_interpretations_changed', {});
+  }
+
+  /** Manager assigned / reassigned driver on a delivery route — staff app refetches active route. */
+  emitDeliveryRouteAssigned(payload: { routeId: string; driverUserId: string }) {
+    this.server.emit('delivery_route_assigned', payload);
+  }
+
   /** Manager replied in Telegram (thread on incident alert) — staff app shows toast if reportedBy matches. */
   emitIncidentManagerNote(payload: {
     incidentId: string;

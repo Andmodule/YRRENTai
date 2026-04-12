@@ -8,9 +8,20 @@ import { ChecklistTemplateItemEntity } from './entities/checklist-template-item.
 import { TaskChecklistItemEntity } from './entities/task-checklist-item.entity';
 import { PropertyEntity } from '../property/entities/property.entity';
 import { UserEntity } from '../user/entities/user.entity';
+import { CompanyEntity } from '../user/entities/company.entity';
 import { StaffDailyDigestSentEntity } from './entities/staff-daily-digest-sent.entity';
 import { BookingEntity } from '../booking/entities/booking.entity';
 import { IncidentEntity } from '../incidents/entities/incident.entity';
+import { StaffInterpretationEventEntity } from './entities/staff-interpretation-event.entity';
+import { SupplyRequestItemEntity } from './entities/supply-request-item.entity';
+import { SupplyItemEntity } from './entities/supply-item.entity';
+import { SupplyItemAliasEntity } from './entities/supply-item-alias.entity';
+import { DeliveryRouteEntity } from './entities/delivery-route.entity';
+import { DeliveryRouteStopEntity } from './entities/delivery-route-stop.entity';
+import { DeliveryStopSupplyLineEntity } from './entities/delivery-stop-supply-line.entity';
+import { DeliveryRoutesService } from './delivery-routes.service';
+import { StaffInterpretationService } from './staff-interpretation.service';
+import { SupplyCatalogService } from './supply-catalog.service';
 import { PropertyModule } from '../property/property.module';
 import { TasksController } from './tasks.controller';
 import { ChecklistTemplatesController } from './checklist-templates.controller';
@@ -35,6 +46,14 @@ import { TelegramModule } from '../telegram/telegram.module';
       IncidentEntity,
       StaffDailyDigestSentEntity,
       UserEntity,
+      StaffInterpretationEventEntity,
+      SupplyRequestItemEntity,
+      SupplyItemEntity,
+      SupplyItemAliasEntity,
+      DeliveryRouteEntity,
+      DeliveryRouteStopEntity,
+      DeliveryStopSupplyLineEntity,
+      CompanyEntity,
     ]),
     PropertyModule,
     UserModule,
@@ -43,7 +62,22 @@ import { TelegramModule } from '../telegram/telegram.module';
     forwardRef(() => TelegramModule),
   ],
   controllers: [TasksController, ChecklistTemplatesController],
-  providers: [TasksService, TasksGateway, ChecklistService, TasksDigestSchedulerService],
-  exports: [TasksService, ChecklistService, TasksGateway],
+  providers: [
+    TasksService,
+    StaffInterpretationService,
+    SupplyCatalogService,
+    DeliveryRoutesService,
+    TasksGateway,
+    ChecklistService,
+    TasksDigestSchedulerService,
+  ],
+  exports: [
+    TasksService,
+    StaffInterpretationService,
+    SupplyCatalogService,
+    DeliveryRoutesService,
+    ChecklistService,
+    TasksGateway,
+  ],
 })
 export class TasksModule {}

@@ -1,4 +1,4 @@
-import type { Task, TaskPriority } from '../types';
+import type { Task, TaskPriority, PendingSupplyInterpretationEvent } from '../types';
 import type { Incident } from '@/modules/incidents/hooks/useIncidents';
 
 /** Sentinel id for tasks without a property (null / empty from API). */
@@ -6,6 +6,9 @@ export const GENERAL_TASK_PROPERTY_GROUP_KEY = '__rentai_general_tasks__' as con
 
 /** Board list: all incidents in one block, shown first (like general tasks). */
 export const INCIDENTS_BOARD_GROUP_KEY = '__rentai_incidents_board__' as const;
+
+/** Очередь снабжения / нехватки (staff → LLM → менеджер), одна свёртка под инцидентами. */
+export const SHORTAGE_BOARD_GROUP_KEY = '__rentai_shortage_supply_board__' as const;
 
 const PRIORITY_SORT: Record<TaskPriority, number> = {
   critical: 0,
@@ -19,6 +22,7 @@ export interface TaskPropertyGroup {
   propertyAddress: string;
   tasks: Task[];
   incidents: Incident[];
+  shortageEvents: PendingSupplyInterpretationEvent[];
 }
 
 function normalizePropertyKey(propertyId: string | null | undefined): string {
@@ -45,14 +49,24 @@ function compareIncidents(a: Incident, b: Incident): number {
   return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
 }
 
+function compareShortage(a: PendingSupplyInterpretationEvent, b: PendingSupplyInterpretationEvent): number {
+  return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+}
+
 /**
  * Manager board list: incidents are **not** mixed into property groups — they appear in a single block first
- * ({@link INCIDENTS_BOARD_GROUP_KEY}). Remaining groups contain **tasks only**, sorted general first then by title.
+ * ({@link INCIDENTS_BOARD_GROUP_KEY}). Затем {@link SHORTAGE_BOARD_GROUP_KEY} (только снабжение/логистика). Remaining groups
+ * contain **tasks only**, sorted general first then by title.
+ *
+ * @param opts.alwaysShowShortageGroup — если `false`, свёртка нехватки только при ненулевой очереди (напр. TMA).
  */
 export function groupTasksAndIncidentsForBoard(
   tasks: Task[],
   incidents: Incident[],
+  shortageEvents: PendingSupplyInterpretationEvent[] = [],
+  opts?: { alwaysShowShortageGroup?: boolean },
 ): TaskPropertyGroup[] {
+  const alwaysShowShortageGroup = opts?.alwaysShowShortageGroup ?? true;
   const map = new Map<
     string,
     {
@@ -101,6 +115,7 @@ export function groupTasksAndIncidentsForBoard(
     ...g,
     tasks: [...g.tasks].sort(compareTasks),
     incidents: [],
+    shortageEvents: [],
   }));
 
   propertyGroups.sort((a, b) => {
@@ -110,17 +125,36 @@ export function groupTasksAndIncidentsForBoard(
   });
 
   const sortedIncidents = [...incidents].sort(compareIncidents);
-  if (sortedIncidents.length === 0) {
-    return propertyGroups;
-  }
+  const supplyEvents = shortageEvents.filter((e) => e.managerBucket === 'supply');
+  const sortedSupply = [...supplyEvents].sort(compareShortage);
 
-  const incidentsBlock: TaskPropertyGroup = {
-    propertyId: INCIDENTS_BOARD_GROUP_KEY,
-    propertyTitle: '',
-    propertyAddress: '',
-    tasks: [],
-    incidents: sortedIncidents,
-  };
+  const incidentsBlock: TaskPropertyGroup | null =
+    sortedIncidents.length > 0
+      ? {
+          propertyId: INCIDENTS_BOARD_GROUP_KEY,
+          propertyTitle: '',
+          propertyAddress: '',
+          tasks: [],
+          incidents: sortedIncidents,
+          shortageEvents: [],
+        }
+      : null;
 
-  return [incidentsBlock, ...propertyGroups];
+  const shortageBlock: TaskPropertyGroup | null =
+    alwaysShowShortageGroup || sortedSupply.length > 0
+      ? {
+          propertyId: SHORTAGE_BOARD_GROUP_KEY,
+          propertyTitle: '',
+          propertyAddress: '',
+          tasks: [],
+          incidents: [],
+          shortageEvents: sortedSupply,
+        }
+      : null;
+
+  const head: TaskPropertyGroup[] = [];
+  if (incidentsBlock) head.push(incidentsBlock);
+  if (shortageBlock) head.push(shortageBlock);
+
+  return [...head, ...propertyGroups];
 }

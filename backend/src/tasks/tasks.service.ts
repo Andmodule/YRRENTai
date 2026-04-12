@@ -26,6 +26,56 @@ import { TaskNoteEntity } from './entities/task-note.entity';
 import { TasksGateway } from './tasks.gateway';
 import { ChecklistService } from './checklist.service';
 import { StaffNotificationService } from '../telegram/staff-notification.service';
+import { IncidentsService } from '../incidents/incidents.service';
+import { StaffInterpretationService } from './staff-interpretation.service';
+import { DeliveryRoutesService } from './delivery-routes.service';
+
+export type StaffMiniAppButtonPressed = 'TASK' | 'INCIDENT';
+export type StaffMiniAppDetectedMode = 'TASK_ONLY' | 'INCIDENT_ONLY' | 'MIXED';
+
+/** POST /tasks/staff-miniapp/voice-preview */
+export interface StaffMiniAppVoicePreviewDto {
+  buttonPressed: StaffMiniAppButtonPressed;
+  detectedMode: StaffMiniAppDetectedMode;
+  confidence: number;
+  transcript: string;
+  task: {
+    suggestedStatus: string | null;
+    comment: string;
+    shortages: string | null;
+  };
+  incident: {
+    include: boolean;
+    type: IncidentType | null;
+    title: string | null;
+    description: string | null;
+    risk: 'low' | 'medium' | 'high' | null;
+  };
+  needsClarification: boolean;
+  clarificationQuestions: string[];
+  mismatchHint: string | null;
+}
+
+/** POST /tasks/staff-miniapp/voice-submit */
+export interface StaffMiniAppVoiceSubmitDto {
+  /** Либо задача, либо объект маршрута (водитель без задачи уборки). */
+  taskUuid?: string;
+  propertyId?: string;
+  clientRequestId?: string;
+  buttonPressed: StaffMiniAppButtonPressed;
+  transcript: string;
+  detectedMode: StaffMiniAppDetectedMode;
+  task: { suggestedStatus: string | null; comment: string; shortages?: string | null };
+  incident: {
+    include: boolean;
+    type?: string | null;
+    title?: string | null;
+    description?: string | null;
+    risk?: string | null;
+    /** Загружены через POST /incidents/upload-photos до submit. */
+    photoUrls?: string[];
+  };
+}
 
 export interface TaskDto {
   uuid: string;
@@ -67,6 +117,10 @@ export interface TaskDto {
   } | null;
   /** Set when task was created from an incident (dispatch / Smart Create from drawer). */
   incidentId: string | null;
+  /** Incidents filed with this task as context (`incidents.taskId`); newest first. Manager/owner. */
+  linkedIncidentIdsFromTask: string[];
+  /** Supply/shortage interpretation rows targeting this task (awaiting manager). Manager/owner. */
+  pendingSupplyInterpretationIds: string[];
 }
 
 export interface TaskNoteDto {
@@ -168,27 +222,53 @@ export class TasksService {
     private readonly userService: UserService,
     @Inject(forwardRef(() => StaffNotificationService))
     private readonly staffNotification: StaffNotificationService,
+    @Inject(forwardRef(() => IncidentsService))
+    private readonly incidentsService: IncidentsService,
+    @Inject(forwardRef(() => StaffInterpretationService))
+    private readonly staffInterpretation: StaffInterpretationService,
+    private readonly deliveryRoutesService: DeliveryRoutesService,
   ) {}
+
+  /** Контекст для LLM голоса по объекту маршрута (без записи в БД). */
+  private buildPseudoTaskForRouteVoice(property: PropertyEntity): TaskEntity {
+    const t = new TaskEntity();
+    t.id = property.id;
+    t.title = 'Маршрут доставки';
+    t.type = 'manual';
+    t.status = 'in_progress';
+    t.priority = 'normal';
+    t.propertyId = property.id;
+    t.companyId = property.companyId;
+    t.dueDate = format(new Date(), 'yyyy-MM-dd');
+    t.dueTime = null;
+    t.property = property;
+    return t;
+  }
 
   private toDto(
     t: TaskEntity,
     extras: {
       unseenNotesCount: number;
       checklistSummary: TaskDto['checklistSummary'];
+      linkedIncidentIdsFromTask?: string[];
+      pendingSupplyInterpretationIds?: string[];
     },
   ): TaskDto {
-    const addr = [t.property.city, t.property.address].filter(Boolean).join(', ');
+    const isGen = t.isGeneralTask ?? false;
+    const addr = t.property
+      ? [t.property.city, t.property.address].filter(Boolean).join(', ')
+      : '';
     return {
       uuid: t.id,
       title: t.title ?? '',
       type: t.type,
       status: t.status,
       priority: t.priority,
-      isGeneralTask: t.isGeneralTask ?? false,
+      isGeneralTask: isGen,
       propertyId: t.propertyId,
-      propertyTitle: t.property.name,
-      propertyAddress: addr,
-      streetAddress: t.property.address,
+      propertyTitle: isGen ? 'Общая задача' : (t.property?.name ?? ''),
+      propertyAddress: isGen ? '' : addr,
+      streetAddress: isGen ? '' : (t.property?.address ?? ''),
       reservationId: t.reservationId,
       contextLabel: t.contextLabel,
       assigneeId: t.assigneeId,
@@ -213,7 +293,59 @@ export class TasksService {
       completedAt: t.completedAt ? t.completedAt.toISOString() : null,
       checklistSummary: extras.checklistSummary,
       incidentId: t.incidentId ?? null,
+      linkedIncidentIdsFromTask: extras.linkedIncidentIdsFromTask ?? [],
+      pendingSupplyInterpretationIds: extras.pendingSupplyInterpretationIds ?? [],
     };
+  }
+
+  /** Incidents + supply queue rows for manager task badges (batched for list). */
+  private async loadManagerTaskLinkExtras(taskIds: string[]): Promise<{
+    incidentsByTask: Map<string, string[]>;
+    supplyByTask: Map<string, string[]>;
+  }> {
+    const incidentsByTask = new Map<string, string[]>();
+    const supplyByTask = new Map<string, string[]>();
+    if (taskIds.length === 0) return { incidentsByTask, supplyByTask };
+
+    const incidentRows = await this.incidentRepo.find({
+      where: { taskId: In(taskIds) },
+      select: ['id', 'taskId', 'createdAt'],
+      order: { createdAt: 'DESC' },
+    });
+    for (const r of incidentRows) {
+      if (!r.taskId) continue;
+      const list = incidentsByTask.get(r.taskId) ?? [];
+      list.push(r.id);
+      incidentsByTask.set(r.taskId, list);
+    }
+
+    const supplyRows = (await this.taskRepo.manager.query(
+      `SELECT e.id AS id, e."targetId" AS "targetId"
+       FROM staff_interpretation_events e
+       INNER JOIN tasks t ON t.id = e."targetId" AND e."targetType" = 'task'
+       WHERE e."targetId" = ANY($1::uuid[])
+         AND t.status <> 'done'
+         AND (
+           e."workflowState" IN ('pending_manager', 'manual_review')
+           OR (
+             e."workflowState" = 'manager_acknowledged'
+             AND EXISTS (
+               SELECT 1 FROM supply_request_items sri
+               WHERE sri."interpretationEventId" = e.id
+                 AND sri."lineStatus" IN ('pending', 'handed_to_driver')
+             )
+           )
+         )
+       ORDER BY e."createdAt" DESC`,
+      [taskIds],
+    )) as { id: string; targetId: string }[];
+    for (const r of supplyRows) {
+      const list = supplyByTask.get(r.targetId) ?? [];
+      list.push(r.id);
+      supplyByTask.set(r.targetId, list);
+    }
+
+    return { incidentsByTask, supplyByTask };
   }
 
   private async unseenNoteCounts(taskIds: string[]): Promise<Map<string, number>> {
@@ -256,10 +388,16 @@ export class TasksService {
     const rows = await qb.orderBy('t.dueDate', 'ASC').addOrderBy('t.dueTime', 'ASC').getMany();
     const unseen = await this.unseenNoteCounts(rows.map((r) => r.id));
     const summaries = await this.checklistService.summariesForTasks(rows.map((r) => r.id));
+    const linkExtras =
+      role === 'MANAGER' || role === 'OWNER'
+        ? await this.loadManagerTaskLinkExtras(rows.map((r) => r.id))
+        : null;
     return rows.map((r) =>
       this.toDto(r, {
         unseenNotesCount: unseen.get(r.id) ?? 0,
         checklistSummary: summaries.get(r.id) ?? null,
+        linkedIncidentIdsFromTask: linkExtras?.incidentsByTask.get(r.id),
+        pendingSupplyInterpretationIds: linkExtras?.supplyByTask.get(r.id),
       }),
     );
   }
@@ -267,7 +405,7 @@ export class TasksService {
   async findForStaff(userId: string, from: string, to: string): Promise<TaskDto[]> {
     const rows = await this.taskRepo
       .createQueryBuilder('t')
-      .innerJoinAndSelect('t.property', 'p')
+      .leftJoinAndSelect('t.property', 'p')
       .leftJoinAndSelect('t.assignee', 'assignee')
       .leftJoinAndSelect('t.createdBy', 'createdBy')
       .where('t.assigneeId = :userId', { userId })
@@ -308,6 +446,13 @@ export class TasksService {
     return task;
   }
 
+  /** Пустая строка от клиента не должна попадать в UUID-колонку — иначе задача не находится по assigneeId. */
+  private static normalizeAssigneeIdInput(raw: string | null | undefined): string | null {
+    if (raw == null) return null;
+    const s = String(raw).trim();
+    return s.length > 0 ? s : null;
+  }
+
   private static readonly PATCHABLE_PRIORITIES = new Set(['urgent', 'normal', 'critical']);
 
   private static readonly PATCHABLE_TASK_TYPES = new Set([
@@ -321,6 +466,24 @@ export class TasksService {
   /** Staff Telegram notifications: only for active work, not done/issue. */
   private static isStaffNotifiableTaskStatus(status: string): boolean {
     return status === 'pending' || status === 'in_progress';
+  }
+
+  /**
+   * LLM/voice often sets status "issue" for довоз/замена; the red Kanban badge "Инцидент" maps to task.status issue.
+   * Downgrade when text is supply/logistics only, not a real escalation (damage, flood, theft, …).
+   */
+  private static isSupplyOrLogisticsNotStrongIncident(
+    shortages: string | null,
+    comment: string,
+    transcript: string,
+  ): boolean {
+    const combined = [shortages, comment, transcript].filter(Boolean).join('\n').toLowerCase();
+    if (!combined.trim()) return false;
+    const supply =
+      /довоз|замен|достав|забрать|курьер|логистик|бумаг|полотен|расход|снабж|стирк|бель|водител|немиг|restock|supply|replacement|pickup/i;
+    const strongIncident =
+      /слом|полом|тресн|потоп|затоп|краж|пожар|авар|травм|угроз|утеря|утерян|аварий|damage|flood|theft|emergency/i;
+    return supply.test(combined) && !strongIncident.test(combined);
   }
 
   async getOneForUser(taskId: string, userId: string, role: string): Promise<TaskDto> {
@@ -359,6 +522,8 @@ export class TasksService {
       dueTime: string | null;
     }>,
     forceComplete?: boolean,
+    /** Только из `staffMiniappVoiceSubmit` — не передаётся с HTTP PATCH. */
+    options?: { bypassChecklistForStaffVoiceClose?: boolean },
   ): Promise<TaskDto> {
     const task = await this.ensureTaskAccess(taskId, userId, role);
     const prevStatus = task.status;
@@ -405,6 +570,8 @@ export class TasksService {
       if (!result.ok) {
         if (forceComplete && (role === 'OWNER' || role === 'MANAGER')) {
           /* allow */
+        } else if (options?.bypassChecklistForStaffVoiceClose && role === 'STAFF') {
+          /* Голосовой отчёт в miniapp подтверждён с экрана ревью — закрываем задачу, инцидент/нехватка отдельно. */
         } else if (forceComplete) {
           throw new ForbiddenException('forceComplete is only for owner/manager');
         } else {
@@ -511,10 +678,13 @@ export class TasksService {
     }
 
     await this.incidentRepo.save(inc);
-    this.tasksGateway.emitIncidentUpdated({
-      incidentId: inc.id,
-      propertyOwnerId: inc.property.ownerId,
-    });
+    const ownerId = inc.property?.ownerId;
+    if (ownerId) {
+      this.tasksGateway.emitIncidentUpdated({
+        incidentId: inc.id,
+        propertyOwnerId: ownerId,
+      });
+    }
   }
 
   private async reloadTask(id: string): Promise<TaskEntity> {
@@ -530,9 +700,13 @@ export class TasksService {
     const unseen =
       role === 'STAFF' ? 0 : (await this.unseenNoteCounts([t.id])).get(t.id) ?? 0;
     const summaries = await this.checklistService.summariesForTasks([t.id]);
+    const linkExtras =
+      role === 'MANAGER' || role === 'OWNER' ? await this.loadManagerTaskLinkExtras([t.id]) : null;
     return this.toDto(t, {
       unseenNotesCount: unseen,
       checklistSummary: summaries.get(t.id) ?? null,
+      linkedIncidentIdsFromTask: linkExtras?.incidentsByTask.get(t.id),
+      pendingSupplyInterpretationIds: linkExtras?.supplyByTask.get(t.id),
     });
   }
 
@@ -761,6 +935,8 @@ export class TasksService {
 
     const incId = body.incidentId?.trim();
     let linkIncident: IncidentEntity | null = null;
+    /** First task linked to an incident updates dispatch fields; further tasks only set `task.incidentId`. */
+    let linkIncidentIsFirstDispatch = false;
     if (incId) {
       if (rid) {
         throw new BadRequestException('incidentId cannot be combined with reservationId');
@@ -779,14 +955,13 @@ export class TasksService {
       if (incident.propertyId !== ids[0]) {
         throw new BadRequestException('incident does not match property');
       }
-      if (incident.dispatchedTaskId) {
-        throw new BadRequestException('Incident already has a dispatched task');
-      }
       linkIncident = incident;
+      linkIncidentIsFirstDispatch = !incident.dispatchedTaskId;
     }
 
     const notes = body.notes?.trim() ?? '';
     const createdIds: string[] = [];
+    const assigneeId = TasksService.normalizeAssigneeIdInput(body.assigneeId);
 
     await this.taskRepo.manager.transaction(async (manager) => {
       for (const propertyId of ids) {
@@ -804,7 +979,7 @@ export class TasksService {
           companyId,
           reservationId,
           contextLabel,
-          assigneeId: body.assigneeId ?? null,
+          assigneeId,
           createdById: userId,
           dueDate: resolvedDueDate,
           dueTime: body.dueTime?.trim() || null,
@@ -819,7 +994,7 @@ export class TasksService {
         });
         const saved = await manager.save(TaskEntity, row);
         createdIds.push(saved.id);
-        if (linkIncident) {
+        if (linkIncident && linkIncidentIsFirstDispatch) {
           linkIncident.dispatchedTaskId = saved.id;
           linkIncident.taskId = saved.id;
           /** Исполнитель назначен, но задача ещё в pending — «В работе» только после in_progress на задаче. */
@@ -829,6 +1004,14 @@ export class TasksService {
         }
       }
     });
+
+    if (notes.length >= 3 && createdIds.length > 0) {
+      void this.staffInterpretation
+        .queueFromTaskCreate(userId, role, createdIds[0]!, notes)
+        .catch((err: unknown) =>
+          this.logger.warn(`interpret task_create queue: ${(err as Error).message}`),
+        );
+    }
 
     if (linkIncident) {
       this.tasksGateway.emitIncidentUpdated({
@@ -1881,6 +2064,497 @@ Reply with JSON only, no markdown.`;
       }
     }
     return out;
+  }
+
+  /**
+   * Staff Mini App: Groq STT + DeepSeek JSON — черновик отчёта по конкретной задаче (кнопка TASK/INCIDENT = prior).
+   */
+  async staffMiniappVoicePreview(
+    staffUserId: string,
+    role: string,
+    file: Express.Multer.File,
+    taskUuid: string | undefined,
+    buttonPressed: StaffMiniAppButtonPressed,
+    clarificationText?: string,
+    languageHint?: string,
+    propertyId?: string,
+  ): Promise<StaffMiniAppVoicePreviewDto> {
+    if (role !== 'STAFF') {
+      throw new ForbiddenException();
+    }
+    const tid = taskUuid?.trim();
+    const pid = propertyId?.trim();
+    if (!tid && !pid) {
+      throw new BadRequestException('taskUuid or propertyId required');
+    }
+    if (tid && pid) {
+      throw new BadRequestException('Provide only one of taskUuid or propertyId');
+    }
+
+    let task: TaskEntity;
+    if (tid) {
+      task = await this.ensureTaskAccess(tid, staffUserId, role);
+    } else {
+      const prop = await this.propertyService.findOneForUser(pid!, staffUserId, role);
+      const hasTask = await this.taskRepo.exist({
+        where: { propertyId: prop.id, assigneeId: staffUserId },
+      });
+      if (!hasTask) {
+        const onRoute = await this.deliveryRoutesService.isDriverPropertyOnActiveRoute(staffUserId, prop.id);
+        if (!onRoute) throw new ForbiddenException();
+      }
+      task = this.buildPseudoTaskForRouteVoice(prop);
+    }
+
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('audio is required');
+    }
+
+    const groqKey = this.configService.get<string>('GROQ_API_KEY')?.trim();
+    let transcript = '';
+    if (!groqKey) {
+      this.logger.warn('GROQ_API_KEY unset; staff voice preview using heuristic only.');
+      return this.heuristicStaffMiniAppPreview('', task, buttonPressed, 'Нет распознавания речи (GROQ_API_KEY).');
+    }
+    try {
+      transcript = await this.transcribeWithGroqWhisper(
+        file,
+        groqKey,
+        languageHint?.slice(0, 2),
+      );
+    } catch (e) {
+      this.logger.warn(`staff voice STT: ${(e as Error).message}`);
+      throw new BadRequestException('Не удалось распознать аудио');
+    }
+    const trimmed = transcript.trim();
+    const merged = [trimmed, clarificationText?.trim()].filter(Boolean).join('\n\n— Уточнение: ');
+
+    if (!merged.trim()) {
+      return this.heuristicStaffMiniAppPreview('', task, buttonPressed, 'Пустая запись');
+    }
+
+    const llm = this.getVoiceParseDeepseekClient();
+    if (!llm) {
+      return this.heuristicStaffMiniAppPreview(merged, task, buttonPressed, null);
+    }
+
+    try {
+      const raw = await this.llmParseStaffMiniAppVoice(llm, merged, task, buttonPressed);
+      return this.normalizeStaffMiniAppLlmResult(raw, merged, task, buttonPressed);
+    } catch (e) {
+      this.logger.warn(`staff miniapp voice LLM: ${(e as Error).message}`);
+      return this.heuristicStaffMiniAppPreview(merged, task, buttonPressed, null);
+    }
+  }
+
+  /**
+   * Staff Mini App: только STT — голосовой ответ на уточняющие вопросы (без повторного LLM-разбора всего отчёта).
+   */
+  async staffMiniappVoiceTranscribe(
+    role: string,
+    file: Express.Multer.File,
+    languageHint?: string,
+  ): Promise<{ transcript: string }> {
+    if (role !== 'STAFF') {
+      throw new ForbiddenException();
+    }
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('audio is required');
+    }
+    const transcript = await this.transcribeStaffVoiceBuffer(
+      file.buffer,
+      file.mimetype || 'audio/webm',
+      languageHint,
+    );
+    return { transcript };
+  }
+
+  /**
+   * Подтверждение: обновление задачи + заметка + инцидент (последовательно; createForStaff шлёт socket/Telegram).
+   */
+  async staffMiniappVoiceSubmit(
+    staffUserId: string,
+    role: string,
+    body: StaffMiniAppVoiceSubmitDto,
+  ): Promise<{ ok: boolean; taskUuid: string }> {
+    if (role !== 'STAFF') {
+      throw new ForbiddenException();
+    }
+    const taskUuidIn = body.taskUuid?.trim();
+    const propertyIdIn = body.propertyId?.trim();
+    if (!taskUuidIn && !propertyIdIn) {
+      throw new BadRequestException('taskUuid or propertyId required');
+    }
+    if (taskUuidIn && propertyIdIn) {
+      throw new BadRequestException('Provide only one of taskUuid or propertyId');
+    }
+
+    const fromRouteProperty = Boolean(propertyIdIn);
+    let task: TaskEntity;
+    let realTaskUuid: string | null = null;
+    if (!fromRouteProperty) {
+      task = await this.ensureTaskAccess(taskUuidIn!, staffUserId, role);
+      realTaskUuid = task.id;
+    } else {
+      const prop = await this.propertyService.findOneForUser(propertyIdIn!, staffUserId, role);
+      const hasTask = await this.taskRepo.exist({
+        where: { propertyId: prop.id, assigneeId: staffUserId },
+      });
+      if (!hasTask) {
+        const onRoute = await this.deliveryRoutesService.isDriverPropertyOnActiveRoute(staffUserId, prop.id);
+        if (!onRoute) throw new ForbiddenException();
+      }
+      task = this.buildPseudoTaskForRouteVoice(prop);
+    }
+
+    const comment = (body.task?.comment ?? '').trim();
+    const shortages = (body.task?.shortages ?? '').trim();
+    const interpretParts = [comment, shortages].filter(Boolean);
+    const interpretText = interpretParts.join('\n\n').trim();
+    const incidentIncluded = body.incident?.include === true;
+
+    let want = body.task?.suggestedStatus?.trim() || null;
+    const allowed = new Set(['pending', 'in_progress', 'done', 'issue']);
+    if (want && !allowed.has(want)) {
+      throw new BadRequestException('Invalid suggestedStatus');
+    }
+    /** Довоз/замена — не переводим задачу в «в работе» с голоса; статус задаёт менеджер. */
+    const hasShortages = shortages.length > 0;
+    if (want === 'in_progress' && hasShortages) {
+      want = null;
+    }
+    if (!fromRouteProperty) {
+      if (want === 'issue' && !incidentIncluded) {
+        if (
+          TasksService.isSupplyOrLogisticsNotStrongIncident(
+            shortages || null,
+            comment,
+            (body.transcript ?? '').trim(),
+          )
+        ) {
+          want =
+            task.status === 'done'
+              ? null
+              : body.buttonPressed === 'TASK'
+                ? 'done'
+                : 'in_progress';
+        }
+      }
+      /** Очистка задачи у менеджера — «готово»; инцидент / нехватка ведутся отдельно. */
+      if (incidentIncluded && task.status !== 'done') {
+        want = 'done';
+      }
+      /** Только нехватка/довоз (очередь снабжения), без блока инцидента — уборку всё равно закрываем. */
+      if (
+        !incidentIncluded &&
+        interpretText.length >= 3 &&
+        task.status !== 'done' &&
+        body.buttonPressed === 'TASK' &&
+        TasksService.isSupplyOrLogisticsNotStrongIncident(shortages || null, comment, (body.transcript ?? '').trim())
+      ) {
+        want = 'done';
+      }
+      if (want && want !== task.status) {
+        await this.update(taskUuidIn!, staffUserId, role, { status: want }, false, {
+          bypassChecklistForStaffVoiceClose: want === 'done',
+        });
+      }
+
+      if (comment) {
+        await this.addNote(taskUuidIn!, staffUserId, role, comment, null);
+      }
+    }
+
+    /** Создаём инцидент до очереди LLM — иначе setImmediate(process) может обогнать конец хендлера и создать второй инцидент. */
+    let voiceLinkedIncidentId: string | null = null;
+    if (incidentIncluded) {
+      const itype = this.mapSubmitIncidentType(body.incident.type);
+      const description =
+        (body.incident.description ?? body.transcript ?? '').trim() || 'Инцидент (голосовой отчёт)';
+      const rawUrls = Array.isArray(body.incident.photoUrls) ? body.incident.photoUrls : [];
+      const photoUrls = rawUrls
+        .filter((u) => typeof u === 'string' && u.trim())
+        .map((u) => u.trim())
+        .slice(0, 5);
+      const created = await this.incidentsService.createForStaff(staffUserId, {
+        type: itype,
+        propertyId: task.propertyId,
+        taskId: fromRouteProperty ? null : task.id,
+        description: description.slice(0, 8000),
+        photoUrls,
+        damageLocation: body.incident.title?.trim()?.slice(0, 500) || null,
+      });
+      voiceLinkedIncidentId = created.uuid;
+    }
+
+    if (interpretText.length >= 3) {
+      try {
+        if (fromRouteProperty) {
+          await this.staffInterpretation.queueFromVoicePropertyReport(staffUserId, task.propertyId, interpretText, {
+            skipAutoIncident: incidentIncluded,
+            voiceLinkedIncidentId,
+          });
+        } else {
+          await this.staffInterpretation.queueFromVoiceTaskReport(staffUserId, realTaskUuid!, interpretText, {
+            skipAutoIncident: incidentIncluded,
+            voiceLinkedIncidentId,
+          });
+        }
+      } catch (e) {
+        this.logger.warn(`voice interpret queue: ${(e as Error).message}`);
+      }
+    }
+
+    return { ok: true, taskUuid: fromRouteProperty ? task.propertyId : realTaskUuid! };
+  }
+
+  private mapSubmitIncidentType(raw: string | null | undefined): IncidentType {
+    const x = (raw || 'damage').toLowerCase().trim();
+    if (x === 'lost_item' || x === 'lost') return 'lost_item';
+    if (x === 'emergency') return 'emergency';
+    if (x === 'rule_violation') return 'rule_violation';
+    if (x === 'task_report') return 'task_report';
+    return 'damage';
+  }
+
+  private async llmParseStaffMiniAppVoice(
+    llm: { client: OpenAI; model: string },
+    transcript: string,
+    task: TaskEntity,
+    buttonPressed: StaffMiniAppButtonPressed,
+  ): Promise<Record<string, unknown>> {
+    const taskJson = JSON.stringify({
+      id: task.id,
+      title: task.title,
+      status: task.status,
+      propertyId: task.propertyId,
+      propertyName: task.property?.name ?? '',
+      dueDate: task.dueDate,
+    });
+    const systemPrompt = `You analyze voice reports from cleaning staff about ONE specific task (RentAI).
+The UI button context is a PRIOR, not a hard filter:
+- buttonPressed TASK: expect work status / shortages; BUT if they mention breakage, water leak, lost item, emergency — you MUST still fill the incident block.
+- buttonPressed INCIDENT: expect problem report; BUT if they only report normal progress, set detectedMode TASK_ONLY or MIXED and reflect work status.
+
+Return ONE JSON object only (no markdown):
+{
+  "detectedMode": "TASK_ONLY" | "INCIDENT_ONLY" | "MIXED",
+  "confidence": 0.0-1.0,
+  "task": {
+    "suggestedStatus": "pending" | "in_progress" | "done" | "issue" | null,
+    "comment": "short summary for manager (RU)",
+    "shortages": "supply/replace line or null — see Shortages wording below"
+  },
+  "incident": {
+    "include": boolean,
+    "type": "damage" | "lost_item" | "emergency" | "rule_violation" | "task_report",
+    "title": "short",
+    "description": "details",
+    "risk": "low" | "medium" | "high"
+  },
+  "needsClarification": boolean,
+  "clarificationQuestions": ["..."],
+  "mismatchHint": null
+}
+
+Rules:
+- suggestedStatus must be realistic vs current task.status (${task.status}).
+- If "shortages" is non-empty (довоз, замена, нехватка): set suggestedStatus to "pending" only — staff does NOT put logistics work "in_progress"; the manager assigns later. Never use "in_progress" when shortages is filled.
+- NEVER set suggestedStatus to "issue" for supply/delivery/replacement only. Reserve "issue" ONLY for real escalations: damage, safety, theft, flood, guest conflict, or when incident.include should be true.
+- If incident.include is true, type/description must be meaningful.
+- Use Russian for comment/title/description fields where natural.
+- Always set "mismatchHint" to null (UI no longer shows button/speech warnings).
+- Shortages wording (critical): when the staff needs materials delivered OR something replaced, fill "shortages" using fixed Russian stems with correct declensions:
+  - For delivery/restock: start with "Нужно довезти" (e.g. "Нужно довезти полотенца", "Нужно довезти туалетную бумагу").
+  - For replacement: start with "Нужно заменить" (e.g. "Нужно заменить лампочку в ванной", "Нужно заменить смеситель").
+  If there is no supply/replace need, set "shortages" to null or empty.
+- If the user message includes a separate "— Уточнение:" block, treat it as answers to clarification questions and merge into comment/shortages/incident as appropriate.
+
+Task context:
+${taskJson}
+buttonPressed: ${buttonPressed}`;
+
+    const createParams = {
+      model: llm.model,
+      messages: [
+        { role: 'system' as const, content: systemPrompt },
+        {
+          role: 'user' as const,
+          content: `Transcript:\n"""${transcript.replace(/"""/g, '"')}\n"""`,
+        },
+      ],
+      temperature: 0.15,
+      max_tokens: 900,
+      response_format: { type: 'json_object' as const },
+    };
+
+    let completion;
+    try {
+      completion = await llm.client.chat.completions.create(createParams);
+    } catch {
+      completion = await llm.client.chat.completions.create({
+        model: llm.model,
+        messages: createParams.messages,
+        temperature: 0.15,
+        max_tokens: 900,
+      });
+    }
+    const rawText = completion.choices[0]?.message?.content?.trim();
+    if (!rawText) throw new Error('empty LLM response');
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(rawText);
+    } catch {
+      const m = rawText.match(/\{[\s\S]*\}/);
+      if (!m) throw new Error('invalid JSON from LLM');
+      parsed = JSON.parse(m[0]);
+    }
+    return parsed as Record<string, unknown>;
+  }
+
+  private normalizeStaffMiniAppLlmResult(
+    raw: Record<string, unknown>,
+    transcript: string,
+    task: TaskEntity,
+    buttonPressed: StaffMiniAppButtonPressed,
+  ): StaffMiniAppVoicePreviewDto {
+    const conf =
+      typeof raw.confidence === 'number' && raw.confidence >= 0 && raw.confidence <= 1
+        ? raw.confidence
+        : 0.7;
+    const modeRaw = String(raw.detectedMode || 'TASK_ONLY').toUpperCase();
+    const detectedMode: StaffMiniAppDetectedMode =
+      modeRaw === 'INCIDENT_ONLY' || modeRaw === 'MIXED' || modeRaw === 'TASK_ONLY'
+        ? (modeRaw as StaffMiniAppDetectedMode)
+        : 'TASK_ONLY';
+
+    const taskBlock = (raw.task && typeof raw.task === 'object' ? raw.task : {}) as Record<string, unknown>;
+    const incBlock = (raw.incident && typeof raw.incident === 'object' ? raw.incident : {}) as Record<
+      string,
+      unknown
+    >;
+
+    const st = typeof taskBlock.suggestedStatus === 'string' ? taskBlock.suggestedStatus.trim() : null;
+    const allowed = new Set(['pending', 'in_progress', 'done', 'issue']);
+
+    const comment =
+      typeof taskBlock.comment === 'string' && taskBlock.comment.trim()
+        ? taskBlock.comment.trim().slice(0, 4000)
+        : transcript.slice(0, 2000);
+    const shortages =
+      typeof taskBlock.shortages === 'string' && taskBlock.shortages.trim()
+        ? taskBlock.shortages.trim().slice(0, 1000)
+        : null;
+
+    const include = incBlock.include === true;
+
+    let suggestedStatus = st && allowed.has(st) ? st : null;
+    if (suggestedStatus === 'issue' && !include) {
+      if (TasksService.isSupplyOrLogisticsNotStrongIncident(shortages, comment, transcript)) {
+        suggestedStatus =
+          task.status === 'done'
+            ? null
+            : buttonPressed === 'TASK'
+              ? 'done'
+              : 'in_progress';
+      }
+    }
+    if (shortages && shortages.trim().length > 0) {
+      if (suggestedStatus === 'in_progress') suggestedStatus = 'pending';
+    }
+    const itypeRaw = typeof incBlock.type === 'string' ? incBlock.type.trim() : 'damage';
+    const itypes = new Set(['damage', 'lost_item', 'emergency', 'rule_violation', 'task_report']);
+    const itype = itypes.has(itypeRaw) ? (itypeRaw as IncidentType) : 'damage';
+
+    const title =
+      typeof incBlock.title === 'string' && incBlock.title.trim()
+        ? incBlock.title.trim().slice(0, 500)
+        : include
+          ? this.deriveVoiceTaskTitle(transcript)
+          : null;
+    const desc =
+      typeof incBlock.description === 'string' && incBlock.description.trim()
+        ? incBlock.description.trim().slice(0, 8000)
+        : include
+          ? transcript
+          : null;
+    const riskRaw = String(incBlock.risk || 'medium').toLowerCase();
+    const risk =
+      riskRaw === 'low' || riskRaw === 'medium' || riskRaw === 'high' ? (riskRaw as 'low' | 'medium' | 'high') : 'medium';
+
+    const needsClarification = raw.needsClarification === true;
+    const qs = Array.isArray(raw.clarificationQuestions)
+      ? (raw.clarificationQuestions as unknown[])
+          .filter((x) => typeof x === 'string' && x.trim())
+          .map((x) => (x as string).trim().slice(0, 500))
+          .slice(0, 4)
+      : [];
+    return {
+      buttonPressed,
+      detectedMode,
+      confidence: conf,
+      transcript: transcript.slice(0, 12000),
+      task: {
+        suggestedStatus,
+        comment,
+        shortages,
+      },
+      incident: {
+        include,
+        type: include ? itype : null,
+        title,
+        description: desc,
+        risk: include ? risk : null,
+      },
+      needsClarification,
+      clarificationQuestions: qs,
+      mismatchHint: null,
+    };
+  }
+
+  private heuristicStaffMiniAppPreview(
+    transcript: string,
+    task: TaskEntity,
+    buttonPressed: StaffMiniAppButtonPressed,
+    extraHint: string | null,
+  ): StaffMiniAppVoicePreviewDto {
+    const t = transcript.toLowerCase();
+    const doneHints = /готов|сделал|закончил|выполнил|убрал|готово/;
+    const incHints =
+      /сломан|тресн|потоп|вода|утерян|утеря|забыл|инцидент|пожар|авар|порван|разбит|теч[её]т|затоп/;
+    const includeIncident = incHints.test(t) || buttonPressed === 'INCIDENT';
+    const done = doneHints.test(t);
+    const mixed = includeIncident && (done || /убрал|помыл|уборк/i.test(t));
+
+    let detectedMode: StaffMiniAppDetectedMode = 'TASK_ONLY';
+    if (includeIncident && mixed) detectedMode = 'MIXED';
+    else if (includeIncident) detectedMode = 'INCIDENT_ONLY';
+
+    let suggestedStatus: string | null = task.status;
+    if (done) suggestedStatus = 'done';
+    else if (task.status === 'pending' && t.length > 5) suggestedStatus = 'in_progress';
+
+    return {
+      buttonPressed,
+      detectedMode,
+      confidence: 0.42,
+      transcript: transcript.slice(0, 12000),
+      task: {
+        suggestedStatus,
+        comment: transcript ? transcript.slice(0, 2000) : extraHint || '—',
+        shortages: null,
+      },
+      incident: {
+        include: includeIncident,
+        type: includeIncident ? 'damage' : null,
+        title: includeIncident ? this.deriveVoiceTaskTitle(transcript) || 'Инцидент' : null,
+        description: includeIncident ? transcript.slice(0, 8000) : null,
+        risk: /вода|потоп|огонь|травм|скорая/i.test(t) ? 'high' : includeIncident ? 'medium' : null,
+      },
+      needsClarification: false,
+      clarificationQuestions: [],
+      mismatchHint: null,
+    };
   }
 
   /** Until LLM returns a one-line summary, derive a short title from the transcript. */

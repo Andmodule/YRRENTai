@@ -3,6 +3,14 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api/client';
 
+export interface IncidentRelatedTask {
+  uuid: string;
+  title: string;
+  status: string;
+  type: string;
+  assigneeName: string | null;
+}
+
 export interface IncidentSuggestedTaskDraft {
   title?: string;
   type?: 'checkout_cleaning' | 'mid_stay_cleaning' | 'checkin_prep' | 'maintenance' | 'other';
@@ -44,19 +52,23 @@ export interface Incident {
   lastStayGuestName?: string | null;
   lastStayGuestPhone?: string | null;
   lastStayCheckOut?: string | null;
+  lastStayBookingId?: string | null;
+  lastStayPaymentStatus?: 'unpaid' | 'partial' | 'paid' | null;
+  relatedTasks?: IncidentRelatedTask[];
   dispatchedTaskId: string | null;
   dispatchedAssigneeId?: string | null;
   dispatchedAssigneeName?: string | null;
   suggestedTaskDraft?: IncidentSuggestedTaskDraft | null;
 }
 
-export function useIncidents() {
+export function useIncidents(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ['incidents'],
     queryFn: async () => {
       const res = await apiClient.get<{ data: { incidents: Incident[] } }>('/incidents');
       return res.data.data.incidents;
     },
+    enabled: options?.enabled ?? true,
     /** Avoid empty board while refetching after PATCH (invalidate). */
     placeholderData: (previousData) => previousData,
     /** Fallback when realtime socket misses an event (e.g. mobile / flaky WS). */
@@ -88,6 +100,7 @@ export function usePatchIncident() {
       status?: Incident['status'];
       managerNote?: string | null;
       estimatedCost?: string | null;
+      appendPhotoUrls?: string[];
     }) => {
       const res = await apiClient.patch<{ data: { incident: Incident } }>(`/incidents/${uuid}`, patch);
       return res.data.data.incident;
@@ -103,6 +116,7 @@ export function usePatchIncident() {
       });
       queryClient.invalidateQueries({ queryKey: ['incidents'] });
       queryClient.invalidateQueries({ queryKey: ['incidents-open-count'] });
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
     },
   });
 }

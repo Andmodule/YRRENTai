@@ -1,6 +1,7 @@
 'use client';
 
-import { useMemo, useState, useEffect, useCallback } from 'react';
+import { useMemo, useState, useEffect, useCallback, useRef } from 'react';
+import { flushSync } from 'react-dom';
 import { toast } from 'sonner';
 import { format, startOfDay, parseISO } from 'date-fns';
 import { ru } from 'date-fns/locale';
@@ -10,18 +11,19 @@ import {
   LogOut,
   PartyPopper,
   Sparkles,
-  MapPin,
   Wifi,
   WifiOff,
   Route,
   Play,
   AlertTriangle,
+  Mic,
 } from 'lucide-react';
 import { useTodayTasks } from '@/hooks/use-tasks';
 import { useTasksSocket } from '@/hooks/use-tasks-socket';
 import type { Task } from '@/hooks/use-tasks';
 import type { StaffUser } from '@/hooks/use-auth';
 import { useUpdateTaskStatus, useCompleteShift } from '@/hooks/use-tasks';
+import { usePendingTaskMarkDoneStaff } from '@/hooks/use-pending-task-mark-done';
 import { ChecklistItem } from './checklist-item';
 import { ProgressBar } from './progress-bar';
 import { IssueDrawer } from './issue-drawer';
@@ -29,6 +31,21 @@ import { PhotoVerificationDrawer } from './photo-verification-drawer';
 import { TaskDetailStaff } from './task-detail-staff';
 import { TaskQuickActionsDrawer } from './task-quick-actions-drawer';
 import { IncidentReportDrawer } from './incident-report-drawer';
+import {
+  StaffVoiceReportSheet,
+  type StaffVoiceMode,
+  type StaffVoiceReportSheetHandle,
+} from './staff-voice-report-sheet';
+import {
+  StaffHistoryDrawer,
+  StaffHistoryFab,
+  StaffIncidentPhotoAppendDrawer,
+} from './staff-history-drawer';
+import {
+  StaffHistorySupplementSheet,
+  type StaffSupplementContext,
+} from './staff-history-supplement-sheet';
+import { StaffDeliveryRoutePanel } from './staff-delivery-route-panel';
 import { useStaffStrings } from '@/locales/staff-strings';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
@@ -40,8 +57,6 @@ import {
   pickNextTaskByDueTime,
   formatShiftDurationLabel,
 } from '@/lib/shift-utils';
-import { parseChecklist422 } from '@/lib/is-checklist-422';
-
 interface StaffChecklistProps {
   user: StaffUser;
   onLogout: () => void;
@@ -59,13 +74,45 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
   const { mutate: updateStatus, isPending: statusPending } = useUpdateTaskStatus();
   const { mutateAsync: completeShift, isPending: shiftPending } = useCompleteShift();
 
+  const onMarkDoneCommitted = useCallback((task: Task) => {
+    setQuickTask(null);
+    setPhotoTaskUuid(task.uuid);
+  }, []);
+
+  const onMarkDoneChecklistIncomplete = useCallback(
+    (task: Task) => {
+      toast.warning(strings.tasks.checklist.completeRequired);
+      setQuickTask(null);
+      setDetailTask(task);
+      setChecklistScrollNonce((n) => n + 1);
+    },
+    [strings.tasks.checklist.completeRequired],
+  );
+
+  const { enqueueMarkDoneAfterSwipe } = usePendingTaskMarkDoneStaff({
+    taskMarkedMessage: strings.tasks.checklist.taskMarkedDoneToast,
+    undoLabel: strings.tasks.checklist.undoMarkDone,
+    markDoneErrorMessage: strings.tasks.checklist.markDoneError,
+    onCommitted: onMarkDoneCommitted,
+    onChecklistIncomplete: onMarkDoneChecklistIncomplete,
+  });
+
   const [issueTask, setIssueTask] = useState<Task | null>(null);
   const [detailTask, setDetailTask] = useState<Task | null>(null);
   const [quickTask, setQuickTask] = useState<Task | null>(null);
   const [photoTaskUuid, setPhotoTaskUuid] = useState<string | null>(null);
+  const [photoSupplement, setPhotoSupplement] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [supplementCtx, setSupplementCtx] = useState<StaffSupplementContext | null>(null);
+  const [incidentPhotoUuid, setIncidentPhotoUuid] = useState<string | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const [routeOpen, setRouteOpen] = useState(false);
   const [incidentOpen, setIncidentOpen] = useState(false);
+  const [voiceSheetOpen, setVoiceSheetOpen] = useState(false);
+  const [voiceSheetMode, setVoiceSheetMode] = useState<StaffVoiceMode>('TASK');
+  /** Явная привязка голоса к карточке; иначе — «якорь» следующей задачи (FAB). */
+  const [voicePinnedTaskUuid, setVoicePinnedTaskUuid] = useState<string | null>(null);
+  const voiceSheetRef = useRef<StaffVoiceReportSheetHandle>(null);
   const [checklistScrollNonce, setChecklistScrollNonce] = useState(0);
   const [online, setOnline] = useState(
     typeof navigator !== 'undefined' ? navigator.onLine : true,
@@ -130,6 +177,59 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
   const shiftEst = estimateShiftEnd(todayTasks);
 
   const nextTask = useMemo(() => pickNextTaskByDueTime(activeTasks), [activeTasks]);
+  /** Контекст голосового отчёта с FAB: следующая по времени или первая в списке. */
+  const voiceAnchor = nextTask ?? activeTasks[0] ?? null;
+
+  const openVoiceForTask = useCallback((task: Task) => {
+    flushSync(() => {
+      setVoicePinnedTaskUuid(task.uuid);
+      setVoiceSheetMode('TASK');
+      setVoiceSheetOpen(true);
+    });
+    voiceSheetRef.current?.startRecordingFromUserGesture();
+  }, []);
+
+  const openTextForTask = useCallback(
+    (task: Task) => {
+      const label =
+        [
+          typeLabel(task.type),
+          task.isGeneralTask ? strings.tasks.checklist.generalTaskLabel : task.propertyTitle,
+          task.contextLabel,
+        ]
+          .filter(Boolean)
+          .join(' · ') ||
+        (task.isGeneralTask ? strings.tasks.checklist.generalTaskLabel : task.propertyTitle);
+      setSupplementCtx({
+        kind: 'task',
+        id: task.uuid,
+        label,
+      });
+    },
+    [strings],
+  );
+
+  const handleVoiceSheetOpenChange = useCallback((open: boolean) => {
+    setVoiceSheetOpen(open);
+    if (!open) setVoicePinnedTaskUuid(null);
+  }, []);
+
+  const voiceTaskOptions = useMemo(
+    () =>
+      activeTasks.map((t) => ({
+        uuid: t.uuid,
+        label:
+          [
+            typeLabel(t.type),
+            t.isGeneralTask ? strings.tasks.checklist.generalTaskLabel : t.propertyTitle,
+            t.contextLabel,
+          ]
+            .filter(Boolean)
+            .join(' · ') ||
+          (t.isGeneralTask ? strings.tasks.checklist.generalTaskLabel : t.propertyTitle),
+      })),
+    [activeTasks, strings],
+  );
 
   const [sessionShiftStartMs, setSessionShiftStartMs] = useState<number | null>(null);
   useEffect(() => {
@@ -149,28 +249,9 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
 
   const handleMarkDoneTask = useCallback(
     (task: Task) => {
-      updateStatus(
-        { uuid: task.uuid, status: 'done' },
-        {
-          onSuccess: () => {
-            setQuickTask(null);
-            setPhotoTaskUuid(task.uuid);
-          },
-          onError: (err: unknown) => {
-            const checklistErr = parseChecklist422(err);
-            if (checklistErr) {
-              toast.warning(strings.tasks.checklist.completeRequired);
-              setQuickTask(null);
-              setDetailTask(task);
-              setChecklistScrollNonce((n) => n + 1);
-              return;
-            }
-            toast.error('Не удалось обновить статус');
-          },
-        },
-      );
+      enqueueMarkDoneAfterSwipe(task);
     },
-    [updateStatus, strings],
+    [enqueueMarkDoneAfterSwipe],
   );
 
   const handleMarkDone = (uuid: string) => {
@@ -231,6 +312,7 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
             </div>
           </button>
           <div className="flex shrink-0 items-center gap-2">
+            <StaffHistoryFab onClick={() => setHistoryOpen(true)} />
             <span
               className={`flex items-center gap-1 rounded-full px-2 py-1 text-xs ${
                 online ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-900'
@@ -350,7 +432,8 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
           <div className="mb-4 rounded-2xl border-2 border-teal-500 bg-gradient-to-br from-teal-50/90 to-white p-4 shadow-sm">
             <p className="text-xs font-bold uppercase tracking-wide text-teal-800">Следующая задача</p>
             <p className="mt-2 text-sm font-semibold text-slate-900">
-              {typeLabel(nextTask.type)} · {nextTask.propertyTitle}
+              {typeLabel(nextTask.type)} ·{' '}
+              {nextTask.isGeneralTask ? strings.tasks.checklist.generalTaskLabel : nextTask.propertyTitle}
             </p>
             {nextTask.contextLabel ? (
               <p className="mt-1 text-sm text-slate-700">{nextTask.contextLabel}</p>
@@ -389,11 +472,9 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
                 }
                 deadlineUrgency={deadlineUrgency(task)}
                 onMarkDone={handleMarkDone}
-                onMarkIssue={(uuid) => {
-                  const t = resolveTaskByUuid(uuid);
-                  if (t) setIssueTask(t);
-                }}
                 onQuickOpen={setQuickTask}
+                onVoiceForTask={openVoiceForTask}
+                onTextForTask={openTextForTask}
               />
             ))}
           </div>
@@ -417,11 +498,50 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
           checklistScrollNonce={checklistScrollNonce}
         />
 
+        <StaffHistoryDrawer
+          open={historyOpen}
+          onOpenChange={setHistoryOpen}
+          tasks={data?.tasks ?? []}
+          onRequestTaskPhoto={(uuid) => {
+            setHistoryOpen(false);
+            setPhotoSupplement(true);
+            setPhotoTaskUuid(uuid);
+          }}
+          onRequestIncidentPhoto={(uuid) => {
+            setHistoryOpen(false);
+            setIncidentPhotoUuid(uuid);
+          }}
+          onRequestSupplement={(ctx) => {
+            setHistoryOpen(false);
+            setSupplementCtx(ctx);
+          }}
+        />
+
+        <StaffHistorySupplementSheet
+          open={!!supplementCtx}
+          context={supplementCtx}
+          onOpenChange={(o) => {
+            if (!o) setSupplementCtx(null);
+          }}
+        />
+
         <PhotoVerificationDrawer
           taskUuid={photoTaskUuid}
           open={!!photoTaskUuid}
+          variant={photoSupplement ? 'supplement' : 'default'}
           onOpenChange={(o) => {
-            if (!o) setPhotoTaskUuid(null);
+            if (!o) {
+              setPhotoTaskUuid(null);
+              setPhotoSupplement(false);
+            }
+          }}
+        />
+
+        <StaffIncidentPhotoAppendDrawer
+          incidentUuid={incidentPhotoUuid ?? ''}
+          open={!!incidentPhotoUuid}
+          onOpenChange={(o) => {
+            if (!o) setIncidentPhotoUuid(null);
           }}
         />
 
@@ -460,26 +580,10 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
         </Drawer>
 
         <Drawer open={routeOpen} onOpenChange={setRouteOpen}>
-          <DrawerContent title="Маршрут по адресам">
-            <p className="mb-3 text-sm text-slate-600">Откройте объект в картах по порядку адреса.</p>
-            <ul className="space-y-2">
-              {routeSorted.map((t) => {
-                const addr = encodeURIComponent(t.streetAddress || t.propertyAddress);
-                return (
-                  <li key={t.uuid}>
-                    <a
-                      href={`https://maps.google.com/?q=${addr}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="flex items-start gap-2 rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2 text-sm text-teal-800 hover:bg-teal-50"
-                    >
-                      <MapPin className="mt-0.5 h-4 w-4 shrink-0" />
-                      <span>{t.streetAddress || t.propertyAddress}</span>
-                    </a>
-                  </li>
-                );
-              })}
-            </ul>
+          <DrawerContent title="Маршрут">
+            <div className="px-1 pb-2">
+              <StaffDeliveryRoutePanel tasksForFallback={routeSorted} />
+            </div>
           </DrawerContent>
         </Drawer>
 
@@ -489,14 +593,56 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
 
       {activeTasks.length > 0 && incidentPropertyId && (
         <>
+          {/* Ручной текстовый инцидент — слева (голосовые кнопки справа) */}
           <button
             type="button"
-            className="fixed bottom-24 right-4 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-amber-500 text-white shadow-lg shadow-amber-900/20 transition-transform active:scale-95"
+            className="fixed bottom-24 left-4 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-amber-500 text-white shadow-lg shadow-amber-900/20 transition-transform active:scale-95"
             onClick={() => setIncidentOpen(true)}
             aria-label={strings.tasks.incident.fabLabel}
           >
             <AlertTriangle className="h-7 w-7" aria-hidden />
           </button>
+          {/* Матрёшка: инцидент меньше, задача больше — открывают один sheet с разным prior */}
+          <div className="fixed bottom-24 right-4 z-30 flex items-end gap-2">
+            <button
+              type="button"
+              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-amber-400/80 bg-white text-amber-700 shadow-md shadow-amber-900/10 transition-transform active:scale-95"
+              aria-label="Голосовой отчёт: инцидент"
+              onClick={() => {
+                flushSync(() => {
+                  setVoicePinnedTaskUuid(null);
+                  setVoiceSheetMode('INCIDENT');
+                  setVoiceSheetOpen(true);
+                });
+                voiceSheetRef.current?.startRecordingFromUserGesture();
+              }}
+            >
+              <AlertTriangle className="h-5 w-5" aria-hidden />
+            </button>
+            <button
+              type="button"
+              className="flex h-[4.2rem] w-[4.2rem] shrink-0 items-center justify-center rounded-full bg-teal-600 text-white shadow-lg shadow-teal-900/25 transition-transform active:scale-95"
+              aria-label="Голосовой отчёт: задача"
+              onClick={() => {
+                flushSync(() => {
+                  setVoicePinnedTaskUuid(null);
+                  setVoiceSheetMode('TASK');
+                  setVoiceSheetOpen(true);
+                });
+                voiceSheetRef.current?.startRecordingFromUserGesture();
+              }}
+            >
+              <Mic className="h-[1.75rem] w-[1.75rem]" strokeWidth={2.25} aria-hidden />
+            </button>
+          </div>
+          <StaffVoiceReportSheet
+            ref={voiceSheetRef}
+            open={voiceSheetOpen}
+            onOpenChange={handleVoiceSheetOpenChange}
+            initialMode={voiceSheetMode}
+            taskOptions={voiceTaskOptions}
+            defaultTaskUuid={voicePinnedTaskUuid ?? voiceAnchor?.uuid ?? ''}
+          />
           <IncidentReportDrawer
             open={incidentOpen}
             onOpenChange={setIncidentOpen}

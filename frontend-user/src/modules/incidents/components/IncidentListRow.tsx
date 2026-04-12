@@ -109,7 +109,7 @@ export const IncidentListRow = memo(function IncidentListRow({
       return;
     }
     patchIncident(
-      { uuid: incident.uuid, status: 'closed' },
+      { uuid: incident.uuid, status: 'resolved' },
       {
         onError: () => toast.error(tList('incidentSwipeError')),
       },

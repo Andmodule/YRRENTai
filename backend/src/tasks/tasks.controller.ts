@@ -27,8 +27,12 @@ import { randomUUID } from 'crypto';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { CurrentUser, JwtPayload } from '../common/decorators/current-user.decorator';
-import { TasksService } from './tasks.service';
+import { TasksService, type StaffMiniAppVoiceSubmitDto } from './tasks.service';
+import { StaffInterpretationService } from './staff-interpretation.service';
+import { SupplyCatalogService } from './supply-catalog.service';
+import { DeliveryRoutesService } from './delivery-routes.service';
 import { ChecklistService } from './checklist.service';
+import { UserService } from '../user/user.service';
 import { IncidentsService } from '../incidents/incidents.service';
 import type { IncidentType } from '../incidents/entities/incident.entity';
 
@@ -39,8 +43,12 @@ import type { IncidentType } from '../incidents/entities/incident.entity';
 export class TasksController {
   constructor(
     private readonly tasksService: TasksService,
+    private readonly staffInterpretationService: StaffInterpretationService,
+    private readonly supplyCatalogService: SupplyCatalogService,
+    private readonly deliveryRoutesService: DeliveryRoutesService,
     private readonly checklistService: ChecklistService,
     private readonly configService: ConfigService,
+    private readonly userService: UserService,
     @Inject(forwardRef(() => IncidentsService))
     private readonly incidentsService: IncidentsService,
   ) {}
@@ -67,6 +75,269 @@ export class TasksController {
 
     const tasks = await this.tasksService.findForUser(user.sub, user.role, from, to, assigneeId);
     return { data: { tasks } };
+  }
+
+  /** Очередь менеджера: после LLM (`pending_manager`) и сбой парсинга (`manual_review`). */
+  @Get('manager/supply-interpretations')
+  @Roles('OWNER', 'MANAGER')
+  async managerSupplyInterpretations(
+    @CurrentUser() user: JwtPayload,
+    @Query('limit') limitParam?: string,
+  ) {
+    const n = limitParam ? parseInt(limitParam, 10) : 50;
+    const events = await this.staffInterpretationService.listPendingSupplyForManager(
+      user.sub,
+      user.role,
+      Number.isFinite(n) ? n : 50,
+    );
+    return { data: { events } };
+  }
+
+  /** Менеджер: создать запись довоза/снабжения по объекту (текст или расшифровка голоса). */
+  @Post('manager/supply-interpretations')
+  @Roles('OWNER', 'MANAGER')
+  async createManagerSupplyInterpretation(
+    @CurrentUser() user: JwtPayload,
+    @Body() body: { propertyId?: string; text?: string },
+  ) {
+    const event = await this.staffInterpretationService.queueManagerSupplyCreate(
+      user.sub,
+      user.role,
+      body?.propertyId ?? '',
+      body?.text ?? '',
+    );
+    return { data: { event } };
+  }
+
+  /** Снять запись с очереди менеджера: учтено / не актуально (без создания логистических задач). */
+  @Patch('manager/supply-interpretations/:eventId')
+  @Roles('OWNER', 'MANAGER')
+  async resolveManagerSupplyInterpretation(
+    @Param('eventId') eventId: string,
+    @CurrentUser() user: JwtPayload,
+    @Body() body: { action?: string },
+  ) {
+    const action = body?.action?.trim();
+    if (action !== 'acknowledge' && action !== 'dismiss') {
+      throw new BadRequestException('action must be "acknowledge" or "dismiss"');
+    }
+    const result = await this.staffInterpretationService.resolveManagerQueueItem(
+      user.sub,
+      user.role,
+      eventId,
+      action,
+    );
+    return { data: result };
+  }
+
+  @Post('manager/supply-interpretations/:eventId/retry-llm')
+  @Roles('OWNER', 'MANAGER')
+  async retryManagerSupplyLlm(
+    @Param('eventId') eventId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    const result = await this.staffInterpretationService.retryLlmForManager(
+      user.sub,
+      user.role,
+      eventId,
+    );
+    return { data: result };
+  }
+
+  /** Сводная матрица нехваток по справочнику и объектам. */
+  @Get('manager/supply-matrix')
+  @Roles('OWNER', 'MANAGER')
+  async managerSupplyMatrix(@CurrentUser() user: JwtPayload) {
+    const ownerId = await this.userService.resolveTenantOwnerId(user.sub, user.role);
+    const data = await this.supplyCatalogService.getMatrixForOwner(ownerId);
+    return { data };
+  }
+
+  @Post('manager/supply-matrix/detail-lines')
+  @Roles('OWNER', 'MANAGER')
+  async managerSupplyMatrixDetail(
+    @CurrentUser() user: JwtPayload,
+    @Body() body: { requestLineIds?: string[] },
+  ) {
+    const ownerId = await this.userService.resolveTenantOwnerId(user.sub, user.role);
+    const lines = await this.supplyCatalogService.getRequestLinesDetail(ownerId, body?.requestLineIds ?? []);
+    return { data: { lines } };
+  }
+
+  /**
+   * Передача водителю: по SKU справочника (все pending-строки) и/или по id строк `supply_request_items`
+   * (в т.ч. без сопоставления с каталогом).
+   */
+  @Post('manager/supply-matrix/handoff')
+  @Roles('OWNER', 'MANAGER')
+  async managerSupplyHandoff(
+    @CurrentUser() user: JwtPayload,
+    @Body() body: { supplyItemIds?: string[]; requestLineIds?: string[] },
+  ) {
+    const ownerId = await this.userService.resolveTenantOwnerId(user.sub, user.role);
+    const data = await this.supplyCatalogService.handoffForOwner(ownerId, {
+      supplyItemIds: body?.supplyItemIds,
+      requestLineIds: body?.requestLineIds,
+    });
+    return { data };
+  }
+
+  /** Отметить доставленным строки, переданные водителю (`handed_to_driver` → `delivered`). */
+  @Post('manager/supply-matrix/mark-delivered')
+  @Roles('OWNER', 'MANAGER')
+  async managerSupplyMarkDelivered(
+    @CurrentUser() user: JwtPayload,
+    @Body() body: { requestLineIds?: string[] },
+  ) {
+    const ownerId = await this.userService.resolveTenantOwnerId(user.sub, user.role);
+    const data = await this.supplyCatalogService.markDeliveredForOwner(ownerId, body?.requestLineIds ?? []);
+    return { data };
+  }
+
+  @Get('manager/supply-catalog/items')
+  @Roles('OWNER', 'MANAGER')
+  async managerSupplyCatalogItems(@CurrentUser() user: JwtPayload) {
+    const companyId = await this.supplyCatalogService.resolveActorCompanyId(user.sub);
+    const items = await this.supplyCatalogService.listItemsForCompany(companyId);
+    return { data: { items } };
+  }
+
+  @Post('manager/supply-catalog/items')
+  @Roles('OWNER', 'MANAGER')
+  async managerSupplyCatalogCreate(
+    @CurrentUser() user: JwtPayload,
+    @Body() body: { name?: string; synonyms?: string; defaultUnit?: string | null; category?: string },
+  ) {
+    const companyId = await this.supplyCatalogService.resolveActorCompanyId(user.sub);
+    const item = await this.supplyCatalogService.createCustomItem(companyId, user.sub, {
+      name: body?.name ?? '',
+      synonyms: body?.synonyms ?? '',
+      defaultUnit: body?.defaultUnit,
+      category: body?.category,
+    });
+    return { data: { id: item.id, name: item.name } };
+  }
+
+  /** Маршрут доставки из выбранных pending-строк (как handoff, но с Route + Stop по объектам). */
+  @Post('manager/delivery-routes/from-pool')
+  @Roles('OWNER', 'MANAGER')
+  async managerDeliveryRoutesFromPool(
+    @CurrentUser() user: JwtPayload,
+    @Body()
+    body: {
+      supplyItemIds?: string[];
+      requestLineIds?: string[];
+      scheduledDate?: string;
+      warehouseLabel?: string | null;
+    },
+  ) {
+    const ownerId = await this.userService.resolveTenantOwnerId(user.sub, user.role);
+    const companyId = await this.supplyCatalogService.resolveActorCompanyId(user.sub);
+    const data = await this.deliveryRoutesService.createFromPool(ownerId, companyId, body);
+    return { data };
+  }
+
+  @Get('manager/delivery-routes')
+  @Roles('OWNER', 'MANAGER')
+  async managerDeliveryRoutesList(
+    @CurrentUser() user: JwtPayload,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    const companyId = await this.supplyCatalogService.resolveActorCompanyId(user.sub);
+    const routes = await this.deliveryRoutesService.listForManagerRange(companyId, from, to);
+    return { data: { routes } };
+  }
+
+  @Get('manager/delivery-routes/:routeId')
+  @Roles('OWNER', 'MANAGER')
+  async managerDeliveryRoutesOne(
+    @CurrentUser() user: JwtPayload,
+    @Param('routeId') routeId: string,
+  ) {
+    const companyId = await this.supplyCatalogService.resolveActorCompanyId(user.sub);
+    const route = await this.deliveryRoutesService.getDetailForCompany(routeId, companyId);
+    return { data: { route } };
+  }
+
+  @Patch('manager/delivery-routes/:routeId/assign-driver')
+  @Roles('OWNER', 'MANAGER')
+  async managerDeliveryRoutesAssign(
+    @CurrentUser() user: JwtPayload,
+    @Param('routeId') routeId: string,
+    @Body() body: { driverUserId?: string },
+  ) {
+    const ownerId = await this.userService.resolveTenantOwnerId(user.sub, user.role);
+    const companyId = await this.supplyCatalogService.resolveActorCompanyId(user.sub);
+    const driverUserId = body?.driverUserId?.trim();
+    if (!driverUserId) throw new BadRequestException('driverUserId required');
+    const data = await this.deliveryRoutesService.assignDriver(ownerId, companyId, routeId, driverUserId);
+    return { data };
+  }
+
+  @Patch('manager/delivery-routes/:routeId/stops/reorder')
+  @Roles('OWNER', 'MANAGER', 'STAFF')
+  async deliveryRoutesReorder(
+    @CurrentUser() user: JwtPayload,
+    @Param('routeId') routeId: string,
+    @Body() body: { orderedPropertyStopIds?: string[] },
+  ) {
+    const companyId = await this.supplyCatalogService.resolveActorCompanyId(user.sub);
+    const ids = body?.orderedPropertyStopIds;
+    if (!ids?.length) throw new BadRequestException('orderedPropertyStopIds required');
+    const data = await this.deliveryRoutesService.reorderStops(companyId, routeId, ids, {
+      userId: user.sub,
+      role: user.role,
+    });
+    return { data };
+  }
+
+  /** Активный маршрут, назначенный водителю (STAFF). */
+  @Get('staff/delivery-route/active')
+  @Roles('STAFF', 'MANAGER')
+  async staffDeliveryRouteActive(@CurrentUser() user: JwtPayload) {
+    const companyId = await this.supplyCatalogService.resolveActorCompanyId(user.sub);
+    const route = await this.deliveryRoutesService.getActiveRouteForDriver(companyId, user.sub);
+    return { data: { route } };
+  }
+
+  @Post('delivery-routes/:routeId/start')
+  @Roles('STAFF', 'MANAGER')
+  async deliveryRoutesStart(@CurrentUser() user: JwtPayload, @Param('routeId') routeId: string) {
+    const companyId = await this.supplyCatalogService.resolveActorCompanyId(user.sub);
+    const data = await this.deliveryRoutesService.startRoute(companyId, routeId, user.sub);
+    return { data };
+  }
+
+  /** Водитель: следующая остановка-объект (после склада), без статуса «в пути» в БД. */
+  @Post('delivery-routes/:routeId/next-stop')
+  @Roles('STAFF', 'MANAGER')
+  async deliveryRoutesSetNextStop(
+    @CurrentUser() user: JwtPayload,
+    @Param('routeId') routeId: string,
+    @Body() body: { stopId?: string },
+  ) {
+    const companyId = await this.supplyCatalogService.resolveActorCompanyId(user.sub);
+    const stopId = body?.stopId?.trim();
+    if (!stopId) throw new BadRequestException('stopId required');
+    const data = await this.deliveryRoutesService.setDriverNextStop(companyId, routeId, user.sub, stopId);
+    return { data };
+  }
+
+  @Post('delivery-routes/stops/:stopId/arrive')
+  @Roles('STAFF', 'MANAGER')
+  async deliveryRoutesStopArrive(@CurrentUser() user: JwtPayload, @Param('stopId') stopId: string) {
+    const companyId = await this.supplyCatalogService.resolveActorCompanyId(user.sub);
+    const data = await this.deliveryRoutesService.arriveStop(companyId, stopId, user.sub);
+    return { data };
+  }
+
+  @Post('delivery-routes/stops/:stopId/complete')
+  @Roles('STAFF', 'MANAGER')
+  async deliveryRoutesStopComplete(@CurrentUser() user: JwtPayload, @Param('stopId') stopId: string) {
+    const companyId = await this.supplyCatalogService.resolveActorCompanyId(user.sub);
+    const data = await this.deliveryRoutesService.completeStop(companyId, stopId, user.sub);
+    return { data };
   }
 
   @Get(':uuid')
@@ -153,9 +424,124 @@ export class TasksController {
     return { data };
   }
 
+  /**
+   * Staff Mini App: голос → STT + LLM → черновик отчёта (задача + опционально инцидент).
+   */
+  @Post('staff-miniapp/voice-preview')
+  @Roles('STAFF')
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(
+    FileInterceptor('audio', {
+      storage: memoryStorage(),
+      limits: { fileSize: 15 * 1024 * 1024 },
+    }),
+  )
+  async staffMiniappVoicePreview(
+    @CurrentUser() user: JwtPayload,
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @Body('taskUuid') taskUuid: string | undefined,
+    @Body('propertyId') propertyId: string | undefined,
+    @Body('buttonPressed') buttonPressed: string | undefined,
+    @Body('clarificationText') clarificationText?: string,
+    @Body('language') language?: string,
+  ) {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('audio is required');
+    }
+    const tid = taskUuid?.trim();
+    const pid = propertyId?.trim();
+    if (!tid && !pid) {
+      throw new BadRequestException('taskUuid or propertyId is required');
+    }
+    if (tid && pid) {
+      throw new BadRequestException('Provide only one of taskUuid or propertyId');
+    }
+    const bp = buttonPressed?.trim().toUpperCase() === 'INCIDENT' ? 'INCIDENT' : 'TASK';
+    const data = await this.tasksService.staffMiniappVoicePreview(
+      user.sub,
+      user.role,
+      file,
+      tid,
+      bp,
+      clarificationText?.trim(),
+      language?.trim(),
+      pid,
+    );
+    return { data };
+  }
+
+  /** Staff Mini App: только распознавание речи (ответ голосом на уточняющие вопросы). */
+  @Post('staff-miniapp/voice-transcribe')
+  @Roles('STAFF')
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(
+    FileInterceptor('audio', {
+      storage: memoryStorage(),
+      limits: { fileSize: 15 * 1024 * 1024 },
+    }),
+  )
+  async staffMiniappVoiceTranscribe(
+    @CurrentUser() user: JwtPayload,
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @Body('language') language?: string,
+  ) {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('audio is required');
+    }
+    const data = await this.tasksService.staffMiniappVoiceTranscribe(user.role, file, language?.trim());
+    return { data };
+  }
+
+  /** Подтверждение черновика: обновление задачи + заметка + опционально инцидент. */
+  @Post('staff-miniapp/voice-submit')
+  @Roles('STAFF')
+  async staffMiniappVoiceSubmit(
+    @CurrentUser() user: JwtPayload,
+    @Body() body: StaffMiniAppVoiceSubmitDto,
+  ) {
+    const tid = body?.taskUuid?.trim();
+    const pid = body?.propertyId?.trim();
+    if (!tid && !pid) {
+      throw new BadRequestException('taskUuid or propertyId is required');
+    }
+    if (tid && pid) {
+      throw new BadRequestException('Provide only one of taskUuid or propertyId');
+    }
+    const data = await this.tasksService.staffMiniappVoiceSubmit(user.sub, user.role, {
+      ...body,
+      taskUuid: tid,
+      propertyId: pid,
+    });
+    return { data };
+  }
+
+  /**
+   * Staff: доп. текст к задаче/инциденту (История и др.). HTTP отвечает сразу; LLM — асинхронно на бэкенде.
+   */
+  @Post('staff/interpret-text')
+  @Roles('STAFF')
+  async staffInterpretText(
+    @CurrentUser() user: JwtPayload,
+    @Body()
+    body: {
+      entryPoint?: string;
+      targetType?: string;
+      targetId?: string;
+      text?: string;
+    },
+  ) {
+    const data = await this.staffInterpretationService.submitText(user.sub, user.role, {
+      entryPoint: (body.entryPoint ?? 'history_supplement') as 'history_supplement',
+      targetType: body.targetType as 'task' | 'incident' | 'property',
+      targetId: body.targetId ?? '',
+      text: body.text ?? '',
+    });
+    return { data };
+  }
+
   /** Staff: same handlers as POST /incidents (some dev setups never register IncidentsController). */
   @Post('incidents/upload-photos')
-  @Roles('STAFF')
+  @Roles('STAFF', 'OWNER', 'MANAGER')
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(
     FilesInterceptor('files', 5, {

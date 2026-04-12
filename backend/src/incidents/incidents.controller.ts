@@ -41,7 +41,7 @@ export class IncidentsController {
   }
 
   @Post('upload-photos')
-  @Roles('STAFF')
+  @Roles('STAFF', 'OWNER', 'MANAGER')
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(
     FilesInterceptor('files', 5, {
@@ -135,6 +135,51 @@ export class IncidentsController {
     return { data: { count } };
   }
 
+  /** Staff: incidents reported by this user (history; add more photos via POST staff/:uuid/photos). */
+  @Get('staff/history')
+  @Roles('STAFF')
+  async staffHistory(@CurrentUser() user: JwtPayload) {
+    const incidents = await this.incidentsService.listForStaffReported(user.sub);
+    return { data: { incidents } };
+  }
+
+  @Post('staff/:uuid/photos')
+  @Roles('STAFF')
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(
+    FilesInterceptor('files', 10, {
+      storage: memoryStorage(),
+      limits: { fileSize: 8 * 1024 * 1024 },
+    }),
+  )
+  async staffAppendPhotos(
+    @Param('uuid') uuid: string,
+    @UploadedFiles() files: Express.Multer.File[],
+    @CurrentUser() user: JwtPayload,
+  ) {
+    if (!files?.length) {
+      return { data: { photoUrls: [] as string[] } };
+    }
+
+    const dir = join(process.cwd(), 'uploads', 'incidents', uuid);
+    await fs.mkdir(dir, { recursive: true });
+
+    const apiBase =
+      this.configService.get<string>('API_PUBLIC_URL')?.replace(/\/$/, '') ||
+      `http://localhost:${this.configService.get<number>('PORT', 3010)}`;
+
+    const urls: string[] = [];
+    for (const file of files) {
+      const name = `${randomUUID()}.jpg`;
+      const full = join(dir, name);
+      await fs.writeFile(full, file.buffer);
+      urls.push(`${apiBase}/uploads/incidents/${uuid}/${name}`);
+    }
+
+    const incident = await this.incidentsService.appendPhotoUrlsForStaff(uuid, user.sub, urls);
+    return { data: { photoUrls: incident.photoUrls } };
+  }
+
   @Post(':uuid/dispatch')
   @Roles('OWNER', 'MANAGER')
   async dispatch(
@@ -169,10 +214,11 @@ export class IncidentsController {
       status: IncidentStatus;
       managerNote: string | null;
       estimatedCost: string | null;
+      appendPhotoUrls: string[];
     }>,
   ) {
     const ownerId = await this.ownerScope(user);
-    const incident = await this.incidentsService.patchForOwner(uuid, ownerId, body);
+    const incident = await this.incidentsService.patchForOwner(uuid, ownerId, user.sub, body);
     return { data: { incident } };
   }
 }

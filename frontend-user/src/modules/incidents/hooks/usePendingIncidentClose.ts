@@ -9,10 +9,10 @@ import type { Incident } from './useIncidents';
 
 const UNDO_MS = 4000;
 
-function setIncidentClosedInCaches(queryClient: ReturnType<typeof useQueryClient>, uuid: string) {
+function setIncidentResolvedInCaches(queryClient: ReturnType<typeof useQueryClient>, uuid: string) {
   queryClient.setQueryData<Incident[]>(['incidents'], (old) => {
     if (!old) return old;
-    return old.map((i) => (i.uuid === uuid ? { ...i, status: 'closed' as const } : i));
+    return old.map((i) => (i.uuid === uuid ? { ...i, status: 'resolved' as const } : i));
   });
 }
 
@@ -24,7 +24,8 @@ function restoreIncidentSnapshot(queryClient: ReturnType<typeof useQueryClient>,
 }
 
 /**
- * Optimistic close in list + Sonner undo; PATCH only after toast window unless undone.
+ * Optimistic resolve in list + Sonner undo; PATCH `resolved` after toast window unless undone.
+ * Same outcome as drawer «Решено» — avoids a separate «closed» path in the UI.
  */
 export function usePendingIncidentClose(options: {
   incidentClosedMessage: string;
@@ -42,7 +43,7 @@ export function usePendingIncidentClose(options: {
     async (uuid: string) => {
       try {
         await apiClient.patch<{ data: { incident: Incident } }>(`/incidents/${uuid}`, {
-          status: 'closed',
+          status: 'resolved',
         });
         await queryClient.invalidateQueries({ queryKey: ['incidents'] });
         await queryClient.invalidateQueries({ queryKey: ['incidents-open-count'] });
@@ -68,7 +69,7 @@ export function usePendingIncidentClose(options: {
       const uuid = incident.uuid;
       const snapshot = { ...incident };
 
-      setIncidentClosedInCaches(queryClient, uuid);
+      setIncidentResolvedInCaches(queryClient, uuid);
 
       const timeoutId = setTimeout(() => {
         pendingRef.current = null;
