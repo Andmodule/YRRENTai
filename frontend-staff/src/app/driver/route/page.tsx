@@ -1,14 +1,14 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useSWRConfig } from 'swr';
 import { useAuth } from '@/hooks/use-auth';
 import {
   useCompleteStop,
   useSetDriverNextStop,
-  useStaffDeliveryRouteActive,
+  useStaffDeliveryRoutesList,
   useStartDeliveryRoute,
 } from '@/hooks/use-staff-delivery-route';
 import { resolveStaffAppShell } from '@/lib/staff-app-shell';
@@ -29,16 +29,28 @@ import { Skeleton } from '@/components/ui/skeleton';
 export default function DriverRoutePage() {
   const { user, error, isLoading, isAuthenticated, isStaff } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { mutate: globalMutate } = useSWRConfig();
   const shellDriver =
     user?.role === 'STAFF' && user?.staffJobType != null && resolveStaffAppShell(user.staffJobType) === 'driver';
 
   const {
-    data: route,
+    data: routes,
     isLoading: routeLoading,
     isError: routeError,
     refetch: refetchRoute,
-  } = useStaffDeliveryRouteActive(Boolean(shellDriver && isAuthenticated));
+  } = useStaffDeliveryRoutesList(Boolean(shellDriver && isAuthenticated));
+
+  const routeIdParam = searchParams.get('routeId');
+  const route = useMemo(() => {
+    const list = routes ?? [];
+    if (!list.length) return null;
+    if (routeIdParam) {
+      const found = list.find((r) => r.id === routeIdParam);
+      if (found) return found;
+    }
+    return list[0] ?? null;
+  }, [routes, routeIdParam]);
 
   const start = useStartDeliveryRoute();
   const complete = useCompleteStop();

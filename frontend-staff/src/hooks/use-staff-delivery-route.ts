@@ -30,22 +30,32 @@ export type StaffDeliveryRouteDetail = {
   }>;
 };
 
-const key = ['tasks', 'staff-delivery-route'] as const;
+const key = ['tasks', 'staff-delivery-routes'] as const;
 
-export function useStaffDeliveryRouteActive(enabled = true) {
+/** Все назначенные / активные маршруты водителя (несколько за день — все в списке). */
+export function useStaffDeliveryRoutesList(enabled = true) {
   return useQuery({
     queryKey: key,
     queryFn: async ({ signal }) => {
-      const res = await apiClient.get<{ data: { route: StaffDeliveryRouteDetail | null } }>(
-        '/tasks/staff/delivery-route/active',
+      const res = await apiClient.get<{ data: { routes: StaffDeliveryRouteDetail[] } }>(
+        '/tasks/staff/delivery-routes',
         { signal },
       );
-      return res.data.data.route;
+      return res.data.data.routes;
     },
     enabled,
     staleTime: 10_000,
     refetchInterval: 30_000,
   });
+}
+
+/** Совместимость: только первый маршрут (как старый active). */
+export function useStaffDeliveryRouteActive(enabled = true) {
+  const q = useStaffDeliveryRoutesList(enabled);
+  return {
+    ...q,
+    data: q.data?.[0] ?? null,
+  };
 }
 
 export function useStartDeliveryRoute() {

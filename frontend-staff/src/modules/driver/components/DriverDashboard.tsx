@@ -36,14 +36,25 @@ function widgetCardClass(elevated?: boolean) {
 }
 
 export interface DriverDashboardProps {
-  route: StaffDeliveryRouteDetail | null;
+  routes: StaffDeliveryRouteDetail[] | null;
   routeLoading: boolean;
   routeError: boolean;
   onRefetch: () => void;
   onLogout: () => void;
+  /** Старт маршрута с главной: сразу POST /start, затем переход (без второй кнопки на странице маршрута). */
+  onStartAssignedRoute?: (routeId: string) => Promise<void>;
+  startingRouteId?: string | null;
 }
 
-export function DriverDashboard({ route, routeLoading, routeError, onRefetch, onLogout }: DriverDashboardProps) {
+export function DriverDashboard({
+  routes,
+  routeLoading,
+  routeError,
+  onRefetch,
+  onLogout,
+  onStartAssignedRoute,
+  startingRouteId,
+}: DriverDashboardProps) {
   const strings = useStaffStrings();
   const d = strings.driver.dashboard;
   const { data: tasksData, isLoading: tasksLoading } = useTodayTasks();
@@ -52,12 +63,14 @@ export function DriverDashboard({ route, routeLoading, routeError, onRefetch, on
   const openTasks = tasks.filter((t) => t.status !== 'done').length;
   const issueTasks = tasks.filter((t) => t.status === 'issue').length;
 
-  const routeStops = route?.stops?.length ?? 0;
-  const routeDone = route?.stops?.filter((s) => s.status === 'done').length ?? 0;
-  const hasRoute = Boolean(route && routeStops > 0);
-  const assigned = route?.status === 'assigned';
-  const inProgress = route?.status === 'in_progress';
-  const completedRoute = route?.status === 'completed';
+  const list = routes ?? [];
+  const hasAnyRoute = list.length > 0;
+  const totalStops = list.reduce((acc, r) => acc + (r.stops?.length ?? 0), 0);
+  const totalDone = list.reduce(
+    (acc, r) => acc + (r.stops?.filter((s) => s.status === 'done').length ?? 0),
+    0,
+  );
+  const hasRoute = hasAnyRoute && totalStops > 0;
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-md flex-col bg-slate-50 pb-[max(1.5rem,env(safe-area-inset-bottom))] dark:bg-slate-950">
@@ -94,30 +107,77 @@ export function DriverDashboard({ route, routeLoading, routeError, onRefetch, on
               {d.refresh}
             </Button>
           </div>
-        ) : hasRoute && !completedRoute ? (
-          <div className={widgetCardClass(true)}>
-            <div className="mb-3 flex items-start gap-3">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-teal-500/15 text-teal-700 dark:text-teal-300">
-                <MapPin className="h-7 w-7" aria-hidden />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-bold uppercase tracking-wide text-teal-800/90 dark:text-teal-300/90">
-                  {inProgress ? d.routeInProgressTitle : d.routeAssignedTitle}
-                </p>
-                <p className="mt-1 text-base font-semibold text-slate-900 dark:text-slate-100">
-                  {d.routeLine(routeStops, formatScheduleDate(route!.scheduledDate))}
-                </p>
-                <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-                  {d.progressShort(routeDone, routeStops)}
-                </p>
-              </div>
-            </div>
-            <Link
-              href="/driver/route"
-              className="inline-flex h-12 w-full items-center justify-center rounded-full bg-slate-900 text-base font-semibold text-white shadow-sm transition-colors hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
-            >
-              {inProgress ? d.ctaContinue : d.ctaStart}
-            </Link>
+        ) : hasRoute ? (
+          <div className="flex flex-col gap-3">
+            {list.map((route) => {
+              const routeStops = route.stops?.length ?? 0;
+              const routeDone = route.stops?.filter((s) => s.status === 'done').length ?? 0;
+              const assigned = route.status === 'assigned';
+              const inProgress = route.status === 'in_progress';
+              const completed = route.status === 'completed';
+              const href = `/driver/route?routeId=${encodeURIComponent(route.id)}`;
+              const startingThis = startingRouteId === route.id;
+              return (
+                <div key={route.id} className={widgetCardClass(true)}>
+                  <div className="mb-3 flex items-start gap-3">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-teal-500/15 text-teal-700 dark:text-teal-300">
+                      <MapPin className="h-7 w-7" aria-hidden />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-bold uppercase tracking-wide text-teal-800/90 dark:text-teal-300/90">
+                        {completed
+                          ? d.routeCompletedTitle
+                          : inProgress
+                            ? d.routeInProgressTitle
+                            : d.routeAssignedTitle}
+                        {list.length > 1 ? (
+                          <span className="ml-1 font-normal normal-case text-slate-500 dark:text-slate-400">
+                            · {route.scheduledDate}
+                          </span>
+                        ) : null}
+                      </p>
+                      <p className="mt-1 text-base font-semibold text-slate-900 dark:text-slate-100">
+                        {d.routeLine(routeStops, formatScheduleDate(route.scheduledDate))}
+                      </p>
+                      <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+                        {d.progressShort(routeDone, routeStops)}
+                      </p>
+                    </div>
+                  </div>
+                  {completed ? (
+                    <Link
+                      href={href}
+                      className="inline-flex h-12 w-full items-center justify-center rounded-full border border-slate-200 bg-white text-base font-semibold text-slate-900 shadow-sm transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
+                    >
+                      {d.ctaOpenRoute}
+                    </Link>
+                  ) : assigned && onStartAssignedRoute ? (
+                    <button
+                      type="button"
+                      disabled={startingThis}
+                      className="inline-flex h-12 w-full items-center justify-center rounded-full bg-slate-900 text-base font-semibold text-white shadow-sm transition-colors hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 disabled:opacity-70 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+                      onClick={() => void onStartAssignedRoute(route.id)}
+                    >
+                      {startingThis ? (
+                        <>
+                          <Loader2 className="mr-2 h-5 w-5 shrink-0 animate-spin" aria-hidden />
+                          {d.ctaStarting}
+                        </>
+                      ) : (
+                        d.ctaStart
+                      )}
+                    </button>
+                  ) : (
+                    <Link
+                      href={href}
+                      className="inline-flex h-12 w-full items-center justify-center rounded-full bg-slate-900 text-base font-semibold text-white shadow-sm transition-colors hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+                    >
+                      {inProgress ? d.ctaContinue : d.ctaStart}
+                    </Link>
+                  )}
+                </div>
+              );
+            })}
           </div>
         ) : (
           <div className={widgetCardClass()}>
@@ -142,13 +202,13 @@ export function DriverDashboard({ route, routeLoading, routeError, onRefetch, on
           </div>
         )}
 
-        {hasRoute && !completedRoute ? (
+        {hasRoute ? (
           <section className={widgetCardClass()} aria-labelledby="dash-stats">
             <h2 id="dash-stats" className="mb-2 flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-slate-100">
               <CheckCircle2 className="h-4 w-4 text-teal-600" aria-hidden />
               {d.sectionStats}
             </h2>
-            <p className="text-sm text-slate-600 dark:text-slate-400">{d.statsFromRoute(routeDone, routeStops)}</p>
+            <p className="text-sm text-slate-600 dark:text-slate-400">{d.statsFromRoute(totalDone, totalStops)}</p>
           </section>
         ) : !routeLoading && !routeError ? (
           <section className={widgetCardClass()} aria-labelledby="dash-stats-idle">
@@ -217,9 +277,13 @@ export function DriverDashboard({ route, routeLoading, routeError, onRefetch, on
           <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-400">{d.historyPlaceholder}</p>
         </section>
 
-        {hasRoute && !completedRoute ? (
+        {hasRoute ? (
           <Link
-            href="/driver/route"
+            href={
+              list.length === 1
+                ? `/driver/route?routeId=${encodeURIComponent(list[0]!.id)}`
+                : '/driver/route'
+            }
             className="inline-flex h-10 w-full items-center justify-center rounded-full text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
           >
             {d.ctaOpenRoute}

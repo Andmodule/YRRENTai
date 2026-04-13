@@ -3,10 +3,12 @@ import {
   Get,
   Patch,
   Post,
+  Delete,
   Body,
   Param,
   ParseUUIDPipe,
   UseGuards,
+  HttpCode,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
@@ -120,6 +122,18 @@ export class UserController {
     const ownerId = await this.userService.resolveTenantOwnerId(user.sub, user.role);
     const data = await this.userService.unlinkStaffTelegramChat(ownerId, staffId);
     return { data };
+  }
+
+  @Delete('staff/:id')
+  @HttpCode(204)
+  @UseGuards(RolesGuard)
+  @Roles('OWNER', 'MANAGER')
+  async deleteStaff(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) staffId: string,
+  ): Promise<void> {
+    const ownerId = await this.userService.resolveTenantOwnerId(user.sub, user.role);
+    await this.userService.deleteStaffMember(ownerId, staffId);
   }
 
   /**

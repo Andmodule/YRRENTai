@@ -29,7 +29,6 @@ import { useSupplyMatrix } from '../../hooks/useSupplyMatrix';
 import { KANBAN_COLUMNS } from '../../constants';
 import { TaskCard } from './TaskCard';
 import { TaskListView } from './TaskListView';
-import { TaskTableView } from './TaskTableView';
 import { TaskDetailDrawer } from '../shared/TaskDetailDrawer';
 import { useIncidents } from '@/modules/incidents/hooks/useIncidents';
 import type { Incident } from '@/modules/incidents/hooks/useIncidents';
@@ -49,6 +48,7 @@ import {
 import { ManagerBoardPanelTabs } from './ManagerBoardPanelTabs';
 import { ManagerSupplyAttentionBanner } from './ManagerSupplyAttentionBanner';
 import { ManagerSupplyPanel } from './ManagerSupplyPanel';
+import { ManagerSupplyToolbar } from './ManagerSupplyToolbar';
 
 export function ManagerKanban({
   filters,
@@ -82,6 +82,16 @@ export function ManagerKanban({
   const incidentId = taskId ? null : rawIncidentId;
   const managerPanel =
     searchParams.get(TASK_MANAGER_PANEL_QUERY) === 'supply' ? 'supply' : 'tasks';
+
+  const [supplyCatalogOpen, setSupplyCatalogOpen] = useState(false);
+  const [supplyCreateOpen, setSupplyCreateOpen] = useState(false);
+  const [supplyMatrixToolbarHost, setSupplyMatrixToolbarHost] = useState<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (managerPanel !== 'supply') {
+      setSupplyMatrixToolbarHost(null);
+    }
+  }, [managerPanel]);
 
   const { view } = useTasksViewMode();
   const { data, isLoading, isError, refetch } = useTasks(filters, {
@@ -182,15 +192,6 @@ export function ManagerKanban({
       return true;
     });
   }, [incidentsRaw, filters.dateRange, filters.dateRangeEnabled, filters.propertyQuery]);
-
-  const tableTasks = useMemo(() => {
-    return [...filtered].sort((a, b) => {
-      const da = a.dueDate ? new Date(a.dueDate).getTime() : 0;
-      const db = b.dueDate ? new Date(b.dueDate).getTime() : 0;
-      if (da !== db) return da - db;
-      return (a.title || a.propertyTitle).localeCompare(b.title || b.propertyTitle);
-    });
-  }, [filtered]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -299,7 +300,20 @@ export function ManagerKanban({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-hidden md:gap-3">
-      <ManagerBoardPanelTabs panel={managerPanel} supplyBadgeCount={supplyBadgeCount} />
+      <ManagerBoardPanelTabs
+        panel={managerPanel}
+        supplyBadgeCount={supplyBadgeCount}
+        endContent={
+          managerPanel === 'supply' ? (
+            <ManagerSupplyToolbar
+              catalogOpen={supplyCatalogOpen}
+              onCatalogOpenChange={setSupplyCatalogOpen}
+              onCreateClick={() => setSupplyCreateOpen(true)}
+              matrixToolbarHostRef={setSupplyMatrixToolbarHost}
+            />
+          ) : undefined
+        }
+      />
       {managerPanel === 'tasks' && (
         <ManagerSupplyAttentionBanner count={supplyBadgeCount} onOpenSupply={openSupplyPanel} />
       )}
@@ -355,34 +369,6 @@ export function ManagerKanban({
         </div>
       )}
 
-      {managerPanel === 'tasks' && !isLoading && !isError && view === 'table' && (
-        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
-          {filtered.length === 0 && boardIncidents.length === 0 ? (
-            <p className="rounded-lg border border-dashed border-border/40 bg-muted/15 px-2 py-6 text-center text-sm text-muted-foreground md:rounded-xl md:px-4 md:py-10">
-              {t('viewModes.listEmpty')}
-            </p>
-          ) : (
-            filtered.length > 0 && (
-              <TaskTableView tasks={tableTasks} onOpenTask={openTask} onStatusChange={patchStatus} />
-            )
-          )}
-          {boardIncidents.length > 0 && (
-            <section aria-labelledby="tasks-table-incidents">
-              <h2 id="tasks-table-incidents" className="mb-2 text-sm font-semibold text-amber-700 dark:text-amber-400">
-                {t('viewModes.tableIncidentsHeading')}
-              </h2>
-              <ul className="flex flex-col gap-2" role="list">
-                {boardIncidents.map((i) => (
-                  <li key={i.uuid}>
-                    <IncidentKanbanCard incident={i} onOpen={openIncident} />
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
-        </div>
-      )}
-
       {managerPanel === 'tasks' && !isLoading && !isError && view === 'kanban' && (
         <div className="min-h-0 flex-1 overflow-auto">
           <DndContext
@@ -413,9 +399,11 @@ export function ManagerKanban({
       {managerPanel === 'supply' && (
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <ManagerSupplyPanel
-            onFocusPropertyByTitle={(title) =>
-              onFiltersChange((prev) => ({ ...prev, propertyQuery: title }))
-            }
+            catalogOpen={supplyCatalogOpen}
+            onCatalogOpenChange={setSupplyCatalogOpen}
+            createSupplyOpen={supplyCreateOpen}
+            onCreateSupplyOpenChange={setSupplyCreateOpen}
+            matrixToolbarHost={supplyMatrixToolbarHost}
           />
         </div>
       )}

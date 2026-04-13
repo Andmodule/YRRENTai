@@ -5,12 +5,13 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, In } from 'typeorm';
+import { Repository, DataSource, In, Not } from 'typeorm';
 import { format } from 'date-fns';
 import { DeliveryRouteEntity } from './entities/delivery-route.entity';
 import { DeliveryRouteStopEntity } from './entities/delivery-route-stop.entity';
 import { DeliveryStopSupplyLineEntity } from './entities/delivery-stop-supply-line.entity';
 import { SupplyRequestItemEntity } from './entities/supply-request-item.entity';
+import { TaskEntity } from './entities/task.entity';
 import { UserEntity } from '../user/entities/user.entity';
 import { UserService } from '../user/user.service';
 import { TasksGateway } from './tasks.gateway';
@@ -36,6 +37,8 @@ export interface DeliveryRouteStopDetailDto {
   propertyTitle: string | null;
   propertyAddress: string | null;
   status: string;
+  /** Когда остановка закрыта (склад / объект). */
+  completedAt: string | null;
   lines: Array<{
     supplyRequestItemId: string;
     name: string;
@@ -75,6 +78,8 @@ export class DeliveryRoutesService {
     private readonly stopRepo: Repository<DeliveryRouteStopEntity>,
     @InjectRepository(SupplyRequestItemEntity)
     private readonly lineRepo: Repository<SupplyRequestItemEntity>,
+    @InjectRepository(TaskEntity)
+    private readonly taskRepo: Repository<TaskEntity>,
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
   ) {}
@@ -306,6 +311,7 @@ export class DeliveryRoutesService {
         propertyTitle: st.property?.name ?? null,
         propertyAddress: st.property?.address ?? null,
         status: st.status,
+        completedAt: st.completedAt?.toISOString() ?? null,
         lines,
       });
     }
@@ -358,10 +364,14 @@ export class DeliveryRoutesService {
     companyId: string,
     routeId: string,
     driverUserId: string,
+    opts?: { allowReassignWhileActive?: boolean },
   ): Promise<{ ok: true }> {
     const route = await this.routeRepo.findOne({ where: { id: routeId, companyId } });
     if (!route) throw new NotFoundException('Route not found');
-    if (route.status === 'in_progress' || route.status === 'completed') {
+    if (route.status === 'completed' || route.status === 'cancelled') {
+      throw new BadRequestException('Route cannot be reassigned in current status');
+    }
+    if (route.status === 'in_progress' && !opts?.allowReassignWhileActive) {
       throw new BadRequestException('Route cannot be reassigned in current status');
     }
 
@@ -389,13 +399,89 @@ export class DeliveryRoutesService {
       throw new ForbiddenException('Driver is not in your team');
     }
 
+    const previousDriverId = route.driverUserId?.trim() || null;
+
     route.driverUserId = driver.id;
-    route.status = 'assigned';
+    if (route.status === 'draft') {
+      route.status = 'assigned';
+    }
+
     await this.routeRepo.save(route);
+
+    if (previousDriverId && previousDriverId !== driver.id) {
+      const stops = await this.stopRepo.find({
+        where: { routeId: route.id, kind: 'property' },
+        select: ['propertyId'],
+      });
+      const propertyIds = [...new Set(stops.map((s) => s.propertyId).filter((id): id is string => Boolean(id?.trim())))];
+      if (propertyIds.length > 0) {
+        const tasksToMove = await this.taskRepo.find({
+          where: {
+            assigneeId: previousDriverId,
+            companyId: route.companyId,
+            propertyId: In(propertyIds),
+            status: Not(In(['done'])),
+          },
+          select: ['id', 'status'],
+        });
+        if (tasksToMove.length > 0) {
+          await this.taskRepo.update(
+            { id: In(tasksToMove.map((t) => t.id)) },
+            { assigneeId: driver.id },
+          );
+          for (const t of tasksToMove) {
+            this.tasksGateway.emitTaskUpdated({ uuid: t.id, status: t.status });
+          }
+        }
+      }
+    }
 
     this.tasksGateway.emitDeliveryRouteAssigned({ routeId: route.id, driverUserId: driver.id });
     void this.staffNotification.notifyDeliveryRouteAssigned(driver.id, route.id, route.scheduledDate);
 
+    return { ok: true };
+  }
+
+  /**
+   * Убрать маршрут: строки снабжения возвращаются в пул (pending), маршрут и остановки удаляются.
+   * Допустимо только для черновика / назначенного маршрута без начатых остановок и без доставленных строк.
+   */
+  async disbandRoute(companyId: string, routeId: string): Promise<{ ok: true }> {
+    const route = await this.routeRepo.findOne({ where: { id: routeId, companyId } });
+    if (!route) throw new NotFoundException('Route not found');
+    if (!['draft', 'assigned'].includes(route.status)) {
+      throw new BadRequestException('Route can only be disbanded while draft or assigned');
+    }
+
+    const delivered = await this.lineRepo.count({
+      where: { deliveryRouteId: routeId, lineStatus: 'delivered' },
+    });
+    if (delivered > 0) {
+      throw new BadRequestException('Cannot disband: some items are already marked delivered');
+    }
+
+    const busyStops = await this.stopRepo.count({
+      where: { routeId, status: Not(In(['pending'])) },
+    });
+    if (busyStops > 0) {
+      throw new BadRequestException('Cannot disband: route already in progress');
+    }
+
+    await this.dataSource.transaction(async (m) => {
+      await m.update(
+        DeliveryRouteEntity,
+        { id: routeId },
+        { driverNextStopId: null },
+      );
+      await m.update(
+        SupplyRequestItemEntity,
+        { deliveryRouteId: routeId },
+        { lineStatus: 'pending', deliveryRouteId: null },
+      );
+      await m.delete(DeliveryRouteEntity, { id: routeId });
+    });
+
+    this.tasksGateway.emitSupplyInterpretationsChanged();
     return { ok: true };
   }
 
@@ -539,6 +625,26 @@ export class DeliveryRoutesService {
 
     if (!route) return null;
     return this.getDetailForCompany(route.id, companyId);
+  }
+
+  /**
+   * Маршруты водителя для staff: назначен / в работе, плюс завершённые за сегодня (по scheduledDate),
+   * чтобы после закрытия маршрут не «исчезал» с главной до следующего назначения.
+   */
+  async listAllActiveRoutesForDriver(companyId: string, userId: string): Promise<DeliveryRouteDetailDto[]> {
+    const today = format(new Date(), 'yyyy-MM-dd');
+    const routes = await this.routeRepo
+      .createQueryBuilder('r')
+      .where('r.companyId = :cid', { cid: companyId })
+      .andWhere('r.driverUserId = :uid', { uid: userId })
+      .andWhere(
+        '(r.status IN (:...active) OR (r.status = :done AND r.scheduledDate = :today))',
+        { active: ['assigned', 'in_progress'], done: 'completed', today },
+      )
+      .orderBy('r.createdAt', 'DESC')
+      .getMany();
+    const details = await Promise.all(routes.map((r) => this.getDetailForCompany(r.id, companyId)));
+    return details;
   }
 
   /** Водитель может отчитываться по объекту, если он на активном назначенном маршруте (без отдельной задачи уборки). */

@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useState } from 'react';
-import { CalendarRange, Kanban, LayoutList, Search, Table2 } from 'lucide-react';
+import { CalendarRange, Kanban, LayoutList, Search } from 'lucide-react';
 import { addDays, format } from 'date-fns';
 import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
@@ -101,7 +101,6 @@ export function TasksHeaderControls() {
             [
               { id: 'list' as const, icon: LayoutList },
               { id: 'kanban' as const, icon: Kanban },
-              { id: 'table' as const, icon: Table2 },
             ] as const
           ).map(({ id, icon: Icon }) => (
             <Button

@@ -6,6 +6,7 @@ import { SupplyItemAliasEntity } from './entities/supply-item-alias.entity';
 import { SupplyRequestItemEntity } from './entities/supply-request-item.entity';
 import { StaffInterpretationEventEntity } from './entities/staff-interpretation-event.entity';
 import { TaskEntity } from './entities/task.entity';
+import { DeliveryRouteStopEntity } from './entities/delivery-route-stop.entity';
 import { UserEntity } from '../user/entities/user.entity';
 import { TasksGateway } from './tasks.gateway';
 import { includeLineInSupplyMatrix } from './supply-matrix.util';
@@ -584,6 +585,27 @@ export class SupplyCatalogService {
       });
     });
 
+    /** Сводка согласована с маршрутным листом: закрытая остановка объекта = доставлено для строк на этом маршруте. */
+    const routeIdsForDoneLookup = [
+      ...new Set(
+        filtered.map((s) => s.deliveryRouteId).filter((id): id is string => Boolean(id?.trim())),
+      ),
+    ];
+    const stopsDoneByRouteProperty = new Set<string>();
+    if (routeIdsForDoneLookup.length > 0) {
+      const doneStops = await this.dataSource.getRepository(DeliveryRouteStopEntity).find({
+        where: {
+          kind: 'property',
+          status: 'done',
+          routeId: In(routeIdsForDoneLookup),
+        },
+        select: ['routeId', 'propertyId'],
+      });
+      for (const st of doneStops) {
+        if (st.propertyId) stopsDoneByRouteProperty.add(`${st.routeId}|${st.propertyId}`);
+      }
+    }
+
     /**
      * Одна строка матрицы = одна номенклатура × один «слой» логистики:
      * только пул (ещё не на маршруте) или только один маршрут.
@@ -613,10 +635,14 @@ export class SupplyCatalogService {
     const map = new Map<string, Agg>();
 
     for (const sri of filtered) {
-      const ls = sri.lineStatus || 'pending';
-
       const ev = sri.interpretationEvent as StaffInterpretationEventEntity;
       const prop = ev.property;
+      const ridForDone = sri.deliveryRouteId?.trim();
+      const ls =
+        ridForDone && stopsDoneByRouteProperty.has(`${ridForDone}|${prop.id}`)
+          ? 'delivered'
+          : sri.lineStatus || 'pending';
+
       const gid = sri.supplyItemId ?? `raw:${SupplyCatalogService.normalizeAlias(sri.name).slice(0, 120)}`;
       const routeId = sri.deliveryRouteId?.trim() || null;
       const bucketSuffix = routeId ? `route:${routeId}` : 'pool';
@@ -636,7 +662,7 @@ export class SupplyCatalogService {
       }
       const agg = map.get(compositeKey)!;
       agg.eventIds.add(ev.id);
-      agg.lineStatuses.push(sri.lineStatus || 'pending');
+      agg.lineStatuses.push(ls);
       const pq = SupplyCatalogService.parseQuantity(sri.quantity);
       const partial = pq == null;
       const qty = partial ? 0 : pq;

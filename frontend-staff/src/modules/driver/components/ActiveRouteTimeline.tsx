@@ -173,6 +173,12 @@ export function ActiveRouteTimeline({
     data && data.routeStatus === 'in_progress' && warehouseDone(data.stops) && onSetDriverNextStop,
   );
 
+  /** Голос/текст на складе идут через тот же API, что и по объекту маршрута — нужен id объекта из этого маршрута. */
+  const firstRoutePropertyId = useMemo(
+    () => data?.stops.find((s) => s.kind === 'property' && s.propertyId)?.propertyId ?? null,
+    [data?.stops],
+  );
+
   useEffect(() => {
     if (!data?.stops.some((s) => s.id === expandedStopId)) setExpandedStopId(null);
   }, [data, expandedStopId]);
@@ -433,38 +439,47 @@ export function ActiveRouteTimeline({
                         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{stopAddress(stop, tr)}</p>
                       </div>
                       <div className="flex shrink-0 items-center gap-1.5">
-                        {stop.kind === 'property' && stop.propertyId ? (
-                          <>
-                            <button
-                              type="button"
-                              className={cardActionBtnClass}
-                              aria-label={tr.report.voiceAria}
-                              title={tr.report.voiceAria}
-                              onClick={() =>
-                                onVoiceForActiveProperty?.({
-                                  propertyId: stop.propertyId!,
-                                  label: propertyReportLabel(stop, tr),
-                                })
-                              }
-                            >
-                              <Mic className="h-4 w-4" strokeWidth={2.1} aria-hidden />
-                            </button>
-                            <button
-                              type="button"
-                              className={cardActionBtnClass}
-                              aria-label={tr.report.textAria}
-                              title={tr.report.textAria}
-                              onClick={() =>
-                                onTextForActiveProperty?.({
-                                  propertyId: stop.propertyId!,
-                                  label: propertyReportLabel(stop, tr),
-                                })
-                              }
-                            >
-                              <Pencil className="h-4 w-4" strokeWidth={2.1} aria-hidden />
-                            </button>
-                          </>
-                        ) : null}
+                        {(() => {
+                          const voicePropertyId =
+                            stop.kind === 'property' ? stop.propertyId : firstRoutePropertyId;
+                          const voiceLabel =
+                            stop.kind === 'property'
+                              ? propertyReportLabel(stop, tr)
+                              : stopHeading(stop, tr);
+                          if (!voicePropertyId) return null;
+                          return (
+                            <>
+                              <button
+                                type="button"
+                                className={cardActionBtnClass}
+                                aria-label={tr.report.voiceAria}
+                                title={tr.report.voiceAria}
+                                onClick={() =>
+                                  onVoiceForActiveProperty?.({
+                                    propertyId: voicePropertyId,
+                                    label: voiceLabel,
+                                  })
+                                }
+                              >
+                                <Mic className="h-4 w-4" strokeWidth={2.1} aria-hidden />
+                              </button>
+                              <button
+                                type="button"
+                                className={cardActionBtnClass}
+                                aria-label={tr.report.textAria}
+                                title={tr.report.textAria}
+                                onClick={() =>
+                                  onTextForActiveProperty?.({
+                                    propertyId: voicePropertyId,
+                                    label: voiceLabel,
+                                  })
+                                }
+                              >
+                                <Pencil className="h-4 w-4" strokeWidth={2.1} aria-hidden />
+                              </button>
+                            </>
+                          );
+                        })()}
                         <Button
                           type="button"
                           aria-label={tr.a11y.navigate}

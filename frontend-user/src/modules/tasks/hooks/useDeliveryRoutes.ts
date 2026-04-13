@@ -34,6 +34,7 @@ export type DeliveryRouteDetail = {
     propertyTitle: string | null;
     propertyAddress: string | null;
     status: string;
+    completedAt: string | null;
     lines: Array<{
       supplyRequestItemId: string;
       name: string;
@@ -43,11 +44,12 @@ export type DeliveryRouteDetail = {
   }>;
 };
 
-const routesKey = ['tasks', 'manager-delivery-routes'] as const;
+/** Корень запросов маршрутов: инвалидируйте `['…', 'list']` или `['…', 'detail', id]`, не весь корень — иначе сбрасывается открытый лист. */
+export const MANAGER_DELIVERY_ROUTES_ROOT = ['tasks', 'manager-delivery-routes'] as const;
 
 export function useDeliveryRoutesList(from?: string, to?: string, enabled = true) {
   return useQuery({
-    queryKey: [...routesKey, from ?? '', to ?? ''],
+    queryKey: [...MANAGER_DELIVERY_ROUTES_ROOT, 'list', from ?? '', to ?? ''],
     queryFn: async ({ signal }) => {
       const params = new URLSearchParams();
       if (from) params.set('from', from);
@@ -67,7 +69,7 @@ export function useDeliveryRoutesList(from?: string, to?: string, enabled = true
 
 export function useDeliveryRouteDetail(routeId: string | null, enabled: boolean) {
   return useQuery({
-    queryKey: [...routesKey, 'detail', routeId],
+    queryKey: [...MANAGER_DELIVERY_ROUTES_ROOT, 'detail', routeId],
     queryFn: async () => {
       const res = await apiClient.get<{ data: { route: DeliveryRouteDetail } }>(
         `/tasks/manager/delivery-routes/${routeId}`,
@@ -96,8 +98,8 @@ export function useCreateDeliveryRouteFromPool() {
       return res.data.data;
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: routesKey });
-      void queryClient.invalidateQueries({ queryKey: ['tasks', 'manager-supply-matrix'] });
+      void queryClient.invalidateQueries({ queryKey: [...MANAGER_DELIVERY_ROUTES_ROOT, 'list'] });
+      void queryClient.invalidateQueries({ queryKey: ['tasks', 'manager-supply-matrix', 'rows'] });
       void queryClient.invalidateQueries({ queryKey: ['tasks', 'manager-supply-interpretations'] });
     },
   });
@@ -106,16 +108,45 @@ export function useCreateDeliveryRouteFromPool() {
 export function useAssignDeliveryRouteDriver() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (payload: { routeId: string; driverUserId: string }) => {
+    mutationFn: async (payload: {
+      routeId: string;
+      driverUserId: string;
+      /** Смена водителя на уже начатом маршруте (форсмажор). */
+      allowReassignWhileActive?: boolean;
+    }) => {
       const res = await apiClient.patch<{ data: { ok: true } }>(
         `/tasks/manager/delivery-routes/${payload.routeId}/assign-driver`,
-        { driverUserId: payload.driverUserId },
+        {
+          driverUserId: payload.driverUserId,
+          ...(payload.allowReassignWhileActive ? { allowReassignWhileActive: true } : {}),
+        },
       );
       return res.data.data;
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: routesKey });
-      void queryClient.invalidateQueries({ queryKey: ['tasks', 'manager-supply-matrix'] });
+    onSuccess: (_data, payload) => {
+      void queryClient.invalidateQueries({ queryKey: [...MANAGER_DELIVERY_ROUTES_ROOT, 'list'] });
+      void queryClient.invalidateQueries({
+        queryKey: [...MANAGER_DELIVERY_ROUTES_ROOT, 'detail', payload.routeId],
+      });
+      void queryClient.invalidateQueries({ queryKey: ['tasks', 'manager-supply-matrix', 'rows'] });
+      void queryClient.invalidateQueries({ queryKey: ['tasks', 'manager-supply-interpretations'] });
+    },
+  });
+}
+
+export function useDisbandDeliveryRoute() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (routeId: string) => {
+      const res = await apiClient.post<{ data: { ok: true } }>(
+        `/tasks/manager/delivery-routes/${routeId}/disband`,
+      );
+      return res.data.data;
+    },
+    onSuccess: (_data, routeId) => {
+      void queryClient.invalidateQueries({ queryKey: [...MANAGER_DELIVERY_ROUTES_ROOT, 'list'] });
+      void queryClient.removeQueries({ queryKey: [...MANAGER_DELIVERY_ROUTES_ROOT, 'detail', routeId] });
+      void queryClient.invalidateQueries({ queryKey: ['tasks', 'manager-supply-matrix', 'rows'] });
       void queryClient.invalidateQueries({ queryKey: ['tasks', 'manager-supply-interpretations'] });
     },
   });

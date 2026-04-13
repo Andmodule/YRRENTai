@@ -265,13 +265,24 @@ export class TasksController {
   async managerDeliveryRoutesAssign(
     @CurrentUser() user: JwtPayload,
     @Param('routeId') routeId: string,
-    @Body() body: { driverUserId?: string },
+    @Body() body: { driverUserId?: string; allowReassignWhileActive?: boolean },
   ) {
     const ownerId = await this.userService.resolveTenantOwnerId(user.sub, user.role);
     const companyId = await this.supplyCatalogService.resolveActorCompanyId(user.sub);
     const driverUserId = body?.driverUserId?.trim();
     if (!driverUserId) throw new BadRequestException('driverUserId required');
-    const data = await this.deliveryRoutesService.assignDriver(ownerId, companyId, routeId, driverUserId);
+    const data = await this.deliveryRoutesService.assignDriver(ownerId, companyId, routeId, driverUserId, {
+      allowReassignWhileActive: body.allowReassignWhileActive === true,
+    });
+    return { data };
+  }
+
+  /** Расформировать маршрут: строки снабжения снова в пуле, маршрут удаляется (только draft / assigned). */
+  @Post('manager/delivery-routes/:routeId/disband')
+  @Roles('OWNER', 'MANAGER')
+  async managerDeliveryRoutesDisband(@CurrentUser() user: JwtPayload, @Param('routeId') routeId: string) {
+    const companyId = await this.supplyCatalogService.resolveActorCompanyId(user.sub);
+    const data = await this.deliveryRoutesService.disbandRoute(companyId, routeId);
     return { data };
   }
 
@@ -292,13 +303,22 @@ export class TasksController {
     return { data };
   }
 
-  /** Активный маршрут, назначенный водителю (STAFF). */
+  /** Активный маршрут, назначенный водителю (STAFF). @deprecated Используйте staff/delivery-routes — список всех. */
   @Get('staff/delivery-route/active')
   @Roles('STAFF', 'MANAGER')
   async staffDeliveryRouteActive(@CurrentUser() user: JwtPayload) {
     const companyId = await this.supplyCatalogService.resolveActorCompanyId(user.sub);
     const route = await this.deliveryRoutesService.getActiveRouteForDriver(companyId, user.sub);
     return { data: { route } };
+  }
+
+  /** Все назначенные и незавершённые маршруты текущего водителя (могут быть несколько за день). */
+  @Get('staff/delivery-routes')
+  @Roles('STAFF', 'MANAGER')
+  async staffDeliveryRoutesList(@CurrentUser() user: JwtPayload) {
+    const companyId = await this.supplyCatalogService.resolveActorCompanyId(user.sub);
+    const routes = await this.deliveryRoutesService.listAllActiveRoutesForDriver(companyId, user.sub);
+    return { data: { routes } };
   }
 
   @Post('delivery-routes/:routeId/start')

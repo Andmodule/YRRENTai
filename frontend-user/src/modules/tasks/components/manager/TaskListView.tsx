@@ -31,6 +31,12 @@ const FAB_SCROLL_END_DEBOUNCE_MS = 100;
 /** Длительность плавного появления/пропадания (только opacity), видимая анимация. */
 const FAB_FADE_MS = 1500;
 
+/**
+ * Блок «Нехватка и логистика» в списке задач дублирует вкладку «Снабжение и логистика» — временно скрыт.
+ * TODO REMOVE: поставить `true` или удалить фильтр `groupsForList` ниже, когда снова понадобится секция в задачах.
+ */
+const SHOW_SHORTAGE_SECTION_IN_TASK_LIST = false;
+
 function getScrollableParent(el: HTMLElement | null): HTMLElement | null {
   let node: HTMLElement | null = el?.parentElement ?? null;
   while (node) {
@@ -105,6 +111,14 @@ export const TaskListView = memo(function TaskListView({
     [groups, showShortageWhenEmpty],
   );
 
+  const groupsForList = useMemo(
+    () =>
+      SHOW_SHORTAGE_SECTION_IN_TASK_LIST
+        ? visibleGroups
+        : visibleGroups.filter((g) => g.propertyId !== SHORTAGE_BOARD_GROUP_KEY),
+    [visibleGroups],
+  );
+
   const { collapsedById, setCollapsed } = useTaskListCollapsedGroups();
   const isMdUp = useMatchMedia('(min-width: 768px)');
   const [voiceOpen, setVoiceOpen] = useState(false);
@@ -140,9 +154,9 @@ export const TaskListView = memo(function TaskListView({
   );
 
   const fabPropertyId = useMemo(() => {
-    const g = visibleGroups.find((x) => x.propertyId !== GENERAL_TASK_PROPERTY_GROUP_KEY);
+    const g = groupsForList.find((x) => x.propertyId !== GENERAL_TASK_PROPERTY_GROUP_KEY);
     return g?.propertyId ?? null;
-  }, [visibleGroups]);
+  }, [groupsForList]);
 
   /** Voice-first: open sheet and start mic in the same tap/click (required for mobile Safari `getUserMedia`). */
   const openVoiceSheet = useCallback((propertyId: string) => {
@@ -186,14 +200,14 @@ export const TaskListView = memo(function TaskListView({
       scrollEl.removeEventListener('scroll', onScroll);
       if (fabScrollIdleTimerRef.current) clearTimeout(fabScrollIdleTimerRef.current);
     };
-  }, [voiceQuickAdd, isMdUp, visibleGroups.length]);
+  }, [voiceQuickAdd, isMdUp, groupsForList.length]);
 
   return (
     <div
       ref={listRootRef}
       className="relative flex min-w-0 flex-col gap-1.5 pb-[max(9rem,calc(9rem+env(safe-area-inset-bottom,0px)))] md:gap-3 md:pb-0"
     >
-      {visibleGroups.map((group) => {
+      {groupsForList.map((group) => {
         const collapsed = collapsedById[group.propertyId] ?? false;
         const displayTitle =
           group.propertyId === INCIDENTS_BOARD_GROUP_KEY

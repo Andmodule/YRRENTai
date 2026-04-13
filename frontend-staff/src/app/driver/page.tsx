@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSWRConfig } from 'swr';
 import { useAuth } from '@/hooks/use-auth';
-import { useStaffDeliveryRouteActive } from '@/hooks/use-staff-delivery-route';
+import { useStaffDeliveryRoutesList, useStartDeliveryRoute } from '@/hooks/use-staff-delivery-route';
 import { resolveStaffAppShell } from '@/lib/staff-app-shell';
 import { apiClient } from '@/lib/api/client';
 import { DriverDashboard } from '@/modules/driver/components/DriverDashboard';
@@ -20,11 +20,28 @@ export default function DriverDashboardPage() {
     user?.role === 'STAFF' && user?.staffJobType != null && resolveStaffAppShell(user.staffJobType) === 'driver';
 
   const {
-    data: route,
+    data: routes,
     isLoading: routeLoading,
     isError: routeError,
     refetch: refetchRoute,
-  } = useStaffDeliveryRouteActive(Boolean(shellDriver && isAuthenticated));
+  } = useStaffDeliveryRoutesList(Boolean(shellDriver && isAuthenticated));
+
+  const startRoute = useStartDeliveryRoute();
+  const [startingRouteId, setStartingRouteId] = useState<string | null>(null);
+
+  const handleStartAssignedRoute = useCallback(
+    async (routeId: string) => {
+      setStartingRouteId(routeId);
+      try {
+        await startRoute.mutateAsync(routeId);
+        await refetchRoute();
+        router.push(`/driver/route?routeId=${encodeURIComponent(routeId)}`);
+      } finally {
+        setStartingRouteId(null);
+      }
+    },
+    [startRoute, refetchRoute, router],
+  );
 
   useEffect(() => {
     if (isLoading) return;
@@ -77,11 +94,13 @@ export default function DriverDashboardPage() {
 
   return (
     <DriverDashboard
-      route={route ?? null}
+      routes={routes ?? null}
       routeLoading={routeLoading}
       routeError={routeError}
       onRefetch={() => void refetchRoute()}
       onLogout={handleLogout}
+      onStartAssignedRoute={handleStartAssignedRoute}
+      startingRouteId={startingRouteId}
     />
   );
 }

@@ -127,6 +127,7 @@ export function ResponsiveModalContent({
         className={className}
         bodyClassName={bodyClassName}
         style={contentStyle}
+        stackAboveTaskLayer={stackAboveTaskLayer}
       >
         {children}
       </SheetContent>

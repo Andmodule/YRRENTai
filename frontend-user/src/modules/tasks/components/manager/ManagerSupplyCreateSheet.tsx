@@ -97,7 +97,7 @@ export function ManagerSupplyCreateSheet({
           return [row, ...rest];
         },
       );
-      void queryClient.invalidateQueries({ queryKey: ['tasks', 'manager-supply-matrix'] });
+      void queryClient.invalidateQueries({ queryKey: ['tasks', 'manager-supply-matrix', 'rows'] });
       onOpenChange(false);
     },
     onError: (err: unknown) => {

@@ -36,7 +36,7 @@ export function ManagerSupplyCatalogModal({
 
   const invalidateCatalogAndMatrix = () => {
     void queryClient.invalidateQueries({ queryKey: ['tasks', 'manager-supply-catalog'] });
-    void queryClient.invalidateQueries({ queryKey: ['tasks', 'manager-supply-matrix'] });
+    void queryClient.invalidateQueries({ queryKey: ['tasks', 'manager-supply-matrix', 'rows'] });
   };
 
   const sortedFilteredItems = useMemo(() => {

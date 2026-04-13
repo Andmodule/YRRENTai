@@ -13,7 +13,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Copy, Link2, Link2Off, Loader2, Pencil } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Check, Copy, Link2, Link2Off, Loader2, MoreVertical, Pencil, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { isValidStaffInvitePhone, isValidStaffTelegramUsername } from '@/lib/staff/staff-invite-validation';
@@ -115,6 +122,7 @@ export default function StaffPage() {
   const [inviteRowError, setInviteRowError] = useState<string | null>(null);
   const [inviteRegenerating, setInviteRegenerating] = useState(false);
   const [unlinkingId, setUnlinkingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const phoneInvalid = phone.trim().length > 0 && !isValidStaffInvitePhone(phone);
   const telegramInvalid =
@@ -155,13 +163,8 @@ export default function StaffPage() {
   const onSubmit = async () => {
     const fn = firstName.trim();
     const ln = lastName.trim();
-    const em = email.trim().toLowerCase();
     if (!fn || !ln) {
       setFormError(t('formRequired'));
-      return;
-    }
-    if (!em) {
-      setFormError(t('emailRequired'));
       return;
     }
     if (fieldsBlockingSubmit) return;
@@ -171,7 +174,7 @@ export default function StaffPage() {
       const res = await apiClient.post<{ data: InviteResponse }>('/users/staff/invite', {
         firstName: fn,
         lastName: ln,
-        email: em,
+        email: email.trim().toLowerCase(),
         phone: phone.trim() || undefined,
         jobType,
         telegramUsername: telegramUsername.trim() || undefined,
@@ -213,8 +216,7 @@ export default function StaffPage() {
   const submitEdit = async () => {
     const fn = efn.trim();
     const ln = eln.trim();
-    const em = eem.trim().toLowerCase();
-    if (!fn || !ln || !em) {
+    if (!fn || !ln) {
       setEditError(t('formRequired'));
       return;
     }
@@ -225,7 +227,7 @@ export default function StaffPage() {
       await apiClient.patch(`/users/staff/${editingId}`, {
         firstName: fn,
         lastName: ln,
-        email: em,
+        email: eem.trim().toLowerCase(),
         phone: ephone.trim() || undefined,
         jobType: ejob,
         telegramUsername: etg.trim() || undefined,
@@ -291,6 +293,30 @@ export default function StaffPage() {
       await navigator.clipboard.writeText(normalizeTelegramStaffInviteLink(link));
     } catch {
       /* ignore */
+    }
+  };
+
+  const deleteStaffMember = async (row: StaffDirectoryRow) => {
+    if (!window.confirm(t('deleteStaffConfirm'))) return;
+    setDeletingId(row.id);
+    try {
+      await apiClient.delete(`/users/staff/${row.id}`);
+      await mutate(
+        (current) => {
+          if (!current?.members) return current;
+          return {
+            ...current,
+            members: current.members.filter((m) => m.id !== row.id),
+          };
+        },
+        { revalidate: false },
+      );
+      toast.success(t('deleteStaffSuccess'));
+    } catch {
+      toast.error(t('deleteStaffError'));
+      void mutate();
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -381,8 +407,8 @@ export default function StaffPage() {
                     <td className="max-w-[140px] truncate px-4 py-3 text-muted-foreground" title={row.phone ?? ''}>
                       {row.phone ?? '—'}
                     </td>
-                    <td className="max-w-[200px] truncate px-4 py-3 text-muted-foreground" title={row.email}>
-                      {row.email}
+                    <td className="max-w-[200px] truncate px-4 py-3 text-muted-foreground" title={row.email || ''}>
+                      {row.email || '—'}
                     </td>
                     <td className="px-4 py-3">
                       <TelegramCell row={row} />
@@ -395,9 +421,11 @@ export default function StaffPage() {
                         telegramBotConfigured={telegramBotConfigured}
                         telegramLinked={row.telegramLinked}
                         unlinking={unlinkingId === row.id}
+                        deleting={deletingId === row.id}
                         onEdit={() => openEdit(row)}
                         onInvite={() => openInviteForRow(row)}
                         onUnlinkTelegram={() => void unlinkStaffTelegram(row)}
+                        onDelete={() => void deleteStaffMember(row)}
                       />
                     </td>
                   </tr>
@@ -419,21 +447,33 @@ export default function StaffPage() {
                 key={row.id}
                 className="rounded-2xl border border-slate-200/80 bg-white p-5 text-slate-900 shadow-[0_1px_3px_rgba(15,23,42,0.06)] ring-1 ring-slate-100 dark:border-slate-200/80 dark:bg-white dark:text-slate-900 dark:shadow-[0_2px_16px_rgba(0,0,0,0.12)] dark:ring-slate-200/50"
               >
-                <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="font-semibold leading-snug tracking-tight text-slate-900">
                       {row.firstName} {row.lastName}
                     </p>
                     <p className="mt-1 text-xs font-medium text-slate-500">{jobTypeLabel(row.jobType)}</p>
                   </div>
-                  <span className="shrink-0 text-[11px] tabular-nums text-slate-400">
-                    {new Date(row.createdAt).toLocaleDateString()}
-                  </span>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <span className="text-[11px] tabular-nums text-slate-400">
+                      {new Date(row.createdAt).toLocaleDateString()}
+                    </span>
+                    <StaffRowActions
+                      telegramBotConfigured={telegramBotConfigured}
+                      telegramLinked={row.telegramLinked}
+                      unlinking={unlinkingId === row.id}
+                      deleting={deletingId === row.id}
+                      onEdit={() => openEdit(row)}
+                      onInvite={() => openInviteForRow(row)}
+                      onUnlinkTelegram={() => void unlinkStaffTelegram(row)}
+                      onDelete={() => void deleteStaffMember(row)}
+                    />
+                  </div>
                 </div>
                 <dl className="mt-4 space-y-3 text-sm">
                   <div className="grid grid-cols-1 gap-1 sm:grid-cols-[minmax(0,7rem)_1fr] sm:gap-x-3">
                     <dt className="text-slate-500">{t('colEmail')}</dt>
-                    <dd className="min-w-0 break-all font-medium text-slate-900">{row.email}</dd>
+                    <dd className="min-w-0 break-all font-medium text-slate-900">{row.email || '—'}</dd>
                   </div>
                   <div className="grid grid-cols-1 gap-1 sm:grid-cols-[minmax(0,7rem)_1fr] sm:gap-x-3">
                     <dt className="text-slate-500">{t('colPhone')}</dt>
@@ -446,16 +486,6 @@ export default function StaffPage() {
                     </dd>
                   </div>
                 </dl>
-                <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-4 dark:border-slate-200/80">
-                  <StaffRowActions
-                    telegramBotConfigured={telegramBotConfigured}
-                    telegramLinked={row.telegramLinked}
-                    unlinking={unlinkingId === row.id}
-                    onEdit={() => openEdit(row)}
-                    onInvite={() => openInviteForRow(row)}
-                    onUnlinkTelegram={() => void unlinkStaffTelegram(row)}
-                  />
-                </div>
               </article>
             ))
           )}
@@ -550,7 +580,10 @@ export default function StaffPage() {
                 </p>
                 <div className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="staff-email">{t('email')}</Label>
+                    <Label htmlFor="staff-email">
+                      {t('email')}{' '}
+                      <span className="font-normal text-muted-foreground">({t('emailOptional')})</span>
+                    </Label>
                     <Input
                       id="staff-email"
                       type="email"
@@ -674,7 +707,10 @@ export default function StaffPage() {
               </p>
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="staff-edit-email">{t('email')}</Label>
+                  <Label htmlFor="staff-edit-email">
+                    {t('email')}{' '}
+                    <span className="font-normal text-muted-foreground">({t('emailOptional')})</span>
+                  </Label>
                   <Input
                     id="staff-edit-email"
                     type="email"
@@ -826,53 +862,67 @@ function StaffRowActions({
   telegramBotConfigured,
   telegramLinked,
   unlinking,
+  deleting,
   onEdit,
   onInvite,
   onUnlinkTelegram,
+  onDelete,
 }: {
   telegramBotConfigured: boolean;
   telegramLinked: boolean;
   unlinking: boolean;
+  deleting: boolean;
   onEdit: () => void;
   onInvite: () => void;
   onUnlinkTelegram: () => void;
+  onDelete: () => void;
 }) {
   const t = useTranslations('staff');
   return (
-    <div className="flex flex-wrap items-center justify-end gap-1">
-      <Button type="button" variant="outline" size="sm" className="h-8" onClick={onEdit}>
-        <Pencil className="mr-1 h-3.5 w-3.5" />
-        {t('editStaff')}
-      </Button>
-      {telegramLinked ? (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
         <Button
           type="button"
-          variant="outline"
-          size="sm"
-          className="h-8 text-amber-900 dark:text-amber-200/95"
-          disabled={unlinking}
-          onClick={onUnlinkTelegram}
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
+          aria-label={t('rowMenuAria')}
         >
+          <MoreVertical className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-[12.5rem]">
+        <DropdownMenuItem onClick={onEdit}>
+          <Pencil className="mr-2 h-4 w-4" />
+          {t('editStaff')}
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={onInvite} disabled={!telegramBotConfigured}>
+          <Link2 className="mr-2 h-4 w-4" />
+          {t('menuInviteLink')}
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={onUnlinkTelegram} disabled={!telegramLinked || unlinking}>
           {unlinking ? (
-            <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
           ) : (
-            <Link2Off className="mr-1 h-3.5 w-3.5" />
+            <Link2Off className="mr-2 h-4 w-4" />
           )}
           {t('unlinkTelegram')}
-        </Button>
-      ) : null}
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className="h-8"
-        disabled={!telegramBotConfigured}
-        onClick={onInvite}
-      >
-        <Link2 className="mr-1 h-3.5 w-3.5" />
-        {t('inviteLinkAction')}
-      </Button>
-    </div>
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          className="text-destructive focus:text-destructive"
+          onClick={onDelete}
+          disabled={deleting}
+        >
+          {deleting ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <Trash2 className="mr-2 h-4 w-4" />
+          )}
+          {t('menuDelete')}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -880,29 +930,14 @@ function TelegramCell({ row }: { row: StaffDirectoryRow }) {
   const t = useTranslations('staff');
   if (row.telegramLinked) {
     return (
-      <div className="flex min-w-[10rem] flex-col gap-1">
-        <span className="inline-flex w-fit items-center rounded-md border border-emerald-500/30 bg-emerald-500/15 px-2 py-0.5 text-xs font-semibold text-emerald-800 dark:text-emerald-300">
-          {t('telegramStatusConnected')}
-        </span>
-        {row.telegramUsername ? (
-          <span className="text-xs text-muted-foreground">@{row.telegramUsername}</span>
-        ) : (
-          <span className="text-[11px] text-muted-foreground">{t('telegramLinkedNoUsername')}</span>
-        )}
-      </div>
+      <span
+        className="inline-flex items-center justify-center text-emerald-500"
+        title={t('telegramStatusConnected')}
+        aria-label={t('telegramStatusConnected')}
+      >
+        <Check className="h-5 w-5" strokeWidth={2.5} />
+      </span>
     );
   }
-  return (
-    <div className="flex min-w-[10rem] flex-col gap-1">
-      <span className="inline-flex w-fit items-center rounded-md border border-amber-500/35 bg-amber-500/10 px-2 py-0.5 text-xs font-semibold text-amber-900 dark:text-amber-200/95">
-        {t('telegramStatusNotLinked')}
-      </span>
-      {row.telegramUsername ? (
-        <span className="text-xs text-muted-foreground" title={t('telegramExpected')}>
-          @{row.telegramUsername}
-        </span>
-      ) : null}
-      <span className="text-[11px] leading-snug text-muted-foreground">{t('telegramInviteHint')}</span>
-    </div>
-  );
+  return <span className="text-sm text-muted-foreground">{t('telegramCellNotConnected')}</span>;
 }

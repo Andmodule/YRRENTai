@@ -626,6 +626,7 @@ export class StaffInterpretationService {
       parsed = await this.runLlmOrHeuristic(ev.textRaw, ev.companyId);
       parsed = this.correctIncidentOverSupply(parsed, ev.textRaw);
       parsed = this.boostSupplyIntentIfNoteOnly(parsed, ev.textRaw);
+      parsed = this.ensureSupplyFallbackItems(parsed, ev);
     } catch (e) {
       const msg = (e as Error).message;
       await this.eventRepo.update(eventId, {
@@ -746,9 +747,13 @@ export class StaffInterpretationService {
     const rawItems = parsed.extracted?.items?.filter((x) => x?.name?.trim()) ?? [];
 
     const savedSupplyLineIds: string[] = [];
+    const persistSupplyLines =
+      rawItems.length > 0 &&
+      (SUPPLY_INTENTS.has(parsed.intent) || ev.entryPoint === 'manager_supply_create');
+
     await this.dataSource.transaction(async (manager: EntityManager) => {
       await manager.delete(SupplyRequestItemEntity, { interpretationEventId: ev.id });
-      if (SUPPLY_INTENTS.has(parsed.intent) && rawItems.length > 0) {
+      if (persistSupplyLines) {
         for (let i = 0; i < rawItems.length; i++) {
           const it = rawItems[i]!;
           const nm = it.name.trim().slice(0, 500);
@@ -867,6 +872,65 @@ export class StaffInterpretationService {
           parsed.extracted?.staff_facing_summary?.trim() || t.slice(0, 300),
       },
     };
+  }
+
+  /**
+   * Строка в пуле снабжения должна появляться всегда, если менеджер/модель указали довоз,
+   * но не выделили позиции (или номенклатуры нет в каталоге — модель могла вернуть пустой items).
+   * Иначе «ваза» и прочие произвольные названия не попадают в матрицу.
+   */
+  private ensureSupplyFallbackItems(parsed: InterpretLlmJson, ev: StaffInterpretationEventEntity): InterpretLlmJson {
+    const t = ev.textRaw.trim();
+    if (t.length < 3) return parsed;
+
+    const named = parsed.extracted?.items?.filter((x) => x?.name?.trim()) ?? [];
+    if (named.length > 0) {
+      return { ...parsed, extracted: { ...parsed.extracted, items: named } };
+    }
+
+    const fallback = {
+      name: this.fallbackSupplyLineName(t),
+      quantity: null as number | null,
+      unit: null as string | null,
+    };
+
+    if (ev.entryPoint === 'manager_supply_create') {
+      const intentIn = (parsed.intent || 'NOTE_ONLY').trim();
+      const intentOut = SUPPLY_INTENTS.has(intentIn) ? intentIn : 'LOGISTICS_HANDOFF';
+      return {
+        ...parsed,
+        intent: intentOut,
+        confidence: Math.max(Number(parsed.confidence) || 0, 0.5),
+        extracted: {
+          ...parsed.extracted,
+          items: [fallback],
+          staff_facing_summary: parsed.extracted?.staff_facing_summary?.trim() || t.slice(0, 300),
+        },
+      };
+    }
+
+    if (SUPPLY_INTENTS.has((parsed.intent || '').trim())) {
+      return {
+        ...parsed,
+        extracted: {
+          ...parsed.extracted,
+          items: [fallback],
+          staff_facing_summary: parsed.extracted?.staff_facing_summary?.trim() || t.slice(0, 300),
+        },
+      };
+    }
+
+    return parsed;
+  }
+
+  private fallbackSupplyLineName(textRaw: string): string {
+    const t = textRaw.trim();
+    if (!t) return 'Позиция';
+    const firstLine = t
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .find((l) => l.length > 0);
+    return (firstLine ?? t).slice(0, 500);
   }
 
   private getDeepseek(): { client: OpenAI; model: string } | null {

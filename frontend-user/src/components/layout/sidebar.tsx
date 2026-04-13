@@ -9,7 +9,6 @@ import {
   ChevronLeft,
   LayoutDashboard,
   Building2,
-  Inbox,
   LayoutGrid,
   ListTodo,
   LogOut,
@@ -21,7 +20,6 @@ import {
 } from 'lucide-react';
 import { useOpenIncidentsCount } from '@/modules/incidents/hooks/useIncidents';
 import { useChatNeedsHumanPending } from '@/hooks/use-conversations';
-import { useUnmappedReportsCount } from '@/hooks/use-unmapped-reports';
 import { useAuth } from '@/hooks/use-auth';
 import { apiClient } from '@/lib/api/client';
 import { Button } from '@/components/ui/button';
@@ -33,7 +31,6 @@ const navItems = [
   { href: '/dashboard',      icon: LayoutDashboard, key: 'dashboard' },
   { href: '/properties',     icon: Building2,        key: 'properties' },
   { href: '/dashboard/tasks', icon: ListTodo,        key: 'tasks' },
-  { href: '/dashboard/unmapped', icon: Inbox,        key: 'unmappedInbox' },
   { href: '/dashboard/staff', icon: Users,           key: 'staff' },
   { href: '/dashboard/operations', icon: Warehouse,  key: 'operations' },
   { href: '/dashboard/calendar', icon: LayoutGrid, key: 'calendar' },
@@ -56,7 +53,6 @@ export function Sidebar() {
   const showCollapsedChrome = Boolean(sidebarCollapsed && isLg);
   const pathname = usePathname();
   const { data: openIncidents = 0 } = useOpenIncidentsCount();
-  const { data: unmappedCount = 0 } = useUnmappedReportsCount();
   const chatNeedsHuman = useChatNeedsHumanPending();
   const { user, mutate } = useAuth();
 
@@ -175,9 +171,7 @@ export function Sidebar() {
                   ? pathname.includes('/settings')
                   : href === '/dashboard/tasks'
                     ? pathname.includes('/dashboard/tasks')
-                    : href === '/dashboard/unmapped'
-                      ? pathname.includes('/dashboard/unmapped')
-                      : href === '/dashboard/staff'
+                    : href === '/dashboard/staff'
                         ? pathname.includes('/dashboard/staff')
                         : href === '/dashboard/operations'
                           ? pathname.includes('/dashboard/operations')
@@ -243,24 +237,6 @@ export function Sidebar() {
                       title={t('chatNeedsHumanHint')}
                       aria-label={t('chatNeedsHumanHint')}
                     />
-                  )}
-                  {!showCollapsedChrome && key === 'unmappedInbox' && unmappedCount > 0 && (
-                    <span
-                      className="min-w-[1.25rem] shrink-0 rounded-full bg-amber-500/90 px-1.5 py-0 text-center text-[10px] font-semibold leading-none text-slate-950 tabular-nums"
-                      title={t('unmappedInboxBadgeHint')}
-                      aria-label={t('unmappedInboxBadgeHint')}
-                    >
-                      {unmappedCount > 99 ? '99+' : unmappedCount}
-                    </span>
-                  )}
-                  {showCollapsedChrome && key === 'unmappedInbox' && unmappedCount > 0 && (
-                    <span
-                      className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500/95 px-1 text-[9px] font-bold leading-none text-slate-950"
-                      title={t('unmappedInboxBadgeHint')}
-                      aria-label={t('unmappedInboxBadgeHint')}
-                    >
-                      {unmappedCount > 99 ? '·' : unmappedCount}
-                    </span>
                   )}
                 </>
               );

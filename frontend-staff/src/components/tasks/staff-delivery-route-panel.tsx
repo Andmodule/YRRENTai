@@ -3,75 +3,36 @@
 import { Loader2, MapPin, Package } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { Task } from '@/hooks/use-tasks';
+import type { StaffDeliveryRouteDetail } from '@/hooks/use-staff-delivery-route';
 import {
   useArriveStop,
   useCompleteStop,
   useReorderDeliveryStops,
-  useStaffDeliveryRouteActive,
+  useStaffDeliveryRoutesList,
   useStartDeliveryRoute,
 } from '@/hooks/use-staff-delivery-route';
 
-export function StaffDeliveryRoutePanel({
-  tasksForFallback,
+function StaffDeliveryRouteOneBody({
+  route,
+  startRoute,
+  startPending,
+  arrive,
+  arrivePending,
+  complete,
+  completePending,
+  reorder,
+  reorderPending,
 }: {
-  tasksForFallback: Task[];
+  route: StaffDeliveryRouteDetail;
+  startRoute: (id: string) => void;
+  startPending: boolean;
+  arrive: (id: string) => void;
+  arrivePending: boolean;
+  complete: (id: string) => void;
+  completePending: boolean;
+  reorder: (p: { routeId: string; orderedPropertyStopIds: string[] }) => void;
+  reorderPending: boolean;
 }) {
-  const { data: route, isLoading, isError, refetch } = useStaffDeliveryRouteActive();
-  const { mutate: startRoute, isPending: startPending } = useStartDeliveryRoute();
-  const { mutate: arrive, isPending: arrivePending } = useArriveStop();
-  const { mutate: complete, isPending: completePending } = useCompleteStop();
-  const { mutate: reorder, isPending: reorderPending } = useReorderDeliveryStops();
-
-  if (isLoading) {
-    return (
-      <div className="flex justify-center py-10">
-        <Loader2 className="h-8 w-8 animate-spin text-teal-600" />
-      </div>
-    );
-  }
-
-  if (isError) {
-    return (
-      <p className="text-sm text-rose-700">
-        Не удалось загрузить маршрут.{' '}
-        <button type="button" className="font-semibold underline" onClick={() => void refetch()}>
-          Повторить
-        </button>
-      </p>
-    );
-  }
-
-  if (!route) {
-    const routeSorted = [...tasksForFallback].sort((a, b) =>
-      (a.streetAddress || a.propertyAddress).localeCompare(b.streetAddress || b.propertyAddress, 'ru'),
-    );
-    return (
-      <>
-        <p className="mb-3 text-sm text-slate-600">
-          Нет назначенного маршрута на сегодня — откройте адреса по задачам.
-        </p>
-        <ul className="space-y-2">
-          {routeSorted.map((t) => {
-            const addr = encodeURIComponent(t.streetAddress || t.propertyAddress);
-            return (
-              <li key={t.uuid}>
-                <a
-                  href={`https://maps.google.com/?q=${addr}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex items-start gap-2 rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2 text-sm text-teal-800 hover:bg-teal-50"
-                >
-                  <MapPin className="mt-0.5 h-4 w-4 shrink-0" />
-                  <span>{t.streetAddress || t.propertyAddress}</span>
-                </a>
-              </li>
-            );
-          })}
-        </ul>
-      </>
-    );
-  }
-
   const warehouse = route.stops.find((s) => s.kind === 'warehouse');
   const propertyStops = [...route.stops.filter((s) => s.kind === 'property')].sort(
     (a, b) => a.sortOrder - b.sortOrder,
@@ -243,6 +204,98 @@ export function StaffDeliveryRoutePanel({
           Маршрут завершён.
         </p>
       ) : null}
+    </div>
+  );
+}
+
+export function StaffDeliveryRoutePanel({
+  tasksForFallback,
+}: {
+  tasksForFallback: Task[];
+}) {
+  const { data: routes, isLoading, isError, refetch } = useStaffDeliveryRoutesList();
+  const { mutate: startRouteMut, isPending: startPending } = useStartDeliveryRoute();
+  const { mutate: arrive, isPending: arrivePending } = useArriveStop();
+  const { mutate: complete, isPending: completePending } = useCompleteStop();
+  const { mutate: reorder, isPending: reorderPending } = useReorderDeliveryStops();
+
+  const startRoute = (id: string) => startRouteMut(id);
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center py-10">
+        <Loader2 className="h-8 w-8 animate-spin text-teal-600" />
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <p className="text-sm text-rose-700">
+        Не удалось загрузить маршрут.{' '}
+        <button type="button" className="font-semibold underline" onClick={() => void refetch()}>
+          Повторить
+        </button>
+      </p>
+    );
+  }
+
+  if (!routes?.length) {
+    const routeSorted = [...tasksForFallback].sort((a, b) =>
+      (a.streetAddress || a.propertyAddress).localeCompare(b.streetAddress || b.propertyAddress, 'ru'),
+    );
+    return (
+      <>
+        <p className="mb-3 text-sm text-slate-600">
+          Нет назначенного маршрута на сегодня — откройте адреса по задачам.
+        </p>
+        <ul className="space-y-2">
+          {routeSorted.map((t) => {
+            const addr = encodeURIComponent(t.streetAddress || t.propertyAddress);
+            return (
+              <li key={t.uuid}>
+                <a
+                  href={`https://maps.google.com/?q=${addr}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-start gap-2 rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2 text-sm text-teal-800 hover:bg-teal-50"
+                >
+                  <MapPin className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>{t.streetAddress || t.propertyAddress}</span>
+                </a>
+              </li>
+            );
+          })}
+        </ul>
+      </>
+    );
+  }
+
+  return (
+    <div className="space-y-10">
+      {routes.map((route, idx) => (
+        <div key={route.id}>
+          {routes.length > 1 ? (
+            <p className="mb-3 text-xs font-semibold uppercase text-slate-500">
+              Маршрут {idx + 1} из {routes.length}
+              <span className="ml-2 font-normal normal-case text-slate-400">
+                {route.scheduledDate}
+              </span>
+            </p>
+          ) : null}
+          <StaffDeliveryRouteOneBody
+            route={route}
+            startRoute={startRoute}
+            startPending={startPending}
+            arrive={arrive}
+            arrivePending={arrivePending}
+            complete={complete}
+            completePending={completePending}
+            reorder={reorder}
+            reorderPending={reorderPending}
+          />
+        </div>
+      ))}
     </div>
   );
 }

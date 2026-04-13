@@ -164,9 +164,12 @@ export interface StaffStrings {
       pageTitle: string;
       routeAssignedTitle: string;
       routeInProgressTitle: string;
+      /** Маршрут за сегодня закрыт — карточка остаётся в списке */
+      routeCompletedTitle: string;
       routeLine: (stops: number, date: string) => string;
       progressShort: (done: number, total: number) => string;
       ctaStart: string;
+      ctaStarting: string;
       ctaContinue: string;
       ctaOpenRoute: string;
       emptyTitle: string;
@@ -349,9 +352,11 @@ const MESSAGES: Record<StaffLocale, StaffStrings> = {
         pageTitle: 'Сводка',
         routeAssignedTitle: 'Вам назначен маршрут',
         routeInProgressTitle: 'Маршрут в работе',
+        routeCompletedTitle: 'Маршрут завершён',
         routeLine: (stops: number, date: string) => `${stops} остановок · ${date}`,
         progressShort: (done: number, total: number) => `Выполнено ${done} из ${total}`,
         ctaStart: 'Начать маршрут',
+        ctaStarting: 'Запуск…',
         ctaContinue: 'Продолжить маршрут',
         ctaOpenRoute: 'Открыть маршрут',
         emptyTitle: 'Сейчас нет активного маршрута',
@@ -534,9 +539,11 @@ const MESSAGES: Record<StaffLocale, StaffStrings> = {
         pageTitle: 'Overview',
         routeAssignedTitle: 'You have an assigned route',
         routeInProgressTitle: 'Route in progress',
+        routeCompletedTitle: 'Route completed',
         routeLine: (stops: number, date: string) => `${stops} stops · ${date}`,
         progressShort: (done: number, total: number) => `${done} of ${total} done`,
         ctaStart: 'Start route',
+        ctaStarting: 'Starting…',
         ctaContinue: 'Continue route',
         ctaOpenRoute: 'Open route',
         emptyTitle: 'No active route right now',

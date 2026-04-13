@@ -26,6 +26,13 @@ import type {
 
 const STAFF_INVITE_BCRYPT_ROUNDS = 12;
 
+/** Synthetic inbox for STAFF rows created without a real email (must stay unique). */
+const STAFF_PLACEHOLDER_EMAIL_SUFFIX = '@staff-placeholder.rentai.local';
+
+function newStaffPlaceholderEmail(): string {
+  return `staff.${randomUUID()}${STAFF_PLACEHOLDER_EMAIL_SUFFIX}`;
+}
+
 const INVITE_LINK_INVALID =
   '❌ Срок действия ссылки истёк или она уже использована. Попросите управляющего новую.';
 
@@ -340,7 +347,7 @@ export class UserService {
       telegramUsername?: string;
     },
   ): Promise<StaffInviteCreatedDto> {
-    const emailNorm = input.email.trim().toLowerCase();
+    const emailNorm = input.email.trim().length > 0 ? input.email.trim().toLowerCase() : newStaffPlaceholderEmail();
     const dup = await this.findByEmail(emailNorm);
     if (dup) {
       throw new ConflictException('Email already registered');
@@ -439,12 +446,16 @@ export class UserService {
     return { invite, user: invite.user };
   }
 
+  private maskStaffPlaceholderEmail(email: string): string {
+    return email.endsWith(STAFF_PLACEHOLDER_EMAIL_SUFFIX) ? '' : email;
+  }
+
   private toStaffDirectoryRow(u: UserEntity): StaffDirectoryRowDto {
     return {
       id: u.id,
       firstName: u.firstName,
       lastName: u.lastName,
-      email: u.email,
+      email: this.maskStaffPlaceholderEmail(u.email),
       phone: u.phone?.trim() ? u.phone.trim() : null,
       jobType: u.staffJobType ?? null,
       telegramUsername: u.telegramUsername?.trim() ? u.telegramUsername.trim() : null,
@@ -474,7 +485,8 @@ export class UserService {
     },
   ): Promise<StaffDirectoryRowDto> {
     const user = await this.getStaffInTenantOrThrow(staffId, tenantOwnerId);
-    const emailNorm = input.email.trim().toLowerCase();
+    const emailNorm =
+      input.email.trim().length > 0 ? input.email.trim().toLowerCase() : newStaffPlaceholderEmail();
     if (emailNorm !== user.email) {
       const dup = await this.findByEmail(emailNorm);
       if (dup) {
@@ -578,5 +590,34 @@ export class UserService {
       expiresAt: expiresAt.toISOString(),
       telegramBotConfigured: true,
     };
+  }
+
+  /**
+   * Removes a STAFF user from the tenant. Reassigns or clears FKs that would block DELETE.
+   */
+  async deleteStaffMember(tenantOwnerId: string, staffId: string): Promise<void> {
+    await this.getStaffInTenantOrThrow(staffId, tenantOwnerId);
+    await this.dataSource.transaction(async (em) => {
+      await em.query(`UPDATE "inventory_movements" SET "createdBy" = $1 WHERE "createdBy" = $2`, [
+        tenantOwnerId,
+        staffId,
+      ]);
+      await em.query(`UPDATE "incidents" SET "reportedBy" = $1 WHERE "reportedBy" = $2`, [
+        tenantOwnerId,
+        staffId,
+      ]);
+      await em.query(`UPDATE "incidents" SET "resolvedBy" = NULL WHERE "resolvedBy" = $1`, [staffId]);
+      await em.query(`UPDATE "task_notes" SET "authorId" = $1 WHERE "authorId" = $2`, [
+        tenantOwnerId,
+        staffId,
+      ]);
+      await em.query(`UPDATE "staff_interpretation_events" SET "authorId" = $1 WHERE "authorId" = $2`, [
+        tenantOwnerId,
+        staffId,
+      ]);
+      await em.query(`UPDATE "tasks" SET "assigneeId" = NULL WHERE "assigneeId" = $1`, [staffId]);
+      await em.delete(UserEntity, { id: staffId });
+    });
+    this.logger.log(`Staff user ${staffId} deleted (tenant owner ${tenantOwnerId})`);
   }
 }

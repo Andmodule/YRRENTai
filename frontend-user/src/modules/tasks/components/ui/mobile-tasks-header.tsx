@@ -17,7 +17,6 @@ import * as RadixDialog from '@radix-ui/react-dialog';
 import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { useMatchMedia } from '@/hooks/use-match-media';
 import { cn } from '@/lib/utils';
 import { useTasksFiltersStore } from '@/stores/tasks-filters.store';
 import { useUiStore } from '@/stores/ui.store';
@@ -45,16 +44,10 @@ export function MobileTasksHeader({ title }: MobileTasksHeaderProps) {
   const filters = useTasksFiltersStore((s) => s.filters);
   const setFilters = useTasksFiltersStore((s) => s.setFilters);
   const { view, setView } = useTasksViewMode();
-  const isLg = useMatchMedia('(min-width: 1024px)');
 
   const [mode, setMode] = useState<MobileTasksHeaderMode>('default');
   const [searchQuery, setSearchQuery] = useState(filters.propertyQuery);
   const [viewSheetOpen, setViewSheetOpen] = useState(false);
-
-  useEffect(() => {
-    if (isLg) return;
-    if (view === 'table') setView('list');
-  }, [isLg, view, setView]);
 
   const fromStr = format(filters.dateRange.start, 'yyyy-MM-dd');
   const toStr = format(filters.dateRange.end, 'yyyy-MM-dd');

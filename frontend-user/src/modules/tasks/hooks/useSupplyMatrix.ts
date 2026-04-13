@@ -4,11 +4,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api/client';
 import type { SupplyMatrixRow } from '../types';
 
-const matrixKey = ['tasks', 'manager-supply-matrix'] as const;
+/** Сводная матрица: инвалидируйте `['…', 'rows']`, не корень — иначе сбрасывается панель «Исходные сообщения». */
+export const MANAGER_SUPPLY_MATRIX_ROOT = ['tasks', 'manager-supply-matrix'] as const;
 
 export function useSupplyMatrix(enabled = true) {
   return useQuery({
-    queryKey: matrixKey,
+    queryKey: [...MANAGER_SUPPLY_MATRIX_ROOT, 'rows'],
     queryFn: async ({ signal }) => {
       const res = await apiClient.get<{ data: { rows: SupplyMatrixRow[] } }>('/tasks/manager/supply-matrix', {
         signal,
@@ -23,7 +24,7 @@ export function useSupplyMatrix(enabled = true) {
 
 export function useSupplyMatrixLineDetail(requestLineIds: string[] | null, enabled: boolean) {
   return useQuery({
-    queryKey: [...matrixKey, 'detail', ...(requestLineIds ?? []).sort()],
+    queryKey: [...MANAGER_SUPPLY_MATRIX_ROOT, 'detail', ...(requestLineIds ?? []).sort()],
     queryFn: async () => {
       const res = await apiClient.post<{
         data: {
@@ -44,6 +45,8 @@ export function useSupplyMatrixLineDetail(requestLineIds: string[] | null, enabl
       return res.data.data.lines;
     },
     enabled: enabled && !!requestLineIds?.length,
+    staleTime: 45_000,
+    refetchOnWindowFocus: false,
   });
 }
 
@@ -58,7 +61,7 @@ export function useSupplyMatrixHandoff() {
       return res.data.data;
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: matrixKey });
+      void queryClient.invalidateQueries({ queryKey: [...MANAGER_SUPPLY_MATRIX_ROOT, 'rows'] });
       void queryClient.invalidateQueries({ queryKey: ['tasks', 'manager-supply-interpretations'] });
     },
   });
@@ -74,7 +77,7 @@ export function useSupplyMatrixMarkDelivered() {
       return res.data.data;
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: matrixKey });
+      void queryClient.invalidateQueries({ queryKey: [...MANAGER_SUPPLY_MATRIX_ROOT, 'rows'] });
       void queryClient.invalidateQueries({ queryKey: ['tasks', 'manager-supply-interpretations'] });
     },
   });
@@ -104,7 +107,7 @@ export function useCreateSupplyCatalogItem() {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['tasks', 'manager-supply-catalog'] });
-      void queryClient.invalidateQueries({ queryKey: matrixKey });
+      void queryClient.invalidateQueries({ queryKey: [...MANAGER_SUPPLY_MATRIX_ROOT, 'rows'] });
     },
   });
 }

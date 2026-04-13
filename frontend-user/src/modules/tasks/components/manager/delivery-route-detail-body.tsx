@@ -1,9 +1,21 @@
 'use client';
 
+import type { Locale } from 'date-fns';
+import { format, parseISO } from 'date-fns';
+import { de, enUS, es, pl, ru } from 'date-fns/locale';
+import { useLocale } from 'next-intl';
 import { Loader2, MapPin, Package } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import type { DeliveryRouteDetail } from '../../hooks/useDeliveryRoutes';
+
+const DATE_LOCALES: Record<string, Locale> = {
+  ru,
+  en: enUS,
+  de,
+  es,
+  pl,
+};
 
 export function routeStopStatusLabel(status: string, t: (key: string) => string): string {
   if (status === 'pending' || status === 'arrived' || status === 'done') {
@@ -35,6 +47,17 @@ export function DeliveryRouteDetailBody({
   emptyLabel: string;
   t: (key: string) => string;
 }) {
+  const locale = useLocale();
+  const dateLocale = DATE_LOCALES[locale] ?? enUS;
+
+  const formatDeliveredAt = (iso: string) => {
+    try {
+      return format(parseISO(iso), 'dd.MM.yyyy · HH:mm', { locale: dateLocale });
+    } catch {
+      return iso;
+    }
+  };
+
   if (detailLoading) {
     return (
       <div className="flex justify-center py-10">
@@ -66,9 +89,12 @@ export function DeliveryRouteDetailBody({
       </div>
       <div>
         <p className="text-xs font-semibold uppercase text-muted-foreground">{t('deliveryRouteStops')}</p>
-        <ol className="mt-2 space-y-3">
+        <ol className="mt-2 space-y-2">
           {detail.stops.map((s) => (
-            <li key={s.id} className="rounded-lg border border-border/50 bg-card/80 p-3 text-sm">
+            <li
+              key={s.id}
+              className="flex flex-col rounded-lg border border-border/50 bg-card/80 p-2.5 text-sm"
+            >
               <div className="flex items-start gap-2">
                 <span className="mt-0.5 font-mono text-xs text-muted-foreground">{s.sortOrder}</span>
                 <div className="min-w-0 flex-1">
@@ -82,7 +108,7 @@ export function DeliveryRouteDetailBody({
                     </p>
                   ) : null}
                   {s.lines.length > 0 ? (
-                    <ul className="mt-2 space-y-0.5 text-xs text-muted-foreground">
+                    <ul className="mt-1.5 space-y-0.5 text-xs text-muted-foreground">
                       {s.lines.map((ln) => (
                         <li key={ln.supplyRequestItemId}>
                           {ln.name}: {[ln.quantity, ln.unit].filter(Boolean).join(' ')}
@@ -95,6 +121,11 @@ export function DeliveryRouteDetailBody({
                   {routeStopStatusLabel(s.status, t)}
                 </Badge>
               </div>
+              {s.completedAt ? (
+                <p className="mt-1.5 text-right text-[10px] tabular-nums text-muted-foreground/75">
+                  {formatDeliveredAt(s.completedAt)}
+                </p>
+              ) : null}
             </li>
           ))}
         </ol>

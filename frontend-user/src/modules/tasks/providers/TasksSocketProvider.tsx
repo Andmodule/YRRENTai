@@ -48,8 +48,10 @@ export function TasksSocketProvider({ children }: { children: React.ReactNode })
       if (supplyHeavyDebounce) clearTimeout(supplyHeavyDebounce);
       supplyHeavyDebounce = setTimeout(() => {
         supplyHeavyDebounce = null;
-        void queryClient.invalidateQueries({ queryKey: ['tasks', 'manager-supply-matrix'] });
-        void queryClient.invalidateQueries({ queryKey: ['tasks', 'manager-delivery-routes'] });
+        void queryClient.invalidateQueries({ queryKey: ['tasks', 'manager-supply-matrix', 'rows'] });
+        void queryClient.invalidateQueries({
+          queryKey: ['tasks', 'manager-delivery-routes', 'list'],
+        });
       }, 2200);
     });
     return () => {
