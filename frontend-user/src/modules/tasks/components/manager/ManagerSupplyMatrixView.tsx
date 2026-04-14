@@ -7,7 +7,7 @@ import { useTranslations } from 'next-intl';
 import { format, parseISO } from 'date-fns';
 import { ru, enUS } from 'date-fns/locale';
 import { useLocale } from 'next-intl';
-import { ChevronDown, ChevronRight, Loader2, Plus, Truck } from 'lucide-react';
+import { ChevronDown, ChevronRight, Loader2, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -753,7 +753,7 @@ export function ManagerSupplyMatrixView({
       variant={hasHandoffSelection ? 'default' : 'secondary'}
       onClick={() => openHandoffSheet()}
     >
-      {handoffBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Truck className="h-3.5 w-3.5" />}
+      {handoffBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
       {t('matrixHandoff')}
     </Button>
   );

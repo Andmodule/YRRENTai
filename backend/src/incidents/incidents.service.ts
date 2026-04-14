@@ -26,13 +26,13 @@ const SUGGESTED_TASK_TYPES = new Set([
   'maintenance',
   'other',
 ]);
-const SUGGESTED_PRIORITIES = new Set(['normal', 'urgent', 'critical']);
+const SUGGESTED_PRIORITIES = new Set(['normal', 'urgent']);
 
 /** Task prefill from staff voice (stored on incident for manager UI). */
 export interface IncidentSuggestedTaskDraftDto {
   title?: string;
   type?: 'checkout_cleaning' | 'mid_stay_cleaning' | 'checkin_prep' | 'maintenance' | 'other';
-  priority?: 'normal' | 'urgent' | 'critical';
+  priority?: 'normal' | 'urgent';
   assigneeId?: string | null;
   dueDate?: string | null;
   notes?: string | null;

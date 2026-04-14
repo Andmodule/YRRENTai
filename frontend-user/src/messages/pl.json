@@ -649,8 +649,7 @@
     "unassigned": "Nieprzypisane",
     "priority": {
       "urgent": "Pilne",
-      "normal": "Normalny",
-      "critical": "Krytyczny"
+      "normal": "Normalny"
     },
     "status": {
       "pending": "Oczekuje",
@@ -903,6 +902,7 @@
       "manualFabAria": "Nowe zadanie — ręcznie",
       "untitledTask": "Bez tytułu",
       "generalTitle": "Zadania ogólne",
+      "objectsTopHeading": "Obiekty",
       "unnamedProperty": "Obiekt bez nazwy",
       "taskCount": "{count, plural, one {# zadanie} few {# zadania} many {# zadań} other {# zadań}}",
       "incidentCount": "{count, plural, one {# incydent} few {# incydenty} many {# incydentów} other {# incydentów}}",

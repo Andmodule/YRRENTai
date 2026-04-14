@@ -34,9 +34,10 @@ export const TaskManagerLinkBadges = memo(function TaskManagerLinkBadges({
 
   const incidentHref = useMemo(() => {
     const ids = task.linkedIncidentIdsFromTask;
-    if (!ids?.length) return null;
-    return `/dashboard/incidents?incident=${encodeURIComponent(ids[0]!)}`;
-  }, [task.linkedIncidentIdsFromTask]);
+    if (ids?.length) return `/dashboard/incidents?incident=${encodeURIComponent(ids[0]!)}`;
+    if (task.incidentId) return `/dashboard/incidents?incident=${encodeURIComponent(task.incidentId)}`;
+    return null;
+  }, [task.linkedIncidentIdsFromTask, task.incidentId]);
 
   if (!supplyHref && !incidentHref) return null;
 
@@ -72,7 +73,7 @@ export const TaskManagerLinkBadges = memo(function TaskManagerLinkBadges({
           )}
         >
           <AlertTriangle className="h-2.5 w-2.5 shrink-0" aria-hidden />
-          <span className="truncate">{t('taskBadgeIncidentFromTask')}</span>
+          <span className="truncate">{t('taskFromIncidentBadge')}</span>
           {nInc > 1 ? <span className="shrink-0 tabular-nums opacity-80">+{nInc - 1}</span> : null}
         </Link>
       ) : null}

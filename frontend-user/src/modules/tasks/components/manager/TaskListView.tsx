@@ -14,6 +14,8 @@ import {
   GENERAL_TASK_PROPERTY_GROUP_KEY,
   INCIDENTS_BOARD_GROUP_KEY,
   SHORTAGE_BOARD_GROUP_KEY,
+  OBJECTS_WRAPPER_GROUP_KEY,
+  type TaskPropertyGroup,
 } from '../../utils/groupTasksByProperty';
 import type { PendingSupplyInterpretationEvent } from '../../types';
 import { SupplyShortageListRow } from './SupplyShortageListRow';
@@ -119,6 +121,30 @@ export const TaskListView = memo(function TaskListView({
     [visibleGroups],
   );
 
+  const { incidentGroup, shortageGroup, generalGroup, propertyGroups } = useMemo(() => {
+    let incident: TaskPropertyGroup | null = null;
+    let shortage: TaskPropertyGroup | null = null;
+    let general: TaskPropertyGroup | null = null;
+    const properties: TaskPropertyGroup[] = [];
+    for (const g of groupsForList) {
+      if (g.propertyId === INCIDENTS_BOARD_GROUP_KEY) incident = g;
+      else if (g.propertyId === SHORTAGE_BOARD_GROUP_KEY) shortage = g;
+      else if (g.propertyId === GENERAL_TASK_PROPERTY_GROUP_KEY) general = g;
+      else properties.push(g);
+    }
+    return {
+      incidentGroup: incident,
+      shortageGroup: shortage,
+      generalGroup: general,
+      propertyGroups: properties,
+    };
+  }, [groupsForList]);
+
+  const objectsTaskTotal = useMemo(
+    () => propertyGroups.reduce((sum, g) => sum + g.tasks.length, 0),
+    [propertyGroups],
+  );
+
   const { collapsedById, setCollapsed } = useTaskListCollapsedGroups();
   const isMdUp = useMatchMedia('(min-width: 768px)');
   const [voiceOpen, setVoiceOpen] = useState(false);
@@ -153,10 +179,8 @@ export const TaskListView = memo(function TaskListView({
     [onOpenSupplyInterpretation],
   );
 
-  const fabPropertyId = useMemo(() => {
-    const g = groupsForList.find((x) => x.propertyId !== GENERAL_TASK_PROPERTY_GROUP_KEY);
-    return g?.propertyId ?? null;
-  }, [groupsForList]);
+  /** Первый объект из секции «Объекты» (не инциденты / не общие). */
+  const fabPropertyId = propertyGroups[0]?.propertyId ?? null;
 
   /** Voice-first: open sheet and start mic in the same tap/click (required for mobile Safari `getUserMedia`). */
   const openVoiceSheet = useCallback((propertyId: string) => {
@@ -165,8 +189,10 @@ export const TaskListView = memo(function TaskListView({
       setVoicePropertyId(propertyId);
       setVoiceOpen(true);
     });
-    voiceSheetRef.current?.startRecordingFromUserGesture();
-  }, []);
+    if (!isMdUp) {
+      voiceSheetRef.current?.startRecordingFromUserGesture();
+    }
+  }, [isMdUp]);
 
   const openManualSheet = useCallback((propertyId: string, kind: 'task' | 'incident') => {
     flushSync(() => {
@@ -202,227 +228,291 @@ export const TaskListView = memo(function TaskListView({
     };
   }, [voiceQuickAdd, isMdUp, groupsForList.length]);
 
+  const renderGroupSection = (group: TaskPropertyGroup, nested?: boolean) => {
+    const collapsed = collapsedById[group.propertyId] ?? false;
+    const displayTitle =
+      group.propertyId === INCIDENTS_BOARD_GROUP_KEY
+        ? tList('incidentsTopHeading')
+        : group.propertyId === SHORTAGE_BOARD_GROUP_KEY
+          ? tList('shortageTopHeading')
+          : group.propertyId === GENERAL_TASK_PROPERTY_GROUP_KEY
+            ? tList('generalTitle')
+            : group.propertyTitle || tList('unnamedProperty');
+
+    const addressLine =
+      group.propertyId === INCIDENTS_BOARD_GROUP_KEY ||
+      group.propertyId === SHORTAGE_BOARD_GROUP_KEY ||
+      group.propertyId === GENERAL_TASK_PROPERTY_GROUP_KEY
+        ? null
+        : group.propertyAddress || null;
+
+    const isPropertySection =
+      group.propertyId !== GENERAL_TASK_PROPERTY_GROUP_KEY &&
+      group.propertyId !== INCIDENTS_BOARD_GROUP_KEY &&
+      group.propertyId !== SHORTAGE_BOARD_GROUP_KEY;
+    /** Десктоп: «+ Добавить задачу» и для общих/инцидентов; мобайл — только FAB. Блок нехватки — без FAB-футера. */
+    const showAddTaskFooter =
+      voiceQuickAdd &&
+      group.propertyId !== SHORTAGE_BOARD_GROUP_KEY &&
+      (isPropertySection || (isMdUp && !isPropertySection));
+
+    const incidentsSectionCount =
+      group.propertyId === INCIDENTS_BOARD_GROUP_KEY ? group.incidents.length : 0;
+
+    return (
+      <section
+        key={group.propertyId}
+        className={cn(
+          'min-w-0 overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm',
+          nested ? 'scroll-mt-1' : 'scroll-mt-2',
+          'dark:border-slate-700/75 dark:bg-slate-900/35',
+        )}
+        aria-label={displayTitle}
+      >
+        <Collapsible open={!collapsed} onOpenChange={(open) => setCollapsed(group.propertyId, !open)}>
+          <div
+            className={cn(
+              'sticky top-0 z-20 rounded-t-2xl border-b border-slate-200/70',
+              'bg-slate-50/95',
+              'dark:border-slate-700/60 dark:bg-slate-900/90',
+            )}
+          >
+            <CollapsibleTrigger
+              className={cn(
+                'flex w-full min-w-0 items-start gap-2 px-2 py-2.5 text-left transition-colors md:px-3',
+                'hover:bg-slate-200/65 dark:hover:bg-white/[0.05]',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              )}
+            >
+              <ChevronDown
+                className={cn(
+                  'mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200',
+                  collapsed && '-rotate-90',
+                )}
+                aria-hidden
+              />
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                  <h2 className="text-sm font-semibold leading-tight tracking-tight text-foreground">
+                    {displayTitle}
+                  </h2>
+                  {group.propertyId === INCIDENTS_BOARD_GROUP_KEY ? (
+                    <span
+                      className="inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full bg-red-500/15 px-1 text-[10px] font-semibold tabular-nums leading-none text-red-700 dark:text-red-400"
+                      aria-label={tList('incidentCount', { count: incidentsSectionCount })}
+                    >
+                      {incidentsSectionCount}
+                    </span>
+                  ) : group.propertyId === SHORTAGE_BOARD_GROUP_KEY ? (
+                    <span
+                      className="inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full bg-[#008CA4]/15 px-1 text-[10px] font-semibold tabular-nums leading-none text-[#008CA4] dark:bg-[#00d4ff]/15 dark:text-[#7ee8ff]"
+                      aria-label={tList('shortageCount', { count: group.shortageEvents.length })}
+                    >
+                      {group.shortageEvents.length}
+                    </span>
+                  ) : (
+                    <span
+                      className="inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full border border-slate-200/90 bg-slate-100/90 px-1 text-[10px] font-semibold tabular-nums leading-none text-slate-600 dark:border-slate-600/70 dark:bg-slate-800/80 dark:text-slate-400"
+                      aria-label={tList('taskCount', { count: group.tasks.length })}
+                    >
+                      {group.tasks.length}
+                    </span>
+                  )}
+                </div>
+                {addressLine ? (
+                  <p className="mt-0.5 line-clamp-1 text-[11px] leading-snug text-muted-foreground">{addressLine}</p>
+                ) : null}
+              </div>
+            </CollapsibleTrigger>
+          </div>
+
+          <CollapsibleContent className="bg-white dark:bg-transparent">
+            <ul className="flex min-w-0 flex-col px-0" role="list">
+              {group.propertyId === SHORTAGE_BOARD_GROUP_KEY &&
+              group.shortageEvents.length === 0 &&
+              showShortageWhenEmpty ? (
+                <li className="min-w-0 px-3 py-4">
+                  <p className="text-sm leading-relaxed text-muted-foreground">
+                    {tList('shortageEmptyHint')}{' '}
+                    <Link
+                      href={supplyTabHref}
+                      className="font-medium text-[#008CA4] underline underline-offset-2 hover:text-[#006d80] dark:text-[#7ee8ff] dark:hover:text-[#a5f3fc]"
+                    >
+                      {tList('shortageSupplyTabLink')}
+                    </Link>
+                  </p>
+                </li>
+              ) : null}
+              {group.shortageEvents.map((ev) => (
+                <li key={`sq-${ev.id}`} className="min-w-0">
+                  <SupplyShortageListRow event={ev} onOpen={handleOpenSupply} variant="supply" />
+                </li>
+              ))}
+              {group.propertyId === INCIDENTS_BOARD_GROUP_KEY
+                ? group.incidents.map((incident) => {
+                    const isAwaitingDispatchHighlight = incident.status === 'awaiting_dispatch';
+                    return (
+                      <li
+                        key={`inc-${incident.uuid}`}
+                        className={cn(
+                          'min-w-0',
+                          isAwaitingDispatchHighlight &&
+                            'border-l-2 border-l-red-500/55 bg-red-500/[0.05] dark:bg-red-950/30',
+                        )}
+                      >
+                        <IncidentListRow
+                          incident={incident}
+                          onOpen={handleOpenIncident}
+                          swipeOpenRowId={swipeOpenRowId}
+                          onSwipeRowOpenChange={setSwipeOpenRowId}
+                          onSwipeCloseIncident={onSwipeCloseIncident}
+                          hidePropertyContext={false}
+                          className={
+                            isAwaitingDispatchHighlight
+                              ? 'border-b border-red-500/15 hover:bg-red-500/10 dark:hover:bg-red-950/40'
+                              : undefined
+                          }
+                        />
+                      </li>
+                    );
+                  })
+                : group.incidents.map((incident) => {
+                    const isAwaitingDispatchHighlight = incident.status === 'awaiting_dispatch';
+                    return (
+                      <li
+                        key={`inc-${incident.uuid}`}
+                        className={cn(
+                          'min-w-0',
+                          isAwaitingDispatchHighlight &&
+                            'border-l-2 border-l-red-500/55 bg-red-500/[0.05] dark:bg-red-950/30',
+                        )}
+                      >
+                        <IncidentListRow
+                          incident={incident}
+                          onOpen={handleOpenIncident}
+                          swipeOpenRowId={swipeOpenRowId}
+                          onSwipeRowOpenChange={setSwipeOpenRowId}
+                          onSwipeCloseIncident={onSwipeCloseIncident}
+                          hidePropertyContext={
+                            group.propertyId !== GENERAL_TASK_PROPERTY_GROUP_KEY &&
+                            group.propertyId !== INCIDENTS_BOARD_GROUP_KEY
+                          }
+                          className={
+                            isAwaitingDispatchHighlight
+                              ? 'border-b border-red-500/15 hover:bg-red-500/10 dark:hover:bg-red-950/40'
+                              : undefined
+                          }
+                        />
+                      </li>
+                    );
+                  })}
+              {group.tasks.map((task) => (
+                <li key={task.uuid} className="min-w-0">
+                  <TaskListRow
+                    task={task}
+                    onOpen={handleOpenTask}
+                    onStatusChange={onStatusChange}
+                    onSwipeDeleteTask={onSwipeDeleteTask}
+                    onSwipeMarkDone={onSwipeMarkDone}
+                    swipeOpenRowId={swipeOpenRowId}
+                    onSwipeRowOpenChange={setSwipeOpenRowId}
+                  />
+                </li>
+              ))}
+            </ul>
+            {showAddTaskFooter ? (
+              <div
+                className={cn(
+                  'border-t border-border/40 px-2 py-1 md:px-3',
+                  !isMdUp && 'hidden',
+                )}
+              >
+                <button
+                  type="button"
+                  onClick={() => openVoiceSheet(group.propertyId)}
+                  className={cn(
+                    'flex w-full items-center justify-center rounded-md py-2 text-sm font-medium',
+                    'text-[#008CA4] transition-colors hover:bg-[#008CA4]/8 hover:text-[#007a90]',
+                    'dark:text-[#00d4ff] dark:hover:bg-[#00d4ff]/10',
+                  )}
+                >
+                  {tList(group.propertyId === INCIDENTS_BOARD_GROUP_KEY ? 'addIncident' : 'addTask')}
+                </button>
+              </div>
+            ) : null}
+          </CollapsibleContent>
+        </Collapsible>
+      </section>
+    );
+  };
+
+  const objectsCollapsed = collapsedById[OBJECTS_WRAPPER_GROUP_KEY] ?? false;
+
   return (
     <div
       ref={listRootRef}
       className="relative flex min-w-0 flex-col gap-1.5 pb-[max(9rem,calc(9rem+env(safe-area-inset-bottom,0px)))] md:gap-3 md:pb-0"
     >
-      {groupsForList.map((group) => {
-        const collapsed = collapsedById[group.propertyId] ?? false;
-        const displayTitle =
-          group.propertyId === INCIDENTS_BOARD_GROUP_KEY
-            ? tList('incidentsTopHeading')
-            : group.propertyId === SHORTAGE_BOARD_GROUP_KEY
-              ? tList('shortageTopHeading')
-              : group.propertyId === GENERAL_TASK_PROPERTY_GROUP_KEY
-                ? tList('generalTitle')
-                : group.propertyTitle || tList('unnamedProperty');
-
-        const addressLine =
-          group.propertyId === INCIDENTS_BOARD_GROUP_KEY ||
-          group.propertyId === SHORTAGE_BOARD_GROUP_KEY ||
-          group.propertyId === GENERAL_TASK_PROPERTY_GROUP_KEY
-            ? null
-            : group.propertyAddress || null;
-
-        const isPropertySection =
-          group.propertyId !== GENERAL_TASK_PROPERTY_GROUP_KEY &&
-          group.propertyId !== INCIDENTS_BOARD_GROUP_KEY &&
-          group.propertyId !== SHORTAGE_BOARD_GROUP_KEY;
-        /** Десктоп: «+ Добавить задачу» и для общих/инцидентов; мобайл — только FAB. Блок нехватки — без FAB-футера. */
-        const showAddTaskFooter =
-          voiceQuickAdd &&
-          group.propertyId !== SHORTAGE_BOARD_GROUP_KEY &&
-          (isPropertySection || (isMdUp && !isPropertySection));
-
-        const incidentsSectionCount =
-          group.propertyId === INCIDENTS_BOARD_GROUP_KEY ? group.incidents.length : 0;
-
-        return (
-          <section
-            key={group.propertyId}
-            className={cn(
-              'min-w-0 overflow-hidden scroll-mt-2 rounded-2xl border border-slate-200/80 bg-white shadow-sm',
-              'dark:border-slate-700/75 dark:bg-slate-900/35',
-            )}
-            aria-label={displayTitle}
+      {incidentGroup ? renderGroupSection(incidentGroup) : null}
+      {shortageGroup ? renderGroupSection(shortageGroup) : null}
+      {generalGroup ? renderGroupSection(generalGroup) : null}
+      {propertyGroups.length > 0 ? (
+        <section
+          key={OBJECTS_WRAPPER_GROUP_KEY}
+          className={cn(
+            'min-w-0 overflow-hidden scroll-mt-2 rounded-2xl border border-slate-200/80 bg-white shadow-sm',
+            'dark:border-slate-700/75 dark:bg-slate-900/35',
+          )}
+          aria-label={tList('objectsTopHeading')}
+        >
+          <Collapsible
+            open={!objectsCollapsed}
+            onOpenChange={(open) => setCollapsed(OBJECTS_WRAPPER_GROUP_KEY, !open)}
           >
-            <Collapsible open={!collapsed} onOpenChange={(open) => setCollapsed(group.propertyId, !open)}>
-              <div
+            <div
+              className={cn(
+                'sticky top-0 z-20 rounded-t-2xl border-b border-slate-200/70',
+                'bg-slate-50/95',
+                'dark:border-slate-700/60 dark:bg-slate-900/90',
+              )}
+            >
+              <CollapsibleTrigger
                 className={cn(
-                  'sticky top-0 z-20 rounded-t-2xl border-b border-slate-200/70',
-                  'bg-slate-50/95',
-                  'dark:border-slate-700/60 dark:bg-slate-900/90',
+                  'flex w-full min-w-0 items-start gap-2 px-2 py-2.5 text-left transition-colors md:px-3',
+                  'hover:bg-slate-200/65 dark:hover:bg-white/[0.05]',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                 )}
               >
-                <CollapsibleTrigger
+                <ChevronDown
                   className={cn(
-                    'flex w-full min-w-0 items-start gap-2 px-2 py-2.5 text-left transition-colors md:px-3',
-                    'hover:bg-slate-200/65 dark:hover:bg-white/[0.05]',
-                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                    'mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200',
+                    objectsCollapsed && '-rotate-90',
                   )}
-                >
-                  <ChevronDown
-                    className={cn(
-                      'mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200',
-                      collapsed && '-rotate-90',
-                    )}
-                    aria-hidden
-                  />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                      <h2 className="text-sm font-semibold leading-tight tracking-tight text-foreground">
-                        {displayTitle}
-                      </h2>
-                      {group.propertyId === INCIDENTS_BOARD_GROUP_KEY ? (
-                        <span
-                          className="inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full bg-red-500/15 px-1 text-[10px] font-semibold tabular-nums leading-none text-red-700 dark:text-red-400"
-                          aria-label={tList('incidentCount', { count: incidentsSectionCount })}
-                        >
-                          {incidentsSectionCount}
-                        </span>
-                      ) : group.propertyId === SHORTAGE_BOARD_GROUP_KEY ? (
-                        <span
-                          className="inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full bg-[#008CA4]/15 px-1 text-[10px] font-semibold tabular-nums leading-none text-[#008CA4] dark:bg-[#00d4ff]/15 dark:text-[#7ee8ff]"
-                          aria-label={tList('shortageCount', { count: group.shortageEvents.length })}
-                        >
-                          {group.shortageEvents.length}
-                        </span>
-                      ) : (
-                        <span
-                          className="inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full border border-slate-200/90 bg-slate-100/90 px-1 text-[10px] font-semibold tabular-nums leading-none text-slate-600 dark:border-slate-600/70 dark:bg-slate-800/80 dark:text-slate-400"
-                          aria-label={tList('taskCount', { count: group.tasks.length })}
-                        >
-                          {group.tasks.length}
-                        </span>
-                      )}
-                    </div>
-                    {addressLine ? (
-                      <p className="mt-0.5 line-clamp-1 text-[11px] leading-snug text-muted-foreground">{addressLine}</p>
-                    ) : null}
-                  </div>
-                </CollapsibleTrigger>
-              </div>
-
-              <CollapsibleContent className="bg-white dark:bg-transparent">
-                <ul className="flex min-w-0 flex-col px-0" role="list">
-                  {group.propertyId === SHORTAGE_BOARD_GROUP_KEY &&
-                  group.shortageEvents.length === 0 &&
-                  showShortageWhenEmpty ? (
-                    <li className="min-w-0 px-3 py-4">
-                      <p className="text-sm leading-relaxed text-muted-foreground">
-                        {tList('shortageEmptyHint')}{' '}
-                        <Link
-                          href={supplyTabHref}
-                          className="font-medium text-[#008CA4] underline underline-offset-2 hover:text-[#006d80] dark:text-[#7ee8ff] dark:hover:text-[#a5f3fc]"
-                        >
-                          {tList('shortageSupplyTabLink')}
-                        </Link>
-                      </p>
-                    </li>
-                  ) : null}
-                  {group.shortageEvents.map((ev) => (
-                    <li key={`sq-${ev.id}`} className="min-w-0">
-                      <SupplyShortageListRow event={ev} onOpen={handleOpenSupply} variant="supply" />
-                    </li>
-                  ))}
-                  {group.propertyId === INCIDENTS_BOARD_GROUP_KEY
-                    ? group.incidents.map((incident) => {
-                        const isAwaitingDispatchHighlight = incident.status === 'awaiting_dispatch';
-                        return (
-                          <li
-                            key={`inc-${incident.uuid}`}
-                            className={cn(
-                              'min-w-0',
-                              isAwaitingDispatchHighlight &&
-                                'border-l-2 border-l-red-500/55 bg-red-500/[0.05] dark:bg-red-950/30',
-                            )}
-                          >
-                            <IncidentListRow
-                              incident={incident}
-                              onOpen={handleOpenIncident}
-                              swipeOpenRowId={swipeOpenRowId}
-                              onSwipeRowOpenChange={setSwipeOpenRowId}
-                              onSwipeCloseIncident={onSwipeCloseIncident}
-                              hidePropertyContext={false}
-                              className={
-                                isAwaitingDispatchHighlight
-                                  ? 'border-b border-red-500/15 hover:bg-red-500/10 dark:hover:bg-red-950/40'
-                                  : undefined
-                              }
-                            />
-                          </li>
-                        );
-                      })
-                    : group.incidents.map((incident) => {
-                        const isAwaitingDispatchHighlight = incident.status === 'awaiting_dispatch';
-                        return (
-                          <li
-                            key={`inc-${incident.uuid}`}
-                            className={cn(
-                              'min-w-0',
-                              isAwaitingDispatchHighlight &&
-                                'border-l-2 border-l-red-500/55 bg-red-500/[0.05] dark:bg-red-950/30',
-                            )}
-                          >
-                            <IncidentListRow
-                              incident={incident}
-                              onOpen={handleOpenIncident}
-                              swipeOpenRowId={swipeOpenRowId}
-                              onSwipeRowOpenChange={setSwipeOpenRowId}
-                              onSwipeCloseIncident={onSwipeCloseIncident}
-                              hidePropertyContext={
-                                group.propertyId !== GENERAL_TASK_PROPERTY_GROUP_KEY &&
-                                group.propertyId !== INCIDENTS_BOARD_GROUP_KEY
-                              }
-                              className={
-                                isAwaitingDispatchHighlight
-                                  ? 'border-b border-red-500/15 hover:bg-red-500/10 dark:hover:bg-red-950/40'
-                                  : undefined
-                              }
-                            />
-                          </li>
-                        );
-                      })}
-                  {group.tasks.map((task) => (
-                    <li key={task.uuid} className="min-w-0">
-                      <TaskListRow
-                        task={task}
-                        onOpen={handleOpenTask}
-                        onStatusChange={onStatusChange}
-                        onSwipeDeleteTask={onSwipeDeleteTask}
-                        onSwipeMarkDone={onSwipeMarkDone}
-                        swipeOpenRowId={swipeOpenRowId}
-                        onSwipeRowOpenChange={setSwipeOpenRowId}
-                      />
-                    </li>
-                  ))}
-                </ul>
-                {showAddTaskFooter ? (
-                  <div
-                    className={cn(
-                      'border-t border-border/40 px-2 py-1 md:px-3',
-                      !isMdUp && 'hidden',
-                    )}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => openVoiceSheet(group.propertyId)}
-                      className={cn(
-                        'flex w-full items-center justify-center rounded-md py-2 text-sm font-medium',
-                        'text-[#008CA4] transition-colors hover:bg-[#008CA4]/8 hover:text-[#007a90]',
-                        'dark:text-[#00d4ff] dark:hover:bg-[#00d4ff]/10',
-                      )}
+                  aria-hidden
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                    <h2 className="text-sm font-semibold leading-tight tracking-tight text-foreground">
+                      {tList('objectsTopHeading')}
+                    </h2>
+                    <span
+                      className="inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full border border-slate-200/90 bg-slate-100/90 px-1 text-[10px] font-semibold tabular-nums leading-none text-slate-600 dark:border-slate-600/70 dark:bg-slate-800/80 dark:text-slate-400"
+                      aria-label={tList('taskCount', { count: objectsTaskTotal })}
                     >
-                      {tList(group.propertyId === INCIDENTS_BOARD_GROUP_KEY ? 'addIncident' : 'addTask')}
-                    </button>
+                      {objectsTaskTotal}
+                    </span>
                   </div>
-                ) : null}
-              </CollapsibleContent>
-            </Collapsible>
-          </section>
-        );
-      })}
+                </div>
+              </CollapsibleTrigger>
+            </div>
+            <CollapsibleContent className="bg-white dark:bg-transparent">
+              <div className="flex min-w-0 flex-col gap-1.5 px-1.5 pb-2 pt-0 md:gap-3 md:px-2 md:pb-3">
+                {propertyGroups.map((g) => renderGroupSection(g, true))}
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+        </section>
+      ) : null}
 
       {voiceQuickAdd && !isMdUp && fabPropertyId ? (
         <div

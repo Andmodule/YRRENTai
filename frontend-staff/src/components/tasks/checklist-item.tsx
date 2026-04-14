@@ -1,7 +1,7 @@
 'use client';
 
 import { memo, useState, useEffect } from 'react';
-import { Clock, Mic, Pencil } from 'lucide-react';
+import { Clock, Mic, Pencil, Wrench, AlertTriangle, ClipboardList } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import type { Task } from '@/hooks/use-tasks';
 import type { DeadlineUrgency } from '@/lib/shift-utils';
@@ -10,6 +10,8 @@ import { useStaffStrings } from '@/locales/staff-strings';
 
 interface ChecklistItemProps {
   task: Task;
+  /** Карточка в светлой нижней шторке: без «тёмной» заливки при тёмной теме ОС. */
+  sheetSurface?: boolean;
   /** Показать дату, если задача не на «сегодня» (как в списке после широкого запроса задач). */
   dueDayHint?: string;
   deadlineUrgency: DeadlineUrgency;
@@ -28,13 +30,17 @@ const typeLabels: Record<string, string> = {
   mid_stay_cleaning: 'Плановая уборка',
   manual: 'Задача',
   other: 'Прочее',
+  incident: 'Инцидент',
+  maintenance: 'Обслуживание',
+  lost_item: 'Забытая вещь',
+  damage: 'Повреждение',
 };
 
 const urgencyRing: Record<DeadlineUrgency, string> = {
-  teal: 'ring-1 ring-teal-200/50',
-  amber: 'ring-1 ring-amber-300/70',
-  amber_pulse: 'ring-2 ring-amber-400 animate-pulse',
-  red: 'ring-2 ring-rose-500',
+  teal: 'ring-1 ring-teal-200/50 dark:ring-teal-900/40',
+  amber: 'ring-1 ring-amber-300/70 dark:ring-amber-700/50',
+  amber_pulse: 'ring-2 ring-amber-400 animate-pulse dark:ring-amber-500',
+  red: 'ring-2 ring-rose-500 dark:ring-rose-500',
 };
 
 const cardActionBtnClass =
@@ -42,6 +48,7 @@ const cardActionBtnClass =
 
 export const ChecklistItem = memo(function ChecklistItem({
   task,
+  sheetSurface = false,
   dueDayHint,
   deadlineUrgency,
   onMarkDone,
@@ -69,6 +76,8 @@ export const ChecklistItem = memo(function ChecklistItem({
 
   const street = task.streetAddress || task.propertyAddress;
   const isGeneral = task.isGeneralTask === true;
+  const isIncidentType = task.type === 'incident' || task.type === 'damage' || task.type === 'lost_item';
+  const isMaintenance = task.type === 'maintenance';
   const placeLabel = isGeneral ? str.tasks.checklist.generalTaskLabel : task.propertyTitle;
   const secondaryLine = isGeneral ? (task.title?.trim() || '') : street;
   const showReportActions = !isDone && (onVoiceForTask || onTextForTask);
@@ -81,10 +90,26 @@ export const ChecklistItem = memo(function ChecklistItem({
         aria-label={`Задача: ${placeLabel}`}
         onKeyDown={handleKeyDown}
         onClick={() => onQuickOpen(task)}
-        className={`relative z-10 flex min-h-14 cursor-pointer select-none items-center gap-3 rounded-2xl border px-4 py-3 shadow-md shadow-slate-900/5 transition-all duration-200 hover:shadow-lg active:scale-[0.99] ${urgencyRing[deadlineUrgency]} ${
-          isIssue
-            ? 'border-amber-200/90 bg-amber-50/90 hover:border-amber-300/80'
-            : 'border-slate-200/90 bg-white hover:border-teal-200/80'
+        className={`relative z-10 flex min-h-14 cursor-pointer select-none items-center gap-3 rounded-2xl border px-4 py-3 transition-all duration-200 active:scale-[0.99] ${urgencyRing[deadlineUrgency]} ${
+          sheetSurface
+            ? isIssue
+              ? 'border-amber-200/90 bg-amber-50/95 shadow-sm hover:border-amber-300 hover:shadow-md'
+              : isIncidentType
+                ? 'border-rose-200/90 bg-rose-50/95 shadow-sm hover:border-rose-300 hover:shadow-md'
+                : isMaintenance
+                  ? 'border-blue-200/90 bg-blue-50/95 shadow-sm hover:border-blue-300 hover:shadow-md'
+                  : isGeneral
+                    ? 'border-slate-200/90 bg-slate-50/95 shadow-sm hover:border-slate-300 hover:shadow-md'
+                    : 'border-slate-200/90 bg-white shadow-sm hover:border-teal-300/70 hover:shadow-md'
+            : isIssue
+              ? 'border-amber-300/90 bg-amber-50/90 shadow-md shadow-slate-900/5 hover:border-amber-400/80 hover:shadow-lg dark:border-amber-500/50 dark:bg-amber-950/40'
+              : isIncidentType
+                ? 'border-rose-300/90 bg-rose-50/90 shadow-md shadow-slate-900/5 hover:border-rose-400/80 hover:shadow-lg dark:border-rose-500/50 dark:bg-rose-950/40'
+                : isMaintenance
+                  ? 'border-blue-300/90 bg-blue-50/90 shadow-md shadow-slate-900/5 hover:border-blue-400/80 hover:shadow-lg dark:border-blue-500/50 dark:bg-blue-950/40'
+                  : isGeneral
+                    ? 'border-slate-300/90 bg-slate-50/90 shadow-md shadow-slate-900/5 hover:border-slate-400/80 hover:shadow-lg dark:border-slate-600/80 dark:bg-slate-800/60'
+                    : 'border-slate-200/90 bg-white shadow-md shadow-slate-900/5 hover:border-teal-200/80 hover:shadow-lg dark:border-slate-700/80 dark:bg-slate-900'
         }`}
       >
         <span
@@ -104,18 +129,28 @@ export const ChecklistItem = memo(function ChecklistItem({
 
         <div className="min-w-0 flex-1">
           <p
-            className={`truncate text-sm font-semibold ${isDone ? 'text-slate-400 line-through' : 'text-slate-900'}`}
+            className={`truncate text-sm font-semibold ${isDone ? 'text-slate-400 line-through' : 'text-slate-900 dark:text-slate-100'}`}
           >
             {placeLabel}
           </p>
           {secondaryLine ? (
-            <p className="truncate text-xs text-slate-500" title={secondaryLine}>
+            <p className="truncate text-xs text-slate-500 dark:text-slate-400" title={secondaryLine}>
               {secondaryLine}
             </p>
           ) : null}
-          <p className="truncate text-xs text-slate-600">
-            {typeLabels[task.type] ?? task.type}
-            {task.contextLabel ? ` · ${task.contextLabel}` : ''}
+          <p className={`flex items-center gap-1.5 truncate text-xs ${
+            isIncidentType ? 'text-rose-600 dark:text-rose-400 font-bold' :
+            isMaintenance ? 'text-blue-600 dark:text-blue-400 font-bold' :
+            isGeneral ? 'text-slate-700 dark:text-slate-300 font-bold' :
+            'text-slate-600 dark:text-slate-400'
+          }`}>
+            {isIncidentType && <AlertTriangle className="h-3.5 w-3.5 shrink-0" />}
+            {isMaintenance && <Wrench className="h-3.5 w-3.5 shrink-0" />}
+            {isGeneral && !isIncidentType && !isMaintenance && <ClipboardList className="h-3.5 w-3.5 shrink-0" />}
+            <span className="truncate">
+              {typeLabels[task.type] ?? task.type}
+              {task.contextLabel ? ` · ${task.contextLabel}` : ''}
+            </span>
           </p>
           {isIssue ? (
             <p className="mt-1">
@@ -181,7 +216,7 @@ export const ChecklistItem = memo(function ChecklistItem({
             </span>
           )}
           {task.priority === 'urgent' && (
-            <span className="h-2 w-2 rounded-full bg-amber-500 ring-2 ring-amber-200/80" title="Срочно" />
+            <span className="h-2 w-2 rounded-full bg-rose-500 ring-2 ring-rose-200/80" title="Срочно" />
           )}
         </div>
       </div>

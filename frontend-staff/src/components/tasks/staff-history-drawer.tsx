@@ -31,18 +31,19 @@ function taskTypeLabel(type: string): string {
 export function StaffHistoryDrawer({
   open,
   onOpenChange,
-  tasks,
-  onRequestTaskPhoto,
-  onRequestIncidentPhoto,
-  onRequestSupplement,
+  tasks = [],
+  onRequestTaskPhoto = () => {},
+  onRequestIncidentPhoto = () => {},
+  onRequestSupplement = () => {},
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  tasks: Task[];
-  onRequestTaskPhoto: (taskUuid: string) => void;
-  onRequestIncidentPhoto: (incidentUuid: string) => void;
+  /** По умолчанию [] — экраны без списка задач (например сводка водителя) показывают только вкладку инцидентов. */
+  tasks?: Task[];
+  onRequestTaskPhoto?: (taskUuid: string) => void;
+  onRequestIncidentPhoto?: (incidentUuid: string) => void;
   /** Клик по карточке — доп. текст (закрывает историю и открывает sheet дополнения). */
-  onRequestSupplement: (ctx: StaffSupplementContext) => void;
+  onRequestSupplement?: (ctx: StaffSupplementContext) => void;
 }) {
   const h = useStaffStrings().tasks.history;
   const [tab, setTab] = useState<'tasks' | 'incidents'>('tasks');

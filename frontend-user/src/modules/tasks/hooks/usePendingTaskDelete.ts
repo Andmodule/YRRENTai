@@ -11,14 +11,14 @@ const UNDO_MS = 4000;
 
 function removeTaskFromCaches(queryClient: ReturnType<typeof useQueryClient>, uuid: string) {
   queryClient.setQueriesData<TasksApiResponse>({ queryKey: ['tasks'] }, (old) => {
-    if (!old) return old;
+    if (!old || !old.tasks) return old;
     return { ...old, tasks: old.tasks.filter((t) => t.uuid !== uuid) };
   });
 }
 
 function restoreTaskInCaches(queryClient: ReturnType<typeof useQueryClient>, task: Task) {
   queryClient.setQueriesData<TasksApiResponse>({ queryKey: ['tasks'] }, (old) => {
-    if (!old) return old;
+    if (!old || !old.tasks) return old;
     if (old.tasks.some((t) => t.uuid === task.uuid)) return old;
     return { ...old, tasks: [...old.tasks, task] };
   });

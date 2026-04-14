@@ -314,11 +314,9 @@ export function ManagerSupplyCreateSheet({
                           : t('startRecording')}
                     </Button>
                   )}
-                  {!isRecordingFocus ? (
-                    <Button type="button" variant="ghost" className="w-full text-muted-foreground" onClick={handleTypeManually}>
-                      {t('typeManually')}
-                    </Button>
-                  ) : null}
+                  <Button type="button" variant="ghost" className="w-full text-muted-foreground" onClick={handleTypeManually}>
+                    {t('typeManually')}
+                  </Button>
                 </div>
               ) : null}
             </>

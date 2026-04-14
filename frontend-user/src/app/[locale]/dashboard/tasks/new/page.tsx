@@ -77,7 +77,6 @@ const TASK_TYPES: TaskTypeConfig[] = [
 const PRIORITY_OPTIONS: { value: TaskPriority; labelKey: string }[] = [
   { value: 'normal', labelKey: 'normal' },
   { value: 'urgent', labelKey: 'urgent' },
-  { value: 'critical', labelKey: 'critical' },
 ];
 
 /** Lucide icons instead of Unicode arrows (avoid emoji-style blue squares on mobile). */
@@ -490,9 +489,7 @@ export default function NewTaskFromBookingPage() {
                       'inline-flex shrink-0 items-center justify-center rounded-full border px-3 py-1.5 text-[11px] font-medium transition-colors',
                       active && value === 'normal' && 'border-slate-400/60 bg-slate-500/20 text-foreground shadow-sm dark:bg-slate-500/25',
                       active && value === 'urgent' &&
-                        'border-amber-500/70 bg-amber-500/20 text-amber-950 shadow-sm dark:text-amber-50',
-                      active && value === 'critical' &&
-                        'border-red-500/70 bg-red-500/15 text-red-950 shadow-sm dark:text-red-100',
+                        'border-rose-500/70 bg-rose-500/20 text-rose-950 shadow-sm dark:text-rose-50',
                       !active && 'border-border/60 text-muted-foreground hover:border-border hover:bg-muted/50 hover:text-foreground',
                     )}
                   >

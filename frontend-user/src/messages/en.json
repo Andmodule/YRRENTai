@@ -809,8 +809,7 @@
     "unassigned": "Unassigned",
     "priority": {
       "urgent": "Urgent",
-      "normal": "Normal",
-      "critical": "Critical"
+      "normal": "Normal"
     },
     "status": {
       "pending": "Pending",
@@ -1068,6 +1067,7 @@
       "newTaskFallback": "New task",
       "untitledTask": "Untitled task",
       "generalTitle": "General tasks",
+      "objectsTopHeading": "Properties",
       "unnamedProperty": "Unnamed property",
       "taskCount": "{count, plural, one {# task} other {# tasks}}",
       "incidentCount": "{count, plural, one {# incident} other {# incidents}}",

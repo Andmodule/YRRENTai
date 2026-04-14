@@ -53,7 +53,7 @@ const TASK_TYPES: { type: TaskType; labelKey: string; shortIcon?: LucideIcon }[]
   { type: 'other', labelKey: 'other' },
 ];
 
-const PRIORITIES: TaskPriority[] = ['normal', 'urgent', 'critical'];
+const PRIORITIES: TaskPriority[] = ['normal', 'urgent'];
 
 const taskTypeEnum = z.enum([
   'checkout_cleaning',
@@ -62,7 +62,7 @@ const taskTypeEnum = z.enum([
   'maintenance',
   'other',
 ]);
-const priorityEnum = z.enum(['urgent', 'normal', 'critical']);
+const priorityEnum = z.enum(['urgent', 'normal']);
 
 /** Task fields optional at parse time — required only when entityTab === 'task' (see superRefine). */
 const smartFormSchema = z
@@ -419,7 +419,7 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
             assigneeId: data.assigneeId ?? '',
             dueDate: data.dueDate ?? format(addDays(new Date(), 1), 'yyyy-MM-dd'),
             priority: data.priority ?? 'normal',
-            propertyIds: data.isGeneralTask || filteredIds.length === 0 ? [] : filteredIds,
+            propertyIds: data.isGeneralTask ? [] : filteredIds.length > 0 ? filteredIds : contextPropertyId ? [contextPropertyId] : [],
             notes: data.transcript.trim(),
           });
         }
@@ -461,7 +461,10 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
 
   useEffect(() => {
     if (!open) {
-      reset(defaultForm());
+      reset({
+        ...defaultForm(),
+        propertyIds: contextPropertyId ? [contextPropertyId] : [],
+      });
       setPhase('voice');
       setIncidentSuccess(null);
       setDispatchPrefill(null);
@@ -485,7 +488,7 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
         d?.priority && PRIORITIES.includes(d.priority)
           ? d.priority
           : isIncidentDispatch
-            ? 'critical'
+            ? 'urgent'
             : 'normal';
       reset({
         ...defaultForm(),
@@ -512,7 +515,10 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
       setPhase('review');
       resetRecording();
     } else {
-      reset(defaultForm());
+      reset({
+        ...defaultForm(),
+        propertyIds: contextPropertyId ? [contextPropertyId] : [],
+      });
       setPhase('voice');
       /* Mic start: parent must call ref.startRecordingFromUserGesture() in the same click/tap that opens the sheet. */
     }
@@ -543,9 +549,13 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
 
   const handleTypeManually = useCallback(() => {
     resetRecording();
-    reset(defaultForm());
+    reset({
+      ...defaultForm(),
+      entityTab: manualEntityTab,
+      propertyIds: contextPropertyId ? [contextPropertyId] : [],
+    });
     setPhase('review');
-  }, [reset, resetRecording]);
+  }, [reset, resetRecording, contextPropertyId, manualEntityTab]);
 
   const { mutate: createTaskMutate, isPending: isPendingTask } = useMutation({
     mutationFn: async (values: SmartFormValues) => {
@@ -692,7 +702,7 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
       propertyIds: [incidentSuccess.propertyId],
       assigneeId: '',
       dueDate: format(addDays(new Date(), 1), 'yyyy-MM-dd'),
-      priority: 'critical',
+      priority: 'urgent',
     });
   }, [incidentSuccess, reset, resetRecording, tTasks]);
 
@@ -709,7 +719,10 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
 
   const onMicInReview = () => {
     resetRecording();
-    reset(defaultForm());
+    reset({
+      ...defaultForm(),
+      propertyIds: contextPropertyId ? [contextPropertyId] : [],
+    });
     setPhase('voice');
   };
 
@@ -839,11 +852,9 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
                         : t('startRecording')}
                   </Button>
                 )}
-                {!isRecordingFocus ? (
-                  <Button type="button" variant="ghost" className="w-full text-muted-foreground" onClick={handleTypeManually}>
-                    {t('typeManually')}
-                  </Button>
-                ) : null}
+                <Button type="button" variant="ghost" className="w-full text-muted-foreground" onClick={handleTypeManually}>
+                  {t('typeManually')}
+                </Button>
               </div>
                 </>
               ) : (
@@ -903,7 +914,34 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
                 <div className="relative z-[2] space-y-4">
                   {isIncidentDispatch ? (
                     <p className="text-xs text-muted-foreground">{tTasks('smartCreate.dispatchFromIncidentHint')}</p>
-                  ) : null}
+                  ) : (
+                    <div className="flex w-full rounded-lg bg-muted/50 p-1">
+                      <button
+                        type="button"
+                        onClick={() => setValue('entityTab', 'task', { shouldValidate: true })}
+                        className={cn(
+                          'flex-1 rounded-md py-1.5 text-xs font-medium transition-colors',
+                          entityTab === 'task'
+                            ? 'bg-background text-foreground shadow-sm'
+                            : 'text-muted-foreground hover:text-foreground',
+                        )}
+                      >
+                        {tTasks('smartCreate.tabTask')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setValue('entityTab', 'incident', { shouldValidate: true })}
+                        className={cn(
+                          'flex-1 rounded-md py-1.5 text-xs font-medium transition-colors',
+                          entityTab === 'incident'
+                            ? 'bg-background text-foreground shadow-sm'
+                            : 'text-muted-foreground hover:text-foreground',
+                        )}
+                      >
+                        {tTasks('smartCreate.tabIncident')}
+                      </button>
+                    </div>
+                  )}
 
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between gap-2">

@@ -176,14 +176,26 @@ export function ManagerKanban({
     end.setHours(23, 59, 59, 999);
     const q = filters.propertyQuery.trim().toLowerCase();
     return incidentsRaw.filter((i) => {
-      if (
-        i.status !== 'awaiting_dispatch' &&
-        i.status !== 'assigned' &&
-        i.status !== 'open' &&
-        i.status !== 'in_review'
-      ) {
+      const isResolved = i.status === 'resolved' || i.status === 'closed';
+
+      if (filters.statusFilter === 'done') {
+        if (!isResolved) return false;
+      } else if (filters.statusFilter === 'all') {
+        if (isResolved) return false;
+      } else if (filters.statusFilter === 'pending') {
+        if (i.status !== 'open' && i.status !== 'awaiting_dispatch') return false;
+      } else if (filters.statusFilter === 'in_progress') {
+        if (i.status !== 'assigned' && i.status !== 'in_review') return false;
+      } else if (filters.statusFilter === 'issue') {
+        if (isResolved) return false;
+      } else {
+        if (isResolved) return false;
+      }
+
+      if (filters.priorityFilter !== 'all') {
         return false;
       }
+
       if (filters.dateRangeEnabled) {
         const t0 = new Date(i.createdAt).getTime();
         if (t0 < start.getTime() || t0 > end.getTime()) return false;
@@ -191,7 +203,14 @@ export function ManagerKanban({
       if (q && !i.propertyTitle.toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [incidentsRaw, filters.dateRange, filters.dateRangeEnabled, filters.propertyQuery]);
+  }, [
+    incidentsRaw,
+    filters.dateRange,
+    filters.dateRangeEnabled,
+    filters.propertyQuery,
+    filters.statusFilter,
+    filters.priorityFilter,
+  ]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),

@@ -162,7 +162,7 @@ const VOICE_TASK_TYPES = [
   'other',
 ] as const;
 
-const VOICE_PRIORITIES = ['normal', 'urgent', 'critical'] as const;
+const VOICE_PRIORITIES = ['normal', 'urgent'] as const;
 
 interface LlmVoiceParseJson {
   entityType?: string;
@@ -456,7 +456,7 @@ export class TasksService {
     return s.length > 0 ? s : null;
   }
 
-  private static readonly PATCHABLE_PRIORITIES = new Set(['urgent', 'normal', 'critical']);
+  private static readonly PATCHABLE_PRIORITIES = new Set(['urgent', 'normal']);
 
   private static readonly PATCHABLE_TASK_TYPES = new Set([
     'checkout_cleaning',
@@ -549,6 +549,8 @@ export class TasksService {
         task.propertyId = p.id;
         task.companyId = p.companyId;
         task.isGeneralTask = false;
+        delete (task as any).property;
+        delete (task as any).company;
       }
       if (patch.dueDate !== undefined) {
         const d = patch.dueDate.trim();
@@ -603,6 +605,7 @@ export class TasksService {
       } else {
         task.assigneeId = null;
       }
+      delete (task as any).assignee; // Force TypeORM to use assigneeId
     }
     if (patch.notes !== undefined) task.notes = patch.notes;
     if (patch.issueDescription !== undefined) task.issueDescription = patch.issueDescription;
@@ -1309,7 +1312,7 @@ export class TasksService {
       'maintenance',
       'other',
     ]);
-    const PRIOS = new Set(['normal', 'urgent', 'critical']);
+    const PRIOS = new Set(['normal', 'urgent']);
     const uuidRe =
       /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -1406,7 +1409,7 @@ Return a single JSON object:
 For "incident" and "ambiguous_incident" only: if the same message also assigns follow-up work (what to do, who, when), add optional "suggestedTask": {
   "title": string or null (task title, can differ from incident title),
   "type": "checkout_cleaning"|"mid_stay_cleaning"|"checkin_prep"|"maintenance"|"other" or null,
-  "priority": "normal"|"urgent"|"critical" or null,
+  "priority": "normal"|"urgent" or null,
   "assigneeId": "<uuid from staff list>" or null,
   "dueDate": "YYYY-MM-DD" or null (use property local dates),
   "notes": string or null
@@ -1656,7 +1659,7 @@ Semantic triggers (any language — RU, EN, PL, ES, DE and mixed speech):
 If the user explicitly starts with the word "incident" / "инцидент" / "incydent" / "incidente" / "Vorfall" in any supported language, prefer "incident" when it matches the situation.
 
 If "entityType" is "task", return:
-- "title", "type" (checkout_cleaning | mid_stay_cleaning | checkin_prep | maintenance | other), "priority" (normal | urgent | critical),
+- "title", "type" (checkout_cleaning | mid_stay_cleaning | checkin_prep | maintenance | other), "priority" (normal | urgent),
 - "propertyIds" (array of UUIDs; empty if general / unknown listing), "isGeneralTask" (boolean),
 - "assigneeId" (uuid or null), "dueDate" ("YYYY-MM-DD" or null).
 

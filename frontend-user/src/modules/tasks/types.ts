@@ -7,7 +7,7 @@ export type TaskType =
 
 export type TaskStatus = 'pending' | 'in_progress' | 'done' | 'issue';
 
-export type TaskPriority = 'urgent' | 'normal' | 'critical';
+export type TaskPriority = 'urgent' | 'normal';
 
 export interface Task {
   uuid: string;

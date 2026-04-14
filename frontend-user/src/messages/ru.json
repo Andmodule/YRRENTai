@@ -809,8 +809,7 @@
     "unassigned": "Не назначено",
     "priority": {
       "urgent": "Срочно",
-      "normal": "Обычный",
-      "critical": "Критично"
+      "normal": "Обычный"
     },
     "status": {
       "pending": "Ожидает",
@@ -1068,6 +1067,7 @@
       "newTaskFallback": "Новая задача",
       "untitledTask": "Без названия",
       "generalTitle": "Общие задачи",
+      "objectsTopHeading": "Объекты",
       "unnamedProperty": "Объект без названия",
       "taskCount": "{count, plural, one {# задача} few {# задачи} many {# задач} other {# задач}}",
       "incidentCount": "{count, plural, one {# инцидент} few {# инцидента} many {# инцидентов} other {# инцидентов}}",

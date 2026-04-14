@@ -1,24 +1,15 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
-import {
-  AlertTriangle,
-  CalendarDays,
-  CheckCircle2,
-  ClipboardList,
-  History,
-  Loader2,
-  LogOut,
-  MapPin,
-  Package,
-  RefreshCw,
-} from 'lucide-react';
+import { toast } from 'sonner';
+import { CalendarDays, History, Loader2, LogOut, MapPin, Package, RefreshCw } from 'lucide-react';
 import type { StaffDeliveryRouteDetail } from '@/hooks/use-staff-delivery-route';
-import { useTodayTasks } from '@/hooks/use-tasks';
 import { useStaffStrings } from '@/locales/staff-strings';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { StaffHistoryDrawer } from '@/components/tasks/staff-history-drawer';
 
 function formatScheduleDate(isoDate: string): string {
   const d = new Date(`${isoDate}T12:00:00`);
@@ -34,6 +25,10 @@ function widgetCardClass(elevated?: boolean) {
       : 'border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900',
   );
 }
+
+/** Как `StaffHistoryFab` в чеклисте уборки: крупная зона нажатия и иконка h-5 w-5 */
+const driverHeaderIconBtnClass =
+  'flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm transition-transform active:scale-95 dark:border-slate-600 dark:bg-slate-800 dark:text-teal-200 dark:shadow-none';
 
 export interface DriverDashboardProps {
   routes: StaffDeliveryRouteDetail[] | null;
@@ -55,19 +50,14 @@ export function DriverDashboard({
   onStartAssignedRoute,
   startingRouteId,
 }: DriverDashboardProps) {
+  const [historyOpen, setHistoryOpen] = useState(false);
   const strings = useStaffStrings();
   const d = strings.driver.dashboard;
-  const { data: tasksData, isLoading: tasksLoading } = useTodayTasks();
-
-  const tasks = tasksData?.tasks ?? [];
-  const openTasks = tasks.filter((t) => t.status !== 'done').length;
-  const issueTasks = tasks.filter((t) => t.status === 'issue').length;
-
   const list = routes ?? [];
   const hasAnyRoute = list.length > 0;
   const totalStops = list.reduce((acc, r) => acc + (r.stops?.length ?? 0), 0);
   const totalDone = list.reduce(
-    (acc, r) => acc + (r.stops?.filter((s) => s.status === 'done').length ?? 0),
+    (acc, r) => acc + (r.stops?.filter((s) => s.status === 'done')?.length ?? 0),
     0,
   );
   const hasRoute = hasAnyRoute && totalStops > 0;
@@ -82,15 +72,32 @@ export function DriverDashboard({
             </p>
             <h1 className="text-lg font-bold text-slate-900 dark:text-slate-100">{d.pageTitle}</h1>
           </div>
-          <Button
-            type="button"
-            variant="ghost"
-            aria-label={strings.driver.logout}
-            className="h-10 w-10 shrink-0 rounded-full p-0 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
-            onClick={() => void onLogout()}
-          >
-            <LogOut size={20} />
-          </Button>
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              aria-label={d.sectionTomorrow}
+              className={driverHeaderIconBtnClass}
+              onClick={() => toast.info(d.tomorrowPlaceholder)}
+            >
+              <CalendarDays className="h-5 w-5" strokeWidth={2} aria-hidden />
+            </button>
+            <button
+              type="button"
+              aria-label={strings.tasks.history.fabAria}
+              className={driverHeaderIconBtnClass}
+              onClick={() => setHistoryOpen(true)}
+            >
+              <History className="h-5 w-5" strokeWidth={2} aria-hidden />
+            </button>
+            <button
+              type="button"
+              aria-label={strings.driver.logout}
+              className={driverHeaderIconBtnClass}
+              onClick={() => void onLogout()}
+            >
+              <LogOut className="h-5 w-5" strokeWidth={2} aria-hidden />
+            </button>
+          </div>
         </div>
       </header>
 
@@ -111,7 +118,7 @@ export function DriverDashboard({
           <div className="flex flex-col gap-3">
             {list.map((route) => {
               const routeStops = route.stops?.length ?? 0;
-              const routeDone = route.stops?.filter((s) => s.status === 'done').length ?? 0;
+              const routeDone = route.stops?.filter((s) => s.status === 'done')?.length ?? 0;
               const assigned = route.status === 'assigned';
               const inProgress = route.status === 'in_progress';
               const completed = route.status === 'completed';
@@ -201,95 +208,9 @@ export function DriverDashboard({
             </Button>
           </div>
         )}
-
-        {hasRoute ? (
-          <section className={widgetCardClass()} aria-labelledby="dash-stats">
-            <h2 id="dash-stats" className="mb-2 flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-slate-100">
-              <CheckCircle2 className="h-4 w-4 text-teal-600" aria-hidden />
-              {d.sectionStats}
-            </h2>
-            <p className="text-sm text-slate-600 dark:text-slate-400">{d.statsFromRoute(totalDone, totalStops)}</p>
-          </section>
-        ) : !routeLoading && !routeError ? (
-          <section className={widgetCardClass()} aria-labelledby="dash-stats-idle">
-            <h2 id="dash-stats-idle" className="mb-2 text-sm font-bold text-slate-900 dark:text-slate-100">
-              {d.sectionStats}
-            </h2>
-            <p className="text-sm text-slate-600 dark:text-slate-400">{d.statsIdle}</p>
-          </section>
-        ) : null}
-
-        <section className={widgetCardClass()} aria-labelledby="dash-tomorrow">
-          <h2 id="dash-tomorrow" className="mb-2 flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-slate-100">
-            <CalendarDays className="h-4 w-4 text-slate-500" aria-hidden />
-            {d.sectionTomorrow}
-          </h2>
-          <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-400">{d.tomorrowPlaceholder}</p>
-        </section>
-
-        <section className={widgetCardClass()} aria-labelledby="dash-tasks">
-          <h2 id="dash-tasks" className="mb-2 flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-slate-100">
-            <ClipboardList className="h-4 w-4 text-slate-500" aria-hidden />
-            {d.sectionTasks}
-          </h2>
-          {tasksLoading ? (
-            <Loader2 className="h-5 w-5 animate-spin text-slate-400" aria-hidden />
-          ) : (
-            <p className="text-sm text-slate-600 dark:text-slate-400">{d.tasksOpenCount(openTasks)}</p>
-          )}
-          <Link
-            href="/tasks"
-            className={cn(
-              'mt-3 inline-flex h-10 w-full items-center justify-center rounded-full border border-slate-200 bg-white/90 text-sm font-medium text-slate-800 transition-colors hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800',
-            )}
-          >
-            {d.tasksLink}
-          </Link>
-        </section>
-
-        <section className={widgetCardClass()} aria-labelledby="dash-issues">
-          <h2 id="dash-issues" className="mb-2 flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-slate-100">
-            <AlertTriangle className="h-4 w-4 text-amber-600" aria-hidden />
-            {d.sectionIssues}
-          </h2>
-          {tasksLoading ? (
-            <Loader2 className="h-5 w-5 animate-spin text-slate-400" aria-hidden />
-          ) : issueTasks > 0 ? (
-            <p className="text-sm font-medium text-amber-900 dark:text-amber-200">{d.issuesCount(issueTasks)}</p>
-          ) : (
-            <p className="text-sm text-slate-600 dark:text-slate-400">{d.issuesClear}</p>
-          )}
-          {issueTasks > 0 ? (
-            <Link
-              href="/tasks"
-              className="mt-3 inline-flex h-10 w-full items-center justify-center rounded-full border border-amber-200 bg-white/90 text-sm font-medium text-amber-900 transition-colors hover:bg-amber-50 dark:border-amber-900 dark:bg-slate-900 dark:text-amber-100 dark:hover:bg-amber-950/40"
-            >
-              {d.tasksLink}
-            </Link>
-          ) : null}
-        </section>
-
-        <section className={widgetCardClass()} aria-labelledby="dash-history">
-          <h2 id="dash-history" className="mb-2 flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-slate-100">
-            <History className="h-4 w-4 text-slate-500" aria-hidden />
-            {d.sectionHistory}
-          </h2>
-          <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-400">{d.historyPlaceholder}</p>
-        </section>
-
-        {hasRoute ? (
-          <Link
-            href={
-              list.length === 1
-                ? `/driver/route?routeId=${encodeURIComponent(list[0]!.id)}`
-                : '/driver/route'
-            }
-            className="inline-flex h-10 w-full items-center justify-center rounded-full text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
-          >
-            {d.ctaOpenRoute}
-          </Link>
-        ) : null}
       </div>
+
+      <StaffHistoryDrawer open={historyOpen} onOpenChange={setHistoryOpen} />
     </div>
   );
 }

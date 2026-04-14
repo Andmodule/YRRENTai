@@ -8,7 +8,7 @@ export interface Task {
   title: string;
   type: string;
   status: 'pending' | 'in_progress' | 'done' | 'issue';
-  priority: 'urgent' | 'normal' | 'low';
+  priority: 'urgent' | 'normal';
   propertyId: string;
   propertyTitle: string;
   propertyAddress: string;

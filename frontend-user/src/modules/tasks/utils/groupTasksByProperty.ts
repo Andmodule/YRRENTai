@@ -10,10 +10,12 @@ export const INCIDENTS_BOARD_GROUP_KEY = '__rentai_incidents_board__' as const;
 /** Очередь снабжения / нехватки (staff → LLM → менеджер), одна свёртка под инцидентами. */
 export const SHORTAGE_BOARD_GROUP_KEY = '__rentai_shortage_supply_board__' as const;
 
+/** Список задач менеджера: родительская свёртка «Объекты», внутри — группы по propertyId. */
+export const OBJECTS_WRAPPER_GROUP_KEY = '__rentai_objects_wrapper__' as const;
+
 const PRIORITY_SORT: Record<TaskPriority, number> = {
-  critical: 0,
-  urgent: 1,
-  normal: 2,
+  urgent: 0,
+  normal: 1,
 };
 
 export interface TaskPropertyGroup {
@@ -121,6 +123,14 @@ export function groupTasksAndIncidentsForBoard(
   propertyGroups.sort((a, b) => {
     if (a.propertyId === GENERAL_TASK_PROPERTY_GROUP_KEY) return -1;
     if (b.propertyId === GENERAL_TASK_PROPERTY_GROUP_KEY) return 1;
+
+    // Сначала показываем объекты, где есть более приоритетные задачи
+    const aMinPrio = Math.min(...a.tasks.map((t) => PRIORITY_SORT[t.priority] ?? 99), 99);
+    const bMinPrio = Math.min(...b.tasks.map((t) => PRIORITY_SORT[t.priority] ?? 99), 99);
+    if (aMinPrio !== bMinPrio) {
+      return aMinPrio - bMinPrio;
+    }
+
     return a.propertyTitle.localeCompare(b.propertyTitle, undefined, { sensitivity: 'base' });
   });
 

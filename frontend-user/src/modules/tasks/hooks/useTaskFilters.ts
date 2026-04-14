@@ -10,9 +10,13 @@ export function useTaskFilters(
   return useMemo(() => {
     const q = filters.propertyQuery.trim().toLowerCase();
     return tasks.filter((t) => {
-      /** «Все» = все статусы, включая done (иначе колонка «Готово» и завершённые staff не видны). */
-      const statusOk =
-        filters.statusFilter === 'all' ? true : t.status === filters.statusFilter;
+      let statusOk = false;
+      if (filters.statusFilter === 'all') {
+        /** «Все» теперь скрывает выполненные задачи и решенные инциденты по просьбе пользователя. */
+        statusOk = t.status !== 'done';
+      } else {
+        statusOk = t.status === filters.statusFilter;
+      }
       const priorityOk = filters.priorityFilter === 'all' || t.priority === filters.priorityFilter;
       const queryOk =
         !q ||

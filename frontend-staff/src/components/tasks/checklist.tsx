@@ -138,7 +138,7 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
 
   const todayTasks = useMemo(() => {
     const list = (data?.tasks ?? []).filter((t) => t.dueDate === todayStr);
-    const pr: Record<string, number> = { urgent: 0, normal: 1, low: 2 };
+    const pr: Record<string, number> = { urgent: 0, normal: 1 };
     return [...list].sort((a, b) => {
       const pa = pr[a.priority] ?? 1;
       const pb = pr[b.priority] ?? 1;
@@ -150,7 +150,7 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
   /** Как в TMA: невыполненные задачи на любую дату из ответа API (широкий диапазон дат). */
   const activeTasks = useMemo(() => {
     const list = (data?.tasks ?? []).filter((t) => t.status !== 'done');
-    const pr: Record<string, number> = { urgent: 0, normal: 1, low: 2 };
+    const pr: Record<string, number> = { urgent: 0, normal: 1 };
     return [...list].sort((a, b) => {
       const dd = a.dueDate.localeCompare(b.dueDate);
       if (dd !== 0) return dd;

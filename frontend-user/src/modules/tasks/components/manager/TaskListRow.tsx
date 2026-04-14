@@ -7,7 +7,6 @@ import { format, isToday, parseISO } from 'date-fns';
 import { enUS, ru } from 'date-fns/locale';
 import { Link2, ListTodo } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Checkbox } from '@/components/ui/checkbox';
 import { useMatchMedia } from '@/hooks/use-match-media';
 import type { Task, TaskStatus } from '../../types';
 import { TaskListTypePill } from './TaskListTypePill';
@@ -45,8 +44,6 @@ export const TaskListRow = memo(function TaskListRow({
 
   /** Instant checkbox + strike before React Query paints the optimistic update */
   const [instantDone, setInstantDone] = useState(false);
-  /** Десктоп: короткая анимация строки при «готово» с отложенным commit (как свайп на мобайл). */
-  const [desktopMarkAnim, setDesktopMarkAnim] = useState(false);
   useEffect(() => {
     if (task.status === 'done') setInstantDone(false);
   }, [task.status]);
@@ -76,7 +73,8 @@ export const TaskListRow = memo(function TaskListRow({
 
   const hasManagerLinkBadges =
     (task.pendingSupplyInterpretationIds?.length ?? 0) > 0 ||
-    (task.linkedIncidentIdsFromTask?.length ?? 0) > 0;
+    (task.linkedIncidentIdsFromTask?.length ?? 0) > 0 ||
+    !!task.incidentId;
 
   const dueLabel = (() => {
     try {
@@ -107,15 +105,12 @@ export const TaskListRow = memo(function TaskListRow({
   );
 
   const priorityDot = (() => {
-    if (task.priority === 'critical') {
-      return <span className="h-1 w-1 shrink-0 rounded-full bg-red-500" title={t('priority.critical')} />;
-    }
     if (task.priority === 'urgent') {
       return (
-        <span className="h-1 w-1 shrink-0 rounded-full bg-yellow-400 dark:bg-yellow-500" title={t('priority.urgent')} />
+        <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-rose-500 shadow-sm" title={t('priority.urgent')} />
       );
     }
-    return <span className="h-1 w-1 shrink-0 rounded-full bg-gray-400 dark:bg-gray-500" title={t('priority.normal')} />;
+    return <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-slate-300 dark:bg-slate-600" title={t('priority.normal')} />;
   })();
 
   const checklist = task.checklistSummary;
@@ -161,41 +156,14 @@ export const TaskListRow = memo(function TaskListRow({
     'flex w-full min-w-0 origin-top cursor-pointer flex-row items-start gap-2 border-b border-border/40 px-2 py-2 text-left md:px-3',
     'hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
     'transition-colors',
-    isMdUp && desktopMarkAnim && 'motion-safe:animate-task-row-complete',
+    task.status === 'issue' ? 'bg-amber-50/50 hover:bg-amber-100/50 dark:bg-amber-950/20 dark:hover:bg-amber-950/40' :
+    task.priority === 'urgent' ? 'bg-rose-50/50 hover:bg-rose-100/50 dark:bg-rose-950/20 dark:hover:bg-rose-950/40' : '',
   );
 
   const rowInner = (
     <>
       <div className="flex shrink-0 items-center gap-2 pt-0.5" onClick={(e) => e.stopPropagation()}>
         {priorityDot}
-        {isMdUp ? (
-          <Checkbox
-            id={`task-done-${task.uuid}`}
-            checked={checkedVisual}
-            disabled={task.status === 'issue'}
-            className={cn(
-              'h-4 w-4 rounded border-slate-400 bg-white shadow-sm',
-              'data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground',
-              'dark:border-input dark:bg-transparent dark:shadow-none',
-            )}
-            aria-label={tList('markDoneAria')}
-            onCheckedChange={(checked) => {
-              if (checked === true) {
-                if (onSwipeMarkDone && task.status !== 'issue' && task.status !== 'done') {
-                  setDesktopMarkAnim(true);
-                  window.setTimeout(() => setDesktopMarkAnim(false), 450);
-                  onSwipeMarkDone(task);
-                  return;
-                }
-                flushSync(() => setInstantDone(true));
-                onStatusChange(task.uuid, 'done');
-              } else if (checked === false && (task.status === 'done' || instantDone)) {
-                setInstantDone(false);
-                onStatusChange(task.uuid, 'pending');
-              }
-            }}
-          />
-        ) : null}
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col gap-0.5 overflow-hidden">
@@ -215,17 +183,8 @@ export const TaskListRow = memo(function TaskListRow({
             )}
           >
             {showTypePill ? <TaskListTypePill type={task.type} /> : null}
-            {task.incidentId ? (
-              <span
-                className="inline-flex max-w-[10rem] items-center gap-0.5 truncate rounded border border-border/60 bg-muted/35 px-1 py-px text-[9px] font-medium text-muted-foreground"
-                title={tKanban('taskFromIncidentBadge')}
-              >
-                <Link2 className="h-2.5 w-2.5 shrink-0 opacity-80" aria-hidden />
-                <span className="truncate">{tKanban('taskFromIncidentBadge')}</span>
-              </span>
-            ) : null}
             {hasManagerLinkBadges ? <TaskManagerLinkBadges task={task} compact /> : null}
-            {task.status === 'issue' ? <TaskStatusBadge status="issue" size="sm" /> : null}
+            <TaskStatusBadge status={task.status} size="sm" />
             {task.contextLabel ? (
               <span
                 className={cn(

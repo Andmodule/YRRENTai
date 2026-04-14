@@ -101,7 +101,7 @@ async function run() {
         ...base,
         type: 'manual',
         status: 'done',
-        priority: 'low',
+        priority: 'normal',
         contextLabel: null,
         dueTime: null,
         notes: `Демо: уже выполнено (можно скрыть свайпом). ${SEED_MARKER}`,

@@ -74,7 +74,7 @@ import { SmartCreateSheet } from '../manager/SmartCreateSheet';
 
 /** В редакторе менеджера нельзя перевести задачу в issue — только pending / in_progress / done. */
 const MANAGER_STATUS_ORDER: TaskStatus[] = ['pending', 'in_progress', 'done'];
-const PRIORITY_ORDER: TaskPriority[] = ['normal', 'urgent', 'critical'];
+const PRIORITY_ORDER: TaskPriority[] = ['normal', 'urgent'];
 
 /** Inline type picker in task detail (same labels as SmartCreateSheet, compact pills). */
 const DETAIL_EDIT_TYPES: { type: TaskType; labelKey: string; shortIcon?: LucideIcon }[] = [
@@ -98,8 +98,7 @@ const MD_UP = '(min-width: 768px)';
 
 const TASK_PRIORITY_BADGE: Record<TaskPriority, string> = {
   normal: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200',
-  urgent: 'bg-amber-50 text-amber-800 dark:bg-amber-950/50 dark:text-amber-200',
-  critical: 'bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-200',
+  urgent: 'bg-rose-50 text-rose-800 dark:bg-rose-950/50 dark:text-rose-200',
 };
 
 /** Drawer is portaled to <body> — scope tasks cyan/teal tokens (same as `tasks/new` + kanban). */

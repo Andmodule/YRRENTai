@@ -649,8 +649,7 @@
     "unassigned": "Sin asignar",
     "priority": {
       "urgent": "Urgente",
-      "normal": "Normal",
-      "critical": "Crítica"
+      "normal": "Normal"
     },
     "status": {
       "pending": "Pendiente",
@@ -903,6 +902,7 @@
       "manualFabAria": "Nueva tarea — manualmente",
       "untitledTask": "Sin título",
       "generalTitle": "Tareas generales",
+      "objectsTopHeading": "Inmuebles",
       "unnamedProperty": "Propiedad sin nombre",
       "taskCount": "{count, plural, one {# tarea} other {# tareas}}",
       "incidentCount": "{count, plural, one {# incidente} other {# incidentes}}",

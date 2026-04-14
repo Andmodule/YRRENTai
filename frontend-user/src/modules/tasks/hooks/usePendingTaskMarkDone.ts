@@ -11,7 +11,7 @@ const UNDO_MS = 4000;
 
 function setTaskDoneInCaches(queryClient: ReturnType<typeof useQueryClient>, uuid: string) {
   queryClient.setQueriesData<TasksApiResponse>({ queryKey: ['tasks'] }, (old) => {
-    if (!old) return old;
+    if (!old || !old.tasks) return old;
     const now = new Date().toISOString();
     return {
       ...old,
@@ -24,7 +24,7 @@ function setTaskDoneInCaches(queryClient: ReturnType<typeof useQueryClient>, uui
 
 function restoreTaskSnapshot(queryClient: ReturnType<typeof useQueryClient>, snapshot: Task) {
   queryClient.setQueriesData<TasksApiResponse>({ queryKey: ['tasks'] }, (old) => {
-    if (!old) return old;
+    if (!old || !old.tasks) return old;
     return {
       ...old,
       tasks: old.tasks.map((t) => (t.uuid === snapshot.uuid ? snapshot : t)),

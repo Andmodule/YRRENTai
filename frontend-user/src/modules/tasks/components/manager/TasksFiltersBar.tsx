@@ -4,8 +4,8 @@ import { useTranslations } from 'next-intl';
 import { cn } from '@/lib/utils';
 import type { TaskFilters, TaskPriority, TaskStatus } from '../../types';
 
-const STATUSES: (TaskStatus | 'all')[] = ['all', 'pending', 'in_progress', 'done', 'issue'];
-const PRIORITIES: (TaskPriority | 'all')[] = ['all', 'critical', 'urgent', 'normal'];
+const STATUSES: (TaskStatus | 'all')[] = ['all', 'pending', 'in_progress', 'done'];
+const PRIORITIES: (TaskPriority | 'all')[] = ['all', 'urgent', 'normal'];
 
 export function TasksFiltersBar({
   filters,

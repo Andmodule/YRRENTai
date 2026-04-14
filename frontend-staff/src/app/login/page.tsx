@@ -29,18 +29,6 @@ export default function LoginPage() {
           <h1 className="mt-4 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
             RentAI Staff
           </h1>
-          <p className="mt-2 text-sm leading-relaxed text-slate-600">
-            В <strong className="font-semibold text-slate-800">Telegram</strong> откройте приложение по
-            кнопке или ссылке из бота — вход выполняется автоматически после приглашения.
-          </p>
-          <p className="mt-3 text-sm leading-relaxed text-slate-600">
-            В <strong className="font-semibold text-slate-800">браузере</strong> используйте email и пароль
-            учётной записи Staff (тот же API, что и в мини-приложении).
-          </p>
-          <p className="mt-2 text-sm leading-relaxed text-slate-600">
-            В <strong className="font-semibold text-slate-800">Telegram</strong> список задач открывается кнопкой
-            «Открыть задачу» под уведомлением бота — не ссылкой на сайт в чате.
-          </p>
         </div>
         <LoginForm />
         <p className="mt-8 text-center text-xs text-slate-500">

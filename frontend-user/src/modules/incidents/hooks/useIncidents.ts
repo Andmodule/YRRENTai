@@ -14,7 +14,7 @@ export interface IncidentRelatedTask {
 export interface IncidentSuggestedTaskDraft {
   title?: string;
   type?: 'checkout_cleaning' | 'mid_stay_cleaning' | 'checkin_prep' | 'maintenance' | 'other';
-  priority?: 'normal' | 'urgent' | 'critical';
+  priority?: 'normal' | 'urgent';
   assigneeId?: string | null;
   dueDate?: string | null;
   notes?: string | null;

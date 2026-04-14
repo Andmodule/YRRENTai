@@ -649,8 +649,7 @@
     "unassigned": "Nicht zugewiesen",
     "priority": {
       "urgent": "Dringend",
-      "normal": "Normal",
-      "critical": "Kritisch"
+      "normal": "Normal"
     },
     "status": {
       "pending": "Ausstehend",
@@ -903,6 +902,7 @@
       "manualFabAria": "Neue Aufgabe — manuell",
       "untitledTask": "Ohne Titel",
       "generalTitle": "Allgemeine Aufgaben",
+      "objectsTopHeading": "Objekte",
       "unnamedProperty": "Unbenanntes Objekt",
       "taskCount": "{count, plural, one {# Aufgabe} other {# Aufgaben}}",
       "incidentCount": "{count, plural, one {# Vorfall} other {# Vorfälle}}",

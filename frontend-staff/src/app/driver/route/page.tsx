@@ -170,7 +170,6 @@ export default function DriverRoutePage() {
         onRefetch={() => void refetchRoute()}
         onStartRoute={handleStartRoute}
         onCompleteStop={handleCompleteStop}
-        onLogout={handleLogout}
         isStarting={starting}
         pendingCompleteId={pendingCompleteId}
         onVoiceForActiveProperty={openVoiceForProperty}

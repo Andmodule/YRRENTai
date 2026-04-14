@@ -2,21 +2,8 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import {
-  CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
-  Download,
-  Loader2,
-  LogOut,
-  Map as MapIcon,
-  MapPin,
-  Mic,
-  Navigation,
-  Package,
-  Pencil,
-  Upload,
-} from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Download, Loader2, Map as MapIcon, MapPin, Mic, Navigation, Package, Pencil, Upload } from 'lucide-react';
+import { IncidentReportDrawer } from '@/components/tasks/incident-report-drawer';
 import { toast } from 'sonner';
 import type { StaffDeliveryRouteDetail } from '@/hooks/use-staff-delivery-route';
 import type { StaffStrings } from '@/locales/staff-strings';
@@ -26,6 +13,9 @@ import { mapStaffRouteToActiveData } from '@/modules/driver/map-staff-route';
 import type { ActiveRouteData, RouteItem, RouteStop } from '@/modules/driver/types/route.types';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { DriverPropertyTasks } from '@/modules/driver/components/DriverPropertyTasks';
+import { useTodayTasks } from '@/hooks/use-tasks';
+import { DriverOffRouteTasks } from '@/modules/driver/components/DriverOffRouteTasks';
 
 /** Микрофон / карандаш / навигатор — один размер */
 const cardActionBtnClass =
@@ -128,7 +118,6 @@ export interface ActiveRouteTimelineProps {
   onRefetch: () => void;
   onStartRoute: () => Promise<void>;
   onCompleteStop: (stopId: string) => Promise<void>;
-  onLogout: () => void;
   isStarting: boolean;
   pendingCompleteId: string | null;
   /** Отчёт по объекту активной остановки (маршрут), без привязки к задаче уборки */
@@ -148,7 +137,6 @@ export function ActiveRouteTimeline({
   onRefetch,
   onStartRoute,
   onCompleteStop,
-  onLogout,
   isStarting,
   pendingCompleteId,
   onVoiceForActiveProperty,
@@ -164,6 +152,24 @@ export function ActiveRouteTimeline({
   const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
   const [expandedStopId, setExpandedStopId] = useState<string | null>(null);
 
+  const { data: tasksData } = useTodayTasks();
+  const allTasks = tasksData?.tasks || [];
+
+  const stopHasUrgentTask = useCallback((propertyId?: string | null) => {
+    if (!propertyId) return false;
+    return allTasks.some((t) => t.propertyId === propertyId && t.status !== 'done' && t.priority === 'urgent');
+  }, [allTasks]);
+
+  const stopHasIncidentTask = useCallback((propertyId?: string | null) => {
+    if (!propertyId) return false;
+    return allTasks.some((t) => t.propertyId === propertyId && t.status !== 'done' && (t.type === 'incident' || t.type === 'damage' || t.type === 'lost_item'));
+  }, [allTasks]);
+
+  const stopHasMaintenanceTask = useCallback((propertyId?: string | null) => {
+    if (!propertyId) return false;
+    return allTasks.some((t) => t.propertyId === propertyId && t.status !== 'done' && t.type === 'maintenance');
+  }, [allTasks]);
+
   const data: ActiveRouteData | null = useMemo(
     () => (route ? mapStaffRouteToActiveData(route) : null),
     [route],
@@ -178,6 +184,23 @@ export function ActiveRouteTimeline({
     () => data?.stops.find((s) => s.kind === 'property' && s.propertyId)?.propertyId ?? null,
     [data?.stops],
   );
+
+  const activePropertyId = useMemo(() => {
+    const active = data?.stops.find((s) => s.status === 'active');
+    if (active?.kind === 'property') return active.propertyId;
+    return firstRoutePropertyId;
+  }, [data?.stops, firstRoutePropertyId]);
+
+  const routePropertyIds = useMemo(() => {
+    if (!data?.stops) return [];
+    const ids: string[] = [];
+    for (const s of data.stops) {
+      if (s.kind === 'property' && s.propertyId) {
+        ids.push(s.propertyId);
+      }
+    }
+    return ids;
+  }, [data?.stops]);
 
   useEffect(() => {
     if (!data?.stops.some((s) => s.id === expandedStopId)) setExpandedStopId(null);
@@ -246,33 +269,23 @@ export function ActiveRouteTimeline({
       className="mx-auto flex min-h-screen w-full max-w-md flex-col bg-slate-50 pb-[max(1.5rem,env(safe-area-inset-bottom))] dark:bg-slate-950"
       data-driver-route-loaded
     >
-      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/90 px-4 pb-3 pt-[max(0.5rem,env(safe-area-inset-top))] shadow-sm backdrop-blur-md dark:border-slate-800 dark:bg-slate-950/90">
-        <div className="flex items-start justify-between gap-2">
+      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/90 px-3 pb-2 pt-[max(0.35rem,env(safe-area-inset-top))] shadow-sm backdrop-blur-md dark:border-slate-800 dark:bg-slate-950/90">
+        <div className="flex items-center gap-2">
           {overviewHref ? (
             <Link
               href={overviewHref}
               aria-label={dash.backToOverview}
-              className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-600 transition-colors hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-600 transition-colors hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
             >
               <ChevronLeft className="h-6 w-6" aria-hidden />
             </Link>
           ) : null}
           <div className={cn('min-w-0', overviewHref && 'flex-1')}>
-            <h1 className="text-lg font-bold text-slate-900 dark:text-slate-100">{tr.headerTitle}</h1>
-            <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+            <p className="text-sm font-medium text-slate-600 dark:text-slate-300">
               {tr.progress(data.completedStops, data.totalStops)}
             </p>
-            <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">{tr.scheduled(data.scheduledDate)}</p>
+            <p className="text-xs text-slate-400 dark:text-slate-500">{tr.scheduled(data.scheduledDate)}</p>
           </div>
-          <Button
-            type="button"
-            variant="ghost"
-            aria-label={strings.driver.logout}
-            className="h-10 w-10 shrink-0 rounded-full p-0 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
-            onClick={() => void onLogout()}
-          >
-            <LogOut size={20} />
-          </Button>
         </div>
 
         {inProgress ? (
@@ -422,8 +435,20 @@ export function ActiveRouteTimeline({
 
               {stop.status === 'active' ? (
                 <div className="flex gap-4 pb-6">
-                  <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-4 border-teal-100 bg-teal-500 dark:border-teal-900">
-                    <span className="motion-safe:animate-ping absolute h-full w-full rounded-full bg-teal-400 opacity-40" />
+                  <div className={cn(
+                    "relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-4",
+                    stopHasUrgentTask(stop.propertyId) ? "border-rose-200 bg-rose-500 dark:border-rose-900" :
+                    stopHasIncidentTask(stop.propertyId) ? "border-amber-200 bg-amber-500 dark:border-amber-900" :
+                    stopHasMaintenanceTask(stop.propertyId) ? "border-blue-200 bg-blue-500 dark:border-blue-900" :
+                    "border-teal-100 bg-teal-500 dark:border-teal-900"
+                  )}>
+                    <span className={cn(
+                      "motion-safe:animate-ping absolute h-full w-full rounded-full opacity-40",
+                      stopHasUrgentTask(stop.propertyId) ? "bg-rose-400" :
+                      stopHasIncidentTask(stop.propertyId) ? "bg-amber-400" :
+                      stopHasMaintenanceTask(stop.propertyId) ? "bg-blue-400" :
+                      "bg-teal-400"
+                    )} />
                     <MapPin size={18} className="relative text-white" aria-hidden />
                   </div>
 
@@ -504,6 +529,24 @@ export function ActiveRouteTimeline({
                       />
                     </div>
 
+                    {stop.kind === 'property' ? (
+                      <DriverPropertyTasks
+                        propertyId={stop.propertyId}
+                        onVoiceForTask={(task) => {
+                          onVoiceForActiveProperty?.({
+                            propertyId: stop.propertyId,
+                            label: task.title,
+                          });
+                        }}
+                        onTextForTask={(task) => {
+                          onTextForActiveProperty?.({
+                            propertyId: stop.propertyId,
+                            label: task.title,
+                          });
+                        }}
+                      />
+                    ) : null}
+
                     {stop.kind === 'warehouse' ? (
                       <Button
                         type="button"
@@ -528,7 +571,7 @@ export function ActiveRouteTimeline({
                       <Button
                         type="button"
                         disabled={pendingCompleteId === stop.id}
-                        className="group flex h-14 w-full items-center justify-between rounded-full bg-slate-900 px-2 text-base text-white transition-all hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+                        className="group flex mt-6 h-14 w-full items-center justify-between rounded-full bg-slate-900 px-2 text-base text-white transition-all hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
                         onClick={() => void onCompleteStop(stop.id)}
                       >
                         <span className="pl-4 font-semibold">
@@ -549,8 +592,20 @@ export function ActiveRouteTimeline({
 
               {stop.status === 'pending' ? (
                 <div className="flex gap-4 pb-6 pt-2">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 border-slate-200 bg-white dark:border-slate-600 dark:bg-slate-900">
-                    <span className="text-sm font-bold text-slate-400 dark:text-slate-500" aria-hidden>
+                  <div className={cn(
+                    "flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2",
+                    stopHasUrgentTask(stop.propertyId) ? "border-rose-300 bg-rose-50 dark:border-rose-700 dark:bg-rose-950/50" :
+                    stopHasIncidentTask(stop.propertyId) ? "border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/50" :
+                    stopHasMaintenanceTask(stop.propertyId) ? "border-blue-300 bg-blue-50 dark:border-blue-700 dark:bg-blue-950/50" :
+                    "border-slate-200 bg-white dark:border-slate-600 dark:bg-slate-900"
+                  )}>
+                    <span className={cn(
+                      "text-sm font-bold",
+                      stopHasUrgentTask(stop.propertyId) ? "text-rose-500 dark:text-rose-400" :
+                      stopHasIncidentTask(stop.propertyId) ? "text-amber-600 dark:text-amber-500" :
+                      stopHasMaintenanceTask(stop.propertyId) ? "text-blue-600 dark:text-blue-400" :
+                      "text-slate-400 dark:text-slate-500"
+                    )} aria-hidden>
                       {index + 1}
                     </span>
                   </div>
@@ -611,6 +666,24 @@ export function ActiveRouteTimeline({
         </ol>
       </div>
       )}
+
+      {inProgress ? (
+        <DriverOffRouteTasks
+          routePropertyIds={routePropertyIds}
+          onVoiceForTask={(task) => {
+            onVoiceForActiveProperty?.({
+              propertyId: task.propertyId,
+              label: task.title,
+            });
+          }}
+          onTextForTask={(task) => {
+            onTextForActiveProperty?.({
+              propertyId: task.propertyId,
+              label: task.title,
+            });
+          }}
+        />
+      ) : null}
 
     </div>
   );

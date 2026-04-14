@@ -32,7 +32,6 @@ export const TaskCard = memo(function TaskCard({
     : undefined;
 
   const urgent = task.priority === 'urgent';
-  const critical = task.priority === 'critical';
 
   return (
     <div
@@ -72,23 +71,14 @@ export const TaskCard = memo(function TaskCard({
               {task.unseenNotesCount}
             </span>
           )}
-          {task.incidentId ? (
-            <span
-              className="inline-flex max-w-[9rem] items-center gap-0.5 truncate rounded-md border border-border/70 bg-muted/40 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground"
-              title={tKanban('taskFromIncidentBadge')}
-            >
-              <Link2 className="h-3 w-3 shrink-0 opacity-80" aria-hidden />
-              <span className="truncate">{tKanban('taskFromIncidentBadge')}</span>
-            </span>
-          ) : null}
           {(task.pendingSupplyInterpretationIds?.length ?? 0) > 0 ||
-          (task.linkedIncidentIdsFromTask?.length ?? 0) > 0 ? (
+          (task.linkedIncidentIdsFromTask?.length ?? 0) > 0 ||
+          !!task.incidentId ? (
             <TaskManagerLinkBadges task={task} compact />
           ) : null}
         </div>
         <span className="flex items-center gap-1">
-          {critical && <span className="h-1 w-1 rounded-full bg-red-600" title={t('priority.critical')} />}
-          {urgent && !critical && <span className="h-1 w-1 rounded-full bg-amber-500" title={t('priority.urgent')} />}
+          {urgent && <span className="h-1 w-1 rounded-full bg-rose-500" title={t('priority.urgent')} />}
         </span>
       </div>
       <p className="mt-2 text-sm font-normal text-foreground">
