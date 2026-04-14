@@ -529,23 +529,28 @@ export function ActiveRouteTimeline({
                       />
                     </div>
 
-                    {stop.kind === 'property' ? (
-                      <DriverPropertyTasks
-                        propertyId={stop.propertyId}
-                        onVoiceForTask={(task) => {
-                          onVoiceForActiveProperty?.({
-                            propertyId: stop.propertyId,
-                            label: task.title,
-                          });
-                        }}
-                        onTextForTask={(task) => {
-                          onTextForActiveProperty?.({
-                            propertyId: stop.propertyId,
-                            label: task.title,
-                          });
-                        }}
-                      />
-                    ) : null}
+                    {stop.kind === 'property' && stop.propertyId
+                      ? (() => {
+                          const activePropertyId = stop.propertyId;
+                          return (
+                            <DriverPropertyTasks
+                              propertyId={activePropertyId}
+                              onVoiceForTask={(task) => {
+                                onVoiceForActiveProperty?.({
+                                  propertyId: activePropertyId,
+                                  label: task.title,
+                                });
+                              }}
+                              onTextForTask={(task) => {
+                                onTextForActiveProperty?.({
+                                  propertyId: activePropertyId,
+                                  label: task.title,
+                                });
+                              }}
+                            />
+                          );
+                        })()
+                      : null}
 
                     {stop.kind === 'warehouse' ? (
                       <Button

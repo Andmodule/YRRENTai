@@ -57,6 +57,13 @@ import {
   pickNextTaskByDueTime,
   formatShiftDurationLabel,
 } from '@/lib/shift-utils';
+
+/**
+ * Нижние круглые накладные кнопки (инцидент слева + два голосовых справа) скрыты в интерфейсе уборщицы.
+ * Код кнопок оставлен: при необходимости удалить полностью — отдельной командой (вместе с этим флагом).
+ */
+const HIDE_CLEANER_BOTTOM_OVERLAY_FABS = true;
+
 interface StaffChecklistProps {
   user: StaffUser;
   onLogout: () => void;
@@ -593,48 +600,52 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
 
       {activeTasks.length > 0 && incidentPropertyId && (
         <>
-          {/* Ручной текстовый инцидент — слева (голосовые кнопки справа) */}
-          <button
-            type="button"
-            className="fixed bottom-14 left-4 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-amber-500 text-white shadow-lg shadow-amber-900/20 transition-transform active:scale-95"
-            onClick={() => setIncidentOpen(true)}
-            aria-label={strings.tasks.incident.fabLabel}
-          >
-            <AlertTriangle className="h-7 w-7" aria-hidden />
-          </button>
-          {/* Матрёшка: инцидент меньше, задача больше — открывают один sheet с разным prior */}
-          <div className="fixed bottom-14 right-4 z-30 flex items-end gap-2">
-            <button
-              type="button"
-              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-amber-400/80 bg-white text-amber-700 shadow-md shadow-amber-900/10 transition-transform active:scale-95"
-              aria-label="Голосовой отчёт: инцидент"
-              onClick={() => {
-                flushSync(() => {
-                  setVoicePinnedTaskUuid(null);
-                  setVoiceSheetMode('INCIDENT');
-                  setVoiceSheetOpen(true);
-                });
-                voiceSheetRef.current?.startRecordingFromUserGesture();
-              }}
-            >
-              <AlertTriangle className="h-5 w-5" aria-hidden />
-            </button>
-            <button
-              type="button"
-              className="flex h-[4.2rem] w-[4.2rem] shrink-0 items-center justify-center rounded-full bg-teal-600 text-white shadow-lg shadow-teal-900/25 transition-transform active:scale-95"
-              aria-label="Голосовой отчёт: задача"
-              onClick={() => {
-                flushSync(() => {
-                  setVoicePinnedTaskUuid(null);
-                  setVoiceSheetMode('TASK');
-                  setVoiceSheetOpen(true);
-                });
-                voiceSheetRef.current?.startRecordingFromUserGesture();
-              }}
-            >
-              <Mic className="h-[1.75rem] w-[1.75rem]" strokeWidth={2.25} aria-hidden />
-            </button>
-          </div>
+          {!HIDE_CLEANER_BOTTOM_OVERLAY_FABS ? (
+            <>
+              {/* Ручной текстовый инцидент — слева (голосовые кнопки справа) */}
+              <button
+                type="button"
+                className="fixed bottom-14 left-4 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-amber-500 text-white shadow-lg shadow-amber-900/20 transition-transform active:scale-95"
+                onClick={() => setIncidentOpen(true)}
+                aria-label={strings.tasks.incident.fabLabel}
+              >
+                <AlertTriangle className="h-7 w-7" aria-hidden />
+              </button>
+              {/* Матрёшка: инцидент меньше, задача больше — открывают один sheet с разным prior */}
+              <div className="fixed bottom-14 right-4 z-30 flex items-end gap-2">
+                <button
+                  type="button"
+                  className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-amber-400/80 bg-white text-amber-700 shadow-md shadow-amber-900/10 transition-transform active:scale-95"
+                  aria-label="Голосовой отчёт: инцидент"
+                  onClick={() => {
+                    flushSync(() => {
+                      setVoicePinnedTaskUuid(null);
+                      setVoiceSheetMode('INCIDENT');
+                      setVoiceSheetOpen(true);
+                    });
+                    voiceSheetRef.current?.startRecordingFromUserGesture();
+                  }}
+                >
+                  <AlertTriangle className="h-5 w-5" aria-hidden />
+                </button>
+                <button
+                  type="button"
+                  className="flex h-[4.2rem] w-[4.2rem] shrink-0 items-center justify-center rounded-full bg-teal-600 text-white shadow-lg shadow-teal-900/25 transition-transform active:scale-95"
+                  aria-label="Голосовой отчёт: задача"
+                  onClick={() => {
+                    flushSync(() => {
+                      setVoicePinnedTaskUuid(null);
+                      setVoiceSheetMode('TASK');
+                      setVoiceSheetOpen(true);
+                    });
+                    voiceSheetRef.current?.startRecordingFromUserGesture();
+                  }}
+                >
+                  <Mic className="h-[1.75rem] w-[1.75rem]" strokeWidth={2.25} aria-hidden />
+                </button>
+              </div>
+            </>
+          ) : null}
           <StaffVoiceReportSheet
             ref={voiceSheetRef}
             open={voiceSheetOpen}
