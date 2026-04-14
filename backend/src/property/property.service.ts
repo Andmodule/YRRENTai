@@ -62,6 +62,14 @@ export class PropertyService {
     });
   }
 
+  async findAllForCompany(companyId: string): Promise<PropertyEntity[]> {
+    return this.propertyRepository.find({
+      where: { companyId },
+      select: { id: true, name: true },
+      order: { name: 'ASC' },
+    });
+  }
+
   /**
    * Match a label from an OTA email (e.g. "Апартаменты на Ленина 12") to one of the owner's listings.
    * Exact normalized match first, then substring containment (either direction).

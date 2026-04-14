@@ -2511,8 +2511,10 @@ buttonPressed: ${buttonPressed}`;
 
     let overridePropertyId: string | null = null;
     let overridePropertyTitle: string | null = null;
-    if (typeof raw.overridePropertyId === 'string' && raw.overridePropertyId.trim()) {
-      const match = candidateProperties.find((p) => p.id === raw.overridePropertyId?.trim());
+    const overridePropertyIdRaw =
+      typeof raw.overridePropertyId === 'string' ? raw.overridePropertyId.trim() : '';
+    if (overridePropertyIdRaw) {
+      const match = candidateProperties.find((p) => p.id === overridePropertyIdRaw);
       if (match) {
         overridePropertyId = match.id;
         overridePropertyTitle = match.name;
