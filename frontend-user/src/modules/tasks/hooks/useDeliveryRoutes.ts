@@ -47,13 +47,22 @@ export type DeliveryRouteDetail = {
 /** Корень запросов маршрутов: инвалидируйте `['…', 'list']` или `['…', 'detail', id]`, не весь корень — иначе сбрасывается открытый лист. */
 export const MANAGER_DELIVERY_ROUTES_ROOT = ['tasks', 'manager-delivery-routes'] as const;
 
-export function useDeliveryRoutesList(from?: string, to?: string, enabled = true) {
+export type DeliveryRoutesCompletionFilter = 'all' | 'active' | 'completed';
+
+export function useDeliveryRoutesList(
+  from?: string,
+  to?: string,
+  opts?: { enabled?: boolean; completion?: DeliveryRoutesCompletionFilter },
+) {
+  const completion = opts?.completion ?? 'all';
+  const enabled = opts?.enabled ?? true;
   return useQuery({
-    queryKey: [...MANAGER_DELIVERY_ROUTES_ROOT, 'list', from ?? '', to ?? ''],
+    queryKey: [...MANAGER_DELIVERY_ROUTES_ROOT, 'list', from ?? '', to ?? '', completion],
     queryFn: async ({ signal }) => {
       const params = new URLSearchParams();
       if (from) params.set('from', from);
       if (to) params.set('to', to);
+      if (completion !== 'all') params.set('completion', completion);
       const q = params.toString();
       const res = await apiClient.get<{ data: { routes: DeliveryRouteListItem[] } }>(
         `/tasks/manager/delivery-routes${q ? `?${q}` : ''}`,

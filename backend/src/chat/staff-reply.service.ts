@@ -1,6 +1,8 @@
 import { BadRequestException, Inject, Injectable, Logger, forwardRef } from '@nestjs/common';
+import type { StaffOutboundMessageMetadata } from '@rentai/shared';
 import { stripEscalationForGuestDisplay } from '@rentai/shared';
 import { ChatService } from './chat.service';
+import { StorageService } from '../modules/storage/storage.service';
 import { ConversationService } from './conversation.service';
 import { ChatGateway } from './chat.gateway';
 import { StaffOutboundDeliveryService } from './staff-outbound-delivery.service';
@@ -23,12 +25,40 @@ export class StaffReplyService {
     @Inject(forwardRef(() => ChatGateway))
     private readonly chatGateway: ChatGateway,
     private readonly staffOutboundDelivery: StaffOutboundDeliveryService,
+    private readonly storageService: StorageService,
   ) {}
+
+  private async validateStaffAttachmentRefs(
+    propertyId: string,
+    conversationId: string,
+    attachments: Array<{ storageKey: string; sizeBytes: number }>,
+  ): Promise<void> {
+    if (!this.storageService.isConfigured()) {
+      throw new BadRequestException('File storage is not configured');
+    }
+    const prefix = `attachments/${propertyId}/${conversationId}/`;
+    for (const a of attachments) {
+      if (!a.storageKey.startsWith(prefix)) {
+        throw new BadRequestException('Invalid attachment key for this conversation');
+      }
+      const head = await this.storageService.headObject(a.storageKey);
+      if (head.contentLength !== a.sizeBytes) {
+        throw new BadRequestException('Attachment size does not match stored file');
+      }
+    }
+  }
 
   async applyStaffReply(params: {
     propertyId: string;
     conversationId: string;
     content: string;
+    attachments?: Array<{
+      id: string;
+      fileName: string;
+      contentType: string;
+      sizeBytes: number;
+      storageKey: string;
+    }>;
     userId?: string | null;
     /** Если задан (эскалация из почты), релей в email ищет `messaging_threads` даже при рассинхроне `conversation_id`. */
     relayMessagingThreadId?: string | null;
@@ -43,10 +73,31 @@ export class StaffReplyService {
       throw new BadRequestException('Conversation does not belong to this property');
     }
 
-    const replyBody =
+    const atts = params.attachments?.length ? params.attachments : undefined;
+    if (atts?.length) {
+      await this.validateStaffAttachmentRefs(params.propertyId, params.conversationId, atts);
+    }
+
+    let replyBody =
       stripEscalationForGuestDisplay(params.content) || resolveGuestEscalationFallback(params.content);
+    if (!replyBody.trim() && atts?.length) {
+      replyBody = `Attached: ${atts.map((a) => a.fileName).join(', ')}`;
+    }
 
     const targetChannel = await this.chatService.resolveOutboundChannel(conv.id, conv.channel);
+
+    const metadata: StaffOutboundMessageMetadata | undefined = atts?.length
+      ? {
+          channel: 'staff_outbound',
+          attachments: atts.map((a) => ({
+            id: a.id,
+            fileName: a.fileName,
+            contentType: a.contentType,
+            sizeBytes: a.sizeBytes,
+            storageKey: a.storageKey,
+          })),
+        }
+      : undefined;
 
     const savedMessage = await this.chatService.saveMessage({
       propertyId: conv.propertyId,
@@ -55,6 +106,7 @@ export class StaffReplyService {
       content: replyBody,
       role: 'assistant',
       source: 'staff',
+      metadata,
       channel: targetChannel,
       deliveryStatus: MessageDeliveryStatus.PENDING,
     });
@@ -71,6 +123,9 @@ export class StaffReplyService {
         conv.id,
         savedMessage.channel,
         savedMessage.deliveryStatus,
+        savedMessage.metadata
+          ? this.chatService.sanitizeMetadataForApi(savedMessage.metadata)
+          : undefined,
       ),
     );
 

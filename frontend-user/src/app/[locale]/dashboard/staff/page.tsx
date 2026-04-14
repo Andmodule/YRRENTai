@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import useSWR from 'swr';
 import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from '@/i18n/navigation';
@@ -338,6 +338,15 @@ export default function StaffPage() {
     }
   };
 
+  const list = useMemo(() => {
+    const members = personnel?.members ?? [];
+    return [...members].sort((a, b) => {
+      const byLast = a.lastName.localeCompare(b.lastName, locale, { sensitivity: 'base' });
+      if (byLast !== 0) return byLast;
+      return a.firstName.localeCompare(b.firstName, locale, { sensitivity: 'base' });
+    });
+  }, [personnel?.members, locale]);
+
   if (authLoading || (user && user.role !== 'OWNER' && user.role !== 'MANAGER')) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center text-sm text-muted-foreground">
@@ -346,7 +355,6 @@ export default function StaffPage() {
     );
   }
 
-  const list = personnel?.members ?? [];
   const telegramBotConfigured = personnel?.telegramBotConfigured ?? false;
 
   const jobTypeLabel = (jt: string | null) => {
@@ -359,8 +367,8 @@ export default function StaffPage() {
 
   return (
     <>
-      <div className="mx-auto max-w-6xl space-y-4 sm:space-y-6">
-      {!telegramBotConfigured && (
+      <div className="mx-auto w-full min-w-0 max-w-6xl space-y-4 sm:space-y-6">
+      {!telegramBotConfigured && process.env.NODE_ENV !== 'production' && (
         <Alert>
           <AlertDescription>{t('botNotConfigured')}</AlertDescription>
         </Alert>
@@ -436,56 +444,30 @@ export default function StaffPage() {
         </div>
 
         {/* Должно совпадать с брейкпоинтом таблицы: иначе на 768–1023px не видно ни карточек, ни таблицы */}
-        <div className="flex flex-col gap-3 lg:hidden">
+        <div className="flex w-full min-w-0 flex-col gap-2 lg:hidden">
           {list.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-slate-200/90 bg-white/90 px-4 py-12 text-center text-sm text-slate-500 shadow-sm dark:bg-white/95 dark:text-slate-600">
+            <div className="rounded-2xl border border-dashed border-border bg-card px-4 py-12 text-center text-sm text-muted-foreground shadow-sm">
               {t('empty')}
             </div>
           ) : (
             list.map((row) => (
               <article
                 key={row.id}
-                className="rounded-2xl border border-slate-200/80 bg-white p-5 text-slate-900 shadow-[0_1px_3px_rgba(15,23,42,0.06)] ring-1 ring-slate-100 dark:border-slate-200/80 dark:bg-white dark:text-slate-900 dark:shadow-[0_2px_16px_rgba(0,0,0,0.12)] dark:ring-slate-200/50"
+                className="flex min-h-[3rem] items-center justify-between gap-3 rounded-xl border border-border bg-card px-3 py-2.5 shadow-sm"
               >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="font-semibold leading-snug tracking-tight text-slate-900">
-                      {row.firstName} {row.lastName}
-                    </p>
-                    <p className="mt-1 text-xs font-medium text-slate-500">{jobTypeLabel(row.jobType)}</p>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1">
-                    <span className="text-[11px] tabular-nums text-slate-400">
-                      {new Date(row.createdAt).toLocaleDateString()}
-                    </span>
-                    <StaffRowActions
-                      telegramBotConfigured={telegramBotConfigured}
-                      telegramLinked={row.telegramLinked}
-                      unlinking={unlinkingId === row.id}
-                      deleting={deletingId === row.id}
-                      onEdit={() => openEdit(row)}
-                      onInvite={() => openInviteForRow(row)}
-                      onUnlinkTelegram={() => void unlinkStaffTelegram(row)}
-                      onDelete={() => void deleteStaffMember(row)}
-                    />
-                  </div>
-                </div>
-                <dl className="mt-4 space-y-3 text-sm">
-                  <div className="grid grid-cols-1 gap-1 sm:grid-cols-[minmax(0,7rem)_1fr] sm:gap-x-3">
-                    <dt className="text-slate-500">{t('colEmail')}</dt>
-                    <dd className="min-w-0 break-all font-medium text-slate-900">{row.email || '—'}</dd>
-                  </div>
-                  <div className="grid grid-cols-1 gap-1 sm:grid-cols-[minmax(0,7rem)_1fr] sm:gap-x-3">
-                    <dt className="text-slate-500">{t('colPhone')}</dt>
-                    <dd className="font-medium text-slate-900">{row.phone ?? '—'}</dd>
-                  </div>
-                  <div className="grid grid-cols-1 gap-1 sm:grid-cols-[minmax(0,7rem)_1fr] sm:gap-x-3">
-                    <dt className="text-slate-500">{t('colTelegram')}</dt>
-                    <dd className="min-w-0 text-slate-900">
-                      <TelegramCell row={row} />
-                    </dd>
-                  </div>
-                </dl>
+                <p className="min-w-0 flex-1 truncate font-medium leading-tight text-foreground">
+                  {row.firstName} {row.lastName}
+                </p>
+                <StaffRowActions
+                  telegramBotConfigured={telegramBotConfigured}
+                  telegramLinked={row.telegramLinked}
+                  unlinking={unlinkingId === row.id}
+                  deleting={deletingId === row.id}
+                  onEdit={() => openEdit(row)}
+                  onInvite={() => openInviteForRow(row)}
+                  onUnlinkTelegram={() => void unlinkStaffTelegram(row)}
+                  onDelete={() => void deleteStaffMember(row)}
+                />
               </article>
             ))
           )}
@@ -501,7 +483,7 @@ export default function StaffPage() {
         }}
       >
         <DialogContent
-          className="max-h-[min(90dvh,720px)] max-w-lg overflow-y-auto sm:max-w-xl"
+          className="sm:max-w-xl"
           title={inviteResult ? t('inviteLinkTitle') : t('dialogTitle')}
           description={
             inviteResult
@@ -660,7 +642,7 @@ export default function StaffPage() {
         }}
       >
         <DialogContent
-          className="max-h-[min(90dvh,720px)] max-w-lg overflow-y-auto sm:max-w-xl"
+          className="sm:max-w-xl"
           title={t('editDialogTitle')}
           description={t('dialogDescription')}
           footer={

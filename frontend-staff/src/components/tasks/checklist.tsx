@@ -596,14 +596,14 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
           {/* Ручной текстовый инцидент — слева (голосовые кнопки справа) */}
           <button
             type="button"
-            className="fixed bottom-24 left-4 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-amber-500 text-white shadow-lg shadow-amber-900/20 transition-transform active:scale-95"
+            className="fixed bottom-14 left-4 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-amber-500 text-white shadow-lg shadow-amber-900/20 transition-transform active:scale-95"
             onClick={() => setIncidentOpen(true)}
             aria-label={strings.tasks.incident.fabLabel}
           >
             <AlertTriangle className="h-7 w-7" aria-hidden />
           </button>
           {/* Матрёшка: инцидент меньше, задача больше — открывают один sheet с разным prior */}
-          <div className="fixed bottom-24 right-4 z-30 flex items-end gap-2">
+          <div className="fixed bottom-14 right-4 z-30 flex items-end gap-2">
             <button
               type="button"
               className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-amber-400/80 bg-white text-amber-700 shadow-md shadow-amber-900/10 transition-transform active:scale-95"

@@ -7,6 +7,7 @@ export * from './schemas/chat.schema';
 export * from './booking-com-email';
 export * from './email-inbound-metadata';
 export * from './whatsapp-chat-metadata';
+export * from './staff-outbound-metadata';
 export * from './schemas/conversation.schema';
 
 export * from './constants/roles';

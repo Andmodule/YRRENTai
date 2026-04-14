@@ -9,11 +9,16 @@ import {
   Post,
   Query,
   Res,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { ConfigService } from '@nestjs/config';
-import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiConsumes, ApiOperation } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import { v4 as uuidv4 } from 'uuid';
 import { AuthGuard } from '@nestjs/passport';
 import { ChatService } from './chat.service';
 import { StaffReplyService } from './staff-reply.service';
@@ -98,6 +103,49 @@ export class ChatController {
     return this.chatService.getLastMessagesForConversation(conv.propertyId, conv.id, lim);
   }
 
+  @Post('conversations/:conversationId/staff-attachments')
+  @Roles('OWNER', 'MANAGER')
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 15 * 1024 * 1024 },
+    }),
+  )
+  @ApiOperation({
+    summary: 'Upload one file for a manager reply (stored in R2); include the returned object in POST /chats/conversations/reply `attachments`',
+  })
+  async uploadStaffConversationAttachment(
+    @Param('conversationId') conversationId: string,
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @CurrentUser() user?: JwtPayload,
+  ) {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('file is required');
+    }
+    const conv = await this.conversationService.findById(conversationId);
+    await this.propertyService.findOneForUser(conv.propertyId, user!.sub, user!.role);
+    if (!this.storageService.isConfigured()) {
+      throw new BadRequestException('File storage is not configured');
+    }
+    const { key } = await this.storageService.uploadStaffConversationAttachment(
+      conv.propertyId,
+      conv.id,
+      file.buffer,
+      file.originalname || 'file',
+      file.mimetype || 'application/octet-stream',
+    );
+    return {
+      data: {
+        id: uuidv4(),
+        fileName: file.originalname || 'file',
+        contentType: file.mimetype || 'application/octet-stream',
+        sizeBytes: file.size,
+        storageKey: key,
+      },
+    };
+  }
+
   @Get('messages/:messageId/whatsapp-file')
   @Roles('OWNER', 'MANAGER')
   @ApiOperation({
@@ -131,6 +179,42 @@ export class ChatController {
       throw new BadRequestException('File storage is not configured');
     }
     const url = await this.storageService.getPresignedDownloadUrl(storageKey, 900);
+    res.redirect(302, url);
+  }
+
+  @Get('messages/:messageId/staff-attachments/:attachmentId/download')
+  @Roles('OWNER', 'MANAGER')
+  @ApiOperation({ summary: 'Redirect to a presigned URL for a staff-outbound attachment (inbox message)' })
+  async downloadStaffOutboundAttachment(
+    @Param('messageId') messageId: string,
+    @Param('attachmentId') attachmentId: string,
+    @CurrentUser() user: JwtPayload,
+    @Res() res: Response,
+  ): Promise<void> {
+    const msg = await this.chatService.findMessageById(messageId);
+    if (!msg?.conversationId) {
+      throw new NotFoundException('Message not found');
+    }
+    const meta = msg.metadata;
+    if (
+      !meta ||
+      typeof meta !== 'object' ||
+      !('channel' in meta) ||
+      (meta as { channel?: string }).channel !== 'staff_outbound'
+    ) {
+      throw new BadRequestException('Not a staff attachment message');
+    }
+    const attachments = (meta as { attachments?: Array<{ id: string; storageKey?: string }> }).attachments;
+    const att = attachments?.find((a) => a.id === attachmentId);
+    if (!att?.storageKey?.trim()) {
+      throw new NotFoundException('Attachment not found');
+    }
+    const conv = await this.conversationService.findById(msg.conversationId);
+    await this.propertyService.findOneForUser(conv.propertyId, user.sub, user.role);
+    if (!this.storageService.isConfigured()) {
+      throw new BadRequestException('File storage is not configured');
+    }
+    const url = await this.storageService.getPresignedDownloadUrl(att.storageKey, 900);
     res.redirect(302, url);
   }
 
@@ -219,6 +303,7 @@ export class ChatController {
       propertyId: conv.propertyId,
       conversationId: conv.id,
       content: parsed.content,
+      attachments: parsed.attachments,
       userId: user!.sub,
     });
 
@@ -232,6 +317,9 @@ export class ChatController {
         channel: savedMessage.channel,
         deliveryStatus: savedMessage.deliveryStatus,
         createdAt: savedMessage.createdAt.toISOString(),
+        ...(savedMessage.metadata
+          ? { metadata: this.chatService.sanitizeMetadataForApi(savedMessage.metadata) }
+          : {}),
       },
     };
   }

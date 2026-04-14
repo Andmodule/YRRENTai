@@ -243,9 +243,15 @@ export class TasksController {
     @CurrentUser() user: JwtPayload,
     @Query('from') from?: string,
     @Query('to') to?: string,
+    /** `active` — без завершённых; `completed` — только завершённые; иначе все. */
+    @Query('completion') completionRaw?: string,
   ) {
     const companyId = await this.supplyCatalogService.resolveActorCompanyId(user.sub);
-    const routes = await this.deliveryRoutesService.listForManagerRange(companyId, from, to);
+    const completion =
+      completionRaw === 'active' || completionRaw === 'completed' || completionRaw === 'all'
+        ? completionRaw
+        : 'all';
+    const routes = await this.deliveryRoutesService.listForManagerRange(companyId, from, to, completion);
     return { data: { routes } };
   }
 

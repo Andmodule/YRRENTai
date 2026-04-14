@@ -221,18 +221,29 @@ export class DeliveryRoutesService {
     return qb.orderBy('e.createdAt', 'ASC').getMany();
   }
 
-  async listForManagerRange(companyId: string, from?: string, to?: string): Promise<DeliveryRouteListItemDto[]> {
+  async listForManagerRange(
+    companyId: string,
+    from?: string,
+    to?: string,
+    completion: 'all' | 'active' | 'completed' = 'all',
+  ): Promise<DeliveryRouteListItemDto[]> {
     const f = from?.trim().slice(0, 10) || this.defaultScheduledDate();
     const t = to?.trim().slice(0, 10) || f;
 
-    const routes = await this.routeRepo
+    const qb = this.routeRepo
       .createQueryBuilder('r')
       .leftJoinAndSelect('r.driverUser', 'd')
       .leftJoinAndSelect('r.stops', 's')
       .where('r.companyId = :cid', { cid: companyId })
-      .andWhere('r.scheduledDate BETWEEN :f AND :t', { f, t })
-      .orderBy('r.createdAt', 'DESC')
-      .getMany();
+      .andWhere('r.scheduledDate BETWEEN :f AND :t', { f, t });
+
+    if (completion === 'active') {
+      qb.andWhere('r.status != :completed', { completed: 'completed' });
+    } else if (completion === 'completed') {
+      qb.andWhere('r.status = :completed', { completed: 'completed' });
+    }
+
+    const routes = await qb.orderBy('r.createdAt', 'DESC').getMany();
 
     return routes.map((r) => ({
       id: r.id,

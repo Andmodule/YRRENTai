@@ -31,21 +31,10 @@ export function usePendingSupplyInterpretations(options?: { enabled?: boolean })
     enabled: options?.enabled ?? true,
     staleTime: 30_000,
     /**
-     * Пока есть записи в разборе ИИ — чаще опрос, чтобы карточка обновилась сразу после LLM.
-     * Иначе реже, чтобы не долбить API.
+     * Обновления в реальном времени идут через сокеты.
+     * Оставляем редкий фоновый опрос (раз в 5 минут) как fallback.
      */
-    refetchInterval: (query) => {
-      const data = query.state.data;
-      if (
-        Array.isArray(data) &&
-        data.some(
-          (e) => e.workflowState === 'pending_llm' || e.llmStatus === 'processing',
-        )
-      ) {
-        return 4000;
-      }
-      return 12_000;
-    },
+    refetchInterval: 300_000,
     refetchIntervalInBackground: false,
   });
 }

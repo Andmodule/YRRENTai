@@ -10,7 +10,7 @@ import { ZodomusAvailabilityPushService } from './zodomus-availability-push.serv
  * Uses Node.js setInterval (no @nestjs/schedule dependency needed).
  *
  * Env:
- *   ZODOMUS_POLL_INTERVAL_MINUTES  — default 15
+ *   ZODOMUS_POLL_INTERVAL_MINUTES  — default 360 (6 hours)
  *   ZODOMUS_DEFAULT_CHANNEL_ID     — default 1 (Booking.com)
  *   ZODOMUS_AVAILABILITY_DIRTY_RETRY_MINUTES — default 15
  *   ZODOMUS_AVAILABILITY_NIGHTLY_HOUR_UTC — default 3
@@ -36,7 +36,7 @@ export class ZodomusCronService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    const intervalMinutes = this.config.get<number>('ZODOMUS_POLL_INTERVAL_MINUTES') ?? 15;
+    const intervalMinutes = this.config.get<number>('ZODOMUS_POLL_INTERVAL_MINUTES') ?? 360;
     const intervalMs = intervalMinutes * 60_000;
 
     this.logger.log(`Zodomus queue polling started (every ${intervalMinutes} min)`);

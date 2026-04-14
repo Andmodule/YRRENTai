@@ -54,6 +54,8 @@ export interface StaffMiniAppVoicePreviewDto {
   needsClarification: boolean;
   clarificationQuestions: string[];
   mismatchHint: string | null;
+  overridePropertyId?: string | null;
+  overridePropertyTitle?: string | null;
 }
 
 /** POST /tasks/staff-miniapp/voice-submit */
@@ -61,6 +63,7 @@ export interface StaffMiniAppVoiceSubmitDto {
   /** Либо задача, либо объект маршрута (водитель без задачи уборки). */
   taskUuid?: string;
   propertyId?: string;
+  overridePropertyId?: string | null;
   clientRequestId?: string;
   buttonPressed: StaffMiniAppButtonPressed;
   transcript: string;
@@ -2139,8 +2142,13 @@ Reply with JSON only, no markdown.`;
     }
 
     try {
-      const raw = await this.llmParseStaffMiniAppVoice(llm, merged, task, buttonPressed);
-      return this.normalizeStaffMiniAppLlmResult(raw, merged, task, buttonPressed);
+      let candidateProps: { id: string; name: string }[] = [];
+      if (task.property?.companyId) {
+        const props = await this.propertyService.findAllForCompany(task.property.companyId);
+        candidateProps = props.map((p) => ({ id: p.id, name: p.name }));
+      }
+      const raw = await this.llmParseStaffMiniAppVoice(llm, merged, task, buttonPressed, candidateProps);
+      return this.normalizeStaffMiniAppLlmResult(raw, merged, task, buttonPressed, candidateProps);
     } catch (e) {
       this.logger.warn(`staff miniapp voice LLM: ${(e as Error).message}`);
       return this.heuristicStaffMiniAppPreview(merged, task, buttonPressed, null);
@@ -2267,6 +2275,9 @@ Reply with JSON only, no markdown.`;
 
     /** Создаём инцидент до очереди LLM — иначе setImmediate(process) может обогнать конец хендлера и создать второй инцидент. */
     let voiceLinkedIncidentId: string | null = null;
+    const overridePropertyId = body.overridePropertyId?.trim() || null;
+    const targetPropertyId = overridePropertyId || task.propertyId;
+
     if (incidentIncluded) {
       const itype = this.mapSubmitIncidentType(body.incident.type);
       const description =
@@ -2278,8 +2289,8 @@ Reply with JSON only, no markdown.`;
         .slice(0, 5);
       const created = await this.incidentsService.createForStaff(staffUserId, {
         type: itype,
-        propertyId: task.propertyId,
-        taskId: fromRouteProperty ? null : task.id,
+        propertyId: targetPropertyId,
+        taskId: overridePropertyId ? null : (fromRouteProperty ? null : task.id),
         description: description.slice(0, 8000),
         photoUrls,
         damageLocation: body.incident.title?.trim()?.slice(0, 500) || null,
@@ -2289,8 +2300,9 @@ Reply with JSON only, no markdown.`;
 
     if (interpretText.length >= 3) {
       try {
-        if (fromRouteProperty) {
-          await this.staffInterpretation.queueFromVoicePropertyReport(staffUserId, task.propertyId, interpretText, {
+        if (fromRouteProperty || overridePropertyId) {
+          // If overridden, always treat it as a property report, not a task report
+          await this.staffInterpretation.queueFromVoicePropertyReport(staffUserId, targetPropertyId, interpretText, {
             skipAutoIncident: incidentIncluded,
             voiceLinkedIncidentId,
           });
@@ -2322,6 +2334,7 @@ Reply with JSON only, no markdown.`;
     transcript: string,
     task: TaskEntity,
     buttonPressed: StaffMiniAppButtonPressed,
+    candidateProperties: { id: string; name: string }[] = [],
   ): Promise<Record<string, unknown>> {
     const taskJson = JSON.stringify({
       id: task.id,
@@ -2354,7 +2367,8 @@ Return ONE JSON object only (no markdown):
   },
   "needsClarification": boolean,
   "clarificationQuestions": ["..."],
-  "mismatchHint": null
+  "mismatchHint": null,
+  "overridePropertyId": "uuid or null"
 }
 
 Rules:
@@ -2369,6 +2383,10 @@ Rules:
   - For replacement: start with "Нужно заменить" (e.g. "Нужно заменить лампочку в ванной", "Нужно заменить смеситель").
   If there is no supply/replace need, set "shortages" to null or empty.
 - If the user message includes a separate "— Уточнение:" block, treat it as answers to clarification questions and merge into comment/shortages/incident as appropriate.
+- overridePropertyId (CRITICAL for logistics): If the speaker explicitly mentions a DIFFERENT property name in the transcript (e.g., "на Немиге", "в Зодомусе") while talking from the current property card, find the best match in the candidate list and output its UUID here. Otherwise, output null.
+
+Candidate properties for override (id -> name):
+${candidateProperties.map((p) => `${p.id} -> ${p.name}`).join('\n')}
 
 Task context:
 ${taskJson}
@@ -2417,6 +2435,7 @@ buttonPressed: ${buttonPressed}`;
     transcript: string,
     task: TaskEntity,
     buttonPressed: StaffMiniAppButtonPressed,
+    candidateProperties: { id: string; name: string }[] = [],
   ): StaffMiniAppVoicePreviewDto {
     const conf =
       typeof raw.confidence === 'number' && raw.confidence >= 0 && raw.confidence <= 1
@@ -2489,6 +2508,17 @@ buttonPressed: ${buttonPressed}`;
           .map((x) => (x as string).trim().slice(0, 500))
           .slice(0, 4)
       : [];
+
+    let overridePropertyId: string | null = null;
+    let overridePropertyTitle: string | null = null;
+    if (typeof raw.overridePropertyId === 'string' && raw.overridePropertyId.trim()) {
+      const match = candidateProperties.find((p) => p.id === raw.overridePropertyId?.trim());
+      if (match) {
+        overridePropertyId = match.id;
+        overridePropertyTitle = match.name;
+      }
+    }
+
     return {
       buttonPressed,
       detectedMode,
@@ -2509,6 +2539,8 @@ buttonPressed: ${buttonPressed}`;
       needsClarification,
       clarificationQuestions: qs,
       mismatchHint: null,
+      overridePropertyId,
+      overridePropertyTitle,
     };
   }
 

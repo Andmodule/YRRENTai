@@ -23,6 +23,8 @@ export interface StaffVoicePreviewData {
   needsClarification: boolean;
   clarificationQuestions: string[];
   mismatchHint: string | null;
+  overridePropertyId?: string | null;
+  overridePropertyTitle?: string | null;
 }
 
 export async function postStaffVoicePreview(
@@ -84,6 +86,7 @@ export async function postStaffVoiceTranscribe(blob: Blob, language?: string): P
 export async function postStaffVoiceSubmit(payload: {
   taskUuid?: string;
   propertyId?: string;
+  overridePropertyId?: string | null;
   clientRequestId?: string;
   buttonPressed: StaffMiniAppButtonPressed;
   transcript: string;

@@ -194,6 +194,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
       createdAt: event.createdAt,
       ...(event.channel !== undefined ? { channel: event.channel } : {}),
       ...(event.deliveryStatus !== undefined ? { deliveryStatus: event.deliveryStatus } : {}),
+      ...(event.metadata ? { metadata: event.metadata } : {}),
     };
 
     this.chatRealtime.emitToProperty(event.propertyId, 'agent:streamEnd', msgPayload);

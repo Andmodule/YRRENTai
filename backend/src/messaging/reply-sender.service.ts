@@ -47,7 +47,13 @@ export class ReplySenderService implements OnModuleInit {
     this.logger.log(`Outbound email ready (from: ${from})`);
   }
 
-  async send(replyTo: string, text: string): Promise<void> {
+  async send(
+    replyTo: string,
+    text: string,
+    opts?: {
+      attachments?: Array<{ filename: string; content: Buffer; contentType?: string }>;
+    },
+  ): Promise<void> {
     const from = this.config.get<string>('RESEND_FROM_EMAIL');
     const key = this.config.get<string>('RESEND_API_KEY');
     if (!key || !from) {
@@ -62,6 +68,15 @@ export class ReplySenderService implements OnModuleInit {
         to: replyTo,
         subject: 'Re: Your booking inquiry',
         text,
+        ...(opts?.attachments?.length
+          ? {
+              attachments: opts.attachments.map((a) => ({
+                filename: a.filename,
+                content: a.content,
+                ...(a.contentType ? { contentType: a.contentType } : {}),
+              })),
+            }
+          : {}),
       });
       if (result.error) {
         this.logger.error(`Resend API error: ${result.error.message}`);

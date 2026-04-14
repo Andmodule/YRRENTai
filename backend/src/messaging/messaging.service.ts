@@ -1378,7 +1378,10 @@ export class MessagingService {
   async relayStaffReplyToEmailGuest(
     conversationId: string,
     text: string,
-    opts?: { messagingThreadId?: string | null },
+    opts?: {
+      messagingThreadId?: string | null;
+      staffAttachments?: Array<{ storageKey: string; fileName: string; contentType: string }>;
+    },
   ): Promise<void> {
     const cid = conversationId.trim();
     this.logger.log(`relayStaffReplyToEmailGuest: start conversationId=${cid}`);
@@ -1490,7 +1493,19 @@ export class MessagingService {
     }
 
     try {
-      await this.replySender.send(toAddr, guestSafe);
+      let emailAttachments: Array<{ filename: string; content: Buffer; contentType?: string }> | undefined;
+      if (opts?.staffAttachments?.length && this.storageService.isConfigured()) {
+        emailAttachments = [];
+        for (const a of opts.staffAttachments) {
+          const { buffer, contentType } = await this.storageService.getObjectBuffer(a.storageKey);
+          emailAttachments.push({
+            filename: a.fileName,
+            content: buffer,
+            contentType: a.contentType || contentType,
+          });
+        }
+      }
+      await this.replySender.send(toAddr, guestSafe, emailAttachments?.length ? { attachments: emailAttachments } : undefined);
       this.logger.log(`relayStaffReplyToEmailGuest: sent for thread ${thread.id} conversationId=${cid}`);
 
       await this.messageRepo.save(

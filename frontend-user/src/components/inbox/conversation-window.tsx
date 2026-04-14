@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Send, MessageSquare } from 'lucide-react';
+import { Paperclip, Send, MessageSquare, X } from 'lucide-react';
 import { useChat } from '@/hooks/use-chat';
 import { ChatMessageBubble, StreamingBubble } from '@/components/chat';
 import { Button } from '@/components/ui/button';
@@ -16,6 +16,15 @@ import { formatGuestAndProperty } from '@/lib/format/conversation-meta';
 import { TruncatedTooltipText } from '@/components/inbox/truncated-tooltip-text';
 import { CHAT_FRAME } from '@/components/inbox/inbox-ui-tokens';
 import { apiClient } from '@/lib/api/client';
+import { formatBytes } from '@/lib/utils/format-bytes';
+
+interface StaffReplyAttachmentPayload {
+  id: string;
+  fileName: string;
+  contentType: string;
+  sizeBytes: number;
+  storageKey: string;
+}
 
 interface ConversationWindowProps {
   conversation: ConversationDto;
@@ -30,8 +39,12 @@ export function ConversationWindow({ conversation, onStaffReplySuccess }: Conver
     { conversationId: conversation.id },
   );
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [replyText, setReplyText] = useState('');
   const [replying, setReplying] = useState(false);
+  const [pendingAttachments, setPendingAttachments] = useState<StaffReplyAttachmentPayload[]>([]);
+  const [uploadingCount, setUploadingCount] = useState(0);
+  const [attachError, setAttachError] = useState<string | null>(null);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -39,21 +52,67 @@ export function ConversationWindow({ conversation, onStaffReplySuccess }: Conver
     }
   }, [messages, streamingText]);
 
+  const uploadStaffFile = useCallback(
+    async (file: File): Promise<StaffReplyAttachmentPayload> => {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await apiClient.post<{ data: StaffReplyAttachmentPayload }>(
+        `/chats/conversations/${encodeURIComponent(conversation.id)}/staff-attachments`,
+        fd,
+      );
+      return res.data.data;
+    },
+    [conversation.id],
+  );
+
+  const handleFileInputChange = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = e.target.files;
+      if (!files?.length) return;
+      setAttachError(null);
+      for (const file of Array.from(files)) {
+        setUploadingCount((c) => c + 1);
+        try {
+          const att = await uploadStaffFile(file);
+          setPendingAttachments((prev) => [...prev, att]);
+        } catch {
+          setAttachError(t('attachUploadError'));
+        } finally {
+          setUploadingCount((c) => Math.max(0, c - 1));
+        }
+      }
+      e.target.value = '';
+    },
+    [uploadStaffFile, t],
+  );
+
   const handleStaffReply = useCallback(async () => {
-    if (!replyText.trim() || replying) return;
+    const canSend =
+      (replyText.trim().length > 0 || pendingAttachments.length > 0) && !replying && uploadingCount === 0;
+    if (!canSend) return;
     setReplying(true);
+    setAttachError(null);
     try {
       const content = replyText.trim();
       await apiClient.post('/chats/conversations/reply', {
         conversationId: conversation.id,
         content,
+        ...(pendingAttachments.length ? { attachments: pendingAttachments } : {}),
       });
-      onStaffReplySuccess?.(conversation.id, content);
+      onStaffReplySuccess?.(conversation.id, content || pendingAttachments.map((a) => a.fileName).join(', '));
       setReplyText('');
+      setPendingAttachments([]);
     } finally {
       setReplying(false);
     }
-  }, [replyText, replying, conversation.id, onStaffReplySuccess]);
+  }, [
+    replyText,
+    pendingAttachments,
+    replying,
+    uploadingCount,
+    conversation.id,
+    onStaffReplySuccess,
+  ]);
 
   const handleRetryStaffDelivery = useCallback(async (messageId: string) => {
     await apiClient.post(`/chats/messages/${encodeURIComponent(messageId)}/retry`);
@@ -131,6 +190,41 @@ export function ConversationWindow({ conversation, onStaffReplySuccess }: Conver
           'lg:relative lg:inset-auto lg:z-auto',
         )}
       >
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          className="sr-only"
+          aria-hidden
+          tabIndex={-1}
+          onChange={(e) => void handleFileInputChange(e)}
+        />
+        {attachError && (
+          <div className="mb-2 text-xs text-destructive" role="alert">
+            {attachError}
+          </div>
+        )}
+        {pendingAttachments.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-2" aria-live="polite">
+            {pendingAttachments.map((a) => (
+              <span
+                key={a.id}
+                className="inline-flex max-w-full items-center gap-1 rounded-md border border-border bg-muted/60 px-2 py-1 text-xs text-foreground"
+              >
+                <span className="truncate">{a.fileName}</span>
+                <span className="shrink-0 text-muted-foreground">({formatBytes(a.sizeBytes)})</span>
+                <button
+                  type="button"
+                  onClick={() => setPendingAttachments((prev) => prev.filter((x) => x.id !== a.id))}
+                  className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground"
+                  aria-label={t('removePendingFileAria', { name: a.fileName })}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -144,11 +238,17 @@ export function ConversationWindow({ conversation, onStaffReplySuccess }: Conver
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
-                void handleStaffReply();
+                if (
+                  (replyText.trim() || pendingAttachments.length > 0) &&
+                  !replying &&
+                  uploadingCount === 0
+                ) {
+                  void handleStaffReply();
+                }
               }
             }}
             placeholder={isNeedsHuman ? t('replyPlaceholderUrgent') : t('replyPlaceholder')}
-            disabled={replying || !isConnected}
+            disabled={replying || !isConnected || uploadingCount > 0}
             rows={1}
             className={cn(
               'flex-1 resize-none rounded-lg border px-4 py-3 text-sm',
@@ -167,9 +267,30 @@ export function ConversationWindow({ conversation, onStaffReplySuccess }: Conver
             }}
           />
           <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            disabled={replying || !isConnected || uploadingCount > 0}
+            className={cn(
+              'h-12 w-12 shrink-0 rounded-lg border border-transparent p-0',
+              'text-muted-foreground hover:bg-muted hover:text-foreground',
+              'dark:hover:bg-slate-800 dark:hover:text-slate-200',
+            )}
+            aria-label={t('attachFileAria')}
+            title={t('attachFileAria')}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <Paperclip className="h-4 w-4" />
+          </Button>
+          <Button
             type="submit"
             variant="ghost"
-            disabled={replying || !replyText.trim() || !isConnected}
+            disabled={
+              replying ||
+              (!replyText.trim() && pendingAttachments.length === 0) ||
+              !isConnected ||
+              uploadingCount > 0
+            }
             size="icon"
             className={cn(
               'h-12 w-12 shrink-0 rounded-lg border border-transparent p-0',

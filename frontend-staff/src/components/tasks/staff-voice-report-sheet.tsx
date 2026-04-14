@@ -352,6 +352,7 @@ export const StaffVoiceReportSheet = forwardRef<StaffVoiceReportSheetHandle, Sta
       await postStaffVoiceSubmit({
         taskUuid: isRoutePropertyVoice ? undefined : effectiveTaskUuid,
         propertyId: isRoutePropertyVoice ? routePid : undefined,
+        overridePropertyId: preview.overridePropertyId,
         clientRequestId: crypto.randomUUID(),
         buttonPressed: preview.buttonPressed as StaffMiniAppButtonPressed,
         transcript: preview.transcript,
@@ -612,6 +613,15 @@ export const StaffVoiceReportSheet = forwardRef<StaffVoiceReportSheetHandle, Sta
                 ) : null}
 
                 <div className="mt-4 space-y-3">
+                  {preview.overridePropertyTitle ? (
+                    <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-4 text-left">
+                      <p className="text-xs font-bold uppercase text-amber-800">Изменён объект</p>
+                      <p className="mt-1 text-sm text-slate-800">
+                        Отчёт будет привязан к <strong>{preview.overridePropertyTitle}</strong>, так как он был упомянут в записи.
+                      </p>
+                    </div>
+                  ) : null}
+
                   <div className="rounded-2xl border border-teal-200 bg-teal-50/80 p-4 text-left">
                     <p className="text-xs font-bold uppercase text-teal-800">
                       {isRoutePropertyVoice

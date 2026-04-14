@@ -35,7 +35,22 @@ export const listConversationsQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(100).default(20),
 });
 
-export const managerReplySchema = z.object({
-  conversationId: z.string().uuid(),
-  content: z.string().min(1).max(10000),
+/** References files uploaded via POST …/conversations/:id/staff-attachments (R2 keys scoped to property + conversation). */
+export const managerReplyAttachmentRefSchema = z.object({
+  id: z.string().uuid(),
+  fileName: z.string().min(1).max(500),
+  contentType: z.string().min(1).max(200),
+  sizeBytes: z.number().int().positive().max(25 * 1024 * 1024),
+  storageKey: z.string().min(1).max(1024),
 });
+
+export const managerReplySchema = z
+  .object({
+    conversationId: z.string().uuid(),
+    content: z.string().max(10000),
+    attachments: z.array(managerReplyAttachmentRefSchema).max(10).optional(),
+  })
+  .refine(
+    (d) => d.content.trim().length > 0 || (d.attachments && d.attachments.length > 0),
+    { message: 'Either non-empty content or at least one attachment is required', path: ['content'] },
+  );

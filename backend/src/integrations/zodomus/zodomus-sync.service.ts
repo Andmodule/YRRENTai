@@ -150,8 +150,13 @@ export class ZodomusSyncService {
     if (!rid) return;
 
     if (reservationStatus === QUEUE_STATUS.CANCELLED) {
-      await this.cancelBookingByReservationId(rid);
-      this.availabilityPush.scheduleAvailabilityPush(property.id);
+      const row = await this.cancelBookingByReservationId(rid);
+      if (row) {
+        this.availabilityPush.scheduleAvailabilityPush(property.id, {
+          dateFromISO: row.checkIn.toISOString(),
+          dateToISO: row.checkOut.toISOString(),
+        });
+      }
       return;
     }
 
@@ -159,10 +164,22 @@ export class ZodomusSyncService {
     try {
       const reservation = await this.zodomus.getReservation(channelId, rid, zodomusPropertyId);
       const existing = await this.bookingRepo.findOne({ where: { zodomusReservationId: rid } });
+      const oldCheckIn = existing?.checkIn;
+      const oldCheckOut = existing?.checkOut;
+
       await this.upsertBooking(property, channelId, reservation, existing, rid);
       const row = await this.bookingRepo.findOne({ where: { zodomusReservationId: rid } });
       if (row) { row.zodomusSynced = true; await this.bookingRepo.save(row); }
-      this.availabilityPush.scheduleAvailabilityPush(property.id);
+      
+      let minDate = row?.checkIn || oldCheckIn;
+      let maxDate = row?.checkOut || oldCheckOut;
+      if (oldCheckIn && minDate && oldCheckIn < minDate) minDate = oldCheckIn;
+      if (oldCheckOut && maxDate && oldCheckOut > maxDate) maxDate = oldCheckOut;
+
+      this.availabilityPush.scheduleAvailabilityPush(property.id, minDate && maxDate ? {
+        dateFromISO: minDate.toISOString(),
+        dateToISO: maxDate.toISOString()
+      } : undefined);
     } catch (e) {
       if (isZodomusReservationDownloadLimitError(e)) {
         const row = await this.bookingRepo.findOne({ where: { zodomusReservationId: rid } });
@@ -347,17 +364,18 @@ export class ZodomusSyncService {
     return action.includes('cancel') || action.includes('delete');
   }
 
-  private async cancelBookingByReservationId(rid: string): Promise<void> {
+  private async cancelBookingByReservationId(rid: string): Promise<BookingEntity | null> {
     const row = await this.bookingRepo.findOne({ where: { zodomusReservationId: rid } });
     if (!row) {
       this.logger.log(`Cancel: reservation ${rid} not found in DB — skipped`);
-      return;
+      return null;
     }
-    if (row.status === BOOKING_STATUS.CANCELLED) return; // already cancelled
+    if (row.status === BOOKING_STATUS.CANCELLED) return row; // already cancelled
     row.status = BOOKING_STATUS.CANCELLED;
     row.zodomusSynced = true;
     await this.bookingRepo.save(row);
     this.logger.log(`Cancelled booking ${row.id} (zodomusReservationId=${rid})`);
+    return row;
   }
 
   private async upsertBooking(

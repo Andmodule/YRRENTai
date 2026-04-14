@@ -74,6 +74,92 @@ export class WhatsappCloudApiService {
     await this.sendTextToGuest(propertyId, externalGuestKey, text);
   }
 
+  /**
+   * Staff inbox: upload one file to Meta, then send as image / document / video / audio.
+   */
+  async sendOneBinaryMediaToGuest(
+    propertyId: string,
+    externalGuestKey: string | undefined,
+    file: { buffer: Buffer; mimeType: string; fileName: string },
+  ): Promise<void> {
+    const property = await this.propertyService.findByIdBare(propertyId);
+    if (!property) {
+      throw new Error(`Property ${propertyId} not found`);
+    }
+    const phoneNumberId = property.whatsappPhoneNumberId?.trim();
+    const token = this.resolveToken(property);
+    if (!phoneNumberId || !token) {
+      throw new Error('WhatsApp is not configured for this property (phone number id / token)');
+    }
+    const to = this.parseDigitsFromWaExternalKey(externalGuestKey);
+    if (!to) {
+      throw new Error('Invalid WhatsApp guest key (expected wa:<phone>)');
+    }
+    const waType = WhatsappCloudApiService.waMediaTypeFromMime(file.mimeType);
+    const mediaId = await this.uploadMediaToMeta(phoneNumberId, token, file.buffer, file.mimeType, file.fileName);
+    const url = `${this.graphBase(phoneNumberId)}/messages`;
+    const payload: Record<string, unknown> = {
+      messaging_product: 'whatsapp',
+      to,
+      type: waType,
+    };
+    if (waType === 'document') {
+      payload.document = {
+        id: mediaId,
+        filename: file.fileName.length > 1 ? file.fileName.slice(0, 240) : 'file',
+      };
+    } else {
+      payload[waType] = { id: mediaId };
+    }
+    await axios.post(url, payload, {
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      timeout: 120_000,
+    });
+    this.logger.log(`WhatsApp outbound media OK property=${propertyId} type=${waType}`);
+  }
+
+  private static waMediaTypeFromMime(mime: string): 'image' | 'video' | 'audio' | 'document' {
+    const m = mime.toLowerCase();
+    if (m.startsWith('image/')) return 'image';
+    if (m.startsWith('video/')) return 'video';
+    if (m.startsWith('audio/')) return 'audio';
+    return 'document';
+  }
+
+  private async uploadMediaToMeta(
+    phoneNumberId: string,
+    token: string,
+    buffer: Buffer,
+    mimeType: string,
+    fileName: string,
+  ): Promise<string> {
+    const url = `${this.graphBase(phoneNumberId)}/media`;
+    const form = new FormData();
+    form.append('messaging_product', 'whatsapp');
+    form.append('type', mimeType);
+    const blob = new Blob([new Uint8Array(buffer)], { type: mimeType });
+    form.append('file', blob, fileName);
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: form,
+    });
+    const raw = await res.text();
+    if (!res.ok) {
+      throw new Error(`WhatsApp media upload failed: HTTP ${res.status} ${raw.slice(0, 800)}`);
+    }
+    let json: { id?: string };
+    try {
+      json = JSON.parse(raw) as { id?: string };
+    } catch {
+      throw new Error(`WhatsApp media upload: invalid JSON ${raw.slice(0, 200)}`);
+    }
+    if (!json.id?.trim()) {
+      throw new Error('WhatsApp media upload: missing media id');
+    }
+    return json.id;
+  }
+
   private graphApiRoot(): string {
     const ver = this.configService.get<string>('WHATSAPP_GRAPH_API_VERSION') ?? 'v21.0';
     return `https://graph.facebook.com/${ver}`;

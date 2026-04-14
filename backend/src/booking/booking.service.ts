@@ -91,7 +91,10 @@ export class BookingService {
       createdBy: userId,
     });
     const saved = await this.bookingRepository.save(booking);
-    this.zodomusAvailabilityPush.scheduleAvailabilityPush(saved.propertyId);
+    this.zodomusAvailabilityPush.scheduleAvailabilityPush(saved.propertyId, {
+      dateFromISO: saved.checkIn.toISOString(),
+      dateToISO: saved.checkOut.toISOString(),
+    });
     return saved;
   }
 
@@ -206,6 +209,8 @@ export class BookingService {
     }
 
     let availabilityDirty = false;
+    let minDate = booking.checkIn;
+    let maxDate = booking.checkOut;
 
     if (dto.guestName !== undefined) booking.guestName = dto.guestName;
     if (dto.guestEmail !== undefined) {
@@ -216,10 +221,12 @@ export class BookingService {
     }
     if (dto.checkIn !== undefined) {
       booking.checkIn = new Date(dto.checkIn);
+      if (booking.checkIn < minDate) minDate = booking.checkIn;
       availabilityDirty = true;
     }
     if (dto.checkOut !== undefined) {
       booking.checkOut = new Date(dto.checkOut);
+      if (booking.checkOut > maxDate) maxDate = booking.checkOut;
       availabilityDirty = true;
     }
     if (dto.totalPriceMinor !== undefined) {
@@ -252,7 +259,10 @@ export class BookingService {
 
     const saved = await this.bookingRepository.save(booking);
     if (availabilityDirty) {
-      this.zodomusAvailabilityPush.scheduleAvailabilityPush(saved.propertyId);
+      this.zodomusAvailabilityPush.scheduleAvailabilityPush(saved.propertyId, {
+        dateFromISO: minDate.toISOString(),
+        dateToISO: maxDate.toISOString(),
+      });
     }
     return saved;
   }
@@ -341,7 +351,10 @@ export class BookingService {
       ),
     );
 
-    this.zodomusAvailabilityPush.scheduleAvailabilityPush(saved.propertyId);
+    this.zodomusAvailabilityPush.scheduleAvailabilityPush(saved.propertyId, {
+      dateFromISO: saved.checkIn.toISOString(),
+      dateToISO: saved.checkOut.toISOString(),
+    });
 
     return saved;
   }

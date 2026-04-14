@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -59,6 +59,88 @@ export class StorageService {
       Key: fileKey,
     });
     return getSignedUrl(this.s3, command, { expiresIn: expiresInSeconds });
+  }
+
+  async headObject(key: string): Promise<{ contentLength: number; contentType?: string }> {
+    if (!this.s3) {
+      throw new Error('R2 storage is not configured (missing R2_ENDPOINT or credentials)');
+    }
+    const bucket = this.config.get<string>('R2_BUCKET_NAME')?.trim();
+    if (!bucket) {
+      throw new Error('R2_BUCKET_NAME is required');
+    }
+    const res = await this.s3.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
+    return {
+      contentLength: Number(res.ContentLength ?? 0),
+      contentType: res.ContentType?.trim() || undefined,
+    };
+  }
+
+  async getObjectBuffer(key: string): Promise<{ buffer: Buffer; contentType: string }> {
+    if (!this.s3) {
+      throw new Error('R2 storage is not configured (missing R2_ENDPOINT or credentials)');
+    }
+    const bucket = this.config.get<string>('R2_BUCKET_NAME')?.trim();
+    if (!bucket) {
+      throw new Error('R2_BUCKET_NAME is required');
+    }
+    const res = await this.s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+    const body = res.Body as { transformToByteArray?: () => Promise<Uint8Array> } | undefined;
+    if (!body?.transformToByteArray) {
+      throw new Error('Unable to read object body');
+    }
+    const arr = await body.transformToByteArray();
+    const ct = res.ContentType?.trim() || 'application/octet-stream';
+    return { buffer: Buffer.from(arr), contentType: ct };
+  }
+
+  /**
+   * Staff inbox uploads: key is scoped to property + conversation to prevent cross-tenant reuse.
+   */
+  async uploadStaffConversationAttachment(
+    propertyId: string,
+    conversationId: string,
+    buffer: Buffer,
+    originalName: string,
+    mimeType: string,
+  ): Promise<{ key: string }> {
+    if (!this.s3) {
+      throw new Error('R2 storage is not configured (missing R2_ENDPOINT or credentials)');
+    }
+    const bucket = this.config.get<string>('R2_BUCKET_NAME')?.trim();
+    if (!bucket) {
+      throw new Error('R2_BUCKET_NAME is required for uploads');
+    }
+
+    const safeName = originalName.replace(/\s+/g, '_').replace(/[/\\]/g, '_');
+    const fileKey = `attachments/${propertyId}/${conversationId}/${uuidv4()}-${safeName}`;
+
+    try {
+      await this.s3.send(
+        new PutObjectCommand({
+          Bucket: bucket,
+          Key: fileKey,
+          Body: buffer,
+          ContentType: mimeType || 'application/octet-stream',
+        }),
+      );
+    } catch (e) {
+      const err = e as { name?: string; Code?: string; message?: string; $metadata?: { httpStatusCode?: number } };
+      const denied =
+        err.name === 'AccessDenied' || err.Code === 'AccessDenied' || err.message?.includes('Access Denied');
+      if (denied) {
+        const hint =
+          'R2 rejected PutObject (AccessDenied). Fix in Cloudflare: R2 → bucket → API token must allow ' +
+          '`Object Read & Write` for this exact bucket; R2_BUCKET_NAME must match bucket name; ' +
+          `R2_ENDPOINT host must be https://<same_account_id>.r2.cloudflarestorage.com. ` +
+          `If it still fails, try R2_FORCE_PATH_STYLE=true (default) vs false. HTTP=${err.$metadata?.httpStatusCode ?? 'n/a'}`;
+        this.logger.warn(hint);
+        throw new Error(`${hint} — ${err.message ?? 'AccessDenied'}`);
+      }
+      throw e;
+    }
+
+    return { key: fileKey };
   }
 
   async uploadAttachment(

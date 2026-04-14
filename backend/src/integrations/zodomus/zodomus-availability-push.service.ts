@@ -1,9 +1,10 @@
-import { Injectable, Logger, OnModuleDestroy, ServiceUnavailableException } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, Repository } from 'typeorm';
 import { addDays } from 'date-fns';
 import { formatInTimeZone, fromZonedTime } from 'date-fns-tz';
+import { Queue, Worker } from 'bullmq';
 import { BOOKING_STATUS } from '@rentai/shared';
 import { BookingEntity } from '../../booking/entities/booking.entity';
 import { PropertyEntity } from '../../property/entities/property.entity';
@@ -15,12 +16,27 @@ const NON_BLOCKING = new Set<string>([BOOKING_STATUS.CANCELLED, BOOKING_STATUS.D
 export type PushAvailabilityOptions = {
   /** When true, push even if ZODOMUS_AUTO_PUSH_AVAILABILITY is false (manual, dirty retry, nightly). */
   ignoreAutoPushDisable?: boolean;
+  /** Limit the sync to a specific date range (Delta Sync). */
+  dateFromISO?: string;
+  /** Limit the sync to a specific date range (Delta Sync). */
+  dateToISO?: string;
+};
+
+type AvailabilitySegment = {
+  channelId: number;
+  extProp: string;
+  roomId: string;
+  dateFrom: string;
+  dateToExclusive: string;
+  availability: number;
+  propertyId: string;
 };
 
 @Injectable()
-export class ZodomusAvailabilityPushService implements OnModuleDestroy {
+export class ZodomusAvailabilityPushService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(ZodomusAvailabilityPushService.name);
-  private readonly pendingByProperty = new Map<string, NodeJS.Timeout>();
+  private queue: Queue<AvailabilitySegment> | null = null;
+  private worker: Worker<AvailabilitySegment> | null = null;
 
   constructor(
     private readonly zodomus: ZodomusService,
@@ -31,45 +47,76 @@ export class ZodomusAvailabilityPushService implements OnModuleDestroy {
     private readonly propertyRepo: Repository<PropertyEntity>,
   ) {}
 
-  onModuleDestroy(): void {
-    for (const t of this.pendingByProperty.values()) {
-      clearTimeout(t);
-    }
-    this.pendingByProperty.clear();
+  get redisUrl(): string | undefined {
+    return this.config.get<string>('REDIS_URL')?.trim() || undefined;
   }
 
-  /**
-   * Debounced push after local booking / iCal / sync events (coalesces bursts, reduces race overlap).
-   * Respects ZODOMUS_AUTO_PUSH_AVAILABILITY unless you use pushAvailabilityNow with ignoreAutoPushDisable.
-   */
-  scheduleAvailabilityPush(propertyId: string): void {
-    const debounceMs = this.config.get<number>('ZODOMUS_AVAILABILITY_PUSH_DEBOUNCE_MS') ?? 2000;
-    const run = () => {
-      void this.pushAvailabilityNow(propertyId).catch((e) =>
-        this.logger.warn(`Debounced Zodomus availability push failed for ${propertyId}: ${String(e)}`),
-      );
-    };
-    if (debounceMs <= 0) {
-      run();
+  async onModuleInit(): Promise<void> {
+    const url = this.redisUrl;
+    if (!url) {
+      this.logger.warn('REDIS_URL not set — Zodomus availability push will run synchronously (NOT RECOMMENDED).');
       return;
     }
-    const existing = this.pendingByProperty.get(propertyId);
-    if (existing) clearTimeout(existing);
-    const timer = setTimeout(() => {
-      this.pendingByProperty.delete(propertyId);
-      run();
-    }, debounceMs);
-    this.pendingByProperty.set(propertyId, timer);
+
+    const connection = { url };
+    
+    this.queue = new Queue<AvailabilitySegment>('zodomus-availability', { connection });
+
+    this.worker = new Worker<AvailabilitySegment>(
+      'zodomus-availability',
+      async (job) => {
+        const { channelId, extProp, roomId, dateFrom, dateToExclusive, availability } = job.data;
+        await this.zodomus.setAvailability(channelId, extProp, roomId, dateFrom, dateToExclusive, availability);
+      },
+      {
+        connection,
+        concurrency: 1, // Strict concurrency
+        limiter: {
+          max: 60, // 60 requests
+          duration: 60_000, // per 60 seconds
+        },
+      }
+    );
+
+    this.worker.on('failed', async (job, err) => {
+      this.logger.error(`Zodomus availability push failed for ${job?.data.propertyId} (Dates: ${job?.data.dateFrom}-${job?.data.dateToExclusive}): ${(err as Error).message}`);
+      if (job?.data.propertyId) {
+        await this.markDirty(job.data.propertyId);
+      }
+    });
+
+    this.logger.log('Zodomus availability BullMQ queue initialized (rate limited to 60 req/min).');
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    await this.worker?.close();
+    await this.queue?.close();
   }
 
   /**
-   * Immediate full push. On success clears zodomusAvailabilityDirty; on failure sets dirty for cron retry.
-   * Manual and batch jobs should pass { ignoreAutoPushDisable: true } so push runs when event-driven auto is off.
+   * Pushes availability changes. Now accepts optional date ranges for delta sync.
+   */
+  scheduleAvailabilityPush(propertyId: string, options?: PushAvailabilityOptions): void {
+    const run = () => {
+      void this.pushAvailabilityNow(propertyId, options).catch((e) =>
+        this.logger.warn(`Zodomus availability push failed for ${propertyId}: ${String(e)}`),
+      );
+    };
+    
+    // We can run immediately because execution just enqueues segments into BullMQ.
+    run();
+  }
+
+  /**
+   * Computes segments and enqueues them.
    */
   async pushAvailabilityNow(propertyId: string, options?: PushAvailabilityOptions): Promise<void> {
     try {
-      const didPush = await this.executePush(propertyId, options);
-      if (didPush) await this.clearDirty(propertyId);
+      const didEnqueue = await this.executePush(propertyId, options);
+      if (didEnqueue && !this.queue) {
+        // If inline executed successfully, clear dirty flag.
+        await this.clearDirty(propertyId);
+      }
     } catch (e) {
       if (!(e instanceof ServiceUnavailableException)) {
         await this.markDirty(propertyId);
@@ -94,19 +141,18 @@ export class ZodomusAvailabilityPushService implements OnModuleDestroy {
       )
       .getMany();
     if (rows.length === 0) return;
-    const gap = this.config.get<number>('ZODOMUS_AVAILABILITY_BATCH_GAP_MS') ?? 1000;
     this.logger.log(`Zodomus availability dirty retry: ${rows.length} property(ies)`);
     for (const p of rows) {
       try {
         await this.pushAvailabilityNow(p.id, { ignoreAutoPushDisable: true });
+        await this.clearDirty(p.id); // clear immediately so we don't enqueue duplicates repeatedly
       } catch (e) {
         this.logger.warn(`Dirty retry failed for ${p.id}: ${String(e)}`);
       }
-      if (gap > 0) await this.sleep(gap);
     }
   }
 
-  /** Nightly drift guard: push for every property with zodomusPropertyId. */
+  /** Nightly drift guard: enqueue full push for every property, staggered via queue. */
   async nightlyReconcileAll(): Promise<void> {
     const enabled = this.config.get<boolean>('ZODOMUS_AVAILABILITY_NIGHTLY_FULL_PUSH') ?? true;
     if (!enabled || !this.zodomus.isEnabled) return;
@@ -122,19 +168,22 @@ export class ZodomusAvailabilityPushService implements OnModuleDestroy {
       )
       .getMany();
     if (rows.length === 0) return;
-    const gap = this.config.get<number>('ZODOMUS_AVAILABILITY_BATCH_GAP_MS') ?? 1000;
-    this.logger.log(`Zodomus nightly availability reconcile: ${rows.length} property(ies)`);
+    this.logger.log(`Zodomus nightly availability reconcile enqueuing: ${rows.length} property(ies)`);
+    
+    // Spread the execution of the property calculations over several minutes 
+    // to avoid slamming the DB with `executePush` all at once.
+    let delayMs = 0;
     for (const p of rows) {
-      try {
-        await this.pushAvailabilityNow(p.id, { ignoreAutoPushDisable: true });
-      } catch (e) {
-        this.logger.warn(`Nightly reconcile failed for ${p.id}: ${String(e)}`);
-      }
-      if (gap > 0) await this.sleep(gap);
+      setTimeout(() => {
+        void this.pushAvailabilityNow(p.id, { ignoreAutoPushDisable: true }).catch(e => 
+          this.logger.warn(`Nightly reconcile failed for ${p.id}: ${String(e)}`)
+        );
+      }, delayMs);
+      delayMs += 2000; // calculate one property every 2 seconds
     }
   }
 
-  /** @returns true if at least one segment was sent to Zodomus. */
+  /** @returns true if at least one segment was sent/enqueued to Zodomus. */
   private async executePush(propertyId: string, options?: PushAvailabilityOptions): Promise<boolean> {
     const auto = this.config.get<boolean>('ZODOMUS_AUTO_PUSH_AVAILABILITY') ?? true;
     if (!auto && !options?.ignoreAutoPushDisable) return false;
@@ -176,30 +225,43 @@ export class ZodomusAvailabilityPushService implements OnModuleDestroy {
     }
     if (targets.length === 0) return false;
 
-    const horizonDays = Math.min(
-      730,
-      Math.max(1, this.config.get<number>('ZODOMUS_AVAILABILITY_HORIZON_DAYS') ?? 366),
-    );
-
     const tz = property.timezone?.trim() || 'UTC';
     const now = new Date();
     const todayKey = formatInTimeZone(now, tz, 'yyyy-MM-dd');
+
+    // DELTA SYNC LOGIC
+    // If dateFromISO/dateToISO are provided, only evaluate that range instead of full 365 days.
+    let startEvalDate = fromZonedTime(`${todayKey}T12:00:00`, tz);
+    let endEvalDate = addDays(startEvalDate, Math.min(730, Math.max(1, this.config.get<number>('ZODOMUS_AVAILABILITY_HORIZON_DAYS') ?? 366)));
+
+    if (options?.dateFromISO) {
+       const df = new Date(options.dateFromISO);
+       if (df > startEvalDate) startEvalDate = df;
+    }
+    if (options?.dateToISO) {
+       const dt = new Date(options.dateToISO);
+       if (dt < endEvalDate) endEvalDate = dt;
+    }
+    
+    // Safety check - never evaluate past the horizon
+    const maxHorizon = addDays(fromZonedTime(`${todayKey}T12:00:00`, tz), 730);
+    if (endEvalDate > maxHorizon) endEvalDate = maxHorizon;
+
+    const daysCount = Math.ceil((endEvalDate.getTime() - startEvalDate.getTime()) / (1000 * 60 * 60 * 24));
+    if (daysCount <= 0) return false;
 
     const bookings = await this.bookingRepo.find({ where: { propertyId } });
     const blocking = bookings.filter((b) => !NON_BLOCKING.has(String(b.status)));
 
     const days: { key: string; availability: number }[] = [];
-    for (let i = 0; i < horizonDays; i++) {
-      const d = addDays(fromZonedTime(`${todayKey}T12:00:00`, tz), i);
+    for (let i = 0; i < daysCount; i++) {
+      const d = addDays(startEvalDate, i);
       const nightKey = formatInTimeZone(d, tz, 'yyyy-MM-dd');
       const occupied = blocking.some((b) => this.nightOverlapsBooking(nightKey, b, tz));
       days.push({ key: nightKey, availability: occupied ? 0 : 1 });
     }
 
     const segments = this.mergeSegments(days, tz);
-    if (segments.length > 200) {
-      this.logger.warn(`Zodomus availability: ${segments.length} segments for ${propertyId}`);
-    }
 
     let anyPushed = false;
     for (const t of targets) {
@@ -210,19 +272,43 @@ export class ZodomusAvailabilityPushService implements OnModuleDestroy {
         );
         continue;
       }
+      
       for (const seg of segments) {
-        await this.zodomus.setAvailability(
-          t.channelId,
-          t.extProp,
-          roomId,
-          seg.dateFrom,
-          seg.dateToExclusive,
-          seg.availability,
-        );
+        const payload: AvailabilitySegment = {
+            channelId: t.channelId,
+            extProp: t.extProp,
+            roomId,
+            dateFrom: seg.dateFrom,
+            dateToExclusive: seg.dateToExclusive,
+            availability: seg.availability,
+            propertyId
+        };
+        
+        if (this.queue) {
+            // Deduplicate same segment updates in queue
+            const jobId = `zodomus-avail-${propertyId}-${t.channelId}-${roomId}-${seg.dateFrom}`;
+            await this.queue.add('push-segment', payload, {
+               jobId,
+               attempts: 5,
+               backoff: { type: 'exponential', delay: 60000 },
+               removeOnComplete: true,
+               removeOnFail: { age: 86400 }
+            });
+        } else {
+            // Fallback inline execution
+            await this.zodomus.setAvailability(
+              t.channelId,
+              t.extProp,
+              roomId,
+              seg.dateFrom,
+              seg.dateToExclusive,
+              seg.availability,
+            );
+        }
       }
       anyPushed = true;
       this.logger.log(
-        `Zodomus availability: property ${propertyId} channel ${t.channelId} — ${segments.length} range(s), ${horizonDays} nights`,
+        `Zodomus availability: property ${propertyId} channel ${t.channelId} — ${segments.length} segment(s) enqueued/pushed.`,
       );
     }
     return anyPushed;
@@ -254,10 +340,6 @@ export class ZodomusAvailabilityPushService implements OnModuleDestroy {
       .execute();
   }
 
-  private sleep(ms: number): Promise<void> {
-    return new Promise((r) => setTimeout(r, ms));
-  }
-
   private nightOverlapsBooking(nightKey: string, b: BookingEntity, tz: string): boolean {
     const ci = formatInTimeZone(b.checkIn, tz, 'yyyy-MM-dd');
     const co = formatInTimeZone(b.checkOut, tz, 'yyyy-MM-dd');
@@ -268,6 +350,7 @@ export class ZodomusAvailabilityPushService implements OnModuleDestroy {
     days: { key: string; availability: number }[],
     tz: string,
   ): Array<{ dateFrom: string; dateToExclusive: string; availability: number }> {
+    if (days.length === 0) return [];
     const first = days[0];
     if (!first) return [];
     const out: Array<{ dateFrom: string; dateToExclusive: string; availability: number }> = [];
@@ -309,7 +392,6 @@ export class ZodomusAvailabilityPushService implements OnModuleDestroy {
     const ext = target.extProp.trim();
     if (!ext) return null;
     const stored = target.storedRoomId?.trim();
-    /** UI stores Zodomus object id here after "Load"; room id differs — only use stored when it is not the same as external property id. */
     if (stored && stored !== ext) return stored;
     const raw = await this.zodomus.getRoomRates(target.channelId, ext);
     const list = Array.isArray(raw) ? raw : [];
@@ -326,8 +408,7 @@ export class ZodomusAvailabilityPushService implements OnModuleDestroy {
         })
         .join('; ');
       this.logger.warn(
-        `Zodomus availability: property ${property.id} channel ${target.channelId} — Zodomus returned ${list.length} rooms but no distinct room id is stored (same as property id or unset). ` +
-          `Availability will use the first room only — wrong for multi-room listings. Set a specific room id on the channel row or pick a room in the UI. Rooms from API: ${summary}${list.length > 12 ? ' …' : ''}`,
+        `Zodomus availability: property ${property.id} channel ${target.channelId} — Zodomus returned ${list.length} rooms but no distinct room id is stored. Rooms from API: ${summary}${list.length > 12 ? ' …' : ''}`,
       );
     }
 

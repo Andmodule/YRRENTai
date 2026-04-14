@@ -25,8 +25,8 @@ const zodomusEnvFields = z.object({
    * If not set, webhook key validation is skipped (not recommended in production).
    */
   ZODOMUS_WEBHOOK_KEY: z.string().optional(),
-  /** How often (minutes) to poll reservations-queue as a backup to webhooks. Default: 15. */
-  ZODOMUS_POLL_INTERVAL_MINUTES: z.coerce.number().min(1).max(1440).default(15),
+  /** How often (minutes) to poll reservations-queue as a fallback to webhooks. Default: 360 (6 hours). */
+  ZODOMUS_POLL_INTERVAL_MINUTES: z.coerce.number().min(1).max(1440).default(360),
   /** Default OTA channel id for queue sync and availability push (e.g. 1 = Booking.com). */
   ZODOMUS_DEFAULT_CHANNEL_ID: z.coerce.number().int().positive().default(1),
   /** Push computed availability to Zodomus after local booking changes. Default: true. */

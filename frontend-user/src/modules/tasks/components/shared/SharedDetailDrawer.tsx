@@ -70,6 +70,7 @@ import { AssigneePickerField } from './AssigneePickerField';
 import { TaskStatusBadge } from './TaskStatusBadge';
 import { TaskTypeBadge } from './TaskTypeBadge';
 import { TaskManagerLinkBadges } from '../manager/TaskManagerLinkBadges';
+import { SmartCreateSheet } from '../manager/SmartCreateSheet';
 
 /** В редакторе менеджера нельзя перевести задачу в issue — только pending / in_progress / done. */
 const MANAGER_STATUS_ORDER: TaskStatus[] = ['pending', 'in_progress', 'done'];
@@ -1120,6 +1121,7 @@ function IncidentDetailMode({
   const [managerNote, setManagerNote] = useState('');
   const [estimatedCost, setEstimatedCost] = useState('');
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [createTaskOpen, setCreateTaskOpen] = useState(false);
   const managerPhotoInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -1329,8 +1331,9 @@ function IncidentDetailMode({
   ) : null;
 
   return (
-    <ResponsiveModal open={open} onOpenChange={onOpenChange} desktopPresentation="side">
-      <ResponsiveModalContent
+    <>
+      <ResponsiveModal open={open} onOpenChange={onOpenChange} desktopPresentation="side">
+        <ResponsiveModalContent
         title={panelTitle}
         description={headerAddress}
         headerAdornment={headerAdornment}
@@ -1394,15 +1397,11 @@ function IncidentDetailMode({
                     variant="ghost"
                     size="icon"
                     className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
-                    asChild
+                    onClick={() => setCreateTaskOpen(true)}
                     title={t('createTaskAria')}
                   >
-                    <Link
-                      href={`/dashboard/tasks/new?propertyId=${encodeURIComponent(incident.propertyId)}&incidentId=${encodeURIComponent(incident.uuid)}&prefillTitle=${encodeURIComponent(incident.description.slice(0, 160))}`}
-                    >
-                      <Plus className="h-4 w-4" aria-hidden />
-                      <span className="sr-only">{t('createTaskAria')}</span>
-                    </Link>
+                    <Plus className="h-4 w-4" aria-hidden />
+                    <span className="sr-only">{t('createTaskAria')}</span>
                   </Button>
                 </div>
                 {relatedTasks.length > 0 ? (
@@ -1622,5 +1621,20 @@ function IncidentDetailMode({
           </div>
         </ResponsiveModalContent>
       </ResponsiveModal>
+      {createTaskOpen && (
+        <SmartCreateSheet
+          open={createTaskOpen}
+          onOpenChange={setCreateTaskOpen}
+          propertyId={incident.propertyId}
+          startWithManualForm={true}
+          manualEntityTab="task"
+          incidentPrefill={{
+            incidentUuid: incident.uuid,
+            notes: incident.description,
+            title: incident.description.slice(0, 160)
+          }}
+        />
+      )}
+    </>
   );
 }

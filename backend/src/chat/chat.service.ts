@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, FindOptionsWhere, Repository } from 'typeorm';
 import type { ChatMessageMetadata, ConversationChannel } from '@rentai/shared';
+import { staffOutboundMetadataForClient } from '@rentai/shared';
 import { conversationChannelToMessageChannel } from './chat-channel.mapper';
 import { ChatMessageEntity, type MessageSource } from './entities/chat-message.entity';
 import { MessageChannel } from './enums/message-channel.enum';
@@ -32,6 +33,15 @@ export class ChatService {
 
   async findMessageById(id: string): Promise<ChatMessageEntity | null> {
     return this.messageRepository.findOne({ where: { id } });
+  }
+
+  /** Strip internal fields (e.g. R2 keys) before WebSocket / API responses. */
+  sanitizeMetadataForApi(meta: ChatMessageMetadata | null | undefined): ChatMessageMetadata | undefined {
+    if (!meta) return undefined;
+    if (meta.channel === 'staff_outbound') {
+      return staffOutboundMetadataForClient(meta);
+    }
+    return meta;
   }
 
   async saveMessage(data: {
@@ -112,7 +122,7 @@ export class ChatService {
       source: m.source,
       channel: m.channel,
       deliveryStatus: m.deliveryStatus,
-      ...(m.metadata ? { metadata: m.metadata } : {}),
+      ...(m.metadata ? { metadata: this.sanitizeMetadataForApi(m.metadata)! } : {}),
       createdAt: m.createdAt.toISOString(),
     };
   }
@@ -122,12 +132,17 @@ export class ChatService {
       ? { propertyId, conversationId }
       : { propertyId };
 
-    const [data, total] = await this.messageRepository.findAndCount({
+    const [rows, total] = await this.messageRepository.findAndCount({
       where,
       order: { createdAt: 'ASC' },
       skip: (page - 1) * limit,
       take: limit,
     });
+
+    const data = rows.map((m) => ({
+      ...m,
+      metadata: this.sanitizeMetadataForApi(m.metadata ?? undefined) ?? m.metadata,
+    }));
 
     return {
       data,
@@ -155,7 +170,10 @@ export class ChatService {
       order: { createdAt: 'DESC' },
       take,
     });
-    const data = rows.slice().reverse();
+    const data = rows.slice().reverse().map((m) => ({
+      ...m,
+      metadata: this.sanitizeMetadataForApi(m.metadata ?? undefined) ?? m.metadata,
+    }));
     return {
       data,
       meta: { page: 1, limit: take, total, totalPages: 1 },

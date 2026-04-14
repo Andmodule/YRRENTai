@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils';
 import { formatBubbleTimestamp } from '@/lib/format/conversation-meta';
 import type { ChatMessage, MessageChannelCode } from '@/hooks/use-chat';
 import { EmailAttachmentChip } from '@/components/inbox/email-attachment-chip';
+import { StaffOutboundAttachmentChip } from '@/components/inbox/staff-outbound-attachment-chip';
 import { WhatsappInboundAttachmentChip } from '@/components/inbox/whatsapp-inbound-attachment-chip';
 import { BookingComGuestMessage } from './booking-com-guest-message';
 
@@ -60,6 +61,17 @@ export function ChatMessageBubble({ message, onRetryStaffDelivery }: ChatMessage
   const isNonStaffAssistant = message.role === 'assistant' && !isStaffManual;
   const timeLabel = formatBubbleTimestamp(message.createdAt, locale);
   const displayContent = stripEscalationForGuestDisplay(message.content);
+  const staffOutboundAttachments =
+    !isUser &&
+    isStaffManual &&
+    message.metadata?.channel === 'staff_outbound' &&
+    message.metadata.attachments.length > 0
+      ? message.metadata.attachments
+      : null;
+  const hideSyntheticAttachedLine =
+    !!staffOutboundAttachments &&
+    /^Attached:\s/i.test(displayContent.trim()) &&
+    !displayContent.includes('\n');
   const ds = message.deliveryStatus;
   /**
    * Staff: PENDING = нет иконки; SENT = галочка; ERROR = retry.
@@ -110,9 +122,27 @@ export function ChatMessageBubble({ message, onRetryStaffDelivery }: ChatMessage
           ) : isUser ? (
             <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{displayContent}</p>
           ) : (
-            <div className="prose prose-sm max-w-none dark:prose-invert [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
-              <ReactMarkdown>{displayContent}</ReactMarkdown>
-            </div>
+            <>
+              {!hideSyntheticAttachedLine && (
+                <div className="prose prose-sm max-w-none dark:prose-invert [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+                  <ReactMarkdown>{displayContent}</ReactMarkdown>
+                </div>
+              )}
+              {staffOutboundAttachments && (
+                <div
+                  className={cn(
+                    'flex flex-wrap gap-2',
+                    !hideSyntheticAttachedLine && 'mt-2',
+                  )}
+                  role="group"
+                  aria-label={t('attachmentsGroupAria', { count: staffOutboundAttachments.length })}
+                >
+                  {staffOutboundAttachments.map((att) => (
+                    <StaffOutboundAttachmentChip key={att.id} messageId={message.id} attachment={att} />
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
         {isUser && emailAttachments && (
