@@ -170,8 +170,8 @@ export class ZodomusAdminController {
     });
     const data = rows.map((r) => ({
       propertyId: r.propertyId,
-      propertyName: (r as unknown as { property?: { name?: string } }).property?.name ?? null,
-      otaPlatform: r.otaPlatform?.name ?? null,
+      propertyName: r.property?.name ?? null,
+      otaPlatformCode: r.otaPlatform?.code ?? null,
       zodomusChannelId: r.otaPlatform?.zodomusChannelId ?? null,
       externalListingId: r.externalListingId ?? null,
     }));
