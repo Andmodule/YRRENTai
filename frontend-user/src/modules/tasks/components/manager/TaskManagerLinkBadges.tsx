@@ -55,7 +55,7 @@ export const TaskManagerLinkBadges = memo(function TaskManagerLinkBadges({
         <Link
           href={supplyHref}
           className={cn(
-            'inline-flex max-w-[12rem] items-center gap-0.5 truncate rounded-md border border-[#008CA4]/40 bg-[#008CA4]/10 font-medium text-[#006a7a] dark:border-[#00d4ff]/35 dark:bg-[#00d4ff]/10 dark:text-[#7ee8ff]',
+            'inline-flex max-w-[12rem] items-center gap-0.5 truncate rounded-md border border-primary/40 bg-primary/10 font-medium text-primary',
             chip,
           )}
         >

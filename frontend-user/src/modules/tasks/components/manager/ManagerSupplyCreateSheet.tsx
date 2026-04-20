@@ -25,7 +25,7 @@ import type { Property } from '@/types';
 type Phase = 'voice' | 'parsing' | 'review';
 
 const VOICE_ACCENT =
-  'border-[#008CA4]/55 text-[#008CA4] shadow-sm dark:border-[#008CA4]/45 dark:bg-slate-950/60 dark:text-[#5eead4]';
+  'border-primary/50 text-primary shadow-sm dark:border-primary/45 dark:bg-card/80 dark:text-primary';
 
 function VoiceMicActiveHero({ label }: { label: string }) {
   return (
@@ -364,7 +364,8 @@ export function ManagerSupplyCreateSheet({
                 </Button>
                 <Button
                   type="button"
-                  className="w-full bg-[#008CA4] text-white hover:bg-[#007a90] dark:bg-[#00a8c4] dark:hover:bg-[#0090a8] sm:w-auto"
+                  className="w-full sm:w-auto"
+                  variant="default"
                   disabled={!canSubmit}
                   onClick={() => submitMutate()}
                 >

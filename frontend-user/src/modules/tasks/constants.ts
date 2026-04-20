@@ -4,7 +4,7 @@ export const KANBAN_COLUMNS = [
   {
     status: 'pending',
     headerKey: 'pending',
-    headerClass: 'text-slate-600 dark:text-slate-300',
+    headerClass: 'text-muted-foreground',
     emptyKey: 'emptyPending',
   },
   {

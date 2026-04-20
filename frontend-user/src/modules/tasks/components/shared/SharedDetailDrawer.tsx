@@ -97,7 +97,7 @@ function detailTypePillClass(active: boolean) {
 const MD_UP = '(min-width: 768px)';
 
 const TASK_PRIORITY_BADGE: Record<TaskPriority, string> = {
-  normal: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200',
+  normal: 'bg-muted text-foreground dark:bg-muted/70 dark:text-foreground',
   urgent: 'bg-rose-50 text-rose-800 dark:bg-rose-950/50 dark:text-rose-200',
 };
 
@@ -1451,7 +1451,7 @@ function IncidentDetailMode({
                         incident.lastStayPaymentStatus === 'partial' &&
                           'bg-amber-500/15 text-amber-900 dark:text-amber-200',
                         incident.lastStayPaymentStatus === 'unpaid' &&
-                          'bg-slate-500/15 text-slate-800 dark:text-slate-200',
+                          'bg-muted text-muted-foreground dark:bg-muted/60 dark:text-foreground',
                       )}
                     >
                       {t(`paymentStatus.${incident.lastStayPaymentStatus}`)}

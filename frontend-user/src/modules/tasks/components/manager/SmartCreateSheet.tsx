@@ -147,7 +147,7 @@ export type SmartCreateSheetHandle = {
 };
 
 const VOICE_INFOGRAPHIC_ACCENT =
-  'border-[#008CA4]/55 text-[#008CA4] shadow-sm dark:border-[#008CA4]/45 dark:bg-slate-950/60 dark:text-[#5eead4]';
+  'border-primary/50 text-primary shadow-sm dark:border-primary/45 dark:bg-card/80 dark:text-primary';
 
 /** Same pulsing mic rings as during recording — label is e.g. «Слушаю…» or «Распознаю…». */
 function VoiceMicActiveHero({ label }: { label: string }) {
@@ -221,7 +221,7 @@ function VoiceRecordingInfographic({ className }: { className?: string }) {
                 </div>
                 {!isLast ? (
                   <div className="flex min-h-[4px] flex-1 justify-center pt-0.5" aria-hidden>
-                    <div className="w-px flex-1 bg-gradient-to-b from-[#008CA4]/45 to-[#008CA4]/15 dark:from-[#008CA4]/35 dark:to-[#008CA4]/10" />
+                    <div className="w-px flex-1 bg-gradient-to-b from-primary/45 to-primary/15 dark:from-primary/35 dark:to-primary/10" />
                   </div>
                 ) : null}
               </div>

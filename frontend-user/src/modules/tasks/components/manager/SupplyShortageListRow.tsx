@@ -34,7 +34,7 @@ export const SupplyShortageListRow = memo(function SupplyShortageListRow({
         'flex w-full min-w-0 items-start gap-3 border-b border-border/50 px-3 py-3 text-left transition-colors',
         isIncident
           ? 'border-l-2 border-l-amber-500/55 bg-amber-500/[0.06] hover:bg-amber-500/[0.1] dark:border-l-amber-400/50 dark:bg-amber-500/[0.08] dark:hover:bg-amber-500/[0.12]'
-          : 'border-l-2 border-l-[#008CA4]/50 bg-[#008CA4]/[0.04] hover:bg-[#008CA4]/[0.08] dark:border-l-[#00d4ff]/45 dark:bg-[#00d4ff]/[0.06] dark:hover:bg-[#00d4ff]/[0.1]',
+          : 'border-l-2 border-l-primary/50 bg-primary/[0.05] hover:bg-primary/[0.09] dark:border-l-primary/45 dark:bg-primary/[0.08] dark:hover:bg-primary/[0.12]',
       )}
     >
       <span
@@ -42,7 +42,7 @@ export const SupplyShortageListRow = memo(function SupplyShortageListRow({
           'flex h-9 w-9 shrink-0 items-center justify-center rounded-xl',
           isIncident
             ? 'bg-amber-500/15 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300'
-            : 'bg-[#008CA4]/12 text-[#008CA4] dark:bg-[#00d4ff]/15 dark:text-[#7ee8ff]',
+            : 'bg-primary/12 text-primary dark:bg-primary/15',
         )}
       >
         {isIncident ? (
@@ -58,7 +58,7 @@ export const SupplyShortageListRow = memo(function SupplyShortageListRow({
           <p
             className={cn(
               'mt-1 text-[11px] font-medium',
-              isIncident ? 'text-amber-700 dark:text-amber-300' : 'text-[#008CA4] dark:text-[#7ee8ff]',
+              isIncident ? 'text-amber-700 dark:text-amber-300' : 'text-primary',
             )}
           >
             {t('shortageItemsPreview', { items: itemsPreview })}

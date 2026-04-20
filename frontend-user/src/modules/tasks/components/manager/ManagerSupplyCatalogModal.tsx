@@ -170,7 +170,8 @@ export function ManagerSupplyCatalogModal({
       </div>
       <Button
         type="button"
-        className="w-full bg-[#008CA4] hover:bg-[#007a90]"
+        variant="default"
+        className="w-full"
         disabled={createPending || addName.trim().length < 2}
         onClick={() => void submitAddCatalog()}
       >
@@ -191,7 +192,7 @@ export function ManagerSupplyCatalogModal({
                 type="button"
                 size="icon"
                 variant="outline"
-                className="h-9 w-9 shrink-0 border-[#008CA4]/40 text-[#008CA4] hover:bg-[#E0F2F5] dark:border-[#00d4ff]/35 dark:text-[#a5f3fc]"
+                className="h-9 w-9 shrink-0 border-primary/40 text-primary hover:bg-primary/10"
                 aria-label={t('addCatalogItem')}
                 onClick={() => setAddOpen(true)}
               >

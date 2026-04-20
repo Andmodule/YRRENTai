@@ -32,7 +32,7 @@ export function routeStopStatusClass(status: string): string {
     status === 'arrived' &&
       'border-blue-500/40 bg-blue-500/10 text-blue-800 dark:text-blue-200',
     status === 'pending' &&
-      'border-slate-300/80 bg-slate-500/10 text-slate-700 dark:border-slate-600 dark:text-slate-300',
+      'border-border bg-muted text-foreground dark:border-border dark:bg-muted/50 dark:text-foreground',
   );
 }
 
@@ -61,7 +61,7 @@ export function DeliveryRouteDetailBody({
   if (detailLoading) {
     return (
       <div className="flex justify-center py-10">
-        <Loader2 className="h-8 w-8 animate-spin text-[#008CA4]" />
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }

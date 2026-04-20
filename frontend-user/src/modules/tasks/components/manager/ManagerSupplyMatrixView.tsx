@@ -183,16 +183,16 @@ function MatrixLlmProcessingEmbeddedRow({
 }) {
   return (
     <div
-      className="flex gap-3 rounded-lg border border-[#008CA4]/30 bg-white/70 px-3 py-2.5 dark:border-[#00d4ff]/25 dark:bg-slate-950/50"
+      className="flex gap-3 rounded-lg border border-primary/30 bg-card/80 px-3 py-2.5 dark:border-primary/25 dark:bg-card/50"
       aria-label={t('matrixProcessingSectionTitle')}
     >
-      <Loader2 className="h-5 w-5 shrink-0 animate-spin text-[#008CA4] dark:text-[#5eead4]" aria-hidden />
+      <Loader2 className="h-5 w-5 shrink-0 animate-spin text-primary" aria-hidden />
       <div className="min-w-0 flex-1">
-        <p className="font-medium text-slate-900 dark:text-slate-100">{truncateMatrixText(event.textRaw, 220)}</p>
+        <p className="font-medium text-foreground">{truncateMatrixText(event.textRaw, 220)}</p>
         {event.llmIntent?.trim() ? (
-          <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">{event.llmIntent.trim()}</p>
+          <p className="mt-0.5 text-sm text-muted-foreground">{event.llmIntent.trim()}</p>
         ) : null}
-        <p className="mt-1 text-xs font-medium text-[#008CA4] dark:text-[#7ee8ff]">{t('matrixProcessingStatus')}</p>
+        <p className="mt-1 text-xs font-medium text-primary">{t('matrixProcessingStatus')}</p>
       </div>
     </div>
   );
@@ -537,11 +537,11 @@ export function ManagerSupplyMatrixView({
         group.pendingLlmEvents && group.pendingLlmEvents.length > 0 ? (
           <div
             className={cn(
-              'space-y-1 border-b border-[#008CA4]/25 bg-[#008CA4]/[0.05] dark:border-[#00d4ff]/15 dark:bg-[#00d4ff]/[0.06]',
+              'space-y-1 border-b border-primary/25 bg-primary/[0.06] dark:border-primary/20 dark:bg-primary/[0.08]',
               inRoute ? 'px-2 py-1.5 sm:py-2' : 'px-2 py-2 sm:px-3 sm:py-2.5',
             )}
           >
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-[#006b7d] dark:text-[#a5f3fc]">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-primary">
               {t('matrixProcessingSectionTitle')}
             </p>
             <div className="space-y-1.5">
@@ -555,11 +555,11 @@ export function ManagerSupplyMatrixView({
       const linesBlock = (
         <div
           className={cn(
-            'mt-1.5 overflow-hidden rounded-lg border border-slate-200/90 bg-white shadow-sm ring-1 ring-slate-900/[0.04] dark:border-slate-600/80 dark:bg-slate-950/80 dark:shadow-none dark:ring-white/[0.06]',
+            'mt-1.5 overflow-hidden rounded-lg border border-border bg-card shadow-sm ring-1 ring-border/30 dark:border-border dark:bg-card/80 dark:shadow-none dark:ring-border/20',
             'mx-1 mb-1 sm:mx-1.5 sm:mt-2 sm:mb-1.5 md:mx-2',
           )}
         >
-          <div className="divide-y divide-slate-100 dark:divide-slate-800/80">
+          <div className="divide-y divide-border/70 dark:divide-border/50">
           {group.items.map(({ row, cell, key }) => {
             const fs = cell.fulfillmentStatus ?? row.fulfillmentStatus ?? 'pending';
             const isCatalog = Boolean(row.supplyItemId);
@@ -571,7 +571,7 @@ export function ManagerSupplyMatrixView({
                 key={key}
                 role="button"
                 tabIndex={0}
-                className="group flex flex-row items-start gap-1.5 px-1.5 py-1 transition-colors hover:bg-slate-50 sm:items-center sm:gap-3 sm:px-3 sm:py-1.5 dark:hover:bg-slate-900/50"
+                className="group flex flex-row items-start gap-1.5 px-1.5 py-1 transition-colors hover:bg-muted/50 sm:items-center sm:gap-3 sm:px-3 sm:py-1.5 dark:hover:bg-muted/25"
                 onClick={() => setDrawerLineIds(cell.requestLineIds)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
@@ -589,7 +589,7 @@ export function ManagerSupplyMatrixView({
                     onKeyDown={(e) => e.stopPropagation()}
                   >
                     <Checkbox
-                      className="h-4 w-4 [&_svg]:h-3 [&_svg]:w-3"
+                      className="h-4 w-4 border-foreground/20 [&_svg]:h-3 [&_svg]:w-3"
                       checked={checked}
                       onCheckedChange={() => toggleCell(key)}
                       aria-label={t('matrixCellCheckboxAria', {
@@ -601,20 +601,20 @@ export function ManagerSupplyMatrixView({
                 )}
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
-                    <span className="text-[13px] font-medium leading-snug text-slate-900 sm:text-sm dark:text-slate-100">
+                    <span className="text-[13px] font-medium leading-snug text-foreground sm:text-sm">
                       {row.displayName}
                     </span>
                     {qtyLabel != null ? (
                       <Badge
                         variant="secondary"
-                        className="border-0 bg-slate-100 px-1 py-0 font-mono text-[10px] font-normal text-slate-800 sm:px-1.5 sm:text-[11px] dark:bg-slate-800 dark:text-slate-100"
+                        className="border-0 bg-muted px-1 py-0 font-mono text-[10px] font-normal text-foreground sm:px-1.5 sm:text-[11px] dark:bg-muted/60"
                       >
                         {qtyLabel}
                       </Badge>
                     ) : null}
                   </div>
                   {(row.sourceEventCount ?? 1) > 1 ? (
-                    <p className="mt-0.5 text-[10px] text-slate-500 sm:text-[11px] dark:text-slate-500">
+                    <p className="mt-0.5 text-[10px] text-muted-foreground sm:text-[11px]">
                       {t('matrixSourceEvents', { count: row.sourceEventCount })}
                     </p>
                   ) : null}
@@ -649,11 +649,11 @@ export function ManagerSupplyMatrixView({
             open={collapsedById[collapsePropKey] !== true}
             onOpenChange={(open) => setCollapsed(collapsePropKey, !open)}
           >
-            <section className="overflow-hidden rounded-lg border border-slate-200/70 bg-slate-50/90 dark:border-slate-700/50 dark:bg-slate-900/40">
+            <section className="overflow-hidden rounded-lg border border-border bg-muted/30 dark:border-border dark:bg-card/60">
               <CollapsibleTrigger
                 className={cn(
-                  'flex w-full min-w-0 items-center gap-1.5 border-b border-slate-300/90 bg-slate-50/95 px-2 py-1.5 text-left shadow-[inset_0_-1px_0_0_rgba(15,23,42,0.06)] transition-colors sm:py-2 dark:border-slate-600/70 dark:bg-slate-900/95 dark:shadow-[inset_0_-1px_0_0_rgba(255,255,255,0.05)]',
-                  'hover:bg-slate-100/90 dark:hover:bg-slate-800/50',
+                  'flex w-full min-w-0 items-center gap-1.5 border-b border-border bg-muted/40 px-2 py-1.5 text-left transition-colors sm:py-2 dark:bg-muted/20',
+                  'hover:bg-muted/55 dark:hover:bg-muted/35',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                 )}
               >
@@ -665,11 +665,11 @@ export function ManagerSupplyMatrixView({
                   aria-hidden
                 />
                 <div className="min-w-0 flex-1">
-                  <p className="text-[13px] font-semibold leading-snug text-slate-900 sm:text-sm dark:text-slate-100">
+                  <p className="text-[13px] font-semibold leading-snug text-foreground sm:text-sm">
                     {group.propertyTitle}
                   </p>
                   {group.propertyAddress ? (
-                    <p className="mt-0.5 text-[10px] leading-snug text-slate-500 sm:text-[11px] dark:text-slate-400">
+                    <p className="mt-0.5 text-[10px] leading-snug text-muted-foreground sm:text-[11px]">
                       {group.propertyAddress}
                     </p>
                   ) : null}
@@ -687,12 +687,12 @@ export function ManagerSupplyMatrixView({
       return (
         <section
           key={group.propertyId}
-          className="overflow-hidden rounded-lg border border-slate-200/60 bg-slate-50/90 sm:rounded-xl dark:border-slate-700/50 dark:bg-slate-900/40"
+          className="overflow-hidden rounded-lg border border-border bg-muted/30 sm:rounded-xl dark:border-border dark:bg-card/60"
         >
-          <div className="sticky top-0 z-10 flex items-center gap-1.5 border-b border-slate-300/90 bg-slate-50/95 px-2 py-1.5 shadow-[inset_0_-1px_0_0_rgba(15,23,42,0.06)] backdrop-blur-md sm:gap-2 sm:px-3 sm:py-2 dark:border-slate-600/70 dark:bg-slate-900/95 dark:shadow-[inset_0_-1px_0_0_rgba(255,255,255,0.05)]">
+          <div className="sticky top-0 z-10 flex items-center gap-1.5 border-b border-border bg-muted/40 px-2 py-1.5 backdrop-blur-md sm:gap-2 sm:px-3 sm:py-2 dark:bg-muted/20">
             {groupKeys.length > 0 ? (
               <Checkbox
-                className="h-4 w-4 shrink-0 [&_svg]:h-3 [&_svg]:w-3"
+                className="h-4 w-4 shrink-0 border-foreground/20 [&_svg]:h-3 [&_svg]:w-3"
                 checked={groupSelectState}
                 onCheckedChange={() => toggleGroupKeys(groupKeys)}
                 aria-label={t('matrixGroupSelectAria', { name: group.propertyTitle })}
@@ -701,11 +701,11 @@ export function ManagerSupplyMatrixView({
               <span className="inline-flex h-4 w-4 shrink-0" aria-hidden />
             )}
             <div className="min-w-0 flex-1">
-              <p className="text-[13px] font-semibold leading-snug text-slate-900 sm:text-sm dark:text-slate-100">
+              <p className="text-[13px] font-semibold leading-snug text-foreground sm:text-sm">
                 {group.propertyTitle}
               </p>
               {group.propertyAddress ? (
-                <p className="mt-0.5 text-[10px] leading-snug text-slate-500 sm:text-[11px] dark:text-slate-400">
+                <p className="mt-0.5 text-[10px] leading-snug text-muted-foreground sm:text-[11px]">
                   {group.propertyAddress}
                 </p>
               ) : null}
@@ -745,11 +745,7 @@ export function ManagerSupplyMatrixView({
       type="button"
       size="sm"
       disabled={!hasHandoffSelection || handoffBusy}
-      className={cn(
-        'shrink-0 gap-1.5 transition-colors',
-        hasHandoffSelection &&
-          'bg-[#008CA4] text-white hover:bg-[#007a90] dark:bg-[#00a8c4] dark:hover:bg-[#0090a8]',
-      )}
+      className="shrink-0 gap-1.5 transition-colors"
       variant={hasHandoffSelection ? 'default' : 'secondary'}
       onClick={() => openHandoffSheet()}
     >
@@ -762,7 +758,7 @@ export function ManagerSupplyMatrixView({
     allSelectableCellKeys.length > 0 ? (
       <button
         type="button"
-        className="shrink-0 pt-0.5 text-xs text-slate-600 underline decoration-slate-300 underline-offset-2 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100"
+        className="shrink-0 pt-0.5 text-xs text-muted-foreground underline decoration-border underline-offset-2 hover:text-foreground"
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -780,7 +776,7 @@ export function ManagerSupplyMatrixView({
       {toolbarPortalHost
         ? createPortal(matrixToolbar, toolbarPortalHost)
         : (
-            <div className="sticky top-0 z-20 shrink-0 border-b border-slate-200/80 bg-white/90 px-4 py-3 backdrop-blur-md dark:border-slate-800/80 dark:bg-slate-950/90">
+            <div className="sticky top-0 z-20 shrink-0 border-b border-border bg-card/95 px-4 py-3 backdrop-blur-md dark:bg-card/90">
               <div className="mx-auto flex w-full max-w-5xl flex-nowrap items-center gap-3">
                 {matrixToolbar}
               </div>
@@ -797,14 +793,14 @@ export function ManagerSupplyMatrixView({
                     onOpenChange={(open) => setCollapsed('supply-pool', !open)}
                   >
                     <section
-                      className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-sm dark:border-slate-700/70 dark:bg-slate-900/35"
+                      className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm dark:border-border dark:bg-card/80"
                       aria-label={t('matrixSectionPoolTitle')}
                     >
-                      <div className="flex items-start justify-between gap-2 border-b border-slate-200/70 bg-slate-50/95 dark:border-slate-700/60 dark:bg-slate-900/90">
+                      <div className="flex items-start justify-between gap-2 border-b border-border bg-muted/40 dark:border-border dark:bg-muted/25">
                         <CollapsibleTrigger
                           className={cn(
                             'flex min-w-0 flex-1 items-start gap-2 px-2 py-2 text-left transition-colors sm:px-3 sm:py-2.5',
-                            'hover:bg-slate-200/50 dark:hover:bg-white/[0.05]',
+                            'hover:bg-muted/50 dark:hover:bg-muted/25',
                             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                           )}
                         >
@@ -821,7 +817,7 @@ export function ManagerSupplyMatrixView({
                                 {t('matrixSectionPoolTitle')}
                               </h2>
                               <span
-                                className="inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full border border-slate-200/90 bg-slate-100/90 px-1.5 text-[10px] font-semibold tabular-nums leading-none text-slate-600 dark:border-slate-600/70 dark:bg-slate-800/80 dark:text-slate-400"
+                                className="inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full border border-border bg-muted px-1.5 text-[10px] font-semibold tabular-nums leading-none text-muted-foreground"
                                 aria-label={t('matrixSectionCountLines', { count: poolRows.length })}
                               >
                                 {poolRows.length}
@@ -842,34 +838,34 @@ export function ManagerSupplyMatrixView({
                     </section>
                   </Collapsible>
                   {isLoading ? (
-                    <p className="flex items-center justify-center gap-2 rounded-lg bg-slate-50 px-4 py-6 text-sm text-slate-500 dark:bg-slate-900/50 dark:text-slate-400">
+                    <p className="flex items-center justify-center gap-2 rounded-lg bg-muted/40 px-4 py-6 text-sm text-muted-foreground dark:bg-muted/20">
                       <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
                       {t('matrixLoadingSummary')}
                     </p>
                   ) : (
-                    <p className="rounded-lg bg-slate-50 px-4 py-6 text-center text-sm text-slate-500 dark:bg-slate-900/50 dark:text-slate-400">
+                    <p className="rounded-lg bg-muted/40 px-4 py-6 text-center text-sm text-muted-foreground dark:bg-muted/20">
                       {t('matrixPendingLlmHint')}
                     </p>
                   )}
                 </>
               ) : llmProcessingSupply.length > 0 ? (
                 isLoading ? (
-                  <p className="flex items-center justify-center gap-2 rounded-lg bg-slate-50 px-4 py-6 text-sm text-slate-500 dark:bg-slate-900/50 dark:text-slate-400">
+                  <p className="flex items-center justify-center gap-2 rounded-lg bg-muted/40 px-4 py-6 text-sm text-muted-foreground dark:bg-muted/20">
                     <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
                     {t('matrixLoadingSummary')}
                   </p>
                 ) : (
-                  <p className="rounded-lg bg-slate-50 px-4 py-6 text-center text-sm text-slate-500 dark:bg-slate-900/50 dark:text-slate-400">
+                  <p className="rounded-lg bg-muted/40 px-4 py-6 text-center text-sm text-muted-foreground dark:bg-muted/20">
                     {t('matrixPendingLlmHint')}
                   </p>
                 )
               ) : (
-                <p className="rounded-lg bg-slate-50 px-4 py-10 text-center text-sm text-slate-500 dark:bg-slate-900/50 dark:text-slate-400">
+                <p className="rounded-lg bg-muted/40 px-4 py-10 text-center text-sm text-muted-foreground dark:bg-muted/20">
                   {t('matrixEmpty')}
                 </p>
               )}
               <section
-                className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white p-3 shadow-sm dark:border-slate-700/70 dark:bg-slate-900/35 sm:p-4"
+                className="overflow-hidden rounded-2xl border border-border bg-card p-3 shadow-sm dark:border-border dark:bg-card/80 sm:p-4"
                 aria-label={t('routesTab')}
               >
                 <ManagerSupplyDeliveryRoutesSection onOpenRouteDetail={setRouteDetailSheetId} />
@@ -885,14 +881,14 @@ export function ManagerSupplyMatrixView({
                   onOpenChange={(open) => setCollapsed('supply-pool', !open)}
                 >
                   <section
-                    className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-sm dark:border-slate-700/70 dark:bg-slate-900/35"
+                    className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm dark:border-border dark:bg-card/80"
                     aria-label={t('matrixSectionPoolTitle')}
                   >
-                    <div className="flex items-start justify-between gap-2 border-b border-slate-200/70 bg-slate-50/95 dark:border-slate-700/60 dark:bg-slate-900/90">
+                    <div className="flex items-start justify-between gap-2 border-b border-border bg-muted/40 dark:border-border dark:bg-muted/25">
                       <CollapsibleTrigger
                         className={cn(
                           'flex min-w-0 flex-1 items-start gap-2 px-2 py-2 text-left transition-colors sm:px-3 sm:py-2.5',
-                          'hover:bg-slate-200/50 dark:hover:bg-white/[0.05]',
+                          'hover:bg-muted/50 dark:hover:bg-muted/25',
                           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                         )}
                       >
@@ -909,7 +905,7 @@ export function ManagerSupplyMatrixView({
                               {t('matrixSectionPoolTitle')}
                             </h2>
                             <span
-                              className="inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full border border-slate-200/90 bg-slate-100/90 px-1.5 text-[10px] font-semibold tabular-nums leading-none text-slate-600 dark:border-slate-600/70 dark:bg-slate-800/80 dark:text-slate-400"
+                              className="inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full border border-border bg-muted px-1.5 text-[10px] font-semibold tabular-nums leading-none text-muted-foreground"
                               aria-label={t('matrixSectionCountLines', { count: poolRows.length })}
                             >
                               {poolRows.length}
@@ -937,7 +933,7 @@ export function ManagerSupplyMatrixView({
                   onOpenChange={(open) => setCollapsed('supply-mixed', !open)}
                 >
                   <section
-                    className="overflow-hidden rounded-2xl border border-amber-300/70 bg-white shadow-sm dark:border-amber-600/45 dark:bg-slate-900/35"
+                    className="overflow-hidden rounded-2xl border border-amber-300/70 bg-card shadow-sm dark:border-amber-600/45 dark:bg-card/80"
                     aria-label={t('matrixSectionMixedTitle')}
                   >
                     <div className="flex items-start justify-between gap-2 border-b border-amber-200/80 bg-amber-50/90 dark:border-amber-900/40 dark:bg-amber-950/35">
@@ -984,7 +980,7 @@ export function ManagerSupplyMatrixView({
               ) : null}
 
               <section
-                className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white p-3 shadow-sm dark:border-slate-700/70 dark:bg-slate-900/35 sm:p-4"
+                className="overflow-hidden rounded-2xl border border-border bg-card p-3 shadow-sm dark:border-border dark:bg-card/80 sm:p-4"
                 aria-label={t('routesTab')}
               >
                 <ManagerSupplyDeliveryRoutesSection onOpenRouteDetail={setRouteDetailSheetId} />
@@ -1004,7 +1000,8 @@ export function ManagerSupplyMatrixView({
                 </Button>
                 <Button
                   type="button"
-                  className="w-full bg-[#008CA4] text-white hover:bg-[#007a90] sm:w-auto"
+                  variant="default"
+                  className="w-full sm:w-auto"
                   disabled={handoffBusy || !handoffDriverId}
                   onClick={() => void confirmHandoffToDriver()}
                 >
@@ -1041,7 +1038,7 @@ export function ManagerSupplyMatrixView({
             <SheetContent title={t('matrixCellDetailTitle')} description={t('matrixCellDetailHint')}>
               {matrixCellDetailBodyLoading ? (
                 <div className="flex justify-center py-10">
-                  <Loader2 className="h-8 w-8 animate-spin text-[#008CA4]" />
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -1071,7 +1068,7 @@ export function ManagerSupplyMatrixView({
               <div className="max-h-[min(60vh,420px)] space-y-3 overflow-y-auto px-4 pb-6 pt-2">
                 {matrixCellDetailBodyLoading ? (
                   <div className="flex justify-center py-8">
-                    <Loader2 className="h-8 w-8 animate-spin text-[#008CA4]" />
+                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
                   </div>
                 ) : (
                   (detailLines ?? []).map((line) => (

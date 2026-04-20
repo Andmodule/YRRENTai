@@ -59,7 +59,7 @@ function DeliveryRouteRow({
             {r.driverName ? ` · ${r.driverName}` : ''}
           </p>
         </div>
-        <span className="inline-flex shrink-0 items-center gap-1 self-center whitespace-nowrap text-[11px] font-medium text-[#008CA4] dark:text-[#7ee8ff]">
+        <span className="inline-flex shrink-0 items-center gap-1 self-center whitespace-nowrap text-[11px] font-medium text-primary">
           {t('matrixRouteDetailsLabel')}
           <ChevronRight className="h-4 w-4 shrink-0" aria-hidden />
         </span>
@@ -96,9 +96,9 @@ export function ManagerSupplyDeliveryRoutesSection({
 
   const statusClass = (s: string) =>
     cn(
-      'text-[10px] font-semibold',
-      s === 'draft' && 'border-slate-400/40 bg-slate-500/10 text-slate-800 dark:text-slate-200',
-      s === 'assigned' && 'border-[#008CA4]/35 bg-[#E0F2F5]/90 text-[#006a7a] dark:bg-[#00d4ff]/12 dark:text-[#a5f3fc]',
+      'border text-[10px] font-semibold',
+      s === 'draft' && 'border-border bg-muted text-foreground dark:bg-muted/60',
+      s === 'assigned' && 'border-primary/35 bg-primary/10 text-primary dark:bg-primary/15',
       s === 'in_progress' && 'border-amber-500/40 bg-amber-500/10 text-amber-900 dark:text-amber-100',
       s === 'completed' && 'border-emerald-500/40 bg-emerald-500/10 text-emerald-900 dark:text-emerald-100',
     );

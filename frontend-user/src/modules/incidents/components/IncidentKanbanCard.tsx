@@ -66,7 +66,7 @@ export const IncidentKanbanCard = memo(function IncidentKanbanCard({
       <p className="mt-2 text-sm font-semibold text-foreground">{incident.propertyTitle}</p>
       <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{incident.description}</p>
       {incident.dispatchedAssigneeName?.trim() ? (
-        <p className="mt-2 flex items-center gap-1.5 text-[11px] font-medium text-cyan-800 dark:text-cyan-200/90">
+        <p className="mt-2 flex items-center gap-1.5 text-[11px] font-medium text-primary dark:text-primary">
           <Wrench className="h-3.5 w-3.5 shrink-0" aria-hidden />
           <span className="truncate">
             {t('resolvingBy')}: {incident.dispatchedAssigneeName.trim()}
