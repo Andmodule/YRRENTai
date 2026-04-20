@@ -7,6 +7,7 @@ import { BOOKING_STATUS } from '@rentai/shared';
 import { BookingEntity } from '../../booking/entities/booking.entity';
 import type { PropertyEntity } from '../../property/entities/property.entity';
 import { PropertyService } from '../../property/property.service';
+import { CalendarGateway } from '../../calendar/calendar.gateway';
 import { ZodomusService } from './zodomus.service';
 import { ZodomusAvailabilityPushService } from './zodomus-availability-push.service';
 import {
@@ -31,6 +32,7 @@ export class ZodomusSyncService {
     private readonly propertyService: PropertyService,
     private readonly config: ConfigService,
     private readonly availabilityPush: ZodomusAvailabilityPushService,
+    private readonly calendarGateway: CalendarGateway,
     @InjectRepository(BookingEntity)
     private readonly bookingRepo: Repository<BookingEntity>,
   ) {}
@@ -156,6 +158,7 @@ export class ZodomusSyncService {
           dateFromISO: row.checkIn.toISOString(),
           dateToISO: row.checkOut.toISOString(),
         });
+        this.calendarGateway.emitCalendarChanged({ propertyId: property.id, source: 'webhook:cancel' });
       }
       return;
     }
@@ -180,6 +183,7 @@ export class ZodomusSyncService {
         dateFromISO: minDate.toISOString(),
         dateToISO: maxDate.toISOString()
       } : undefined);
+      this.calendarGateway.emitCalendarChanged({ propertyId: property.id, source: 'webhook:upsert' });
     } catch (e) {
       if (isZodomusReservationDownloadLimitError(e)) {
         const row = await this.bookingRepo.findOne({ where: { zodomusReservationId: rid } });
@@ -190,6 +194,7 @@ export class ZodomusSyncService {
             `Webhook: reservation ${rid} — GET limit (sandbox); local booking exists → marked synced.`,
           );
           this.availabilityPush.scheduleAvailabilityPush(property.id);
+          this.calendarGateway.emitCalendarChanged({ propertyId: property.id, source: 'webhook:limit-skip' });
           return;
         }
       }
@@ -346,6 +351,9 @@ export class ZodomusSyncService {
     }
 
     this.availabilityPush.scheduleAvailabilityPush(property.id);
+    if (processed > 0) {
+      this.calendarGateway.emitCalendarChanged({ propertyId: property.id, source: 'sync-queue' });
+    }
 
     return { processed, skipped, failed };
   }

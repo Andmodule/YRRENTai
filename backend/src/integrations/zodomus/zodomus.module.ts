@@ -14,6 +14,7 @@ import { PropertyEntity } from '../../property/entities/property.entity';
 import { PropertyChannelListingEntity } from '../../property/entities/property-channel-listing.entity';
 import { PropertyModule } from '../../property/property.module';
 import { UserModule } from '../../user/user.module';
+import { CalendarModule } from '../../calendar/calendar.module';
 import { ZodomusAvailabilityPushService } from './zodomus-availability-push.service';
 
 @Module({
@@ -22,6 +23,7 @@ import { ZodomusAvailabilityPushService } from './zodomus-availability-push.serv
     TypeOrmModule.forFeature([BookingEntity, PropertyEntity, PropertyChannelListingEntity]),
     PropertyModule,
     UserModule,
+    CalendarModule,
   ],
   controllers: [ZodomusController, ZodomusWebhookController, ZodomusAdminController],
   providers: [

@@ -17,6 +17,7 @@ import { useCalendarData } from './hooks/useCalendarData';
 import { useCalendarFilters } from './hooks/useCalendarFilters';
 import { useCalendarReservationSearch } from './hooks/useCalendarReservationSearch';
 import { useZodomusCalendarSync } from './hooks/useZodomusCalendarSync';
+import { useCalendarSocket } from './hooks/useCalendarSocket';
 import { getPropertyMeta } from './lib/property-meta';
 import { ProgramBlock } from './components/ProgramBlock';
 import { TimelineHeader } from './components/TimelineHeader';
@@ -61,6 +62,7 @@ export function CalendarView({
   const globalSearchReservations = reservationSearch.data ?? [];
   const searchDebouncedQuery = reservationSearch.debouncedQuery;
   const zodomusSync = useZodomusCalendarSync(1);
+  useCalendarSocket();
 
   const properties = data?.properties ?? [];
   const reservations = data?.reservations ?? [];
