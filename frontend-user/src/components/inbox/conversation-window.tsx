@@ -294,10 +294,10 @@ export function ConversationWindow({ conversation, onStaffReplySuccess }: Conver
             size="icon"
             className={cn(
               'h-12 w-12 shrink-0 rounded-lg border border-transparent p-0',
-              'bg-[#0f172a] text-[#008CA4] hover:bg-[#008CA4]/10 hover:text-[#007a90] hover:border-[#008CA4]/25',
-              'dark:bg-[#0d1421] dark:text-[#00d4ff] dark:hover:bg-[#00d4ff]/10 dark:hover:border-[#00d4ff]/20',
+              'bg-muted text-primary hover:border-primary/25 hover:bg-primary/10 hover:text-primary',
+              'dark:bg-[#0d1421] dark:text-[#00d4ff] dark:hover:border-[#00d4ff]/20 dark:hover:bg-[#00d4ff]/10',
               isNeedsHuman &&
-                'text-amber-600 hover:bg-amber-500/10 hover:border-amber-500/30 hover:text-amber-700 dark:text-amber-400 dark:hover:bg-amber-500/10 dark:hover:border-amber-500/25 dark:hover:text-amber-300',
+                'text-amber-600 hover:border-amber-500/30 hover:bg-amber-500/10 hover:text-amber-700 dark:text-amber-400 dark:hover:border-amber-500/25 dark:hover:bg-amber-500/10 dark:hover:text-amber-300',
             )}
           >
             <Send className="h-4 w-4" />

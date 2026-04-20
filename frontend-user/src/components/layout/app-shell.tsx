@@ -25,24 +25,24 @@ export function AppShell({ children }: AppShellProps) {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-screen bg-background dark:bg-slate-900">
-        <div className="hidden w-56 shrink-0 border-r border-slate-800 lg:block">
-          <div className="flex h-16 items-center border-b border-slate-800 px-6">
-            <div className="h-6 w-24 rounded-md bg-slate-800 animate-pulse" />
+      <div className="flex min-h-screen bg-background">
+        <div className="hidden w-56 shrink-0 border-r border-border lg:block dark:border-slate-800">
+          <div className="flex h-16 items-center border-b border-border px-6 dark:border-slate-800">
+            <div className="h-6 w-24 animate-pulse rounded-md bg-muted dark:bg-slate-800" />
           </div>
           <div className="space-y-2 p-4">
             {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="h-9 w-full rounded-md bg-slate-800 animate-pulse" />
+              <div key={i} className="h-9 w-full animate-pulse rounded-md bg-muted dark:bg-slate-800" />
             ))}
           </div>
         </div>
         <div className="flex flex-1 flex-col">
-          <div className="flex h-16 items-center border-b border-slate-800 px-6">
-            <div className="ml-auto h-8 w-32 rounded-md bg-slate-800 animate-pulse" />
+          <div className="flex h-16 items-center border-b border-border px-6 dark:border-slate-800">
+            <div className="ml-auto h-8 w-32 animate-pulse rounded-md bg-muted dark:bg-slate-800" />
           </div>
           <div className="flex flex-col gap-4 p-6">
-            <div className="h-8 w-48 rounded-md bg-slate-800 animate-pulse" />
-            <div className="h-48 w-full rounded-xl bg-slate-800 animate-pulse" />
+            <div className="h-8 w-48 animate-pulse rounded-md bg-muted dark:bg-slate-800" />
+            <div className="h-48 w-full animate-pulse rounded-xl bg-muted dark:bg-slate-800" />
           </div>
         </div>
       </div>

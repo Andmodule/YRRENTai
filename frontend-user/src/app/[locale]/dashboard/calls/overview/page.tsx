@@ -46,13 +46,23 @@ function KpiCard({
   isLoading?: boolean; href?: string; sparkline?: React.ReactNode;
 }) {
   const colors = {
-    default: 'border-slate-700 bg-slate-800/70',
-    cyan:    'border-cyan-500/30 bg-cyan-500/10',
-    amber:   'border-amber-500/30 bg-amber-500/10',
-    red:     'border-red-500/30 bg-red-500/10',
+    default: 'border-border bg-card dark:border-slate-700 dark:bg-slate-800/70',
+    cyan: 'border-cyan-500/30 bg-cyan-500/10',
+    amber: 'border-amber-500/30 bg-amber-500/10',
+    red: 'border-red-500/30 bg-red-500/10',
   };
-  const textColors = { default: 'text-white', cyan: 'text-cyan-200', amber: 'text-amber-200', red: 'text-red-200' };
-  const iconColors = { default: 'text-slate-400', cyan: 'text-cyan-400', amber: 'text-amber-400', red: 'text-red-400' };
+  const textColors = {
+    default: 'text-foreground dark:text-white',
+    cyan: 'text-cyan-800 dark:text-cyan-200',
+    amber: 'text-amber-800 dark:text-amber-200',
+    red: 'text-red-800 dark:text-red-200',
+  };
+  const iconColors = {
+    default: 'text-muted-foreground dark:text-slate-400',
+    cyan: 'text-cyan-600 dark:text-cyan-400',
+    amber: 'text-amber-600 dark:text-amber-400',
+    red: 'text-red-500 dark:text-red-400',
+  };
 
   const inner = (
     <div className={cn(
@@ -62,11 +72,11 @@ function KpiCard({
       pulse && 'ring-1 ring-cyan-500/50',
     )}>
       <div className="flex items-center justify-between">
-        <span className="text-[10px] uppercase tracking-widest text-slate-400 leading-none">{label}</span>
+        <span className="text-[10px] uppercase tracking-widest leading-none text-muted-foreground">{label}</span>
         <Icon className={cn('h-4 w-4 shrink-0', iconColors[color])} />
       </div>
       {isLoading ? (
-        <Skeleton className="h-7 w-14 bg-slate-700" />
+        <Skeleton className="h-7 w-14 bg-muted dark:bg-slate-700" />
       ) : (
         <span className={cn('text-xl font-bold tabular-nums leading-none', textColors[color])}>
           {value ?? '—'}
@@ -84,8 +94,8 @@ function KpiCard({
 function TrendBlock({ points }: { points: TrendPoint[] }) {
   if (points.length === 0) return null;
   return (
-    <div className="rounded-xl border border-slate-700 bg-slate-800/50 p-4">
-      <h3 className="text-xs font-semibold uppercase tracking-widest text-slate-500 mb-3">Тренды</h3>
+    <div className="rounded-xl border border-border bg-card p-4 dark:border-slate-700 dark:bg-slate-800/50">
+      <h3 className="mb-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground">Тренды</h3>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
           { key: 'callsCompleted' as const, label: 'Звонков', color: 'cyan' },
@@ -94,7 +104,7 @@ function TrendBlock({ points }: { points: TrendPoint[] }) {
           { key: 'p50TurnLatencyMs' as const, label: 'p50 ms', color: 'cyan' },
         ].map(({ key, label, color }) => (
           <div key={key} className="flex flex-col gap-1">
-            <span className="text-[10px] text-slate-500 uppercase tracking-wide">{label}</span>
+            <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</span>
             <Sparkline values={points.map((p) => p[key])} color={color} />
           </div>
         ))}
@@ -111,15 +121,15 @@ function HealthCard({ label, value, icon: Icon, warn, crit }: {
   const n = value ?? 0;
   const sev = n >= crit ? 'crit' : n >= warn ? 'warn' : 'ok';
   const colors = {
-    ok:   'border-slate-700 bg-slate-800/40 text-slate-300',
-    warn: 'border-amber-500/30 bg-amber-500/10 text-amber-200',
-    crit: 'border-red-500/30 bg-red-500/10 text-red-200',
+    ok: 'border-border bg-muted/60 text-foreground dark:border-slate-700 dark:bg-slate-800/40 dark:text-slate-300',
+    warn: 'border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-200',
+    crit: 'border-red-500/30 bg-red-500/10 text-red-800 dark:text-red-200',
   };
   return (
     <div className={cn('flex items-center gap-2 rounded-xl border px-3 py-2.5', colors[sev])}>
       <Icon className="h-4 w-4 shrink-0 opacity-70" />
       <div>
-        <div className="text-[10px] uppercase tracking-wide text-slate-400">{label}</div>
+        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
         <div className="text-sm font-bold tabular-nums">{value ?? '—'}</div>
       </div>
     </div>
@@ -143,21 +153,21 @@ export default function CallsOverviewPage() {
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
-          <h1 className="text-base font-bold text-white">Обзор голосового AI</h1>
-          <p className="text-xs text-slate-500">Обновляется каждые 15 с</p>
+          <h1 className="text-base font-bold text-foreground">Обзор голосового AI</h1>
+          <p className="text-xs text-muted-foreground">Обновляется каждые 15 с</p>
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex rounded-lg border border-slate-700 overflow-hidden text-xs font-medium">
+          <div className="flex overflow-hidden rounded-lg border border-border text-xs font-medium dark:border-slate-700">
             {(['today', '7d', '30d'] as Range[]).map((r) => (
               <button key={r} onClick={() => setRange(r)}
                 className={cn('px-2.5 py-1.5 transition-colors',
-                  range === r ? 'bg-cyan-500/20 text-cyan-300' : 'bg-slate-800 text-slate-400 hover:bg-slate-700')}>
+                  range === r ? 'bg-primary/15 text-primary dark:bg-cyan-500/20 dark:text-cyan-300' : 'bg-muted text-muted-foreground hover:bg-accent dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700')}>
                 {r === 'today' ? 'Сег.' : r}
               </button>
             ))}
           </div>
           <button onClick={() => void refetch()}
-            className="h-8 w-8 flex items-center justify-center rounded-lg border border-slate-700 bg-slate-800 text-slate-400 hover:text-slate-200">
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-muted text-muted-foreground transition-colors hover:text-foreground dark:border-slate-700 dark:bg-slate-800 dark:hover:text-slate-200">
             <RefreshCw className="h-3.5 w-3.5" />
           </button>
         </div>
@@ -200,20 +210,20 @@ export default function CallsOverviewPage() {
 
       {/* Active Alerts */}
       {(alertsLoading || alerts.length > 0) && (
-        <div className="rounded-xl border border-slate-700 bg-slate-800/50 p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-xs font-semibold uppercase tracking-widest text-slate-500">Активные алерты</h3>
+        <div className="rounded-xl border border-border bg-card p-4 dark:border-slate-700 dark:bg-slate-800/50">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Активные алерты</h3>
             <div className="flex items-center gap-1.5">
               <Link href="/dashboard/calls/live"
-                className="text-xs text-slate-500 hover:text-cyan-300 transition-colors px-2 py-1 rounded hover:bg-slate-700/50">
+                className="rounded px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-primary dark:hover:text-cyan-300 dark:hover:bg-slate-700/50">
                 Live →
               </Link>
               <Link href="/dashboard/calls/qa"
-                className="text-xs text-slate-500 hover:text-cyan-300 transition-colors px-2 py-1 rounded hover:bg-slate-700/50">
+                className="rounded px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-primary dark:hover:text-cyan-300 dark:hover:bg-slate-700/50">
                 QA →
               </Link>
               <Link href="/dashboard/calls/rollout"
-                className="text-xs text-slate-500 hover:text-teal-300 transition-colors px-2 py-1 rounded hover:bg-slate-700/50 flex items-center gap-1">
+                className="flex items-center gap-1 rounded px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-primary dark:hover:text-teal-300 dark:hover:bg-slate-700/50">
                 <Layers className="h-3 w-3" />Rollout →
               </Link>
             </div>
@@ -226,10 +236,10 @@ export default function CallsOverviewPage() {
       {trends && <TrendBlock points={trends.points} />}
 
       {/* System Health */}
-      <div className="rounded-xl border border-slate-700 bg-slate-800/50 p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <Activity className="h-4 w-4 text-slate-400" />
-          <h3 className="text-xs font-semibold uppercase tracking-widest text-slate-500">System Health (24h)</h3>
+      <div className="rounded-xl border border-border bg-card p-4 dark:border-slate-700 dark:bg-slate-800/50">
+        <div className="mb-3 flex items-center gap-2">
+          <Activity className="h-4 w-4 text-muted-foreground" />
+          <h3 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">System Health (24h)</h3>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           <HealthCard label="Webhook failures" value={health?.webhookFailureCount} icon={Webhook} warn={1} crit={5} />
@@ -261,27 +271,27 @@ function AlertList({ title, items, icon: Icon, emptyText, accentColor }: {
 }) {
   const borderColor = accentColor === 'amber' ? 'border-amber-500/30' : 'border-red-500/30';
   return (
-    <div className={cn('rounded-xl border bg-slate-800/50 p-4', borderColor)}>
-      <div className="flex items-center gap-2 mb-3">
+    <div className={cn('rounded-xl border bg-card p-4 dark:bg-slate-800/50', borderColor)}>
+      <div className="mb-3 flex items-center gap-2">
         <Icon className={cn('h-4 w-4', accentColor === 'amber' ? 'text-amber-400' : 'text-red-400')} />
-        <span className="text-xs font-semibold text-slate-300">{title}</span>
+        <span className="text-xs font-semibold text-foreground dark:text-slate-300">{title}</span>
       </div>
       {items.length === 0 ? (
-        <p className="text-sm text-slate-500">{emptyText}</p>
+        <p className="text-sm text-muted-foreground">{emptyText}</p>
       ) : (
         <ul className="space-y-2">
           {items.map((item) => (
             <li key={item.sessionId} className="flex items-center justify-between gap-2">
               <div className="flex-1 min-w-0">
                 <Link href={`/dashboard/calls/history?selectedSessionId=${item.sessionId}`}
-                  className="text-sm text-slate-300 hover:text-cyan-300 truncate block font-medium">
+                  className="block truncate text-sm font-medium text-foreground hover:text-primary dark:text-slate-300 dark:hover:text-cyan-300">
                   {item.guestPhone ?? item.sessionId.slice(0, 8)}
                 </Link>
                 {item.reason && (
-                  <span className="text-xs text-slate-500 truncate block">{item.reason}</span>
+                  <span className="block truncate text-xs text-muted-foreground">{item.reason}</span>
                 )}
               </div>
-              <span className="text-xs text-slate-500 shrink-0">
+              <span className="shrink-0 text-xs text-muted-foreground">
                 {formatDistanceToNow(new Date(item.occurredAt), { addSuffix: true, locale: ru })}
               </span>
             </li>

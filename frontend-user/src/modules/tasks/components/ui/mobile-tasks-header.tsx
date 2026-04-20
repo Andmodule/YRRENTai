@@ -129,8 +129,7 @@ export function MobileTasksHeader({ title }: MobileTasksHeaderProps) {
   );
 
   /** Тот же принцип, что у `Header` / staff: сплошной фон токенов, без glass и без tasks-theme на всей полосе */
-  const mobileHeaderBar =
-    'w-full bg-background/95 backdrop-blur-sm dark:bg-slate-900/85';
+  const mobileHeaderBar = 'w-full bg-background/95 backdrop-blur-sm dark:bg-background/90';
 
   if (mode === 'search') {
     return (

@@ -23,25 +23,25 @@ function CheckRow({ check }: { check: ReadinessCheck }) {
         onClick={() => check.details && setExpanded((v) => !v)}
         className={cn(
           'w-full flex items-start gap-3 px-3 py-2.5 rounded-lg text-left transition-colors',
-          check.details ? 'hover:bg-slate-800/40 cursor-pointer' : 'cursor-default',
+          check.details ? 'cursor-pointer hover:bg-muted/80 dark:hover:bg-slate-800/40' : 'cursor-default',
         )}
       >
         <Icon className={cn('h-4 w-4 mt-0.5 shrink-0', iconColor)} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-medium text-slate-200">{check.label}</span>
+            <span className="text-sm font-medium text-foreground dark:text-slate-200">{check.label}</span>
             <span className={cn('text-[10px] px-1.5 py-0.5 rounded-full font-semibold uppercase tracking-wide ring-1', badgeColor)}>
               {check.status}
             </span>
           </div>
-          <p className="text-xs text-slate-400 mt-0.5">{check.message}</p>
+          <p className="mt-0.5 text-xs text-muted-foreground dark:text-slate-400">{check.message}</p>
         </div>
         {check.details && (
-          <ChevronDown className={cn('h-3.5 w-3.5 text-slate-500 shrink-0 mt-0.5 transition-transform', expanded && 'rotate-180')} />
+          <ChevronDown className={cn('mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform dark:text-slate-500', expanded && 'rotate-180')} />
         )}
       </button>
       {expanded && check.details && (
-        <div className="ml-10 mr-3 mb-1 px-3 py-2 rounded-lg bg-slate-800/50 border border-slate-700/40 text-xs text-slate-400">
+        <div className="mb-1 ml-10 mr-3 rounded-lg border border-border bg-muted/70 px-3 py-2 text-xs text-muted-foreground dark:border-slate-700/40 dark:bg-slate-800/50 dark:text-slate-400">
           {check.details}
         </div>
       )}
@@ -97,12 +97,12 @@ export function ReadinessChecksList({ readiness }: Props) {
         }[sectionStatus];
 
         return (
-          <div key={section.title} className="rounded-xl border border-slate-700/50 bg-slate-900/40 overflow-hidden">
-            <div className="flex items-center gap-2 px-3 py-2 border-b border-slate-700/40 bg-slate-800/40">
-              <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', sectionDot)} />
-              <span className="text-xs font-semibold text-slate-400 uppercase tracking-widest">{section.title}</span>
+          <div key={section.title} className="overflow-hidden rounded-xl border border-border bg-card/90 dark:border-slate-700/50 dark:bg-slate-900/40">
+            <div className="flex items-center gap-2 border-b border-border bg-muted/50 px-3 py-2 dark:border-slate-700/40 dark:bg-slate-800/40">
+              <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', sectionDot)} />
+              <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground dark:text-slate-400">{section.title}</span>
             </div>
-            <div className="divide-y divide-slate-800/40">
+            <div className="divide-y divide-border dark:divide-slate-800/40">
               {checks.map((c) => <CheckRow key={c.key} check={c} />)}
             </div>
           </div>
@@ -115,11 +115,11 @@ export function ReadinessChecksList({ readiness }: Props) {
         const extra = readiness.checks.filter((c) => !definedKeys.has(c.key));
         if (extra.length === 0) return null;
         return (
-          <div className="rounded-xl border border-slate-700/50 bg-slate-900/40 overflow-hidden">
-            <div className="px-3 py-2 border-b border-slate-700/40 bg-slate-800/40">
-              <span className="text-xs font-semibold text-slate-400 uppercase tracking-widest">Other</span>
+          <div className="overflow-hidden rounded-xl border border-border bg-card/90 dark:border-slate-700/50 dark:bg-slate-900/40">
+            <div className="border-b border-border bg-muted/50 px-3 py-2 dark:border-slate-700/40 dark:bg-slate-800/40">
+              <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground dark:text-slate-400">Other</span>
             </div>
-            <div className="divide-y divide-slate-800/40">
+            <div className="divide-y divide-border dark:divide-slate-800/40">
               {extra.map((c) => <CheckRow key={c.key} check={c} />)}
             </div>
           </div>

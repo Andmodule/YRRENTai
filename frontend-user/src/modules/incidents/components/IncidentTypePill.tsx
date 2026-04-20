@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils';
 import type { Incident } from '../hooks/useIncidents';
 
 const TYPE_CLASS: Record<Incident['type'], string> = {
-  damage: 'border-red-500/20 bg-red-500/5 text-red-800/85 dark:text-red-200/60',
+  damage: 'border-destructive/25 bg-destructive/8 text-destructive dark:text-red-200/80',
   lost_item: 'border-yellow-500/20 bg-yellow-500/6 text-yellow-900/75 dark:text-yellow-200/55',
   rule_violation: 'border-orange-500/25 bg-orange-500/8 text-orange-950/90 dark:text-orange-100/80',
   emergency: 'border-violet-500/35 bg-violet-500/12 text-violet-950 dark:text-violet-100',

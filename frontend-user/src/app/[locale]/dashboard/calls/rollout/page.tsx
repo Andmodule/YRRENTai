@@ -34,15 +34,15 @@ export default function CallsRolloutPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-base font-bold text-white flex items-center gap-2">
-            <Layers className="h-4 w-4 text-cyan-400" />
+          <h1 className="flex items-center gap-2 text-base font-bold text-foreground">
+            <Layers className="h-4 w-4 text-primary dark:text-cyan-400" />
             Rollout Control
           </h1>
-          <p className="text-xs text-slate-500 mt-0.5">Управление когортным включением voice AI по объектам</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">Управление когортным включением voice AI по объектам</p>
         </div>
         <button
           onClick={() => void refetch()}
-          className="h-8 w-8 flex items-center justify-center rounded-lg border border-slate-700 bg-slate-800 text-slate-400 hover:text-slate-200 transition-colors"
+          className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-muted text-muted-foreground transition-colors hover:text-foreground dark:border-slate-700 dark:bg-slate-800 dark:hover:text-slate-200"
         >
           <RefreshCw className="h-3.5 w-3.5" />
         </button>
@@ -50,18 +50,18 @@ export default function CallsRolloutPage() {
 
       {/* Cohort summary */}
       <section>
-        <h2 className="text-[10px] text-slate-500 uppercase tracking-widest mb-2">По когортам</h2>
+        <h2 className="mb-2 text-[10px] uppercase tracking-widest text-muted-foreground">По когортам</h2>
         <CohortSummaryCards summary={summary} isLoading={isLoading} />
       </section>
 
       {/* Provider summary */}
       <section>
-        <h2 className="text-[10px] text-slate-500 uppercase tracking-widest mb-2">По провайдерам</h2>
+        <h2 className="mb-2 text-[10px] uppercase tracking-widest text-muted-foreground">По провайдерам</h2>
         <ProviderSummaryCards summary={summary} isLoading={isLoading} />
       </section>
 
       {/* Rollout table */}
-      <section className="rounded-xl border border-slate-700 bg-slate-900/50 overflow-hidden">
+      <section className="overflow-hidden rounded-xl border border-border bg-card dark:border-slate-700 dark:bg-slate-900/50">
         {/* Bulk actions bar */}
         <BulkCohortActionBar selectedIds={[...selectedIds]} onClear={handleClear} />
 
@@ -77,7 +77,7 @@ export default function CallsRolloutPage() {
       </section>
 
       {/* Warning: cannot enable without pilot+ cohort */}
-      <p className="text-[10px] text-slate-600 text-center">
+      <p className="text-center text-[10px] text-muted-foreground dark:text-slate-600">
         ⚠ Включить voice можно только для объектов в когорте pilot / beta / stable
       </p>
     </div>

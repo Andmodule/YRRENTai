@@ -45,18 +45,21 @@ export default function CallsLayout({ children }: { children: React.ReactNode })
     <div className="flex flex-col h-full min-h-0 -mx-4 -mt-4 sm:-mx-6 sm:-mt-6">
       {/* Alert bar — only when critical alerts exist */}
       {hasAlert && (
-        <div className="flex items-center gap-2 px-4 py-2 bg-red-950/60 border-b border-red-700/40 text-red-300 text-xs shrink-0">
-          <span className="h-1.5 w-1.5 rounded-full bg-red-400 animate-pulse" />
+        <div className="flex items-center gap-2 px-4 py-2 shrink-0 border-b border-destructive/30 bg-destructive/10 text-xs text-destructive dark:bg-red-950/60 dark:border-red-700/40 dark:text-red-300">
+          <span className="h-1.5 w-1.5 rounded-full bg-destructive animate-pulse dark:bg-red-400" />
           <span>{criticalCount} критичный алерт{criticalCount > 1 ? 'а' : ''} — немедленное внимание</span>
-          <Link href="/dashboard/calls/overview" className="ml-auto text-red-400 hover:text-red-200 flex items-center gap-0.5">
+          <Link
+            href="/dashboard/calls/overview"
+            className="ml-auto flex items-center gap-0.5 font-medium text-destructive hover:text-destructive/80 dark:text-red-400 dark:hover:text-red-200"
+          >
             Перейти <ChevronRight className="h-3 w-3" />
           </Link>
         </div>
       )}
 
       {/* Sub-nav */}
-      <div className="flex items-center gap-0 overflow-x-auto border-b border-slate-700/60 bg-slate-900/80 px-2 sm:px-4 shrink-0">
-        <span className="mr-2 text-xs font-semibold text-slate-500 uppercase tracking-widest whitespace-nowrap hidden md:block py-2.5 shrink-0">
+      <div className="flex shrink-0 items-center gap-0 overflow-x-auto border-b border-border bg-muted/50 px-2 sm:px-4 dark:border-slate-700/60 dark:bg-slate-900/80">
+        <span className="mr-2 hidden shrink-0 py-2.5 text-xs font-semibold uppercase tracking-widest text-muted-foreground md:block">
           Звонки
         </span>
 
@@ -71,10 +74,10 @@ export default function CallsLayout({ children }: { children: React.ReactNode })
               key={href}
               href={href}
               className={cn(
-                'flex items-center gap-1.5 whitespace-nowrap px-2.5 py-3 text-sm font-medium border-b-2 transition-colors shrink-0',
+                'flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-2.5 py-3 text-sm font-medium transition-colors',
                 isActive
-                  ? 'border-cyan-400 text-cyan-300'
-                  : 'border-transparent text-slate-400 hover:text-slate-200',
+                  ? 'border-primary text-primary dark:border-cyan-400 dark:text-cyan-300'
+                  : 'border-transparent text-muted-foreground hover:text-foreground dark:text-slate-400 dark:hover:text-slate-200',
               )}
             >
               <Icon className="h-3.5 w-3.5 shrink-0" />
@@ -90,7 +93,7 @@ export default function CallsLayout({ children }: { children: React.ReactNode })
               )}
               {/* QA: pending count */}
               {isQa && badge > 0 && (
-                <span className="rounded-full bg-teal-500/20 text-teal-300 text-[10px] font-bold px-1.5 py-0.5 min-w-[1.2rem] text-center ring-1 ring-teal-500/30 shrink-0">
+                <span className="min-w-[1.2rem] shrink-0 rounded-full bg-primary/15 px-1.5 py-0.5 text-center text-[10px] font-bold text-primary ring-1 ring-primary/25 dark:bg-teal-500/20 dark:text-teal-300 dark:ring-teal-500/30">
                   {badge > 99 ? '99+' : badge}
                 </span>
               )}
@@ -99,7 +102,7 @@ export default function CallsLayout({ children }: { children: React.ReactNode })
         })}
 
         {/* Separator */}
-        <div className="h-4 w-px bg-slate-700/60 mx-1 shrink-0 hidden sm:block" />
+        <div className="mx-1 hidden h-4 w-px shrink-0 bg-border dark:bg-slate-700/60 sm:block" />
 
         {/* Secondary tabs — hidden on very small screens, shown via More */}
         <div className="hidden sm:flex items-center">
@@ -110,10 +113,10 @@ export default function CallsLayout({ children }: { children: React.ReactNode })
                 key={href}
                 href={href}
                 className={cn(
-                  'flex items-center gap-1.5 whitespace-nowrap px-2.5 py-3 text-sm font-medium border-b-2 transition-colors shrink-0',
+                  'flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-2.5 py-3 text-sm font-medium transition-colors',
                   isActive
-                    ? 'border-cyan-400 text-cyan-300'
-                    : 'border-transparent text-slate-400 hover:text-slate-200',
+                    ? 'border-primary text-primary dark:border-cyan-400 dark:text-cyan-300'
+                    : 'border-transparent text-muted-foreground hover:text-foreground dark:text-slate-400 dark:hover:text-slate-200',
                 )}
               >
                 <Icon className="h-3.5 w-3.5 shrink-0" />
@@ -127,18 +130,18 @@ export default function CallsLayout({ children }: { children: React.ReactNode })
         <div className="sm:hidden relative ml-auto">
           <button
             onClick={() => setShowMore((v) => !v)}
-            className="flex items-center gap-1 px-2.5 py-3 text-sm text-slate-400 hover:text-slate-200"
+            className="flex items-center gap-1 px-2.5 py-3 text-sm text-muted-foreground hover:text-foreground dark:text-slate-400 dark:hover:text-slate-200"
           >
             <ChevronRight className={cn('h-4 w-4 transition-transform', showMore && 'rotate-90')} />
           </button>
           {showMore && (
-            <div className="absolute right-0 top-full z-50 bg-slate-800 border border-slate-700 rounded-lg shadow-lg py-1 min-w-[140px]">
+            <div className="absolute right-0 top-full z-50 min-w-[140px] rounded-lg border border-border bg-popover py-1 shadow-lg dark:border-slate-700 dark:bg-slate-800">
               {SECONDARY_NAV.map(({ href, label, icon: Icon }) => (
                 <Link
                   key={href}
                   href={href}
                   onClick={() => setShowMore(false)}
-                  className="flex items-center gap-2 px-3 py-2 text-sm text-slate-300 hover:bg-slate-700/50"
+                  className="flex items-center gap-2 px-3 py-2 text-sm text-popover-foreground hover:bg-muted dark:text-slate-300 dark:hover:bg-slate-700/50"
                 >
                   <Icon className="h-3.5 w-3.5" />
                   {label}
@@ -150,7 +153,7 @@ export default function CallsLayout({ children }: { children: React.ReactNode })
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-3 sm:p-5 text-white">
+      <div className="flex-1 overflow-y-auto p-3 text-foreground sm:p-5">
         {children}
       </div>
     </div>

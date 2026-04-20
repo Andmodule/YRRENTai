@@ -3,6 +3,7 @@
 import { useTranslations } from 'next-intl';
 import { cn } from '@/lib/utils';
 import type { TaskFilters, TaskPriority, TaskStatus } from '../../types';
+import { tasksChipActiveClasses, tasksChipIdleClasses } from '../../tasks-chip-classes';
 
 const STATUSES: (TaskStatus | 'all')[] = ['all', 'pending', 'in_progress', 'done'];
 const PRIORITIES: (TaskPriority | 'all')[] = ['all', 'urgent', 'normal'];
@@ -20,11 +21,8 @@ export function TasksFiltersBar({
 
   const chipBase =
     'inline-flex shrink-0 items-center justify-center rounded-full border px-2.5 py-0.5 text-[10px] font-medium transition-colors duration-150';
-  /** Selected: палитра как у иконки (teal #008CA4, светлый фон/обводка #E0F2F5 / #D1EBF1) */
-  const chipActive =
-    'border-[#D1EBF1] bg-[#E0F2F5] text-[#008CA4] shadow-sm font-semibold dark:border-[#00d4ff]/40 dark:bg-[#00d4ff]/14 dark:text-[#a5f3fc] dark:font-semibold';
-  const chipIdle =
-    'border-slate-200 bg-white text-slate-600 shadow-sm hover:border-slate-300 hover:bg-slate-50 dark:border-slate-600/55 dark:bg-slate-900/55 dark:text-slate-300 dark:hover:bg-slate-800/90';
+  const chipActive = tasksChipActiveClasses;
+  const chipIdle = tasksChipIdleClasses;
 
   return (
     <div
@@ -53,7 +51,7 @@ export function TasksFiltersBar({
             </button>
           );
         })}
-        <div className="h-4 w-px shrink-0 bg-slate-200/90 dark:bg-slate-600/55" aria-hidden />
+        <div className="h-4 w-px shrink-0 bg-border" aria-hidden />
         {PRIORITIES.map((p) => {
           const active = filters.priorityFilter === p;
           const label = p === 'all' ? t('filters.all') : tPriority(p);

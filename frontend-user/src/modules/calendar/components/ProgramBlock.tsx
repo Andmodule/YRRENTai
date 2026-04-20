@@ -1,5 +1,13 @@
 'use client';
 
+/**
+ * Источник канала (Booking / Airbnb / …) в 2026‑подходе лучше не дублировать в каждой ячейке:
+ * — тонкий «ноготь» цвета канала только снизу полосы брони (data-channel + CSS);
+ * — или одна легенда в шапке календаря + фильтр по каналу;
+ * — или подпись только в тултипе / в детальной карточке (как сейчас в tooltip).
+ * В ячейке оставляем плотный ряд без текста канала, чтобы не ломать выравнивание при склейке сегментов.
+ */
+
 import { memo, useCallback, useMemo } from 'react';
 import { useProgram } from 'planby';
 import type { ProgramItem as PlanbyProgramRow } from 'planby/dist/Epg/helpers/types';
@@ -8,9 +16,12 @@ import { useTranslations } from 'next-intl';
 import { cn } from '@/lib/utils';
 import { useDateLocale } from '@/hooks/useDateLocale';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import type { BookingChannel, BookingStatus, Reservation } from '../types';
+import type { BookingStatus, Reservation } from '../types';
+import { calendarTimelineCardClasses } from '../lib/calendar-status-styles';
 import { parseLocalCalendarDay } from '../lib/calendar-api-dates';
 import { countNights } from '../lib/property-meta';
+
+const WIDE_NIGHTS_PX = 120;
 
 const statusLabelKey: Record<BookingStatus, string> = {
   confirmed: 'statusConfirmed',
@@ -20,69 +31,34 @@ const statusLabelKey: Record<BookingStatus, string> = {
   cancelled: 'statusCancelled',
 };
 
-/** Канал: цвет левой кромки (как в плотных PMS — без текста в ячейке). */
-const channelAccentLeft: Record<BookingChannel, string> = {
-  booking: 'border-l-[3px] border-l-blue-600 dark:border-l-blue-400',
-  airbnb: 'border-l-[3px] border-l-rose-500 dark:border-l-rose-400',
-  direct: 'border-l-[3px] border-l-teal-600 dark:border-l-teal-400',
-  other: 'border-l-[3px] border-l-violet-600 dark:border-l-violet-400',
-};
-
-const channelTooltipKey: Record<BookingChannel, string> = {
-  booking: 'channelBooking',
-  airbnb: 'channelAirbnb',
-  direct: 'channelDirect',
-  other: 'channelOther',
-};
-
 /**
- * PMS-style «occupancy ribbon»: одна цельная полоса со сплошной заливкой (без контурных «квадратов»).
- * Соотношение ширин 2:2:…:1 совпадает с Planby till = полдень дня выезда.
+ * Полоска совпадает с Planby: since/till = полдень заезда / полдень выезда → 12h заезд : 24×(n−1)h ночи : 12h выезд.
+ * Оттенки подобраны так, чтобы слева→направо яркость не «переворачивалась» между light/dark (слева темнее заезда, справа светлее выезда).
  */
 function NightSegmentStrip({ nightCount, t }: { nightCount: number; t: (key: string) => string }) {
-  const nights = Math.max(1, nightCount);
-  const segments = nights + 1;
+  const n = Math.max(1, nightCount);
+  const growO = 12;
+  const growG = 12;
+  const growB = Math.max(0, 24 * n - 24);
   return (
-    <div
-      className="flex h-3 w-full shrink-0 overflow-hidden bg-muted/50 dark:bg-muted/25"
-      aria-hidden
-    >
-      {Array.from({ length: segments }, (_, i) => {
-        const isLast = i === segments - 1;
-        const flex = isLast ? '1 1 0%' : '2 1 0%';
-        return (
-          <div key={i} className="flex min-w-0 overflow-hidden" style={{ flex }}>
-            {i === 0 ? (
-              <>
-                <div
-                  className="h-full min-w-0 flex-1 bg-muted/60 dark:bg-muted/35"
-                  title={t('timelineSegmentPreArrival')}
-                />
-                <div
-                  className="h-full min-w-0 flex-1 bg-amber-400/75 dark:bg-amber-800/55"
-                  title={t('timelineSegmentCheckin')}
-                />
-              </>
-            ) : isLast ? (
-              <>
-                <div
-                  className="h-full min-w-0 flex-1 bg-emerald-500/70 dark:bg-emerald-800/50"
-                  title={t('timelineSegmentCheckout')}
-                />
-                <div
-                  className="h-full min-w-0 flex-1 bg-muted/60 dark:bg-muted/35"
-                  title={t('timelineSegmentPostCheckout')}
-                />
-              </>
-            ) : (
-              <div
-                className="h-full w-full bg-sky-500/65 dark:bg-sky-800/50"
-                title={t('timelineSegmentStay')}
-              />
-            )}
-          </div>
-        );
-      })}
+    <div className="flex h-2.5 w-full shrink-0 overflow-hidden rounded-t-lg" aria-hidden>
+      <div
+        className="min-w-0 bg-teal-800 dark:bg-teal-700"
+        style={{ flex: `${growO} 1 0%` }}
+        title={t('timelineSegmentCheckin')}
+      />
+      {growB > 0 ? (
+        <div
+          className={cn('min-w-0 bg-sky-600 dark:bg-sky-700')}
+          style={{ flex: `${growB} 1 0%` }}
+          title={t('timelineSegmentStay')}
+        />
+      ) : null}
+      <div
+        className="min-w-0 bg-emerald-500 dark:bg-emerald-400"
+        style={{ flex: `${growG} 1 0%` }}
+        title={t('timelineSegmentCheckout')}
+      />
     </div>
   );
 }
@@ -115,6 +91,8 @@ export const ProgramBlock = memo(function ProgramBlock({ program, onSelect, isMo
   const reservation = data._reservation;
   const status: BookingStatus = reservation?.status ?? 'pending';
 
+  const blockWidth = layoutStyles.width;
+  const showNights = blockWidth >= WIDE_NIGHTS_PX && reservation;
   const nights = reservation ? countNights(reservation.checkIn, reservation.checkOut) : 0;
 
   const tooltipText = useMemo(() => {
@@ -124,22 +102,18 @@ export const ProgramBlock = memo(function ProgramBlock({ program, onSelect, isMo
       currency: reservation.currency,
     }).format(reservation.totalPrice);
     const st = t(statusLabelKey[reservation.status]);
-    const ch = t(channelTooltipKey[reservation.channel]);
     const lines = [
       reservation.guestName,
       `${format(parseLocalCalendarDay(reservation.checkIn), 'd MMM', { locale })} → ${format(parseLocalCalendarDay(reservation.checkOut), 'd MMM yyyy', { locale })}`,
-      ch,
       st,
       price,
-      `${nights} ${t('nights')}`,
     ];
     if (reservation.fromOta) lines.push(t('otaSyncedTooltip'));
     if (status !== 'cancelled' && status !== 'blocked') {
       lines.push('', t('timelineLegendShort'));
     }
-    if (reservation.channel === 'other') lines.push('', t('channelOtherPlatformsHint'));
     return lines.join('\n');
-  }, [reservation, locale, t, status, nights]);
+  }, [reservation, locale, t, status]);
 
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -160,16 +134,16 @@ export const ProgramBlock = memo(function ProgramBlock({ program, onSelect, isMo
     [onSelect, reservation],
   );
 
-  /** Отмена: узкая заливка, клик не блокирует сетку под собой. */
+  /** Отмена: тонкая полоска сверху слота — не перехватывает клик по сетке под собой. */
   if (status === 'cancelled' && reservation) {
     const ribbon = (
       <button
         type="button"
         data-testid="program-item"
-        className="pointer-events-auto absolute left-0 top-0 z-[3] h-2.5 min-h-[10px] w-full max-w-full rounded-sm bg-muted-foreground/40 outline-none transition-colors hover:bg-muted-foreground/55 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background dark:bg-zinc-500/45 dark:hover:bg-zinc-500/60"
+        className="pointer-events-auto absolute left-0 top-0 z-[3] h-2.5 min-h-[10px] w-full max-w-full rounded-sm border border-border/60 bg-muted-foreground/35 outline-none transition-colors hover:bg-muted-foreground/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background dark:bg-zinc-500/30 dark:hover:bg-zinc-500/45"
         onClick={handleClick}
         onKeyDown={handleKeyDown}
-        aria-label={tooltipText.replace(/\n/g, ', ')}
+        aria-label={tooltipText ? tooltipText.replace(/\n/g, ', ') : reservation.guestName}
       />
     );
     return (
@@ -187,19 +161,17 @@ export const ProgramBlock = memo(function ProgramBlock({ program, onSelect, isMo
     );
   }
 
-  const channel = reservation?.channel ?? 'direct';
-  const cardShell = cn(
-    'box-border flex h-full min-h-[40px] w-full flex-col overflow-hidden rounded-md border border-border/70 bg-card shadow-sm transition-colors dark:bg-card/85',
-    'hover:brightness-[1.02] dark:hover:brightness-110',
-    status !== 'blocked' && reservation && channelAccentLeft[channel],
-    status === 'blocked' && 'border-l-[3px] border-l-zinc-900 bg-muted dark:border-l-zinc-200 dark:bg-zinc-950/80',
-  );
-
   const blockInner = (
-    <div className={cardShell} style={{ width: layoutStyles.width }}>
+    <div
+      className={cn(
+        'box-border flex h-full min-h-[40px] w-full flex-col overflow-hidden rounded-lg border shadow-sm',
+        calendarTimelineCardClasses[status],
+      )}
+      style={{ width: layoutStyles.width }}
+    >
       {status === 'blocked' ? (
         <div
-          className="h-3 w-full shrink-0 bg-zinc-900 dark:bg-zinc-950"
+          className="h-2.5 w-full shrink-0 bg-zinc-950 dark:bg-black"
           title={t('timelineSegmentTechnical')}
           aria-hidden
         />
@@ -209,13 +181,22 @@ export const ProgramBlock = memo(function ProgramBlock({ program, onSelect, isMo
       <button
         type="button"
         className={cn(
-          'flex min-h-0 flex-1 cursor-pointer items-center justify-center rounded-none bg-muted/25 px-0 py-0 dark:bg-muted/15',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset',
+          'flex min-h-0 flex-1 items-center justify-end gap-1 rounded-b-lg px-1.5 py-0.5 text-left text-xs font-medium',
+          'cursor-pointer transition-colors duration-200 hover:brightness-95 dark:hover:brightness-110',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
         )}
-        aria-label={reservation ? tooltipText.replace(/\n/g, ', ') : undefined}
+        role="button"
+        tabIndex={0}
         onClick={handleClick}
         onKeyDown={handleKeyDown}
-      />
+        aria-label={tooltipText ? tooltipText.replace(/\n/g, ', ') : 'booking'}
+      >
+        {showNights && reservation ? (
+          <span className="shrink-0 text-[10px] font-normal text-muted-foreground">
+            {nights} {t('nightsShort')}
+          </span>
+        ) : null}
+      </button>
     </div>
   );
 

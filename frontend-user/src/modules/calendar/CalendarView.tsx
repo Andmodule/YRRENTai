@@ -174,8 +174,8 @@ export function CalendarView({
         title: r.guestName,
         description: '',
         image: '',
-        since: format(parseLocalCalendarDay(r.checkIn), "yyyy-MM-dd'T'HH:mm:ss"),
-        /** Noon on checkout calendar day: last half-day band (green) sits on the checkout column, not on last night only. */
+        /** Noon check-in → noon checkout: bar aligns with PM arrival and AM departure (not full midnight cells). */
+        since: format(addHours(parseLocalCalendarDay(r.checkIn), 12), "yyyy-MM-dd'T'HH:mm:ss"),
         till: format(addHours(parseLocalCalendarDay(r.checkOut), 12), "yyyy-MM-dd'T'HH:mm:ss"),
         _reservation: r,
       })),
@@ -414,7 +414,6 @@ export function CalendarView({
 
   /** Кнопка синка показывается при любых объектах; без Zodomus id тост подскажет. */
   const showSyncOta = useMemo(() => properties.length > 0, [properties]);
-  const showEmptyPeriodHint = reservations.length === 0 && properties.length > 0;
   const showFiltersEmptyHint =
     reservations.length > 0 && filteredReservations.length === 0 && properties.length > 0;
 
@@ -555,16 +554,6 @@ export function CalendarView({
         onSyncOta={onSyncOta}
         isSyncingOta={zodomusSync.isPending}
       />
-      {showEmptyPeriodHint ? (
-        <Alert className="mb-3 border-dashed">
-          <AlertDescription className="space-y-1">
-            <span className="block">{t('emptyPeriodHint')}</span>
-            {showSyncOta ? (
-              <span className="block text-muted-foreground">{t('emptyPeriodOtaHint')}</span>
-            ) : null}
-          </AlertDescription>
-        </Alert>
-      ) : null}
       {showFiltersEmptyHint ? (
         <Alert className="mb-3 border-dashed" variant="default">
           <AlertDescription>{t('emptyFiltersHint')}</AlertDescription>

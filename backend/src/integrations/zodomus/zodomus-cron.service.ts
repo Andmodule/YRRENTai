@@ -1,19 +1,24 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { PropertyChannelListingEntity } from '../../property/entities/property-channel-listing.entity';
 import { ZodomusService } from './zodomus.service';
 import { ZodomusSyncService } from './zodomus-sync.service';
 import { ZodomusAvailabilityPushService } from './zodomus-availability-push.service';
 
 /**
  * Polls the Zodomus reservations-queue on a configurable interval as a backup to webhooks.
+ * Iterates ALL channel ids found across property_channel_listings (not just ZODOMUS_DEFAULT_CHANNEL_ID).
  * Also retries failed availability pushes (dirty flag) and runs a nightly full reconcile.
  * Uses Node.js setInterval (no @nestjs/schedule dependency needed).
  *
  * Env:
- *   ZODOMUS_POLL_INTERVAL_MINUTES  — default 360 (6 hours)
- *   ZODOMUS_DEFAULT_CHANNEL_ID     — default 1 (Booking.com)
- *   ZODOMUS_AVAILABILITY_DIRTY_RETRY_MINUTES — default 15
- *   ZODOMUS_AVAILABILITY_NIGHTLY_HOUR_UTC — default 3
+ *   ZODOMUS_POLL_INTERVAL_MINUTES             — default 360 (6 hours)
+ *   ZODOMUS_DEFAULT_CHANNEL_ID                — fallback channel id when no listings exist (default 1)
+ *   ZODOMUS_AVAILABILITY_DIRTY_RETRY_MINUTES  — default 15
+ *   ZODOMUS_AVAILABILITY_NIGHTLY_HOUR_UTC     — default 3
+ *   ZODOMUS_AVAILABILITY_BATCH_GAP_MS         — pause between channels/properties (default 1000)
  */
 @Injectable()
 export class ZodomusCronService implements OnModuleInit, OnModuleDestroy {
@@ -28,6 +33,8 @@ export class ZodomusCronService implements OnModuleInit, OnModuleDestroy {
     private readonly syncService: ZodomusSyncService,
     private readonly availabilityPush: ZodomusAvailabilityPushService,
     private readonly config: ConfigService,
+    @InjectRepository(PropertyChannelListingEntity)
+    private readonly listingRepo: Repository<PropertyChannelListingEntity>,
   ) {}
 
   onModuleInit(): void {
@@ -81,18 +88,57 @@ export class ZodomusCronService implements OnModuleInit, OnModuleDestroy {
     await this.availabilityPush.nightlyReconcileAll();
   }
 
+  /**
+   * Resolves the set of all Zodomus channel ids present in property_channel_listings.
+   * Falls back to ZODOMUS_DEFAULT_CHANNEL_ID when no listings exist (legacy single-channel setup).
+   */
+  private async resolveAllChannelIds(): Promise<number[]> {
+    const rows = await this.listingRepo
+      .createQueryBuilder('cl')
+      .innerJoin('cl.otaPlatform', 'op')
+      .select('op.zodomusChannelId', 'channelId')
+      .where('op.zodomusChannelId IS NOT NULL')
+      .distinct(true)
+      .getRawMany<{ channelId: number }>();
+
+    const ids = rows
+      .map((r) => Number(r.channelId))
+      .filter((id) => Number.isFinite(id) && id > 0);
+
+    if (ids.length === 0) {
+      const def = Number(this.config.get<string>('ZODOMUS_DEFAULT_CHANNEL_ID') ?? 1);
+      return [def];
+    }
+    return ids;
+  }
+
   private async pollAll(): Promise<void> {
-    const channelId = Number(this.config.get<string>('ZODOMUS_DEFAULT_CHANNEL_ID') ?? 1);
-    this.logger.debug(`Cron poll: channelId=${channelId}`);
+    const gapMs = this.config.get<number>('ZODOMUS_AVAILABILITY_BATCH_GAP_MS') ?? 1000;
+
+    let channelIds: number[];
     try {
-      const result = await this.syncService.syncAllProperties(channelId);
-      if (result.propertiesTouched > 0) {
-        this.logger.log(
-          `Cron poll done: properties=${result.propertiesTouched} processed=${result.processed} skipped=${result.skipped} failed=${result.failed}`,
-        );
-      }
+      channelIds = await this.resolveAllChannelIds();
     } catch (e) {
-      this.logger.error(`Cron poll error: ${String(e)}`);
+      this.logger.error(`Cron poll: could not resolve channel ids: ${String(e)}`);
+      return;
+    }
+
+    this.logger.debug(`Cron poll: channels=${channelIds.join(',')}`);
+
+    for (const channelId of channelIds) {
+      try {
+        const result = await this.syncService.syncAllProperties(channelId);
+        if (result.propertiesTouched > 0) {
+          this.logger.log(
+            `Cron poll ch=${channelId}: properties=${result.propertiesTouched} processed=${result.processed} skipped=${result.skipped} failed=${result.failed}`,
+          );
+        }
+      } catch (e) {
+        this.logger.error(`Cron poll ch=${channelId} error: ${String(e)}`);
+      }
+      if (gapMs > 0 && channelIds.length > 1) {
+        await new Promise((r) => setTimeout(r, gapMs));
+      }
     }
   }
 }

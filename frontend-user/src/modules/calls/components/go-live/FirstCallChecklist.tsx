@@ -47,15 +47,15 @@ function CheckItem({ item }: { item: ChecklistItem }) {
     )}>
       <Icon className={cn('h-4 w-4 mt-0.5 shrink-0', iconColor)} />
       <div className="flex-1 min-w-0">
-        <p className={cn('text-xs font-medium', item.status === 'ok' ? 'text-slate-300' : 'text-slate-200')}>
+        <p className={cn('text-xs font-medium', item.status === 'ok' ? 'text-muted-foreground dark:text-slate-300' : 'text-foreground dark:text-slate-200')}>
           {item.label}
         </p>
         {item.hint && (
-          <p className="text-[10px] text-slate-500 mt-0.5">{item.hint}</p>
+          <p className="mt-0.5 text-[10px] text-muted-foreground dark:text-slate-500">{item.hint}</p>
         )}
       </div>
       {item.link && (
-        <ArrowRight className="h-3.5 w-3.5 text-slate-600 shrink-0 mt-0.5" />
+        <ArrowRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground dark:text-slate-600" />
       )}
     </div>
   );
@@ -190,16 +190,16 @@ export function FirstCallChecklist({ readiness }: Props) {
   const ready = missingCount === 0;
 
   return (
-    <div className="rounded-xl border border-slate-700/50 bg-slate-900/40 overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-700/40 bg-slate-800/40">
+    <div className="overflow-hidden rounded-xl border border-border bg-card/90 dark:border-slate-700/50 dark:bg-slate-900/40">
+      <div className="flex items-center justify-between border-b border-border bg-muted/60 px-4 py-3 dark:border-slate-700/40 dark:bg-slate-800/40">
         <div className="flex items-center gap-2">
           <Radio className={cn('h-4 w-4', ready ? 'text-teal-400' : 'text-amber-400')} />
-          <span className="text-sm font-semibold text-slate-200">First Real Call Checklist</span>
+          <span className="text-sm font-semibold text-foreground dark:text-slate-200">First Real Call Checklist</span>
         </div>
-        <div className="flex items-center gap-1.5 text-xs text-slate-400">
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground dark:text-slate-400">
           <span className="text-teal-400 font-semibold">{okCount}</span>
-          {warnCount > 0 && <><span>/</span><span className="text-amber-400 font-semibold">{warnCount}</span><span className="text-slate-500">warn</span></>}
-          {missingCount > 0 && <><span>/</span><span className="text-red-400 font-semibold">{missingCount}</span><span className="text-slate-500">missing</span></>}
+          {warnCount > 0 && <><span>/</span><span className="font-semibold text-amber-600 dark:text-amber-400">{warnCount}</span><span className="text-muted-foreground dark:text-slate-500">warn</span></>}
+          {missingCount > 0 && <><span>/</span><span className="font-semibold text-red-600 dark:text-red-400">{missingCount}</span><span className="text-muted-foreground dark:text-slate-500">missing</span></>}
         </div>
       </div>
 

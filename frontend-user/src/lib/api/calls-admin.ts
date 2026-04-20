@@ -90,6 +90,8 @@ export interface SessionHistoryItem {
   startedAt: string | null;
   endedAt: string | null;
   createdAt: string;
+  /** Present when API returns post-call summary */
+  summary?: string | null;
 }
 
 export interface CallSession extends SessionHistoryItem {

@@ -1302,7 +1302,7 @@
     "timelineSegmentCheckout": "Check-out — first half of checkout day (morning, then free)",
     "timelineSegmentPostCheckout": "After check-out (same calendar day)",
     "timelineSegmentTechnical": "Technical closure / blocked dates",
-    "timelineLegendShort": "Top band (filled): tan = PM check-in · blue = stay · green = AM check-out. Channel = left edge color.",
+    "timelineLegendShort": "Strip: teal = check-in day (after noon) · blue = nights in between · green = checkout day (before noon)",
     "statusAll": "All",
     "statusConfirmed": "Confirmed",
     "statusPending": "Pending",
@@ -1415,8 +1415,6 @@
     "otaSyncedBadge": "OTA",
     "otaSyncedTooltip": "Synced from channel manager (Zodomus)",
     "propertyOtaBadgeTitle": "Property linked to Zodomus — OTA bookings appear on this row after “Sync OTA”",
-    "emptyPeriodHint": "No bookings in RentAI for this period—the grid is empty because there are no rows in the database for these dates, not because property rows are missing.",
-    "emptyPeriodOtaHint": "If the booking exists in the channel manager: set the Zodomus external id on the property, then click “Sync OTA”. Bookings show only on the property they were synced to.",
     "emptyFiltersHint": "Bookings exist, but none match the current channel or status filters—set filters to “All”."
   },
   "inbox": {

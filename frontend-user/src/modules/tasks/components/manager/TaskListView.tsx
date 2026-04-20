@@ -263,24 +263,24 @@ export const TaskListView = memo(function TaskListView({
       <section
         key={group.propertyId}
         className={cn(
-          'min-w-0 overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm',
+          'min-w-0 overflow-hidden rounded-2xl border border-border bg-card shadow-sm',
           nested ? 'scroll-mt-1' : 'scroll-mt-2',
-          'dark:border-slate-700/75 dark:bg-slate-900/35',
+          'dark:border-border dark:bg-card/80',
         )}
         aria-label={displayTitle}
       >
         <Collapsible open={!collapsed} onOpenChange={(open) => setCollapsed(group.propertyId, !open)}>
           <div
             className={cn(
-              'sticky top-0 z-20 rounded-t-2xl border-b border-slate-200/70',
-              'bg-slate-50/95',
-              'dark:border-slate-700/60 dark:bg-slate-900/90',
+              'sticky top-0 z-20 rounded-t-2xl border-b border-border',
+              'bg-muted/50 backdrop-blur-md',
+              'dark:border-border dark:bg-muted/30',
             )}
           >
             <CollapsibleTrigger
               className={cn(
                 'flex w-full min-w-0 items-start gap-2 px-2 py-2.5 text-left transition-colors md:px-3',
-                'hover:bg-slate-200/65 dark:hover:bg-white/[0.05]',
+                'hover:bg-muted/60 dark:hover:bg-muted/20',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
               )}
             >
@@ -298,21 +298,21 @@ export const TaskListView = memo(function TaskListView({
                   </h2>
                   {group.propertyId === INCIDENTS_BOARD_GROUP_KEY ? (
                     <span
-                      className="inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full bg-red-500/15 px-1 text-[10px] font-semibold tabular-nums leading-none text-red-700 dark:text-red-400"
+                      className="inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full bg-destructive/12 px-1 text-[10px] font-semibold tabular-nums leading-none text-destructive dark:text-red-400"
                       aria-label={tList('incidentCount', { count: incidentsSectionCount })}
                     >
                       {incidentsSectionCount}
                     </span>
                   ) : group.propertyId === SHORTAGE_BOARD_GROUP_KEY ? (
                     <span
-                      className="inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full bg-[#008CA4]/15 px-1 text-[10px] font-semibold tabular-nums leading-none text-[#008CA4] dark:bg-[#00d4ff]/15 dark:text-[#7ee8ff]"
+                      className="inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full bg-primary/15 px-1 text-[10px] font-semibold tabular-nums leading-none text-primary"
                       aria-label={tList('shortageCount', { count: group.shortageEvents.length })}
                     >
                       {group.shortageEvents.length}
                     </span>
                   ) : (
                     <span
-                      className="inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full border border-slate-200/90 bg-slate-100/90 px-1 text-[10px] font-semibold tabular-nums leading-none text-slate-600 dark:border-slate-600/70 dark:bg-slate-800/80 dark:text-slate-400"
+                      className="inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full border border-border bg-muted px-1 text-[10px] font-semibold tabular-nums leading-none text-muted-foreground"
                       aria-label={tList('taskCount', { count: group.tasks.length })}
                     >
                       {group.tasks.length}
@@ -326,7 +326,7 @@ export const TaskListView = memo(function TaskListView({
             </CollapsibleTrigger>
           </div>
 
-          <CollapsibleContent className="bg-white dark:bg-transparent">
+          <CollapsibleContent className="bg-card dark:bg-transparent">
             <ul className="flex min-w-0 flex-col px-0" role="list">
               {group.propertyId === SHORTAGE_BOARD_GROUP_KEY &&
               group.shortageEvents.length === 0 &&
@@ -336,7 +336,7 @@ export const TaskListView = memo(function TaskListView({
                     {tList('shortageEmptyHint')}{' '}
                     <Link
                       href={supplyTabHref}
-                      className="font-medium text-[#008CA4] underline underline-offset-2 hover:text-[#006d80] dark:text-[#7ee8ff] dark:hover:text-[#a5f3fc]"
+                      className="font-medium text-primary underline underline-offset-2 hover:text-primary/90"
                     >
                       {tList('shortageSupplyTabLink')}
                     </Link>
@@ -357,7 +357,7 @@ export const TaskListView = memo(function TaskListView({
                         className={cn(
                           'min-w-0',
                           isAwaitingDispatchHighlight &&
-                            'border-l-2 border-l-red-500/55 bg-red-500/[0.05] dark:bg-red-950/30',
+                            'border-l-2 border-l-destructive/50 bg-destructive/[0.06] dark:bg-red-950/30',
                         )}
                       >
                         <IncidentListRow
@@ -369,7 +369,7 @@ export const TaskListView = memo(function TaskListView({
                           hidePropertyContext={false}
                           className={
                             isAwaitingDispatchHighlight
-                              ? 'border-b border-red-500/15 hover:bg-red-500/10 dark:hover:bg-red-950/40'
+                              ? 'border-b border-destructive/15 hover:bg-destructive/8 dark:hover:bg-red-950/40'
                               : undefined
                           }
                         />
@@ -384,7 +384,7 @@ export const TaskListView = memo(function TaskListView({
                         className={cn(
                           'min-w-0',
                           isAwaitingDispatchHighlight &&
-                            'border-l-2 border-l-red-500/55 bg-red-500/[0.05] dark:bg-red-950/30',
+                            'border-l-2 border-l-destructive/50 bg-destructive/[0.06] dark:bg-red-950/30',
                         )}
                       >
                         <IncidentListRow
@@ -399,7 +399,7 @@ export const TaskListView = memo(function TaskListView({
                           }
                           className={
                             isAwaitingDispatchHighlight
-                              ? 'border-b border-red-500/15 hover:bg-red-500/10 dark:hover:bg-red-950/40'
+                              ? 'border-b border-destructive/15 hover:bg-destructive/8 dark:hover:bg-red-950/40'
                               : undefined
                           }
                         />
@@ -432,8 +432,7 @@ export const TaskListView = memo(function TaskListView({
                   onClick={() => openVoiceSheet(group.propertyId)}
                   className={cn(
                     'flex w-full items-center justify-center rounded-md py-2 text-sm font-medium',
-                    'text-[#008CA4] transition-colors hover:bg-[#008CA4]/8 hover:text-[#007a90]',
-                    'dark:text-[#00d4ff] dark:hover:bg-[#00d4ff]/10',
+                    'text-primary transition-colors hover:bg-primary/10 hover:text-primary/90',
                   )}
                 >
                   {tList(group.propertyId === INCIDENTS_BOARD_GROUP_KEY ? 'addIncident' : 'addTask')}
@@ -460,8 +459,8 @@ export const TaskListView = memo(function TaskListView({
         <section
           key={OBJECTS_WRAPPER_GROUP_KEY}
           className={cn(
-            'min-w-0 overflow-hidden scroll-mt-2 rounded-2xl border border-slate-200/80 bg-white shadow-sm',
-            'dark:border-slate-700/75 dark:bg-slate-900/35',
+            'min-w-0 overflow-hidden scroll-mt-2 rounded-2xl border border-border bg-card shadow-sm',
+            'dark:border-border dark:bg-card/80',
           )}
           aria-label={tList('objectsTopHeading')}
         >
@@ -471,15 +470,15 @@ export const TaskListView = memo(function TaskListView({
           >
             <div
               className={cn(
-                'sticky top-0 z-20 rounded-t-2xl border-b border-slate-200/70',
-                'bg-slate-50/95',
-                'dark:border-slate-700/60 dark:bg-slate-900/90',
+                'sticky top-0 z-20 rounded-t-2xl border-b border-border',
+                'bg-muted/50 backdrop-blur-md',
+                'dark:border-border dark:bg-muted/30',
               )}
             >
               <CollapsibleTrigger
                 className={cn(
                   'flex w-full min-w-0 items-start gap-2 px-2 py-2.5 text-left transition-colors md:px-3',
-                  'hover:bg-slate-200/65 dark:hover:bg-white/[0.05]',
+                  'hover:bg-muted/60 dark:hover:bg-muted/20',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                 )}
               >
@@ -496,7 +495,7 @@ export const TaskListView = memo(function TaskListView({
                       {tList('objectsTopHeading')}
                     </h2>
                     <span
-                      className="inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full border border-slate-200/90 bg-slate-100/90 px-1 text-[10px] font-semibold tabular-nums leading-none text-slate-600 dark:border-slate-600/70 dark:bg-slate-800/80 dark:text-slate-400"
+                      className="inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full border border-border bg-muted px-1 text-[10px] font-semibold tabular-nums leading-none text-muted-foreground"
                       aria-label={tList('taskCount', { count: objectsTaskTotal })}
                     >
                       {objectsTaskTotal}
@@ -505,7 +504,7 @@ export const TaskListView = memo(function TaskListView({
                 </div>
               </CollapsibleTrigger>
             </div>
-            <CollapsibleContent className="bg-white dark:bg-transparent">
+            <CollapsibleContent className="bg-card dark:bg-transparent">
               <div className="flex min-w-0 flex-col gap-1.5 px-1.5 pb-2 pt-0 md:gap-3 md:px-2 md:pb-3">
                 {propertyGroups.map((g) => renderGroupSection(g, true))}
               </div>
@@ -539,9 +538,9 @@ export const TaskListView = memo(function TaskListView({
                   type="button"
                   className={cn(
                     'flex h-[38px] w-[38px] shrink-0 cursor-pointer items-center justify-center rounded-full touch-manipulation',
-                    'border-[1.5px] border-[#008CA4] bg-white text-[#008CA4] shadow-md shadow-slate-900/10',
+                    'border-[1.5px] border-primary bg-card text-primary shadow-md shadow-foreground/8',
                     'transition-[box-shadow,transform] active:scale-[0.97]',
-                    'dark:border-[#008CA4] dark:bg-slate-950 dark:text-[#00d4ff] dark:shadow-black/25',
+                    'dark:bg-card/90 dark:shadow-black/25',
                   )}
                   aria-label={tList('manualFabAria')}
                 >
@@ -561,11 +560,10 @@ export const TaskListView = memo(function TaskListView({
                   <DropdownMenu.Item
                     className={cn(
                       'flex cursor-pointer select-none items-center justify-center rounded-2xl border px-3 py-2.5 text-[13px] font-semibold leading-tight outline-none',
-                      'border-[#008CA4]/40 bg-white/90 text-[#0a6b7a] shadow-sm shadow-[#008CA4]/12 backdrop-blur-md',
+                      'border-primary/35 bg-card/95 text-primary shadow-sm shadow-primary/10 backdrop-blur-md',
                       'transition-[transform,box-shadow,border-color] active:scale-[0.99]',
-                      'dark:border-[#008CA4]/45 dark:bg-slate-950/65 dark:text-[#a5e9ff]',
-                      'dark:shadow-[#008CA4]/15 data-[highlighted]:border-[#008CA4]/70 data-[highlighted]:bg-[#008CA4]/10',
-                      'data-[highlighted]:shadow-md data-[highlighted]:shadow-[#008CA4]/20 dark:data-[highlighted]:bg-[#008CA4]/15',
+                      'data-[highlighted]:border-primary/60 data-[highlighted]:bg-primary/10 data-[highlighted]:shadow-md',
+                      'dark:bg-card/80 dark:data-[highlighted]:bg-primary/15',
                     )}
                     onSelect={() => openManualSheet(fabPropertyId, 'task')}
                   >
@@ -574,11 +572,10 @@ export const TaskListView = memo(function TaskListView({
                   <DropdownMenu.Item
                     className={cn(
                       'flex cursor-pointer select-none items-center justify-center rounded-2xl border px-3 py-2.5 text-[13px] font-semibold leading-tight outline-none',
-                      'border-[#008CA4]/40 bg-white/90 text-[#0a6b7a] shadow-sm shadow-[#008CA4]/12 backdrop-blur-md',
+                      'border-primary/35 bg-card/95 text-primary shadow-sm shadow-primary/10 backdrop-blur-md',
                       'transition-[transform,box-shadow,border-color] active:scale-[0.99]',
-                      'dark:border-[#008CA4]/45 dark:bg-slate-950/65 dark:text-[#a5e9ff]',
-                      'dark:shadow-[#008CA4]/15 data-[highlighted]:border-[#008CA4]/70 data-[highlighted]:bg-[#008CA4]/10',
-                      'data-[highlighted]:shadow-md data-[highlighted]:shadow-[#008CA4]/20 dark:data-[highlighted]:bg-[#008CA4]/15',
+                      'data-[highlighted]:border-primary/60 data-[highlighted]:bg-primary/10 data-[highlighted]:shadow-md',
+                      'dark:bg-card/80 dark:data-[highlighted]:bg-primary/15',
                     )}
                     onSelect={() => openManualSheet(fabPropertyId, 'incident')}
                   >
@@ -592,9 +589,9 @@ export const TaskListView = memo(function TaskListView({
               onClick={() => openVoiceSheet(fabPropertyId)}
               className={cn(
                 'flex h-[4.2rem] w-[4.2rem] shrink-0 cursor-pointer items-center justify-center rounded-full touch-manipulation',
-                'bg-[#008CA4] text-white shadow-lg shadow-[#008CA4]/35',
-                'transition-[box-shadow,transform] hover:bg-[#007a90] active:scale-[0.98]',
-                'dark:bg-[#008CA4] dark:text-white dark:shadow-black/40',
+                'bg-primary text-primary-foreground shadow-lg shadow-primary/30',
+                'transition-[box-shadow,transform] hover:bg-primary/90 active:scale-[0.98]',
+                'dark:shadow-black/40',
               )}
               aria-label={tList('voiceFabAria')}
             >

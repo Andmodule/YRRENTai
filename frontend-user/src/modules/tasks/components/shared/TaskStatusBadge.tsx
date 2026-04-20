@@ -12,10 +12,10 @@ export const TaskStatusBadge = memo(function TaskStatusBadge({
 }) {
   const t = useTranslations('tasks.status');
   const config: Record<TaskStatus, string> = {
-    pending: 'bg-gray-100 text-gray-600 dark:bg-slate-800 dark:text-slate-300',
-    in_progress: 'bg-cyan-100 text-cyan-800 dark:bg-cyan-950/80 dark:text-cyan-300',
-    done: 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300',
-    issue: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300',
+    pending: 'bg-muted text-muted-foreground dark:bg-muted/80 dark:text-muted-foreground',
+    in_progress: 'bg-primary/15 text-primary dark:bg-primary/20 dark:text-primary',
+    done: 'bg-emerald-500/12 text-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-300',
+    issue: 'bg-destructive/12 text-destructive dark:bg-destructive/20 dark:text-destructive',
   };
   const labelKey: Record<TaskStatus, string> = {
     pending: 'pending',

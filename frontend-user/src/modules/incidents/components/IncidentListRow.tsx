@@ -120,8 +120,8 @@ export const IncidentListRow = memo(function IncidentListRow({
 
   const rowClassName = cn(
     'flex w-full min-w-0 cursor-pointer flex-row items-start gap-2 border-b border-border/40 px-2 py-2 text-left transition-colors md:px-3',
-    'hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-    'bg-rose-50/50 hover:bg-rose-100/50 dark:bg-rose-950/20 dark:hover:bg-rose-950/40',
+    'bg-card hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+    'dark:bg-transparent dark:hover:bg-muted/25',
     className,
   );
 

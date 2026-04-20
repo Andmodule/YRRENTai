@@ -17,13 +17,13 @@ export function AuditLogDrawer({ entry, onClose }: Props) {
     <Sheet.Root open={!!entry} onOpenChange={(open) => { if (!open) onClose(); }}>
       <Sheet.Portal>
         <Sheet.Overlay className="fixed inset-0 bg-black/40 z-40" />
-        <Sheet.Content className="fixed right-0 top-0 h-full w-full sm:w-[420px] bg-slate-900 border-l border-slate-700 z-50 overflow-y-auto p-5 shadow-2xl">
-          <div className="flex items-center justify-between mb-5">
-            <Sheet.Title className="flex items-center gap-2 text-sm font-semibold text-white">
-              <Info className="h-4 w-4 text-cyan-400" />
+        <Sheet.Content className="fixed right-0 top-0 z-50 h-full w-full overflow-y-auto border-l border-border bg-card p-5 shadow-2xl sm:w-[420px] dark:border-slate-700 dark:bg-slate-900">
+          <div className="mb-5 flex items-center justify-between">
+            <Sheet.Title className="flex items-center gap-2 text-sm font-semibold text-foreground">
+              <Info className="h-4 w-4 text-primary dark:text-cyan-400" />
               Детали записи
             </Sheet.Title>
-            <Sheet.Close onClick={onClose} className="p-1 rounded text-slate-400 hover:text-white">
+            <Sheet.Close onClick={onClose} className="rounded p-1 text-muted-foreground hover:text-foreground dark:hover:text-white">
               <X className="h-4 w-4" />
             </Sheet.Close>
           </div>
@@ -40,8 +40,8 @@ export function AuditLogDrawer({ entry, onClose }: Props) {
               {entry.propertyId && <Field label="Property ID" value={entry.propertyId} mono />}
 
               <div>
-                <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-1.5">Метаданные</p>
-                <pre className="bg-slate-800 rounded-lg p-3 text-xs text-slate-300 overflow-auto max-h-64 font-mono whitespace-pre-wrap">
+                <p className="mb-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">Метаданные</p>
+                <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-lg bg-muted p-3 font-mono text-xs text-foreground dark:bg-slate-800 dark:text-slate-300">
                   {JSON.stringify(entry.metadata, null, 2)}
                 </pre>
               </div>
@@ -58,11 +58,11 @@ function Field({ label, value, mono, highlight }: {
 }) {
   return (
     <div>
-      <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-0.5">{label}</p>
+      <p className="mb-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">{label}</p>
       <p className={cn(
-        'text-sm break-all',
-        mono ? 'font-mono text-slate-300' : 'text-slate-200',
-        highlight && 'text-cyan-300 font-medium',
+        'break-all text-sm',
+        mono ? 'font-mono text-foreground/90 dark:text-slate-300' : 'text-foreground dark:text-slate-200',
+        highlight && 'font-medium text-primary dark:text-cyan-300',
       )}>
         {value}
       </p>

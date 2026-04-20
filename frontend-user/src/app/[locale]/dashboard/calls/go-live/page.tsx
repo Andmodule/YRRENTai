@@ -16,12 +16,11 @@ import { PilotLaunchPanel }     from '@/modules/calls/components/go-live/PilotLa
 import { FirstCallChecklist }   from '@/modules/calls/components/go-live/FirstCallChecklist';
 
 export default function GoLivePage() {
-  const { role } = useAuth();
+  const { user } = useAuth();
   const params = useParams();
   const locale = (params?.locale as string) ?? 'ru';
 
-  // Role guard
-  if (role !== 'owner' && role !== 'manager') {
+  if (!user || (user.role !== 'OWNER' && user.role !== 'MANAGER')) {
     redirect(`/${locale}/dashboard`);
   }
 
@@ -67,8 +66,8 @@ export default function GoLivePage() {
     <div className="max-w-2xl mx-auto p-4 sm:p-6 space-y-4">
       {/* Page title */}
       <div>
-        <h1 className="text-lg font-bold text-slate-100">Go-Live Readiness</h1>
-        <p className="text-sm text-slate-400 mt-0.5">
+        <h1 className="text-lg font-bold text-foreground">Go-Live Readiness</h1>
+        <p className="mt-0.5 text-sm text-muted-foreground">
           Проверка готовности системы к пилотному запуску голосового AI
         </p>
       </div>

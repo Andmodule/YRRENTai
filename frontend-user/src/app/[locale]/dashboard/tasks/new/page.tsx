@@ -487,9 +487,9 @@ export default function NewTaskFromBookingPage() {
                     onClick={() => setPriority(value)}
                     className={cn(
                       'inline-flex shrink-0 items-center justify-center rounded-full border px-3 py-1.5 text-[11px] font-medium transition-colors',
-                      active && value === 'normal' && 'border-slate-400/60 bg-slate-500/20 text-foreground shadow-sm dark:bg-slate-500/25',
+                      active && value === 'normal' && 'border-border bg-muted text-foreground shadow-sm',
                       active && value === 'urgent' &&
-                        'border-rose-500/70 bg-rose-500/20 text-rose-950 shadow-sm dark:text-rose-50',
+                        'border-destructive/50 bg-destructive/10 text-destructive shadow-sm dark:bg-destructive/20 dark:text-red-200',
                       !active && 'border-border/60 text-muted-foreground hover:border-border hover:bg-muted/50 hover:text-foreground',
                     )}
                   >

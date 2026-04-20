@@ -17,26 +17,26 @@ const STATUS_CONFIG: Record<ReadinessStatus, {
   ready: {
     icon: CheckCircle2,
     label: 'Готово к запуску',
-    bg: 'bg-teal-950/40',
-    border: 'border-teal-700/50',
-    text: 'text-teal-200',
-    iconColor: 'text-teal-400',
+    bg: 'bg-teal-500/10 dark:bg-teal-950/40',
+    border: 'border-teal-500/35 dark:border-teal-700/50',
+    text: 'text-teal-900 dark:text-teal-200',
+    iconColor: 'text-teal-600 dark:text-teal-400',
   },
   warning: {
     icon: AlertTriangle,
     label: 'Требует внимания',
-    bg: 'bg-amber-950/30',
-    border: 'border-amber-700/40',
-    text: 'text-amber-200',
-    iconColor: 'text-amber-400',
+    bg: 'bg-amber-500/10 dark:bg-amber-950/30',
+    border: 'border-amber-500/35 dark:border-amber-700/40',
+    text: 'text-amber-950 dark:text-amber-200',
+    iconColor: 'text-amber-600 dark:text-amber-400',
   },
   blocked: {
     icon: XCircle,
     label: 'Заблокирован',
-    bg: 'bg-red-950/30',
-    border: 'border-red-700/40',
-    text: 'text-red-200',
-    iconColor: 'text-red-400',
+    bg: 'bg-red-500/10 dark:bg-red-950/30',
+    border: 'border-red-500/35 dark:border-red-700/40',
+    text: 'text-red-900 dark:text-red-200',
+    iconColor: 'text-red-600 dark:text-red-400',
   },
 };
 
@@ -61,7 +61,7 @@ export function ReadinessStatusCard({ readiness, onRefresh, isRefreshing }: Prop
           <Icon className={cn('h-8 w-8 shrink-0', cfg.iconColor)} />
           <div>
             <p className={cn('text-lg font-bold', cfg.text)}>{cfg.label}</p>
-            <p className="text-xs text-slate-400 mt-0.5">
+            <p className="mt-0.5 text-xs text-muted-foreground dark:text-slate-400">
               Проверено {formatDistanceToNow(new Date(readiness.checkedAt), { addSuffix: true, locale: ru })}
             </p>
           </div>
@@ -70,17 +70,17 @@ export function ReadinessStatusCard({ readiness, onRefresh, isRefreshing }: Prop
         <button
           onClick={onRefresh}
           disabled={isRefreshing}
-          className="p-1.5 rounded-lg border border-slate-700 text-slate-400 hover:text-white hover:border-slate-600 transition-colors disabled:opacity-40"
+          className="rounded-lg border border-border bg-muted/50 p-1.5 text-muted-foreground transition-colors hover:border-border hover:bg-muted hover:text-foreground disabled:opacity-40 dark:border-slate-700 dark:bg-transparent dark:hover:border-slate-600 dark:hover:text-white"
         >
           <RefreshCw className={cn('h-3.5 w-3.5', isRefreshing && 'animate-spin')} />
         </button>
       </div>
 
-      <div className="flex items-center gap-4 mt-4 pt-4 border-t border-slate-700/40">
+      <div className="mt-4 flex items-center gap-4 border-t border-border pt-4 dark:border-slate-700/40">
         <Pill count={passCount} color="teal" label="Passed" />
         <Pill count={warnCount} color="amber" label="Warnings" />
         <Pill count={failCount} color="red" label="Failed" />
-        <div className="ml-auto text-xs text-slate-500">
+        <div className="ml-auto text-xs text-muted-foreground dark:text-slate-500">
           {readiness.env.provider} · {readiness.rollout.enabledPropertiesCount} enabled
         </div>
       </div>
@@ -90,9 +90,9 @@ export function ReadinessStatusCard({ readiness, onRefresh, isRefreshing }: Prop
 
 function Pill({ count, color, label }: { count: number; color: 'teal' | 'amber' | 'red'; label: string }) {
   const colors = {
-    teal:  'bg-teal-500/15 text-teal-300 ring-teal-500/30',
-    amber: 'bg-amber-500/15 text-amber-300 ring-amber-500/30',
-    red:   'bg-red-500/15 text-red-300 ring-red-500/30',
+    teal: 'bg-teal-500/15 text-teal-800 ring-teal-500/30 dark:text-teal-300',
+    amber: 'bg-amber-500/15 text-amber-900 ring-amber-500/30 dark:text-amber-300',
+    red: 'bg-red-500/15 text-red-800 ring-red-500/30 dark:text-red-300',
   };
   return (
     <div className={cn('flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ring-1', colors[color])}>

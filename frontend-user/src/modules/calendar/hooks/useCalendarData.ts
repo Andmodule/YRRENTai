@@ -29,7 +29,10 @@ export function useCalendarData(dateRange: CalendarDateRange) {
       }
       return { properties: [], reservations: [] };
     },
-    staleTime: 60_000,
+    /** OTA/webhook меняют брони без действия в UI — без интервала данные «застывают» на минуту+. */
+    staleTime: 12_000,
+    refetchInterval: 20_000,
+    refetchOnWindowFocus: true,
     placeholderData: (prev) => prev,
   });
 }

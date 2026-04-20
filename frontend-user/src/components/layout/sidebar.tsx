@@ -91,7 +91,7 @@ export function Sidebar() {
       <aside
         className={cn(
           'fixed left-0 top-0 z-50 flex h-screen w-56 flex-col',
-          'overflow-hidden border-r border-slate-800 bg-slate-900/95 backdrop-blur-xl',
+          'overflow-hidden border-r border-border bg-card/95 backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/95',
           /* Mobile drawer: слайд + тень; десктоп: ширина */
           'max-lg:transition-[transform,box-shadow] max-lg:duration-500 max-lg:[transition-timing-function:cubic-bezier(0.32,0.72,0,1)]',
           'motion-reduce:max-lg:duration-200',
@@ -108,7 +108,7 @@ export function Sidebar() {
         {/* Логотип + сворачивание (десктоп) + тема */}
         <div
           className={cn(
-            'flex shrink-0 items-center border-b border-slate-800 px-4',
+            'flex shrink-0 items-center border-b border-border px-4 dark:border-slate-800',
             sidebarCollapsed
               ? 'h-auto flex-col gap-3 py-4 lg:flex lg:items-center lg:py-4'
               : 'h-16 justify-between gap-2',
@@ -137,9 +137,9 @@ export function Sidebar() {
               onClick={() => toggleSidebarCollapsed()}
               className={cn(
                 'hidden h-10 w-10 shrink-0 items-center justify-center rounded-lg lg:flex',
-                'border-0 bg-transparent text-slate-400',
+                'border-0 bg-transparent text-muted-foreground',
                 'transition-colors duration-300 ease-out',
-                'hover:bg-slate-800/60 hover:text-primary',
+                'hover:bg-muted hover:text-primary dark:hover:bg-slate-800/60',
                 'active:scale-[0.96]',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50',
               )}
@@ -157,10 +157,10 @@ export function Sidebar() {
 
             <ThemeToggle
               className={cn(
-                'h-9 w-9 shrink-0 rounded-xl bg-slate-800/40 text-slate-400 shadow-sm',
+                'h-9 w-9 shrink-0 rounded-xl bg-muted/80 text-muted-foreground shadow-sm',
                 'transition-all duration-300 ease-out',
-                'hover:bg-slate-800/90 hover:text-primary hover:shadow-[0_0_24px_-8px_rgba(59,130,246,0.35)]',
-                'active:scale-[0.96] [&_svg]:text-current',
+                'hover:bg-muted hover:text-primary hover:shadow-[0_0_24px_-8px_rgba(59,130,246,0.35)]',
+                'active:scale-[0.96] dark:bg-slate-800/40 dark:text-slate-400 dark:hover:bg-slate-800/90 [&_svg]:text-current',
               )}
             />
           </div>
@@ -200,10 +200,10 @@ export function Sidebar() {
                 'flex items-center gap-3 rounded-xl border px-3 py-2.5 text-sm font-medium',
                 'transition-all duration-300 ease-out',
                 itemDisabled
-                  ? 'cursor-not-allowed border-transparent text-slate-500 opacity-60'
+                  ? 'cursor-not-allowed border-transparent text-muted-foreground opacity-60 dark:text-slate-500'
                   : isActive
                     ? 'border-primary/25 bg-primary/15 text-primary shadow-[inset_0_0_0_1px_rgba(59,130,246,0.25)]'
-                    : 'border-transparent text-slate-400 hover:border-primary/35 hover:bg-slate-800/90 hover:text-primary hover:shadow-sm hover:shadow-[0_0_24px_-8px_rgba(59,130,246,0.35)] active:scale-[0.99]',
+                    : 'border-transparent text-muted-foreground hover:border-primary/35 hover:bg-muted hover:text-primary hover:shadow-sm hover:shadow-[0_0_24px_-8px_rgba(59,130,246,0.35)] active:scale-[0.99] dark:text-slate-400 dark:hover:bg-slate-800/90',
                 sidebarCollapsed && 'lg:justify-center lg:gap-0 lg:px-2',
                 showCollapsedChrome && 'lg:relative',
               );
@@ -214,20 +214,20 @@ export function Sidebar() {
                     <Icon className="h-4 w-4" />
                     {showCollapsedChrome && key === 'tasks' && openIncidents > 0 && (
                       <span
-                        className="absolute -right-0.5 -top-0.5 size-[5px] rounded-full bg-amber-500 ring-1 ring-slate-900"
+                        className="absolute -right-0.5 -top-0.5 size-[5px] rounded-full bg-amber-500 ring-1 ring-card dark:ring-slate-900"
                         title={t('tasksIncidentsHint')}
                         aria-label={t('tasksIncidentsHint')}
                       />
                     )}
                     {showCollapsedChrome && key === 'chat' && chatNeedsHuman && (
                       <span
-                        className="absolute -right-0.5 -top-0.5 size-[5px] rounded-full bg-amber-500 ring-1 ring-slate-900"
+                        className="absolute -right-0.5 -top-0.5 size-[5px] rounded-full bg-amber-500 ring-1 ring-card dark:ring-slate-900"
                         title={t('chatNeedsHumanHint')}
                         aria-label={t('chatNeedsHumanHint')}
                       />
                     )}
                     {showCollapsedChrome && key === 'calls' && callsBadge > 0 && (
-                      <span className="absolute -right-0.5 -top-0.5 size-[5px] rounded-full bg-teal-400 ring-1 ring-slate-900" />
+                      <span className="absolute -right-0.5 -top-0.5 size-[5px] rounded-full bg-teal-500 ring-1 ring-card dark:bg-teal-400 dark:ring-slate-900" />
                     )}
                   </span>
                   <span
@@ -240,20 +240,20 @@ export function Sidebar() {
                   </span>
                   {!showCollapsedChrome && key === 'tasks' && openIncidents > 0 && (
                     <span
-                      className="inline-block size-[5px] shrink-0 rounded-full bg-amber-500 ring-1 ring-slate-900/80"
+                      className="inline-block size-[5px] shrink-0 rounded-full bg-amber-500 ring-1 ring-card/80 dark:ring-slate-900/80"
                       title={t('tasksIncidentsHint')}
                       aria-label={t('tasksIncidentsHint')}
                     />
                   )}
                   {!showCollapsedChrome && key === 'chat' && chatNeedsHuman && (
                     <span
-                      className="inline-block size-[5px] shrink-0 rounded-full bg-amber-500 ring-1 ring-slate-900/80"
+                      className="inline-block size-[5px] shrink-0 rounded-full bg-amber-500 ring-1 ring-card/80 dark:ring-slate-900/80"
                       title={t('chatNeedsHumanHint')}
                       aria-label={t('chatNeedsHumanHint')}
                     />
                   )}
                   {!showCollapsedChrome && key === 'calls' && callsBadge > 0 && (
-                    <span className="inline-flex h-4 min-w-[1rem] shrink-0 items-center justify-center rounded-full bg-teal-500/20 px-1 text-[10px] font-bold text-teal-300 ring-1 ring-teal-500/30">
+                    <span className="inline-flex h-4 min-w-[1rem] shrink-0 items-center justify-center rounded-full bg-primary/15 px-1 text-[10px] font-bold text-primary ring-1 ring-primary/25 dark:bg-teal-500/20 dark:text-teal-300 dark:ring-teal-500/30">
                       {callsBadge > 99 ? '99+' : callsBadge}
                     </span>
                   )}
@@ -305,7 +305,7 @@ export function Sidebar() {
 
         {/* Sign out */}
         {user ? (
-          <div className="shrink-0 border-t border-slate-800 p-3">
+          <div className="shrink-0 border-t border-border p-3 dark:border-slate-800">
             {showCollapsedChrome ? (
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -313,10 +313,10 @@ export function Sidebar() {
                     type="button"
                     variant="ghost"
                     className={cn(
-                      'relative h-11 w-full justify-center rounded-xl border border-slate-700/60 bg-slate-800/40 px-2 text-slate-400 shadow-sm',
+                      'relative h-11 w-full justify-center rounded-xl border border-border bg-muted/70 px-2 text-muted-foreground shadow-sm',
                       'transition-all duration-300 ease-out',
-                      'hover:border-primary/35 hover:bg-slate-800/90 hover:text-primary hover:shadow-[0_0_24px_-8px_rgba(59,130,246,0.35)]',
-                      'active:scale-[0.96]',
+                      'hover:border-primary/35 hover:bg-muted hover:text-primary hover:shadow-[0_0_24px_-8px_rgba(59,130,246,0.35)]',
+                      'active:scale-[0.96] dark:border-slate-700/60 dark:bg-slate-800/40 dark:text-slate-400 dark:hover:bg-slate-800/90',
                     )}
                     onClick={() => void handleLogout()}
                   >
@@ -333,10 +333,10 @@ export function Sidebar() {
                 type="button"
                 variant="ghost"
                 className={cn(
-                  'h-11 w-full justify-start gap-3 rounded-xl border border-slate-700/60 bg-slate-800/40 px-3 text-slate-400 shadow-sm',
+                  'h-11 w-full justify-start gap-3 rounded-xl border border-border bg-muted/70 px-3 text-muted-foreground shadow-sm',
                   'transition-all duration-300 ease-out',
-                  'hover:border-primary/35 hover:bg-slate-800/90 hover:text-primary hover:shadow-[0_0_24px_-8px_rgba(59,130,246,0.35)]',
-                  'active:scale-[0.99]',
+                  'hover:border-primary/35 hover:bg-muted hover:text-primary hover:shadow-[0_0_24px_-8px_rgba(59,130,246,0.35)]',
+                  'active:scale-[0.99] dark:border-slate-700/60 dark:bg-slate-800/40 dark:text-slate-400 dark:hover:bg-slate-800/90',
                 )}
                 onClick={() => void handleLogout()}
               >
@@ -347,7 +347,7 @@ export function Sidebar() {
           </div>
         ) : null}
 
-        <div className="h-px bg-gradient-to-r from-transparent via-slate-700 to-transparent" />
+        <div className="h-px bg-gradient-to-r from-transparent via-border to-transparent dark:via-slate-700" />
         <div className="h-1 bg-gradient-to-r from-transparent via-cyan-500/20 to-transparent" />
       </aside>
     </TooltipProvider>

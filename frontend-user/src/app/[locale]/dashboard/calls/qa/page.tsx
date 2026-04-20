@@ -56,7 +56,7 @@ function QaRow({ item, isSelected, isChecked, onSelect, onCheck }: {
 }) {
   return (
     <div
-      className={cn('flex items-start gap-2.5 px-3 py-3 border-b border-slate-700/30 cursor-pointer transition-colors', isSelected ? 'bg-cyan-500/10' : 'hover:bg-slate-800/60')}
+      className={cn('flex cursor-pointer items-start gap-2.5 border-b border-border px-3 py-3 transition-colors dark:border-slate-700/30', isSelected ? 'bg-primary/10 dark:bg-cyan-500/10' : 'hover:bg-muted/80 dark:hover:bg-slate-800/60')}
       onClick={() => onSelect(item.sessionId)}
     >
       <input type="checkbox" className="mt-0.5 accent-cyan-400 shrink-0"
@@ -64,8 +64,8 @@ function QaRow({ item, isSelected, isChecked, onSelect, onCheck }: {
         onClick={(e) => e.stopPropagation()} />
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between gap-1">
-          <span className="text-sm font-medium text-slate-200 truncate">{item.guestPhone ?? '—'}</span>
-          <span className="text-[10px] text-slate-500 shrink-0">
+          <span className="truncate text-sm font-medium text-foreground dark:text-slate-200">{item.guestPhone ?? '—'}</span>
+          <span className="shrink-0 text-[10px] text-muted-foreground">
             {formatDistanceToNow(new Date(item.createdAt), { addSuffix: true, locale: ru })}
           </span>
         </div>
@@ -76,7 +76,7 @@ function QaRow({ item, isSelected, isChecked, onSelect, onCheck }: {
             ))}
           </div>
         )}
-        <div className="text-xs text-slate-500">
+        <div className="text-xs text-muted-foreground">
           {item.totalTurns !== null && `${item.totalTurns} реплик`}
           {item.followUpRequired && ' · 🔔 follow-up'}
         </div>
@@ -88,13 +88,15 @@ function QaRow({ item, isSelected, isChecked, onSelect, onCheck }: {
 function ReviewDetail({ item, onBack }: { item: QaQueueItem; onBack: () => void }) {
   return (
     <div className="flex flex-col h-full overflow-y-auto">
-      <div className="md:hidden px-4 py-2 border-b border-slate-700/50 shrink-0">
-        <button onClick={onBack} className="text-xs text-cyan-400">← Назад</button>
+      <div className="shrink-0 border-b border-border px-4 py-2 dark:border-slate-700/50 md:hidden">
+        <button type="button" onClick={onBack} className="text-xs text-primary dark:text-cyan-400">
+          ← Назад
+        </button>
       </div>
       <div className="p-4 space-y-4">
         <div>
-          <h3 className="text-sm font-bold text-slate-200">{item.guestPhone ?? '—'}</h3>
-          <p className="text-xs text-slate-500">#{item.sessionId.slice(0, 8)} · {item.status}</p>
+          <h3 className="text-sm font-bold text-foreground dark:text-slate-200">{item.guestPhone ?? '—'}</h3>
+          <p className="text-xs text-muted-foreground">#{item.sessionId.slice(0, 8)} · {item.status}</p>
         </div>
         {item.escalationReason && (
           <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
@@ -105,7 +107,7 @@ function ReviewDetail({ item, onBack }: { item: QaQueueItem; onBack: () => void 
         {item.qaFlags && item.qaFlags.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
             {item.qaFlags.map((f) => (
-              <span key={f} className="rounded-full border border-slate-600 bg-slate-800 px-2 py-0.5 text-xs text-slate-300">
+              <span key={f} className="rounded-full border border-border bg-muted px-2 py-0.5 text-xs text-foreground dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300">
                 {FLAG_LABELS[f] ?? ''} {f.replace(/_/g, ' ')}
               </span>
             ))}
@@ -118,9 +120,9 @@ function ReviewDetail({ item, onBack }: { item: QaQueueItem; onBack: () => void 
             ['Follow-up', item.followUpRequired ? '🔔 Да' : 'Нет'],
             ['Статус', item.status],
           ].map(([k, v]) => (
-            <div key={String(k)} className="rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2">
-              <div className="text-[10px] uppercase text-slate-500">{k}</div>
-              <div className="text-sm font-semibold text-slate-200">{String(v ?? '—')}</div>
+            <div key={String(k)} className="rounded-lg border border-border bg-muted/50 px-3 py-2 dark:border-slate-700 dark:bg-slate-800/60">
+              <div className="text-[10px] uppercase text-muted-foreground">{k}</div>
+              <div className="text-sm font-semibold text-foreground dark:text-slate-200">{String(v ?? '—')}</div>
             </div>
           ))}
         </div>
@@ -159,37 +161,37 @@ export default function CallsQaPage() {
   const exportUrl = buildExportUrl('qa', { reviewStatus });
 
   return (
-    <div className="flex h-[calc(100vh-10rem)] rounded-xl border border-slate-700 overflow-hidden bg-slate-900">
+    <div className="flex h-[calc(100vh-10rem)] overflow-hidden rounded-xl border border-border bg-card dark:border-slate-700 dark:bg-slate-900">
       {/* Left panel */}
-      <aside className={cn('flex flex-col border-r border-slate-700', selectedId ? 'hidden md:flex md:w-80' : 'flex w-full md:w-80')}>
+      <aside className={cn('flex flex-col border-r border-border dark:border-slate-700', selectedId ? 'hidden md:flex md:w-80' : 'flex w-full md:w-80')}>
         {/* Header */}
-        <div className="flex items-center gap-2 px-3 py-2 border-b border-slate-700/50 shrink-0">
-          <ClipboardCheck className="h-4 w-4 text-cyan-400" />
-          <span className="text-xs font-semibold text-slate-300">QA Review</span>
-          {total > 0 && <span className="text-xs text-slate-500">{total}</span>}
+        <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2 dark:border-slate-700/50">
+          <ClipboardCheck className="h-4 w-4 text-primary dark:text-cyan-400" />
+          <span className="text-xs font-semibold text-foreground dark:text-slate-300">QA Review</span>
+          {total > 0 && <span className="text-xs text-muted-foreground">{total}</span>}
           <div className="ml-auto flex items-center gap-1">
             {selected.size > 0 && (
               <QaAssignDialog
                 reviewIds={[...selected].map((sid) => items.find((i) => i.sessionId === sid)?.reviewId ?? sid).filter(Boolean)}
                 onSuccess={() => setSelected(new Set())}
               >
-                <button className="flex items-center gap-1 px-1.5 py-1 rounded text-xs text-slate-400 hover:text-cyan-300 hover:bg-slate-700/50 transition-colors">
+                <button className="flex items-center gap-1 rounded px-1.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-primary dark:hover:bg-slate-700/50 dark:hover:text-cyan-300">
                   <UserCheck className="h-3 w-3" />
                   Назначить
                 </button>
               </QaAssignDialog>
             )}
-            <a href={exportUrl} download className="text-slate-500 hover:text-cyan-400">
+            <a href={exportUrl} download className="text-muted-foreground hover:text-primary dark:hover:text-cyan-400">
               <Download className="h-3 w-3" />
             </a>
           </div>
         </div>
 
         {/* Status tabs */}
-        <div className="flex border-b border-slate-700/50 shrink-0">
+        <div className="flex shrink-0 border-b border-border dark:border-slate-700/50">
           {STATUS_TABS.map(({ key, label }) => (
             <button key={key} onClick={() => set({ reviewStatus: key, page: '0', selectedSessionId: '' })}
-              className={cn('flex-1 py-2 text-[10px] font-medium transition-colors', reviewStatus === key ? 'text-cyan-300 border-b-2 border-cyan-400' : 'text-slate-500 hover:text-slate-300')}>
+              className={cn('flex-1 py-2 text-[10px] font-medium transition-colors', reviewStatus === key ? 'border-b-2 border-primary text-primary dark:border-cyan-400 dark:text-cyan-300' : 'text-muted-foreground hover:text-foreground dark:hover:text-slate-300')}>
               {label}
             </button>
           ))}
@@ -207,24 +209,26 @@ export default function CallsQaPage() {
                 {label}
               </button>
             ))}
-            <button onClick={() => setSelected(new Set())} className="ml-auto text-xs text-slate-500 hover:text-slate-300">✕</button>
+            <button type="button" onClick={() => setSelected(new Set())} className="ml-auto text-xs text-muted-foreground hover:text-foreground dark:hover:text-slate-300">
+              ✕
+            </button>
           </div>
         )}
 
         {/* Select all */}
         {items.length > 0 && (
-          <div className="flex items-center gap-2 px-3 py-1.5 border-b border-slate-700/30 shrink-0">
-            <input type="checkbox" className="accent-cyan-400"
+          <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-1.5 dark:border-slate-700/30">
+            <input type="checkbox" className="accent-primary dark:accent-cyan-400"
               checked={selected.size === items.length} onChange={() => setSelected(selected.size === items.length ? new Set() : new Set(items.map((i) => i.sessionId)))} />
-            <span className="text-xs text-slate-500">Выбрать все</span>
+            <span className="text-xs text-muted-foreground">Выбрать все</span>
           </div>
         )}
 
         {/* Queue */}
         {isLoading ? (
-          <div className="p-2 space-y-1">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 bg-slate-800 rounded-xl" />)}</div>
+          <div className="space-y-1 p-2">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 rounded-xl bg-muted dark:bg-slate-800" />)}</div>
         ) : items.length === 0 ? (
-          <div className="flex-1 flex flex-col items-center justify-center gap-2 text-slate-500 py-8">
+          <div className="flex flex-1 flex-col items-center justify-center gap-2 py-8 text-muted-foreground">
             <ClipboardCheck className="h-8 w-8 opacity-20" />
             <span className="text-sm">Очередь пуста</span>
           </div>
@@ -241,7 +245,7 @@ export default function CallsQaPage() {
         )}
 
         {total > PAGE_SIZE && (
-          <div className="flex items-center justify-between px-3 py-2 border-t border-slate-700/50 text-xs text-slate-500 shrink-0">
+          <div className="flex shrink-0 items-center justify-between border-t border-border px-3 py-2 text-xs text-muted-foreground dark:border-slate-700/50">
             <button disabled={page === 0} onClick={() => set({ page: String(page - 1) })} className="disabled:opacity-40">← Назад</button>
             <span>{page + 1} / {Math.ceil(total / PAGE_SIZE)}</span>
             <button disabled={(page + 1) * PAGE_SIZE >= total} onClick={() => set({ page: String(page + 1) })} className="disabled:opacity-40">Далее →</button>
@@ -255,9 +259,9 @@ export default function CallsQaPage() {
           <>
             <ReviewDetail item={selectedItem} onBack={() => set({ selectedSessionId: '' })} />
             {/* Assign button in detail */}
-            <div className="border-t border-slate-700/50 p-3 shrink-0">
+            <div className="shrink-0 border-t border-border p-3 dark:border-slate-700/50">
               <QaAssignDialog reviewId={selectedItem.reviewId}>
-                <button className="w-full flex items-center justify-center gap-2 py-2 rounded-lg border border-slate-700 bg-slate-800/60 text-xs text-slate-400 hover:text-cyan-300 hover:border-cyan-500/40 transition-colors">
+                <button className="flex w-full items-center justify-center gap-2 rounded-lg border border-border bg-muted/70 py-2 text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary dark:border-slate-700 dark:bg-slate-800/60 dark:hover:border-cyan-500/40 dark:hover:text-cyan-300">
                   <UserCheck className="h-3.5 w-3.5" />
                   Назначить ревьюера
                 </button>
@@ -266,13 +270,13 @@ export default function CallsQaPage() {
           </>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center gap-4 p-4">
-            <ClipboardCheck className="h-10 w-10 text-slate-700" />
-            <span className="text-slate-500 text-sm">Выберите звонок из очереди</span>
+            <ClipboardCheck className="h-10 w-10 text-muted-foreground/40 dark:text-slate-700" />
+            <span className="text-sm text-muted-foreground">Выберите звонок из очереди</span>
             {/* Workload widget visible when nothing selected */}
             <div className="w-full max-w-xs mt-4">
               <div className="flex items-center gap-1.5 mb-2">
-                <Users className="h-3.5 w-3.5 text-slate-500" />
-                <span className="text-[10px] text-slate-500 uppercase tracking-wide">Workload</span>
+                <Users className="h-3.5 w-3.5 text-muted-foreground" />
+                <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Workload</span>
               </div>
               <QaWorkloadWidget />
             </div>

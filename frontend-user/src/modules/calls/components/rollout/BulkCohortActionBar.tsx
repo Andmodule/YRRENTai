@@ -29,8 +29,8 @@ export function BulkCohortActionBar({ selectedIds, onClear }: Props) {
   };
 
   return (
-    <div className="sticky top-0 z-10 flex items-center gap-3 px-4 py-2.5 bg-slate-800/90 border-b border-slate-700/60 backdrop-blur text-sm">
-      <span className="text-slate-300 font-medium">{selectedIds.length} выбрано</span>
+    <div className="sticky top-0 z-10 flex items-center gap-3 border-b border-border bg-card/95 px-4 py-2.5 text-sm backdrop-blur dark:border-slate-700/60 dark:bg-slate-800/90">
+      <span className="font-medium text-foreground dark:text-slate-300">{selectedIds.length} выбрано</span>
 
       <div className="flex items-center gap-1 ml-2">
         {COHORTS.map((c) => (
@@ -41,7 +41,7 @@ export function BulkCohortActionBar({ selectedIds, onClear }: Props) {
               'px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors',
               targetCohort === c.value
                 ? 'bg-cyan-700/40 border-cyan-500/60 text-cyan-200'
-                : 'bg-slate-700/40 border-slate-600/40 text-slate-400 hover:text-slate-200',
+                : 'border-border bg-muted text-muted-foreground hover:text-foreground dark:border-slate-600/40 dark:bg-slate-700/40 dark:text-slate-400 dark:hover:text-slate-200',
             )}
           >
             {c.label}
@@ -52,14 +52,14 @@ export function BulkCohortActionBar({ selectedIds, onClear }: Props) {
       <button
         onClick={handleMove}
         disabled={bulkMove.isPending}
-        className="ml-2 px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-medium transition-colors disabled:opacity-40"
+        className="ml-2 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-40 dark:bg-cyan-600 dark:hover:bg-cyan-500 dark:text-white"
       >
         {bulkMove.isPending ? 'Перемещаем...' : `Переместить в ${targetCohort}`}
       </button>
 
       <button
         onClick={onClear}
-        className="ml-auto text-xs text-slate-500 hover:text-slate-300 transition-colors"
+        className="ml-auto text-xs text-muted-foreground transition-colors hover:text-foreground dark:hover:text-slate-300"
       >
         Сбросить
       </button>

@@ -24,22 +24,22 @@ export default function CallsSettingsPage() {
 
   return (
     <div className="mx-auto max-w-4xl">
-      <div className="flex flex-col sm:flex-row min-h-[60vh] rounded-xl border border-slate-700 overflow-hidden bg-slate-900">
+      <div className="flex min-h-[60vh] flex-col overflow-hidden rounded-xl border border-border bg-card sm:flex-row dark:border-slate-700 dark:bg-slate-900">
         {/* Sidebar */}
-        <nav className="flex flex-row sm:flex-col gap-0.5 p-2 border-b sm:border-b-0 sm:border-r border-slate-700 shrink-0 sm:w-52 overflow-x-auto sm:overflow-x-visible">
+        <nav className="flex shrink-0 flex-row gap-0.5 overflow-x-auto border-b border-border p-2 sm:w-52 sm:flex-col sm:overflow-x-visible sm:border-b-0 sm:border-r dark:border-slate-700">
           {SECTIONS.map(({ key, label, icon: Icon, description }) => (
             <button
               key={key}
               onClick={() => setSection(key)}
               className={cn(
                 'flex items-start gap-2 rounded-xl px-3 py-2.5 text-left transition-colors shrink-0',
-                section === key ? 'bg-cyan-500/10 text-cyan-300' : 'text-slate-400 hover:bg-slate-800/80 hover:text-slate-200',
+                section === key ? 'bg-primary/10 text-primary dark:bg-cyan-500/10 dark:text-cyan-300' : 'text-muted-foreground hover:bg-muted hover:text-foreground dark:text-slate-400 dark:hover:bg-slate-800/80 dark:hover:text-slate-200',
               )}
             >
               <Icon className="h-4 w-4 mt-0.5 shrink-0" />
               <div className="hidden sm:block">
                 <div className="text-xs font-semibold leading-none">{label}</div>
-                <div className="text-[10px] text-slate-500 mt-0.5 leading-snug">{description}</div>
+                <div className="mt-0.5 text-[10px] leading-snug text-muted-foreground dark:text-slate-500">{description}</div>
               </div>
               <span className="sm:hidden text-xs font-medium">{label}</span>
             </button>
@@ -51,9 +51,11 @@ export default function CallsSettingsPage() {
           {section === 'rollout'   && <RolloutSection items={rollout} />}
           {section === 'provider'  && <ProviderSection readiness={readiness} />}
           {section !== 'rollout' && section !== 'provider' && (
-            <div className="flex flex-col gap-2 text-slate-400 items-center justify-center h-40">
+            <div className="flex h-40 flex-col items-center justify-center gap-2 text-muted-foreground">
               <p className="text-sm">Выберите объект и откройте настройки политики</p>
-              <p className="text-xs text-slate-500">Детальные настройки голосового AI редактируются через API или форму политики</p>
+              <p className="text-xs text-muted-foreground/90 dark:text-slate-500">
+                Детальные настройки голосового AI редактируются через API или форму политики
+              </p>
             </div>
           )}
         </main>
@@ -81,7 +83,7 @@ function RolloutSection({ items }: { items: PropertyRolloutItem[] }) {
 
   if (items.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-40 gap-2 text-slate-500">
+      <div className="flex h-40 flex-col items-center justify-center gap-2 text-muted-foreground">
         <BarChart3 className="h-8 w-8 opacity-20" />
         <p className="text-sm">Политики не настроены. Добавьте объект.</p>
       </div>
@@ -90,27 +92,27 @@ function RolloutSection({ items }: { items: PropertyRolloutItem[] }) {
 
   return (
     <div className="space-y-3">
-      <h2 className="text-xs font-semibold uppercase tracking-widest text-slate-500">
+      <h2 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
         Voice AI по объектам
       </h2>
-      <div className="rounded-xl border border-slate-700 overflow-hidden">
+      <div className="overflow-hidden rounded-xl border border-border dark:border-slate-700">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-slate-700 bg-slate-800/60">
-              <th className="text-left px-4 py-2.5 text-[10px] font-semibold uppercase text-slate-500">Объект</th>
-              <th className="text-center px-3 py-2.5 text-[10px] font-semibold uppercase text-slate-500">AI</th>
-              <th className="text-center px-3 py-2.5 text-[10px] font-semibold uppercase text-slate-500">Провайдер</th>
-              <th className="text-center px-3 py-2.5 text-[10px] font-semibold uppercase text-slate-500">7d звонков</th>
-              <th className="text-center px-3 py-2.5 text-[10px] font-semibold uppercase text-slate-500">Fallback</th>
+            <tr className="border-b border-border bg-muted/70 dark:border-slate-700 dark:bg-slate-800/60">
+              <th className="px-4 py-2.5 text-left text-[10px] font-semibold uppercase text-muted-foreground">Объект</th>
+              <th className="px-3 py-2.5 text-center text-[10px] font-semibold uppercase text-muted-foreground">AI</th>
+              <th className="px-3 py-2.5 text-center text-[10px] font-semibold uppercase text-muted-foreground">Провайдер</th>
+              <th className="px-3 py-2.5 text-center text-[10px] font-semibold uppercase text-muted-foreground">7d звонков</th>
+              <th className="px-3 py-2.5 text-center text-[10px] font-semibold uppercase text-muted-foreground">Fallback</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-700/40">
+          <tbody className="divide-y divide-border dark:divide-slate-700/40">
             {items.map((item) => (
-              <tr key={item.propertyId} className="hover:bg-slate-800/40 transition-colors">
+              <tr key={item.propertyId} className="transition-colors hover:bg-muted/70 dark:hover:bg-slate-800/40">
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">
                     {item.lastIssue && <AlertTriangle className="h-3.5 w-3.5 text-amber-400 shrink-0" />}
-                    <span className="font-medium text-slate-200 truncate max-w-[140px]">
+                    <span className="max-w-[140px] truncate font-medium text-foreground dark:text-slate-200">
                       {item.propertyName ?? item.propertyId.slice(0, 8)}
                     </span>
                   </div>
@@ -121,7 +123,7 @@ function RolloutSection({ items }: { items: PropertyRolloutItem[] }) {
                     onClick={() => void toggleEnabled(item.propertyId, !item.enabled)}
                     className={cn(
                       'relative inline-flex h-5 w-9 items-center rounded-full transition-colors disabled:opacity-60',
-                      item.enabled ? 'bg-teal-500' : 'bg-slate-600',
+                      item.enabled ? 'bg-teal-500' : 'bg-muted dark:bg-slate-600',
                     )}
                   >
                     <span className={cn(
@@ -130,8 +132,8 @@ function RolloutSection({ items }: { items: PropertyRolloutItem[] }) {
                     )} />
                   </button>
                 </td>
-                <td className="px-3 py-3 text-center text-xs text-slate-400">{item.provider}</td>
-                <td className="px-3 py-3 text-center text-xs text-slate-300">{item.callsLast7d}</td>
+                <td className="px-3 py-3 text-center text-xs text-muted-foreground dark:text-slate-400">{item.provider}</td>
+                <td className="px-3 py-3 text-center text-xs text-foreground dark:text-slate-300">{item.callsLast7d}</td>
                 <td className="px-3 py-3 text-center text-xs">
                   {item.fallbackRate !== null ? (
                     <span className={cn('font-semibold',
@@ -139,7 +141,7 @@ function RolloutSection({ items }: { items: PropertyRolloutItem[] }) {
                       item.fallbackRate > 10 ? 'text-amber-400' : 'text-teal-400')}>
                       {item.fallbackRate}%
                     </span>
-                  ) : <span className="text-slate-600">—</span>}
+                  ) : <span className="text-muted-foreground dark:text-slate-600">—</span>}
                 </td>
               </tr>
             ))}
@@ -160,13 +162,13 @@ function FieldRow({
   const Icon = status === 'ok' ? CheckCircle2 : status === 'warn' ? AlertTriangle : XCircle;
   const col  = { ok: 'text-teal-400', warn: 'text-amber-400', missing: 'text-red-400' }[status];
   return (
-    <div className="flex items-start gap-3 py-2.5 border-b border-slate-700/40 last:border-0">
+    <div className="flex items-start gap-3 border-b border-border py-2.5 last:border-0 dark:border-slate-700/40">
       <Icon className={cn('h-4 w-4 mt-0.5 shrink-0', col)} />
       <div className="flex-1 min-w-0">
-        <p className="text-xs font-semibold text-slate-300">{label}</p>
-        {hint && <p className="text-[11px] text-slate-500 mt-0.5">{hint}</p>}
+        <p className="text-xs font-semibold text-foreground dark:text-slate-300">{label}</p>
+        {hint && <p className="mt-0.5 text-[11px] text-muted-foreground dark:text-slate-500">{hint}</p>}
       </div>
-      <span className={cn('text-xs font-mono shrink-0 max-w-[180px] truncate', status === 'ok' ? 'text-slate-300' : col)}>
+      <span className={cn('max-w-[180px] shrink-0 truncate font-mono text-xs', status === 'ok' ? 'text-foreground/90 dark:text-slate-300' : col)}>
         {value}
       </span>
     </div>
@@ -176,7 +178,7 @@ function FieldRow({
 function ProviderSection({ readiness }: { readiness?: GoLiveReadiness }) {
   if (!readiness) {
     return (
-      <div className="flex items-center justify-center h-32 text-slate-500 text-sm">
+      <div className="flex h-32 items-center justify-center text-sm text-muted-foreground">
         Загрузка readiness данных…
       </div>
     );
@@ -207,8 +209,8 @@ function ProviderSection({ readiness }: { readiness?: GoLiveReadiness }) {
     <div className="space-y-5">
       {/* Provider identity */}
       <div>
-        <h2 className="text-xs font-semibold uppercase tracking-widest text-slate-500 mb-3">Провайдер</h2>
-        <div className="rounded-xl border border-slate-700 overflow-hidden bg-slate-800/30 px-4">
+        <h2 className="mb-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground">Провайдер</h2>
+        <div className="overflow-hidden rounded-xl border border-border bg-muted/40 px-4 dark:border-slate-700 dark:bg-slate-800/30">
           <FieldRow
             label="Provider"
             value={env.provider.toUpperCase()}
@@ -229,8 +231,8 @@ function ProviderSection({ readiness }: { readiness?: GoLiveReadiness }) {
 
       {/* Retell credentials */}
       <div>
-        <h2 className="text-xs font-semibold uppercase tracking-widest text-slate-500 mb-3">Retell Credentials</h2>
-        <div className="rounded-xl border border-slate-700 overflow-hidden bg-slate-800/30 px-4">
+        <h2 className="mb-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground">Retell Credentials</h2>
+        <div className="overflow-hidden rounded-xl border border-border bg-muted/40 px-4 dark:border-slate-700 dark:bg-slate-800/30">
           <FieldRow
             label="RETELL_API_KEY"
             value={apiKeyCheck?.status === 'pass' ? '••••••••' : 'Не задан'}
@@ -254,8 +256,8 @@ function ProviderSection({ readiness }: { readiness?: GoLiveReadiness }) {
 
       {/* Phone numbers */}
       <div>
-        <h2 className="text-xs font-semibold uppercase tracking-widest text-slate-500 mb-3">Телефонные номера</h2>
-        <div className="rounded-xl border border-slate-700 overflow-hidden bg-slate-800/30 px-4">
+        <h2 className="mb-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground">Телефонные номера</h2>
+        <div className="overflow-hidden rounded-xl border border-border bg-muted/40 px-4 dark:border-slate-700 dark:bg-slate-800/30">
           <FieldRow
             label="Входящий номер (Retell)"
             value={inboundNumCheck?.message.includes(':') ? inboundNumCheck.message.split(':').slice(1).join(':').trim() : 'Не задан'}
@@ -279,30 +281,30 @@ function ProviderSection({ readiness }: { readiness?: GoLiveReadiness }) {
 
       {/* Webhook URLs */}
       <div>
-        <h2 className="text-xs font-semibold uppercase tracking-widest text-slate-500 mb-3">Webhook URLs</h2>
-        <p className="text-xs text-slate-400 mb-3">
+        <h2 className="mb-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground">Webhook URLs</h2>
+        <p className="mb-3 text-xs text-muted-foreground dark:text-slate-400">
           Скопируйте в Retell Dashboard. Inbound URL — на номер телефона. Event URL — в настройки аккаунта (General webhook).
         </p>
-        <div className="rounded-xl border border-slate-700 overflow-hidden bg-slate-800/30 divide-y divide-slate-700/40">
+        <div className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-muted/40 dark:divide-slate-700/40 dark:border-slate-700 dark:bg-slate-800/30">
           {[
             { label: 'Inbound webhook (на номер)', url: inboundWebhookUrl },
             { label: 'Event webhook (General)',     url: eventWebhookUrl },
           ].map(({ label, url }) => (
             <div key={label} className="flex items-center gap-3 px-4 py-2.5">
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-semibold text-slate-300">{label}</p>
-                <p className="text-[11px] font-mono text-slate-400 truncate mt-0.5">{url}</p>
+                <p className="text-xs font-semibold text-foreground dark:text-slate-300">{label}</p>
+                <p className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground dark:text-slate-400">{url}</p>
               </div>
               {baseUrl && (
                 <a href={url} target="_blank" rel="noopener noreferrer"
-                  className="p-1 rounded text-slate-500 hover:text-slate-300 shrink-0">
+                  className="shrink-0 rounded p-1 text-muted-foreground hover:text-foreground dark:hover:text-slate-300">
                   <ExternalLink className="h-3.5 w-3.5" />
                 </a>
               )}
             </div>
           ))}
         </div>
-        <p className="text-[11px] text-slate-500 mt-2">
+        <p className="mt-2 text-[11px] text-muted-foreground dark:text-slate-500">
           Webhook signature: <span className={cn('font-semibold', webhook.signingSecretPresent ? 'text-teal-400' : 'text-amber-400')}>
             {webhook.signingSecretPresent ? 'верифицируется' : 'отключена (RETELL_WEBHOOK_SECRET не задан)'}
           </span>

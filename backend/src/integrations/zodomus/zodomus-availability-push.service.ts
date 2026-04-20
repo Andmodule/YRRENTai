@@ -70,16 +70,26 @@ export class ZodomusAvailabilityPushService implements OnModuleInit, OnModuleDes
       },
       {
         connection,
-        concurrency: 1, // Strict concurrency
+        concurrency: 1,
         limiter: {
-          max: 60, // 60 requests
-          duration: 60_000, // per 60 seconds
+          max: 60, // 60 requests per 60 seconds (Zodomus rate limit)
+          duration: 60_000,
         },
       }
     );
 
+    // When a segment job completes successfully, clear the dirty flag — the property is in sync.
+    // Note: this fires for every segment (potentially many per property); clearDirty is idempotent.
+    this.worker.on('completed', async (job) => {
+      if (job?.data.propertyId) {
+        await this.clearDirty(job.data.propertyId);
+      }
+    });
+
     this.worker.on('failed', async (job, err) => {
-      this.logger.error(`Zodomus availability push failed for ${job?.data.propertyId} (Dates: ${job?.data.dateFrom}-${job?.data.dateToExclusive}): ${(err as Error).message}`);
+      this.logger.error(
+        `Zodomus availability push failed for ${job?.data.propertyId} (${job?.data.dateFrom}–${job?.data.dateToExclusive}): ${(err as Error).message}`,
+      );
       if (job?.data.propertyId) {
         await this.markDirty(job.data.propertyId);
       }
@@ -145,7 +155,8 @@ export class ZodomusAvailabilityPushService implements OnModuleInit, OnModuleDes
     for (const p of rows) {
       try {
         await this.pushAvailabilityNow(p.id, { ignoreAutoPushDisable: true });
-        await this.clearDirty(p.id); // clear immediately so we don't enqueue duplicates repeatedly
+        // When BullMQ is active the dirty flag is cleared in the worker's 'completed' handler.
+        // When running inline (no Redis) clearDirty happens inside pushAvailabilityNow already.
       } catch (e) {
         this.logger.warn(`Dirty retry failed for ${p.id}: ${String(e)}`);
       }
@@ -170,16 +181,17 @@ export class ZodomusAvailabilityPushService implements OnModuleInit, OnModuleDes
     if (rows.length === 0) return;
     this.logger.log(`Zodomus nightly availability reconcile enqueuing: ${rows.length} property(ies)`);
     
-    // Spread the execution of the property calculations over several minutes 
-    // to avoid slamming the DB with `executePush` all at once.
+    // Spread execution over several minutes to avoid hammering the DB all at once.
+    // Uses ZODOMUS_AVAILABILITY_BATCH_GAP_MS (default 1000 ms between properties).
+    const gapMs = Math.max(500, this.config.get<number>('ZODOMUS_AVAILABILITY_BATCH_GAP_MS') ?? 1000);
     let delayMs = 0;
     for (const p of rows) {
       setTimeout(() => {
-        void this.pushAvailabilityNow(p.id, { ignoreAutoPushDisable: true }).catch(e => 
-          this.logger.warn(`Nightly reconcile failed for ${p.id}: ${String(e)}`)
+        void this.pushAvailabilityNow(p.id, { ignoreAutoPushDisable: true }).catch((e) =>
+          this.logger.warn(`Nightly reconcile failed for ${p.id}: ${String(e)}`),
         );
       }, delayMs);
-      delayMs += 2000; // calculate one property every 2 seconds
+      delayMs += gapMs;
     }
   }
 

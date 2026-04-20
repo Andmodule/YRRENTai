@@ -54,16 +54,20 @@ function AlertRow({ alert }: AlertRowProps) {
           )}>
             {formatValue(alert.metricKey, alert.currentValue)}
           </span>
-          <span className="text-xs text-slate-500">
+          <span className="text-xs text-muted-foreground/90 dark:text-slate-500">
             порог: {formatValue(alert.metricKey, alert.thresholdValue)}
           </span>
           {isAcked && (
-            <span className="text-xs px-1.5 py-0.5 rounded bg-slate-700/50 text-slate-400">ack</span>
+            <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground dark:bg-slate-700/50 dark:text-slate-400">
+              ack
+            </span>
           )}
         </div>
-        <div className="text-xs text-slate-500 mt-0.5">
+        <div className="mt-0.5 text-xs text-muted-foreground dark:text-slate-500">
           {formatDistanceToNow(new Date(alert.lastTriggeredAt), { addSuffix: true, locale: ru })}
-          {alert.propertyId && <span className="ml-2 text-slate-600">· property {alert.propertyId.slice(0, 8)}</span>}
+          {alert.propertyId && (
+            <span className="ml-2 text-muted-foreground/80 dark:text-slate-600">· property {alert.propertyId.slice(0, 8)}</span>
+          )}
         </div>
       </div>
 
@@ -72,7 +76,7 @@ function AlertRow({ alert }: AlertRowProps) {
           <button
             onClick={() => ack.mutate(alert.id)}
             disabled={ack.isPending}
-            className="p-1 rounded text-slate-400 hover:text-amber-300 hover:bg-amber-900/20 transition-colors disabled:opacity-40"
+            className="rounded p-1 text-muted-foreground transition-colors hover:bg-amber-500/10 hover:text-amber-800 disabled:opacity-40 dark:hover:bg-amber-900/20 dark:hover:text-amber-300"
             title="Подтвердить"
           >
             <Clock className="h-3.5 w-3.5" />
@@ -81,7 +85,7 @@ function AlertRow({ alert }: AlertRowProps) {
         <button
           onClick={() => resolve.mutate(alert.id)}
           disabled={resolve.isPending}
-          className="p-1 rounded text-slate-400 hover:text-teal-300 hover:bg-teal-900/20 transition-colors disabled:opacity-40"
+          className="rounded p-1 text-muted-foreground transition-colors hover:bg-teal-500/10 hover:text-teal-700 disabled:opacity-40 dark:hover:bg-teal-900/20 dark:hover:text-teal-300"
           title="Разрешить"
         >
           <CheckCircle2 className="h-3.5 w-3.5" />
@@ -103,7 +107,7 @@ export function ActiveAlertsPanel({ alerts, isLoading }: Props) {
     return (
       <div className="space-y-2">
         {[1, 2].map((i) => (
-          <div key={i} className="h-14 rounded-lg bg-slate-800/50 animate-pulse" />
+          <div key={i} className="h-14 animate-pulse rounded-lg bg-muted dark:bg-slate-800/50" />
         ))}
       </div>
     );

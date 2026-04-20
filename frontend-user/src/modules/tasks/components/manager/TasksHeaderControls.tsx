@@ -90,9 +90,8 @@ export function TasksHeaderControls() {
       <div className="flex min-h-9 w-full min-w-0 items-center">
         <div
           className={cn(
-            'flex h-9 min-w-0 shrink-0 items-center gap-0.5 rounded-xl border p-0.5',
-            'border-slate-200/90 bg-white shadow-sm ring-1 ring-slate-900/[0.03]',
-            'dark:border-slate-700/75 dark:bg-slate-900/80 dark:ring-slate-500/10',
+            'flex h-9 min-w-0 shrink-0 items-center gap-0.5 rounded-xl border border-border bg-card p-0.5 shadow-sm ring-1 ring-border/40',
+            'dark:bg-card/80 dark:ring-border/30',
           )}
           role="toolbar"
           aria-label={t('viewModes.toolbarAria')}
@@ -112,7 +111,7 @@ export function TasksHeaderControls() {
                 'h-8 gap-0.5 rounded-lg px-1.5 sm:px-2',
                 view === id
                   ? 'bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 hover:text-primary-foreground dark:shadow-[0_0_16px_-4px_rgba(0,180,200,0.35)]'
-                  : 'text-muted-foreground hover:bg-slate-100/90 dark:hover:bg-slate-800/80',
+                  : 'text-muted-foreground hover:bg-muted/80 dark:hover:bg-muted/40',
               )}
               onClick={() => setView(id)}
               aria-pressed={view === id}

@@ -15,9 +15,9 @@ const ACTION_COLORS: Record<string, string> = {
   cohort_changed:         'text-blue-400',
   bulk_cohort_changed:    'text-blue-400',
   provider_changed:       'text-blue-400',
-  review_assigned:        'text-slate-300',
-  review_bulk_assigned:   'text-slate-300',
-  review_status_changed:  'text-slate-300',
+  review_assigned: 'text-foreground/90 dark:text-slate-300',
+  review_bulk_assigned: 'text-foreground/90 dark:text-slate-300',
+  review_status_changed: 'text-foreground/90 dark:text-slate-300',
 };
 
 const ACTION_LABELS: Record<string, string> = {
@@ -51,7 +51,7 @@ export function AuditLogTable({ items, total, page, pageSize, onPage, onSelect, 
     return (
       <div className="space-y-2">
         {Array.from({ length: 10 }).map((_, i) => (
-          <div key={i} className="h-10 bg-slate-800/50 rounded animate-pulse" />
+          <div key={i} className="h-10 animate-pulse rounded bg-muted dark:bg-slate-800/50" />
         ))}
       </div>
     );
@@ -59,7 +59,7 @@ export function AuditLogTable({ items, total, page, pageSize, onPage, onSelect, 
 
   if (items.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 text-slate-500">
+      <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
         <p className="text-sm">Нет записей аудита</p>
       </div>
     );
@@ -69,46 +69,46 @@ export function AuditLogTable({ items, total, page, pageSize, onPage, onSelect, 
     <div className="space-y-1">
       <table className="w-full text-xs">
         <thead>
-          <tr className="border-b border-slate-700/60">
-            <th className="pb-2 text-left text-slate-500 uppercase tracking-wide font-medium">Время</th>
-            <th className="pb-2 text-left text-slate-500 uppercase tracking-wide font-medium">Действие</th>
-            <th className="pb-2 text-left text-slate-500 uppercase tracking-wide font-medium hidden sm:table-cell">Актор</th>
-            <th className="pb-2 text-left text-slate-500 uppercase tracking-wide font-medium hidden md:table-cell">Объект</th>
-            <th className="pb-2 text-left text-slate-500 uppercase tracking-wide font-medium hidden lg:table-cell">Сущность</th>
-            <th className="pb-2 text-left text-slate-500 uppercase tracking-wide font-medium hidden lg:table-cell">Метаданные</th>
+          <tr className="border-b border-border dark:border-slate-700/60">
+            <th className="pb-2 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">Время</th>
+            <th className="pb-2 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">Действие</th>
+            <th className="hidden pb-2 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground sm:table-cell">Актор</th>
+            <th className="hidden pb-2 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground md:table-cell">Объект</th>
+            <th className="hidden pb-2 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground lg:table-cell">Сущность</th>
+            <th className="hidden pb-2 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground lg:table-cell">Метаданные</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-800/40">
+        <tbody className="divide-y divide-border dark:divide-slate-800/40">
           {items.map((entry) => (
             <tr
               key={entry.id}
               onClick={() => onSelect(entry)}
-              className="cursor-pointer hover:bg-slate-800/30 transition-colors group"
+              className="group cursor-pointer transition-colors hover:bg-muted/80 dark:hover:bg-slate-800/30"
             >
-              <td className="py-2.5 pr-4 text-slate-500 whitespace-nowrap font-mono">
+              <td className="whitespace-nowrap py-2.5 pr-4 font-mono text-muted-foreground">
                 {format(new Date(entry.createdAt), 'dd.MM HH:mm:ss', { locale: ru })}
               </td>
               <td className="py-2.5 pr-4">
-                <span className={cn('font-medium', ACTION_COLORS[entry.actionType] ?? 'text-slate-400')}>
+                <span className={cn('font-medium', ACTION_COLORS[entry.actionType] ?? 'text-muted-foreground dark:text-slate-400')}>
                   {ACTION_LABELS[entry.actionType] ?? entry.actionType}
                 </span>
               </td>
               <td className="py-2.5 pr-4 hidden sm:table-cell">
                 <div className="flex flex-col">
-                  <span className="text-slate-300 font-mono">{entry.actorId.slice(0, 8)}…</span>
-                  <span className="text-slate-600">{entry.actorRole}</span>
+                  <span className="font-mono text-foreground dark:text-slate-300">{entry.actorId.slice(0, 8)}…</span>
+                  <span className="text-muted-foreground dark:text-slate-600">{entry.actorRole}</span>
                 </div>
               </td>
-              <td className="py-2.5 pr-4 hidden md:table-cell text-slate-400 font-mono">
+              <td className="hidden py-2.5 pr-4 font-mono text-muted-foreground md:table-cell dark:text-slate-400">
                 {entry.propertyId ? entry.propertyId.slice(0, 8) + '…' : '—'}
               </td>
-              <td className="py-2.5 pr-4 hidden lg:table-cell text-slate-500">
+              <td className="hidden py-2.5 pr-4 text-muted-foreground lg:table-cell dark:text-slate-500">
                 {entry.entityType && <span>{entry.entityType}</span>}
                 {entry.entityId && <span className="ml-1 font-mono">{entry.entityId.slice(0, 6)}…</span>}
                 {!entry.entityType && '—'}
               </td>
-              <td className="py-2.5 hidden lg:table-cell text-slate-600 max-w-[200px]">
-                <span className="truncate block">{JSON.stringify(entry.metadata).slice(0, 60)}</span>
+              <td className="hidden max-w-[200px] py-2.5 text-muted-foreground lg:table-cell dark:text-slate-600">
+                <span className="block truncate">{JSON.stringify(entry.metadata).slice(0, 60)}</span>
               </td>
             </tr>
           ))}
@@ -116,20 +116,20 @@ export function AuditLogTable({ items, total, page, pageSize, onPage, onSelect, 
       </table>
 
       {totalPages > 1 && (
-        <div className="flex items-center justify-between pt-3 border-t border-slate-800">
-          <span className="text-xs text-slate-500">{total} записей, стр. {page + 1}/{totalPages}</span>
+        <div className="flex items-center justify-between border-t border-border pt-3 dark:border-slate-800">
+          <span className="text-xs text-muted-foreground">{total} записей, стр. {page + 1}/{totalPages}</span>
           <div className="flex gap-1">
             <button
               onClick={() => onPage(page - 1)}
               disabled={page === 0}
-              className="p-1.5 rounded text-slate-400 hover:text-white disabled:opacity-30 transition-colors"
+              className="rounded p-1.5 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30 dark:hover:text-white"
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
             <button
               onClick={() => onPage(page + 1)}
               disabled={page >= totalPages - 1}
-              className="p-1.5 rounded text-slate-400 hover:text-white disabled:opacity-30 transition-colors"
+              className="rounded p-1.5 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30 dark:hover:text-white"
             >
               <ChevronRight className="h-4 w-4" />
             </button>

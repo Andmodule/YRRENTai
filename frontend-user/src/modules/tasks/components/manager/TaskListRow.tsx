@@ -110,7 +110,12 @@ export const TaskListRow = memo(function TaskListRow({
         <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-rose-500 shadow-sm" title={t('priority.urgent')} />
       );
     }
-    return <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-slate-300 dark:bg-slate-600" title={t('priority.normal')} />;
+    return (
+      <span
+        className="h-2.5 w-2.5 shrink-0 rounded-full bg-muted-foreground/25 dark:bg-muted-foreground/40"
+        title={t('priority.normal')}
+      />
+    );
   })();
 
   const checklist = task.checklistSummary;
@@ -156,8 +161,11 @@ export const TaskListRow = memo(function TaskListRow({
     'flex w-full min-w-0 origin-top cursor-pointer flex-row items-start gap-2 border-b border-border/40 px-2 py-2 text-left md:px-3',
     'hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
     'transition-colors',
-    task.status === 'issue' ? 'bg-amber-50/50 hover:bg-amber-100/50 dark:bg-amber-950/20 dark:hover:bg-amber-950/40' :
-    task.priority === 'urgent' ? 'bg-rose-50/50 hover:bg-rose-100/50 dark:bg-rose-950/20 dark:hover:bg-rose-950/40' : '',
+    task.status === 'issue'
+      ? 'bg-amber-500/8 hover:bg-amber-500/12 dark:bg-amber-950/20 dark:hover:bg-amber-950/40'
+      : task.priority === 'urgent'
+        ? 'bg-destructive/6 hover:bg-destructive/10 dark:bg-rose-950/20 dark:hover:bg-rose-950/40'
+        : '',
   );
 
   const rowInner = (

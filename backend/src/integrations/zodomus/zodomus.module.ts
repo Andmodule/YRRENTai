@@ -11,6 +11,7 @@ import { ZodomusWebhookController } from './zodomus-webhook.controller';
 import { ZodomusAdminController } from './zodomus-admin.controller';
 import { BookingEntity } from '../../booking/entities/booking.entity';
 import { PropertyEntity } from '../../property/entities/property.entity';
+import { PropertyChannelListingEntity } from '../../property/entities/property-channel-listing.entity';
 import { PropertyModule } from '../../property/property.module';
 import { UserModule } from '../../user/user.module';
 import { ZodomusAvailabilityPushService } from './zodomus-availability-push.service';
@@ -18,7 +19,7 @@ import { ZodomusAvailabilityPushService } from './zodomus-availability-push.serv
 @Module({
   imports: [
     ConfigModule,
-    TypeOrmModule.forFeature([BookingEntity, PropertyEntity]),
+    TypeOrmModule.forFeature([BookingEntity, PropertyEntity, PropertyChannelListingEntity]),
     PropertyModule,
     UserModule,
   ],

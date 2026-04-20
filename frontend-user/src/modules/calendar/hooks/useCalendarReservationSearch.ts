@@ -52,7 +52,9 @@ export function useCalendarReservationSearch(activeQuery: string) {
       return parseReservationSearchResponse(res.data);
     },
     enabled: debouncedQuery.length >= MIN_LEN,
-    staleTime: 60_000,
+    staleTime: 12_000,
+    refetchInterval: 25_000,
+    refetchOnWindowFocus: true,
   });
 
   return { ...query, debouncedQuery };

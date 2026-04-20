@@ -15,11 +15,11 @@ function WorkloadBar({ label, value, max, color }: WorkloadBarProps) {
   const pct = max > 0 ? Math.min((value / max) * 100, 100) : 0;
   return (
     <div className="flex items-center gap-2 text-xs">
-      <span className="w-16 text-slate-400 truncate">{label}</span>
-      <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+      <span className="w-16 truncate text-muted-foreground">{label}</span>
+      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted dark:bg-slate-800">
         <div className={cn('h-full rounded-full', color)} style={{ width: `${pct}%` }} />
       </div>
-      <span className="w-6 text-right text-slate-300 font-mono">{value}</span>
+      <span className="w-6 text-right font-mono text-foreground dark:text-slate-300">{value}</span>
     </div>
   );
 }
@@ -29,10 +29,10 @@ export function QaWorkloadWidget() {
 
   if (isLoading) {
     return (
-      <div className="bg-slate-800/50 rounded-xl border border-slate-700/50 p-4 space-y-2">
-        <div className="h-4 w-24 bg-slate-700 rounded animate-pulse" />
+      <div className="space-y-2 rounded-xl border border-border bg-muted/50 p-4 dark:border-slate-700/50 dark:bg-slate-800/50">
+        <div className="h-4 w-24 animate-pulse rounded bg-muted dark:bg-slate-700" />
         {[1, 2, 3].map((i) => (
-          <div key={i} className="h-3 bg-slate-700/50 rounded animate-pulse" />
+          <div key={i} className="h-3 animate-pulse rounded bg-muted/80 dark:bg-slate-700/50" />
         ))}
       </div>
     );
@@ -40,9 +40,9 @@ export function QaWorkloadWidget() {
 
   if (data.length === 0) {
     return (
-      <div className="bg-slate-800/50 rounded-xl border border-slate-700/50 p-4 text-center">
-        <Users className="h-5 w-5 text-slate-600 mx-auto mb-1" />
-        <p className="text-xs text-slate-500">Нет назначенных ревью</p>
+      <div className="rounded-xl border border-border bg-muted/50 p-4 text-center dark:border-slate-700/50 dark:bg-slate-800/50">
+        <Users className="mx-auto mb-1 h-5 w-5 text-muted-foreground dark:text-slate-600" />
+        <p className="text-xs text-muted-foreground">Нет назначенных ревью</p>
       </div>
     );
   }
@@ -50,10 +50,10 @@ export function QaWorkloadWidget() {
   const maxOpen = Math.max(...data.map((d) => d.openCount + d.inReviewCount + d.escalatedCount), 1);
 
   return (
-    <div className="bg-slate-800/50 rounded-xl border border-slate-700/50 p-4">
-      <div className="flex items-center gap-2 mb-3">
-        <Users className="h-4 w-4 text-slate-400" />
-        <span className="text-xs font-semibold text-slate-300 uppercase tracking-wide">Workload</span>
+    <div className="rounded-xl border border-border bg-muted/50 p-4 dark:border-slate-700/50 dark:bg-slate-800/50">
+      <div className="mb-3 flex items-center gap-2">
+        <Users className="h-4 w-4 text-muted-foreground" />
+        <span className="text-xs font-semibold uppercase tracking-wide text-foreground dark:text-slate-300">Workload</span>
       </div>
 
       <div className="space-y-2.5">
@@ -63,7 +63,7 @@ export function QaWorkloadWidget() {
           return (
             <div key={row.assigneeId} className="space-y-1">
               <div className="flex items-center justify-between">
-                <span className="text-xs text-slate-300 font-mono truncate max-w-[120px]">
+                <span className="max-w-[120px] truncate font-mono text-xs text-foreground dark:text-slate-300">
                   {row.assigneeId.slice(0, 8)}…
                 </span>
                 <div className="flex items-center gap-1">
@@ -72,7 +72,7 @@ export function QaWorkloadWidget() {
                       {row.overdueCount} просроч.
                     </span>
                   )}
-                  <span className="text-[10px] text-slate-500">{total} итого</span>
+                  <span className="text-[10px] text-muted-foreground dark:text-slate-500">{total} итого</span>
                 </div>
               </div>
               <WorkloadBar

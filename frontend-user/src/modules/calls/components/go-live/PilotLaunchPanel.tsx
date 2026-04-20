@@ -46,9 +46,9 @@ export function PilotLaunchPanel({ readiness }: Props) {
   ];
 
   return (
-    <div className="rounded-xl border border-slate-700/50 bg-slate-900/40 overflow-hidden">
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-700/40 bg-slate-800/40">
-        <span className="text-sm font-semibold text-slate-200">Pilot Launch</span>
+    <div className="overflow-hidden rounded-xl border border-border bg-card/90 dark:border-slate-700/50 dark:bg-slate-900/40">
+      <div className="flex items-center gap-2 border-b border-border bg-muted/60 px-4 py-3 dark:border-slate-700/40 dark:bg-slate-800/40">
+        <span className="text-sm font-semibold text-foreground dark:text-slate-200">Pilot Launch</span>
       </div>
 
       <div className="p-4 space-y-4">
@@ -74,7 +74,7 @@ export function PilotLaunchPanel({ readiness }: Props) {
 
         {/* Quick links */}
         <div className="space-y-1.5 pt-1">
-          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Быстрый доступ</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground dark:text-slate-400">Быстрый доступ</p>
           <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
             {quickLinks.map((link) => {
               const Icon = link.icon;
@@ -84,15 +84,15 @@ export function PilotLaunchPanel({ readiness }: Props) {
                   href={link.href}
                   className={cn(
                     'flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-colors',
-                    'border-slate-700/40 bg-slate-800/30 hover:bg-slate-800/70 hover:border-slate-600/60',
+                    'border-border bg-muted/50 hover:border-border hover:bg-muted dark:border-slate-700/40 dark:bg-slate-800/30 dark:hover:border-slate-600/60 dark:hover:bg-slate-800/70',
                   )}
                 >
-                  <Icon className="h-4 w-4 text-slate-400 shrink-0" />
+                  <Icon className="h-4 w-4 shrink-0 text-muted-foreground dark:text-slate-400" />
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-slate-200">{link.label}</p>
-                    <p className="text-xs text-slate-500">{link.desc}</p>
+                    <p className="text-sm font-medium text-foreground dark:text-slate-200">{link.label}</p>
+                    <p className="text-xs text-muted-foreground dark:text-slate-500">{link.desc}</p>
                   </div>
-                  <ArrowRight className="h-3.5 w-3.5 text-slate-600 shrink-0" />
+                  <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground dark:text-slate-600" />
                 </Link>
               );
             })}

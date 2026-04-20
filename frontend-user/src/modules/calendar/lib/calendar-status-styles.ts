@@ -1,6 +1,6 @@
 import type { BookingStatus } from '../types';
 
-/** Light + dark (strategy / semantic tokens) for badges and ProgramBlock borders */
+/** Badges / pills (ReservationDetailPanel, …) — полная рамка, без левого акцента. */
 export const calendarStatusClasses: Record<BookingStatus, string> = {
   confirmed:
     'bg-blue-100 text-blue-800 border border-blue-200 dark:bg-blue-950/55 dark:text-blue-100 dark:border-blue-800/70',
@@ -12,4 +12,10 @@ export const calendarStatusClasses: Record<BookingStatus, string> = {
     'bg-gray-100 text-gray-600 border border-gray-200 dark:bg-muted dark:text-muted-foreground dark:border-border',
   cancelled:
     'bg-slate-200 text-slate-700 border border-slate-300 dark:bg-slate-900/60 dark:text-slate-200 dark:border-slate-700',
+};
+
+/** Карточка в таймлайне: без отдельной «янтарной» левой границы у pending — как confirmed (статус в тултипе). */
+export const calendarTimelineCardClasses: Record<BookingStatus, string> = {
+  ...calendarStatusClasses,
+  pending: calendarStatusClasses.confirmed,
 };

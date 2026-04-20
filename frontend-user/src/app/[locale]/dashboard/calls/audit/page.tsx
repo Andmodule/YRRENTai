@@ -37,22 +37,22 @@ export default function CallsAuditPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-base font-bold text-white flex items-center gap-2">
-            <ScrollText className="h-4 w-4 text-cyan-400" />
+          <h1 className="flex items-center gap-2 text-base font-bold text-foreground">
+            <ScrollText className="h-4 w-4 text-primary dark:text-cyan-400" />
             Аудит журнал
           </h1>
-          <p className="text-xs text-slate-500 mt-0.5">Критичные управленческие действия</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">Критичные управленческие действия</p>
         </div>
         <button
           onClick={() => void refetch()}
-          className="h-8 w-8 flex items-center justify-center rounded-lg border border-slate-700 bg-slate-800 text-slate-400 hover:text-slate-200 transition-colors"
+          className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-muted text-muted-foreground transition-colors hover:text-foreground dark:border-slate-700 dark:bg-slate-800 dark:hover:text-slate-200"
         >
           <RefreshCw className="h-3.5 w-3.5" />
         </button>
       </div>
 
       {/* Filters */}
-      <div className="rounded-xl border border-slate-700 bg-slate-800/50 p-3">
+      <div className="rounded-xl border border-border bg-card p-3 dark:border-slate-700 dark:bg-slate-800/50">
         <AuditLogFilters
           filters={filters}
           onChange={handleFiltersChange}
@@ -61,13 +61,14 @@ export default function CallsAuditPage() {
       </div>
 
       {/* Table */}
-      <div className="rounded-xl border border-slate-700 bg-slate-900/50 p-4">
+      <div className="rounded-xl border border-border bg-card/80 p-4 dark:border-slate-700 dark:bg-slate-900/50">
         {isError ? (
-          <div className="flex flex-col items-center justify-center py-10 text-slate-500 gap-2">
+          <div className="flex flex-col items-center justify-center gap-2 py-10 text-muted-foreground">
             <p className="text-sm">Ошибка загрузки. Попробуйте снова.</p>
             <button
+              type="button"
               onClick={() => void refetch()}
-              className="text-xs text-cyan-400 hover:text-cyan-300"
+              className="text-xs text-primary hover:text-primary/80 dark:text-cyan-400 dark:hover:text-cyan-300"
             >
               Повторить
             </button>

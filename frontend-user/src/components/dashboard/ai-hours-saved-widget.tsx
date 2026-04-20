@@ -90,19 +90,19 @@ export function AiHoursSavedWidget() {
   return (
     <section
       className={cn(
-        'space-y-3 rounded-lg border border-slate-800/80 bg-slate-950/20 py-3 sm:space-y-4 sm:rounded-xl sm:py-6',
+        'space-y-3 rounded-lg border border-border bg-card py-3 sm:space-y-4 sm:rounded-xl sm:py-6 dark:border-slate-800/80 dark:bg-slate-950/20',
       )}
     >
       <div className="px-3 sm:px-6">
-        <h2 className="text-[10px] font-semibold uppercase tracking-widest text-slate-500 sm:text-xs">
+        <h2 className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground sm:text-xs">
           {t('title')}
         </h2>
-        <p className="mt-0.5 text-xs leading-snug text-slate-400 sm:mt-1 sm:text-sm">{t('subtitle')}</p>
+        <p className="mt-0.5 text-xs leading-snug text-muted-foreground sm:mt-1 sm:text-sm">{t('subtitle')}</p>
       </div>
 
       <div className="relative px-3 sm:px-6">
         <p
-          className="relative z-10 mb-1 text-3xl font-bold tabular-nums tracking-tight text-white sm:mb-2 sm:text-4xl"
+          className="relative z-10 mb-1 text-3xl font-bold tabular-nums tracking-tight text-foreground sm:mb-2 sm:text-4xl dark:text-white"
           aria-live="polite"
         >
           {t('totalHours', { hours: totalHours })}
@@ -127,7 +127,7 @@ export function AiHoursSavedWidget() {
               horizontal={false}
               vertical
               strokeDasharray="4 6"
-              className="stroke-slate-600/35 dark:stroke-slate-600/35"
+              className="stroke-border dark:stroke-slate-600/35"
             />
             <XAxis
               dataKey="date"
@@ -142,7 +142,7 @@ export function AiHoursSavedWidget() {
                   day: 'numeric',
                 }).format(d);
               }}
-              className="text-[10px] text-slate-500 sm:text-xs"
+              className="text-[10px] text-muted-foreground sm:text-xs"
             />
             <YAxis hide width={0} />
             <ChartTooltip
@@ -178,7 +178,7 @@ export function AiHoursSavedWidget() {
               strokeWidth={2}
               fill={`url(#${fillId})`}
               dot={false}
-              activeDot={{ r: 4, fill: 'var(--color-hours)', stroke: '#0f172a', strokeWidth: 1 }}
+              activeDot={{ r: 4, fill: 'var(--color-hours)', stroke: 'var(--card)', strokeWidth: 1 }}
             />
           </AreaChart>
         </ChartContainer>

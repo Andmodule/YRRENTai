@@ -7,24 +7,25 @@
 /* Light theme */
 :root {
   --space-4: 1rem;
-  --background: #fafafa;
-  --foreground: #0a0a0a;
+  /* Light: warm neutral page, slightly stronger muted text for WCAG on cards */
+  --background: #f8f7f5;
+  --foreground: #18181b;
   --primary: #2563eb;
   --primary-foreground: #ffffff;
   --secondary: #f1f5f9;
   --secondary-foreground: #0f172a;
-  --muted: #f5f5f5;
-  --muted-foreground: #64748b;
+  --muted: #f4f4f5;
+  --muted-foreground: #52525b;
   --accent: #f1f5f9;
   --accent-foreground: #0f172a;
   --destructive: #dc2626;
   --destructive-foreground: #ffffff;
-  --border: #e2e8f0;
+  --border: #e4e4e7;
   --card: #ffffff;
-  --card-foreground: #0a0a0a;
+  --card-foreground: #18181b;
   --popover: #ffffff;
-  --popover-foreground: #0a0a0a;
-  --input: #e2e8f0;
+  --popover-foreground: #18181b;
+  --input: #e4e4e7;
   --ring: #2563eb;
 
   /* Slate inversion for light theme:
