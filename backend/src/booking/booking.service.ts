@@ -97,6 +97,7 @@ export class BookingService {
       dateFromISO: saved.checkIn.toISOString(),
       dateToISO: saved.checkOut.toISOString(),
     });
+    this.calendarGateway.emitCalendarChanged({ propertyId: saved.propertyId, source: 'booking:create' });
     return saved;
   }
 
@@ -266,6 +267,7 @@ export class BookingService {
         dateToISO: maxDate.toISOString(),
       });
     }
+    this.calendarGateway.emitCalendarChanged({ propertyId: saved.propertyId, source: 'booking:patch' });
     return saved;
   }
 

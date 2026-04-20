@@ -7,17 +7,13 @@ async function fetchWsToken(): Promise<string> {
   return res.data.data.token;
 }
 
-let _socket: Socket | null = null;
-
 /**
- * Returns a singleton Socket.IO client for the `/calendar` namespace.
- * Reuses an existing connected socket to avoid duplicate connections.
+ * Socket.IO client for `/calendar` namespace (same handshake as `/tasks`).
+ * Caller owns lifecycle — call `socket.disconnect()` when unsubscribing (e.g. layout unmount).
  */
-export function getCalendarSocket(): Socket {
-  if (_socket?.connected) return _socket;
-
+export function connectCalendarSocket(): Socket {
   const base = resolveSocketBaseUrl();
-  _socket = io(`${base}/calendar`, {
+  return io(`${base}/calendar`, {
     path: '/api/socket.io',
     auth: (cb) => {
       fetchWsToken()
@@ -26,13 +22,5 @@ export function getCalendarSocket(): Socket {
     },
     withCredentials: true,
     transports: ['websocket', 'polling'],
-    autoConnect: true,
   });
-
-  return _socket;
-}
-
-export function disconnectCalendarSocket(): void {
-  _socket?.disconnect();
-  _socket = null;
 }
