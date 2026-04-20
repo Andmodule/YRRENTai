@@ -8,6 +8,7 @@ export interface StaffUser {
   email: string;
   firstName: string;
   lastName: string;
+  /** 'STAFF' | 'MANAGER' | 'OWNER' */
   role: string;
   /** Тип работы из панели менеджера «Персонал» (`cleaner`, `driver`, …). */
   staffJobType?: string | null;
@@ -31,6 +32,10 @@ export function useAuth() {
     error,
     isLoading,
     isStaff: data?.role === 'STAFF',
+    isManager: data?.role === 'MANAGER',
+    isOwner: data?.role === 'OWNER',
+    /** Can access the voice/calls admin module */
+    isCallsAdmin: data?.role === 'MANAGER' || data?.role === 'OWNER',
     isAuthenticated: !!data && !error,
     mutate,
   };

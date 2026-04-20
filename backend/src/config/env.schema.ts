@@ -211,6 +211,41 @@ export const envSchema = z
     FF_VOICE_ENABLED: z.coerce.boolean().default(false),
     FF_REALTIME_CALLS_ENABLED: z.coerce.boolean().default(false),
 
+    // ─── Inbound Voice (AI call handling) ────────────────────────────────────
+    /** Which voice telephony provider to use for inbound calls. */
+    INBOUND_VOICE_PROVIDER: z.enum(['retell', 'vapi']).default('retell'),
+
+    /** Retell AI API key (https://retellai.com) */
+    RETELL_API_KEY: z.string().optional(),
+    /** Retell webhook signing secret (defaults to RETELL_API_KEY if unset) */
+    RETELL_WEBHOOK_SECRET: z.string().optional(),
+    /** Retell agent ID used for inbound calls (get from Retell dashboard) */
+    RETELL_AGENT_ID: z.string().optional(),
+    /** Retell inbound phone number in E.164 format (for display / readiness checks) */
+    RETELL_INBOUND_NUMBER: z.string().optional(),
+    /**
+     * Public HTTPS base URL of this backend (e.g. https://api.example.com).
+     * Used to display webhook URL in manager Go-live / Settings UI.
+     */
+    PUBLIC_BACKEND_URL: optionalUrlEnv(),
+
+    /** Vapi API key (https://vapi.ai) */
+    VAPI_API_KEY: z.string().optional(),
+    /** Vapi webhook signing secret */
+    VAPI_WEBHOOK_SECRET: z.string().optional(),
+
+    /**
+     * Comma-separated DID→propertyId mapping: +79991234567:uuid1,+79997654321:uuid2
+     * Used by VoiceSessionService to resolve which property received the call.
+     */
+    INBOUND_DID_PROPERTY_MAP: z.string().optional(),
+
+    /**
+     * Phone number to transfer call to on hard handoff (E.164 format).
+     * Typically the on-call manager's mobile number.
+     */
+    HANDOFF_TRANSFER_NUMBER: z.string().optional(),
+
     /**
      * Set to "true" to allow POST /knowledge-base/:propertyId/dev/clear-all when NODE_ENV is not development.
      * Trusted staging only; never enable on public production.

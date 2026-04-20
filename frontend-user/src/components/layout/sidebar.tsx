@@ -13,6 +13,7 @@ import {
   ListTodo,
   LogOut,
   MessageSquare,
+  Phone,
   Settings,
   Sparkles,
   Users,
@@ -20,6 +21,7 @@ import {
 } from 'lucide-react';
 import { useOpenIncidentsCount } from '@/modules/incidents/hooks/useIncidents';
 import { useChatNeedsHumanPending } from '@/hooks/use-conversations';
+import { useCallsNavBadge } from '@/hooks/use-calls-admin';
 import { useAuth } from '@/hooks/use-auth';
 import { apiClient } from '@/lib/api/client';
 import { Button } from '@/components/ui/button';
@@ -28,15 +30,16 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { toast } from 'sonner';
 
 const navItems = [
-  { href: '/dashboard',      icon: LayoutDashboard, key: 'dashboard' },
-  { href: '/properties',     icon: Building2,        key: 'properties' },
-  { href: '/dashboard/tasks', icon: ListTodo,        key: 'tasks' },
-  { href: '/dashboard/staff', icon: Users,           key: 'staff' },
-  { href: '/dashboard/operations', icon: Warehouse,  key: 'operations' },
-  { href: '/dashboard/calendar', icon: LayoutGrid, key: 'calendar' },
-  { href: '/chat',           icon: MessageSquare,    key: 'chat' },
-  { href: '/kb-improvement', icon: Sparkles,         key: 'kbImprovement' },
-  { href: '/settings/profile', icon: Settings,       key: 'settings' },
+  { href: '/dashboard',           icon: LayoutDashboard, key: 'dashboard',     roles: null },
+  { href: '/properties',          icon: Building2,       key: 'properties',    roles: null },
+  { href: '/dashboard/tasks',     icon: ListTodo,        key: 'tasks',         roles: null },
+  { href: '/dashboard/staff',     icon: Users,           key: 'staff',         roles: null },
+  { href: '/dashboard/operations',icon: Warehouse,       key: 'operations',    roles: null },
+  { href: '/dashboard/calendar',  icon: LayoutGrid,      key: 'calendar',      roles: null },
+  { href: '/chat',                icon: MessageSquare,   key: 'chat',          roles: null },
+  { href: '/dashboard/calls',     icon: Phone,           key: 'calls',         roles: ['OWNER', 'MANAGER'] as const },
+  { href: '/kb-improvement',      icon: Sparkles,        key: 'kbImprovement', roles: null },
+  { href: '/settings/profile',    icon: Settings,        key: 'settings',      roles: null },
 ] as const;
 
 /** When `NEXT_PUBLIC_NAV_LIMITED_MODE=true`, only these keys stay clickable; others are shown but disabled. */
@@ -55,6 +58,8 @@ export function Sidebar() {
   const { data: openIncidents = 0 } = useOpenIncidentsCount();
   const chatNeedsHuman = useChatNeedsHumanPending();
   const { user, mutate } = useAuth();
+  const isCallsAdmin = user?.role === 'OWNER' || user?.role === 'MANAGER';
+  const callsBadge = useCallsNavBadge(isCallsAdmin);
 
   async function handleLogout() {
     try {
@@ -164,26 +169,32 @@ export function Sidebar() {
         {/* Navigation */}
         <nav className="flex-1 overflow-x-hidden overflow-y-auto p-3">
           <ul className="space-y-0.5">
-            {navItems.map(({ href, icon: Icon, key }) => {
+            {navItems.map(({ href, icon: Icon, key, roles }) => {
+              // Role-gated items: hide entirely if user doesn't have the role
+              if (roles !== null && user && !(roles as readonly string[]).includes(user.role)) return null;
+
               const itemDisabled = navLimitedMode && !NAV_LIMITED_ALLOWED_KEYS.has(key);
               const isActive =
                 href === '/settings/profile'
                   ? pathname.includes('/settings')
-                  : href === '/dashboard/tasks'
-                    ? pathname.includes('/dashboard/tasks')
-                    : href === '/dashboard/staff'
-                        ? pathname.includes('/dashboard/staff')
-                        : href === '/dashboard/operations'
-                          ? pathname.includes('/dashboard/operations')
-                          : href === '/dashboard'
-                            ? pathname.includes('/dashboard') &&
-                              !pathname.includes('/dashboard/tasks') &&
-                              !pathname.includes('/dashboard/calendar') &&
-                              !pathname.includes('/dashboard/operations') &&
-                              !pathname.includes('/dashboard/staff') &&
-                              !pathname.includes('/dashboard/unmapped') &&
-                              !pathname.match(/\/dashboard\/incidents/)
-                            : pathname.includes(href);
+                  : href === '/dashboard/calls'
+                    ? pathname.includes('/dashboard/calls')
+                    : href === '/dashboard/tasks'
+                      ? pathname.includes('/dashboard/tasks')
+                      : href === '/dashboard/staff'
+                          ? pathname.includes('/dashboard/staff')
+                          : href === '/dashboard/operations'
+                            ? pathname.includes('/dashboard/operations')
+                            : href === '/dashboard'
+                              ? pathname.includes('/dashboard') &&
+                                !pathname.includes('/dashboard/tasks') &&
+                                !pathname.includes('/dashboard/calls') &&
+                                !pathname.includes('/dashboard/calendar') &&
+                                !pathname.includes('/dashboard/operations') &&
+                                !pathname.includes('/dashboard/staff') &&
+                                !pathname.includes('/dashboard/unmapped') &&
+                                !pathname.match(/\/dashboard\/incidents/)
+                              : pathname.includes(href);
 
               const rowClassName = cn(
                 'flex items-center gap-3 rounded-xl border px-3 py-2.5 text-sm font-medium',
@@ -215,6 +226,9 @@ export function Sidebar() {
                         aria-label={t('chatNeedsHumanHint')}
                       />
                     )}
+                    {showCollapsedChrome && key === 'calls' && callsBadge > 0 && (
+                      <span className="absolute -right-0.5 -top-0.5 size-[5px] rounded-full bg-teal-400 ring-1 ring-slate-900" />
+                    )}
                   </span>
                   <span
                     className={cn(
@@ -237,6 +251,11 @@ export function Sidebar() {
                       title={t('chatNeedsHumanHint')}
                       aria-label={t('chatNeedsHumanHint')}
                     />
+                  )}
+                  {!showCollapsedChrome && key === 'calls' && callsBadge > 0 && (
+                    <span className="inline-flex h-4 min-w-[1rem] shrink-0 items-center justify-center rounded-full bg-teal-500/20 px-1 text-[10px] font-bold text-teal-300 ring-1 ring-teal-500/30">
+                      {callsBadge > 99 ? '99+' : callsBadge}
+                    </span>
                   )}
                 </>
               );
