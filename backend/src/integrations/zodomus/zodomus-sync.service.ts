@@ -352,6 +352,8 @@ export class ZodomusSyncService {
     let processed = 0;
     let skipped = 0;
     let failed = 0;
+    /** GET /reservations limit path can save `zodomusSynced` without incrementing `processed`. */
+    let calendarDirtyFromLimitSave = false;
 
     for (const item of queue) {
       const rid = String(item.reservationId ?? item.id ?? '').trim();
@@ -396,6 +398,7 @@ export class ZodomusSyncService {
             row.zodomusSynced = true;
             await this.bookingRepo.save(row);
             skipped += 1;
+            calendarDirtyFromLimitSave = true;
             this.logger.log(
               `Zodomus: reservation ${rid} — GET /reservations limit reached (sandbox); local booking exists → marked synced, skipping re-fetch.`,
             );
@@ -416,7 +419,7 @@ export class ZodomusSyncService {
     }
 
     this.availabilityPush.scheduleAvailabilityPush(property.id);
-    if (processed > 0) {
+    if (processed > 0 || calendarDirtyFromLimitSave) {
       this.calendarGateway.emitCalendarChanged({ propertyId: property.id, source: 'sync-queue' });
     }
 

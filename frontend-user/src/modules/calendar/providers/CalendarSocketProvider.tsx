@@ -15,15 +15,26 @@ export function CalendarSocketProvider({ children }: { children: React.ReactNode
   useEffect(() => {
     const socket = connectCalendarSocket();
 
-    const onCalendarChanged = () => {
+    const invalidateCalendar = () => {
       void queryClient.invalidateQueries({ queryKey: ['calendar'] });
       void queryClient.invalidateQueries({ queryKey: ['reservations'] });
     };
 
+    const onCalendarChanged = () => {
+      invalidateCalendar();
+    };
+
+    /** Подхватить данные после handshake и после reconnect (WS мог пропустить emit пока отключены). */
+    const onConnect = () => {
+      invalidateCalendar();
+    };
+
     socket.on('calendar.changed', onCalendarChanged);
+    socket.on('connect', onConnect);
 
     return () => {
       socket.off('calendar.changed', onCalendarChanged);
+      socket.off('connect', onConnect);
       socket.disconnect();
     };
   }, [queryClient]);
