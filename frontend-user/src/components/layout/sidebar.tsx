@@ -43,7 +43,15 @@ const navItems = [
 ] as const;
 
 /** When `NEXT_PUBLIC_NAV_LIMITED_MODE=true`, only these keys stay clickable; others are shown but disabled. */
-const NAV_LIMITED_ALLOWED_KEYS = new Set<string>(['dashboard', 'properties', 'tasks', 'staff', 'chat']);
+const NAV_LIMITED_ALLOWED_KEYS = new Set<string>([
+  'dashboard',
+  'properties',
+  'tasks',
+  'staff',
+  'operations',
+  'calendar',
+  'chat',
+]);
 const navLimitedMode =
   process.env.NEXT_PUBLIC_NAV_LIMITED_MODE?.trim().toLowerCase() === 'true';
 
@@ -182,9 +190,11 @@ export function Sidebar() {
                     : href === '/dashboard/tasks'
                       ? pathname.includes('/dashboard/tasks')
                       : href === '/dashboard/staff'
-                          ? pathname.includes('/dashboard/staff')
-                          : href === '/dashboard/operations'
-                            ? pathname.includes('/dashboard/operations')
+                        ? pathname.includes('/dashboard/staff')
+                        : href === '/dashboard/operations'
+                          ? pathname.includes('/dashboard/operations')
+                          : href === '/dashboard/calendar'
+                            ? pathname.includes('/dashboard/calendar')
                             : href === '/dashboard'
                               ? pathname.includes('/dashboard') &&
                                 !pathname.includes('/dashboard/tasks') &&
