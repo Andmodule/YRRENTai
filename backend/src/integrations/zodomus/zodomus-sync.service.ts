@@ -128,6 +128,9 @@ export class ZodomusSyncService {
     }
 
     this.availabilityPush.scheduleAvailabilityPush(property.id);
+    if (imported > 0 || failed > 0) {
+      this.calendarGateway.emitCalendarChanged({ propertyId: property.id, source: 'import-summary:admin' });
+    }
 
     return { imported, failed };
   }
@@ -239,6 +242,9 @@ export class ZodomusSyncService {
     }
 
     this.availabilityPush.scheduleAvailabilityPush(property.id);
+    if (imported > 0 || failed > 0) {
+      this.calendarGateway.emitCalendarChanged({ propertyId: property.id, source: 'import-summary' });
+    }
 
     return { imported, failed };
   }

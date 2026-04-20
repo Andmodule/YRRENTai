@@ -27,6 +27,16 @@ const zodomusEnvFields = z.object({
   ZODOMUS_WEBHOOK_KEY: z.string().optional(),
   /** How often (minutes) to poll reservations-queue as a fallback to webhooks. Default: 360 (6 hours). */
   ZODOMUS_POLL_INTERVAL_MINUTES: z.coerce.number().min(1).max(1440).default(360),
+  /**
+   * Run one queue poll after boot (in addition to the recurring interval).
+   * Without webhooks, otherwise the first recurring poll waits a full interval (e.g. 6h).
+   */
+  ZODOMUS_POLL_ON_STARTUP: z
+    .enum(['true', 'false', '1', '0', 'yes', 'no'])
+    .default('true')
+    .transform((v) => v === 'true' || v === '1' || v === 'yes'),
+  /** Delay before the startup poll (ms). 0 = as soon as the event loop runs after init. Default: 20000. */
+  ZODOMUS_INITIAL_POLL_DELAY_MS: z.coerce.number().int().min(0).max(600_000).default(20_000),
   /** Default OTA channel id for queue sync and availability push (e.g. 1 = Booking.com). */
   ZODOMUS_DEFAULT_CHANNEL_ID: z.coerce.number().int().positive().default(1),
   /** Push computed availability to Zodomus after local booking changes. Default: true. */

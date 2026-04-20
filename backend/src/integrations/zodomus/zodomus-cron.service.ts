@@ -15,6 +15,8 @@ import { ZodomusAvailabilityPushService } from './zodomus-availability-push.serv
  *
  * Env:
  *   ZODOMUS_POLL_INTERVAL_MINUTES             — default 360 (6 hours)
+ *   ZODOMUS_POLL_ON_STARTUP                   — default true (one poll after boot)
+ *   ZODOMUS_INITIAL_POLL_DELAY_MS             — default 20000
  *   ZODOMUS_DEFAULT_CHANNEL_ID                — fallback channel id when no listings exist (default 1)
  *   ZODOMUS_AVAILABILITY_DIRTY_RETRY_MINUTES  — default 15
  *   ZODOMUS_AVAILABILITY_NIGHTLY_HOUR_UTC     — default 3
@@ -26,6 +28,7 @@ export class ZodomusCronService implements OnModuleInit, OnModuleDestroy {
   private pollTimer: NodeJS.Timeout | null = null;
   private dirtyTimer: NodeJS.Timeout | null = null;
   private minuteTimer: NodeJS.Timeout | null = null;
+  private startupPollTimer: NodeJS.Timeout | null = null;
   private lastNightlyUtcDate: string | null = null;
 
   constructor(
@@ -48,6 +51,16 @@ export class ZodomusCronService implements OnModuleInit, OnModuleDestroy {
 
     this.logger.log(`Zodomus queue polling started (every ${intervalMinutes} min)`);
     this.pollTimer = setInterval(() => void this.pollAll(), intervalMs);
+
+    const pollOnStartup = this.config.get<boolean>('ZODOMUS_POLL_ON_STARTUP') ?? true;
+    if (pollOnStartup) {
+      const delayMs = this.config.get<number>('ZODOMUS_INITIAL_POLL_DELAY_MS') ?? 20_000;
+      this.startupPollTimer = setTimeout(() => {
+        this.startupPollTimer = null;
+        void this.pollAll();
+      }, delayMs);
+      this.logger.log(`Zodomus startup queue poll scheduled in ${delayMs} ms`);
+    }
 
     const dirtyMinutes = this.config.get<number>('ZODOMUS_AVAILABILITY_DIRTY_RETRY_MINUTES') ?? 15;
     const dirtyMs = dirtyMinutes * 60_000;
@@ -73,6 +86,10 @@ export class ZodomusCronService implements OnModuleInit, OnModuleDestroy {
     if (this.minuteTimer) {
       clearInterval(this.minuteTimer);
       this.minuteTimer = null;
+    }
+    if (this.startupPollTimer) {
+      clearTimeout(this.startupPollTimer);
+      this.startupPollTimer = null;
     }
   }
 
