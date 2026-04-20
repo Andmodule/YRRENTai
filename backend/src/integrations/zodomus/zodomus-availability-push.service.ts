@@ -1,4 +1,11 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit, ServiceUnavailableException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  OnModuleDestroy,
+  OnModuleInit,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, Repository } from 'typeorm';
@@ -22,6 +29,21 @@ export type PushAvailabilityOptions = {
   dateToISO?: string;
 };
 
+/** Returned by `pushAvailabilityNow` / `executePush` for APIs and debugging. */
+export type AvailabilityPushSummary = {
+  /** At least one availability segment was enqueued (BullMQ) or POSTed (inline). */
+  pushed: boolean;
+  /** Rows after merging consecutive nights with same availability (per target room). */
+  segmentCount: number;
+  /** How many segment operations were dispatched (targets × segments, skipping missing roomId). */
+  segmentsDispatched: number;
+  /** Zodomus push targets (channel + external listing) considered. */
+  targetCount: number;
+  /** Nights evaluated from RentAI bookings for this window. */
+  nightsEvaluated: number;
+  dispatchMode: 'bullmq' | 'inline';
+};
+
 type AvailabilitySegment = {
   channelId: number;
   extProp: string;
@@ -30,6 +52,27 @@ type AvailabilitySegment = {
   dateToExclusive: string;
   availability: number;
   propertyId: string;
+};
+
+type PushTarget = { channelId: number; extProp: string; storedRoomId: string | null };
+
+export type AvailabilityPushTargetRow = {
+  channelId: number;
+  externalListingId: string;
+  zodomusRoomIdFromDb: string | null;
+  resolvedRoomId: string | null;
+  roomRatesCount: number;
+  roomRatesPreview: string;
+  resolutionNote: string | null;
+};
+
+export type AvailabilityPushTargetsDescription = {
+  propertyId: string;
+  propertyName: string | null;
+  timezone: string;
+  availabilityDispatchMode: 'bullmq' | 'inline';
+  targets: AvailabilityPushTargetRow[];
+  hint: string;
 };
 
 /** Permanent Zodomus errors that mean the property configuration is wrong — don't keep retrying. */
@@ -146,6 +189,108 @@ export class ZodomusAvailabilityPushService implements OnModuleInit, OnModuleDes
   }
 
   /**
+   * SUPERADMIN diagnostic: which Zodomus `roomId` RentAI will use for `POST /availability`
+   * for each channel listing (matches `GET availability` → `rooms[].id`).
+   */
+  async describeAvailabilityPushTargets(propertyId: string): Promise<AvailabilityPushTargetsDescription> {
+    if (!this.zodomus.isEnabled) {
+      throw new ServiceUnavailableException('Zodomus integration is disabled');
+    }
+    const property = await this.propertyRepo.findOne({
+      where: { id: propertyId },
+      relations: ['otaPlatform', 'channelListings', 'channelListings.otaPlatform'],
+    });
+    if (!property) {
+      throw new NotFoundException(`Property ${propertyId} not found`);
+    }
+    const targets = this.buildPushTargets(property);
+    const rows: AvailabilityPushTargetRow[] = [];
+    for (const t of targets) {
+      const resolvedRoomId = await this.resolveRoomIdForTarget(property, t);
+      let roomRatesCount = 0;
+      let roomRatesPreview = '';
+      try {
+        const raw = await this.zodomus.getRoomRates(t.channelId, t.extProp.trim());
+        const list = Array.isArray(raw) ? raw : [];
+        roomRatesCount = list.length;
+        roomRatesPreview = list
+          .slice(0, 8)
+          .map((r) => {
+            const o = r as { id?: unknown; name?: unknown };
+            const id = o.id != null ? String(o.id) : '?';
+            const nm = o.name != null ? String(o.name).trim() : '';
+            return nm ? `${id} (${nm})` : id;
+          })
+          .join('; ');
+        if (list.length > 8) roomRatesPreview += ' …';
+      } catch (e) {
+        roomRatesPreview = `GET room-rates failed: ${String(e)}`;
+      }
+
+      let resolutionNote: string | null = null;
+      const stored = t.storedRoomId?.trim();
+      const ext = t.extProp.trim();
+      if (stored && stored !== ext) {
+        resolutionNote = `Using zodomusRoomId from DB (${stored}) — not the first room from GET room-rates.`;
+      } else if (roomRatesCount > 1) {
+        resolutionNote =
+          'Several rooms from Zodomus — RentAI uses the FIRST room in the list unless zodomusRoomId is set on the channel listing (and differs from external listing id).';
+      } else if (roomRatesCount === 0) {
+        resolutionNote = 'No rooms from GET room-rates — availability push will skip this target.';
+      }
+
+      rows.push({
+        channelId: t.channelId,
+        externalListingId: ext,
+        zodomusRoomIdFromDb: stored ?? null,
+        resolvedRoomId,
+        roomRatesCount,
+        roomRatesPreview,
+        resolutionNote,
+      });
+    }
+
+    return {
+      propertyId,
+      propertyName: property.name ?? null,
+      timezone: property.timezone?.trim() || 'UTC',
+      availabilityDispatchMode: this.queue ? 'bullmq' : 'inline',
+      targets: rows,
+      hint:
+        'Match `resolvedRoomId` to `rooms[].id` in GET availability for the same channelId + listing. POST /availability updates one room at a time.',
+    };
+  }
+
+  private buildPushTargets(property: PropertyEntity): PushTarget[] {
+    const targets: PushTarget[] = [];
+    for (const row of property.channelListings ?? []) {
+      const ch = row.otaPlatform?.zodomusChannelId;
+      const ext = row.externalListingId?.trim();
+      if (ch == null || !ext) continue;
+      targets.push({
+        channelId: ch,
+        extProp: ext,
+        storedRoomId: row.zodomusRoomId?.trim() ? row.zodomusRoomId.trim() : null,
+      });
+    }
+    if (targets.length === 0) {
+      const leg = property.zodomusPropertyId?.trim();
+      const ch =
+        property.otaPlatform?.zodomusChannelId ??
+        this.config.get<number>('ZODOMUS_DEFAULT_CHANNEL_ID') ??
+        1;
+      if (leg) {
+        targets.push({
+          channelId: ch,
+          extProp: leg,
+          storedRoomId: property.zodomusRoomId?.trim() ? property.zodomusRoomId.trim() : null,
+        });
+      }
+    }
+    return targets;
+  }
+
+  /**
    * Pushes availability changes. Now accepts optional date ranges for delta sync.
    */
   scheduleAvailabilityPush(propertyId: string, options?: PushAvailabilityOptions): void {
@@ -162,13 +307,14 @@ export class ZodomusAvailabilityPushService implements OnModuleInit, OnModuleDes
   /**
    * Computes segments and enqueues them.
    */
-  async pushAvailabilityNow(propertyId: string, options?: PushAvailabilityOptions): Promise<void> {
+  async pushAvailabilityNow(propertyId: string, options?: PushAvailabilityOptions): Promise<AvailabilityPushSummary> {
     try {
-      const didEnqueue = await this.executePush(propertyId, options);
-      if (didEnqueue && !this.queue) {
+      const summary = await this.executePush(propertyId, options);
+      if (summary.pushed && !this.queue) {
         // If inline executed successfully, clear dirty flag.
         await this.clearDirty(propertyId);
       }
+      return summary;
     } catch (e) {
       if (!(e instanceof ServiceUnavailableException)) {
         await this.markDirty(propertyId);
@@ -244,10 +390,26 @@ export class ZodomusAvailabilityPushService implements OnModuleInit, OnModuleDes
     }
   }
 
-  /** @returns true if at least one segment was sent/enqueued to Zodomus. */
-  private async executePush(propertyId: string, options?: PushAvailabilityOptions): Promise<boolean> {
+  private pushSummary(
+    partial: Partial<AvailabilityPushSummary> & Pick<AvailabilityPushSummary, 'dispatchMode'>,
+  ): AvailabilityPushSummary {
+    return {
+      pushed: partial.pushed ?? false,
+      segmentCount: partial.segmentCount ?? 0,
+      segmentsDispatched: partial.segmentsDispatched ?? 0,
+      targetCount: partial.targetCount ?? 0,
+      nightsEvaluated: partial.nightsEvaluated ?? 0,
+      dispatchMode: partial.dispatchMode,
+    };
+  }
+
+  /** Computes segments and enqueues or POSTs them to Zodomus. */
+  private async executePush(propertyId: string, options?: PushAvailabilityOptions): Promise<AvailabilityPushSummary> {
+    const dispatchMode: 'bullmq' | 'inline' = this.queue ? 'bullmq' : 'inline';
     const auto = this.config.get<boolean>('ZODOMUS_AUTO_PUSH_AVAILABILITY') ?? true;
-    if (!auto && !options?.ignoreAutoPushDisable) return false;
+    if (!auto && !options?.ignoreAutoPushDisable) {
+      return this.pushSummary({ dispatchMode });
+    }
     if (!this.zodomus.isEnabled) {
       throw new ServiceUnavailableException('Zodomus integration is disabled');
     }
@@ -256,75 +418,64 @@ export class ZodomusAvailabilityPushService implements OnModuleInit, OnModuleDes
       where: { id: propertyId },
       relations: ['otaPlatform', 'channelListings', 'channelListings.otaPlatform'],
     });
-    if (!property) return false;
+    if (!property) return this.pushSummary({ dispatchMode });
 
-    type PushTarget = { channelId: number; extProp: string; storedRoomId: string | null };
-    const targets: PushTarget[] = [];
-    for (const row of property.channelListings ?? []) {
-      const ch = row.otaPlatform?.zodomusChannelId;
-      const ext = row.externalListingId?.trim();
-      if (ch == null || !ext) continue;
-      targets.push({
-        channelId: ch,
-        extProp: ext,
-        storedRoomId: row.zodomusRoomId?.trim() ? row.zodomusRoomId.trim() : null,
-      });
-    }
-    if (targets.length === 0) {
-      const leg = property.zodomusPropertyId?.trim();
-      const ch =
-        property.otaPlatform?.zodomusChannelId ??
-        this.config.get<number>('ZODOMUS_DEFAULT_CHANNEL_ID') ??
-        1;
-      if (leg) {
-        targets.push({
-          channelId: ch,
-          extProp: leg,
-          storedRoomId: property.zodomusRoomId?.trim() ? property.zodomusRoomId.trim() : null,
-        });
-      }
-    }
-    if (targets.length === 0) return false;
+    const targets = this.buildPushTargets(property);
+    if (targets.length === 0) return this.pushSummary({ dispatchMode, targetCount: 0 });
 
     const tz = property.timezone?.trim() || 'UTC';
     const now = new Date();
     const todayKey = formatInTimeZone(now, tz, 'yyyy-MM-dd');
 
-    // DELTA SYNC LOGIC
-    // If dateFromISO/dateToISO are provided, only evaluate that range instead of full 365 days.
-    let startEvalDate = fromZonedTime(`${todayKey}T12:00:00`, tz);
-    let endEvalDate = addDays(startEvalDate, Math.min(730, Math.max(1, this.config.get<number>('ZODOMUS_AVAILABILITY_HORIZON_DAYS') ?? 366)));
+    // Night keys in property TZ (same semantics as nightOverlapsBooking). Avoid mixing wall-clock
+    // duration (ceil ms / 86400000) with addDays(startInstant, i) — DST and check-in/out instants
+    // can skip the booked night or shrink the window to zero while the booking still exists in DB.
+    const horizonDays = Math.min(730, Math.max(1, this.config.get<number>('ZODOMUS_AVAILABILITY_HORIZON_DAYS') ?? 366));
+    const anchorNoon = fromZonedTime(`${todayKey}T12:00:00`, tz);
+
+    let rangeStartKey = todayKey;
+    let rangeEndExclusiveKey = formatInTimeZone(addDays(anchorNoon, horizonDays), tz, 'yyyy-MM-dd');
+
+    const maxExclusiveKey = formatInTimeZone(addDays(anchorNoon, 730), tz, 'yyyy-MM-dd');
+    if (rangeEndExclusiveKey > maxExclusiveKey) {
+      rangeEndExclusiveKey = maxExclusiveKey;
+    }
 
     if (options?.dateFromISO) {
-       const df = new Date(options.dateFromISO);
-       if (df > startEvalDate) startEvalDate = df;
+      const fromKey = formatInTimeZone(new Date(options.dateFromISO), tz, 'yyyy-MM-dd');
+      if (fromKey > rangeStartKey) rangeStartKey = fromKey;
     }
     if (options?.dateToISO) {
-       const dt = new Date(options.dateToISO);
-       if (dt < endEvalDate) endEvalDate = dt;
+      const toKeyExclusive = formatInTimeZone(new Date(options.dateToISO), tz, 'yyyy-MM-dd');
+      if (toKeyExclusive < rangeEndExclusiveKey) rangeEndExclusiveKey = toKeyExclusive;
     }
-    
-    // Safety check - never evaluate past the horizon
-    const maxHorizon = addDays(fromZonedTime(`${todayKey}T12:00:00`, tz), 730);
-    if (endEvalDate > maxHorizon) endEvalDate = maxHorizon;
 
-    const daysCount = Math.ceil((endEvalDate.getTime() - startEvalDate.getTime()) / (1000 * 60 * 60 * 24));
-    if (daysCount <= 0) return false;
+    if (rangeStartKey >= rangeEndExclusiveKey) {
+      this.logger.warn(
+        `Zodomus availability: empty night window (${rangeStartKey}..${rangeEndExclusiveKey} exclusive) for property ${propertyId} — skipping push`,
+      );
+      return this.pushSummary({ dispatchMode, targetCount: targets.length, nightsEvaluated: 0 });
+    }
+
+    const nightKeys = this.enumerateNightKeys(rangeStartKey, rangeEndExclusiveKey, tz);
+    if (nightKeys.length === 0) {
+      this.logger.warn(
+        `Zodomus availability: no nights enumerated for property ${propertyId} (${rangeStartKey}..${rangeEndExclusiveKey} exclusive)`,
+      );
+      return this.pushSummary({ dispatchMode, targetCount: targets.length, nightsEvaluated: 0 });
+    }
 
     const bookings = await this.bookingRepo.find({ where: { propertyId } });
     const blocking = bookings.filter((b) => !NON_BLOCKING.has(String(b.status)));
 
-    const days: { key: string; availability: number }[] = [];
-    for (let i = 0; i < daysCount; i++) {
-      const d = addDays(startEvalDate, i);
-      const nightKey = formatInTimeZone(d, tz, 'yyyy-MM-dd');
+    const days: { key: string; availability: number }[] = nightKeys.map((nightKey) => {
       const occupied = blocking.some((b) => this.nightOverlapsBooking(nightKey, b, tz));
-      days.push({ key: nightKey, availability: occupied ? 0 : 1 });
-    }
+      return { key: nightKey, availability: occupied ? 0 : 1 };
+    });
 
     const segments = this.mergeSegments(days, tz);
 
-    let anyPushed = false;
+    let segmentsDispatched = 0;
     for (const t of targets) {
       const roomId = await this.resolveRoomIdForTarget(property, t);
       if (!roomId) {
@@ -333,46 +484,57 @@ export class ZodomusAvailabilityPushService implements OnModuleInit, OnModuleDes
         );
         continue;
       }
-      
+
+      if (segments.length === 0) {
+        continue;
+      }
+
       for (const seg of segments) {
         const payload: AvailabilitySegment = {
-            channelId: t.channelId,
-            extProp: t.extProp,
-            roomId,
-            dateFrom: seg.dateFrom,
-            dateToExclusive: seg.dateToExclusive,
-            availability: seg.availability,
-            propertyId
+          channelId: t.channelId,
+          extProp: t.extProp,
+          roomId,
+          dateFrom: seg.dateFrom,
+          dateToExclusive: seg.dateToExclusive,
+          availability: seg.availability,
+          propertyId,
         };
-        
+
         if (this.queue) {
-            // Deduplicate same segment updates in queue
-            const jobId = `zodomus-avail-${propertyId}-${t.channelId}-${roomId}-${seg.dateFrom}`;
-            await this.queue.add('push-segment', payload, {
-               jobId,
-               attempts: 5,
-               backoff: { type: 'exponential', delay: 60000 },
-               removeOnComplete: true,
-               removeOnFail: { age: 86400 }
-            });
+          // Deduplicate same segment updates in queue
+          const jobId = `zodomus-avail-${propertyId}-${t.channelId}-${roomId}-${seg.dateFrom}-${seg.dateToExclusive}-${seg.availability}`;
+          await this.queue.add('push-segment', payload, {
+            jobId,
+            attempts: 5,
+            backoff: { type: 'exponential', delay: 60000 },
+            removeOnComplete: true,
+            removeOnFail: { age: 86400 },
+          });
         } else {
-            // Fallback inline execution
-            await this.zodomus.setAvailability(
-              t.channelId,
-              t.extProp,
-              roomId,
-              seg.dateFrom,
-              seg.dateToExclusive,
-              seg.availability,
-            );
+          await this.zodomus.setAvailability(
+            t.channelId,
+            t.extProp,
+            roomId,
+            seg.dateFrom,
+            seg.dateToExclusive,
+            seg.availability,
+          );
         }
+        segmentsDispatched += 1;
       }
-      anyPushed = true;
       this.logger.log(
         `Zodomus availability: property ${propertyId} channel ${t.channelId} — ${segments.length} segment(s) enqueued/pushed.`,
       );
     }
-    return anyPushed;
+
+    return this.pushSummary({
+      pushed: segmentsDispatched > 0,
+      segmentCount: segments.length,
+      segmentsDispatched,
+      targetCount: targets.length,
+      nightsEvaluated: nightKeys.length,
+      dispatchMode,
+    });
   }
 
   private async markDirty(propertyId: string): Promise<void> {
@@ -399,6 +561,21 @@ export class ZodomusAvailabilityPushService implements OnModuleInit, OnModuleDes
         { propertyId },
       )
       .execute();
+  }
+
+  /** Every local calendar night in [startKey, endExclusiveKey); keys are yyyy-MM-dd in property tz. */
+  private enumerateNightKeys(startKey: string, endExclusiveKey: string, tz: string): string[] {
+    const out: string[] = [];
+    for (let k = startKey; k < endExclusiveKey; k = this.dayAfterInTz(k, tz)) {
+      out.push(k);
+      if (out.length > 800) {
+        this.logger.warn(
+          `Zodomus availability: night enumeration cap (800) for ${startKey}..${endExclusiveKey} — truncating`,
+        );
+        break;
+      }
+    }
+    return out;
   }
 
   private nightOverlapsBooking(nightKey: string, b: BookingEntity, tz: string): boolean {

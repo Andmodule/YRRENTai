@@ -342,7 +342,19 @@ export default function ZodomusDebugClient() {
               >
                 GET reservations-queue
               </Btn>
+              <Btn
+                disabled={!propertyId}
+                onClick={() =>
+                  void run(
+                    'GET',
+                    `/admin/zodomus/availability-push-targets?propertyId=${encodeURIComponent(propertyId)}`,
+                  )
+                }
+              >
+                {t('btnAvailabilityPushTargets')}
+              </Btn>
             </div>
+            <SectionHelp text={t('hintAvailabilityPushTargets')} />
             <div className="flex flex-wrap items-end gap-3">
               <label className="flex flex-col gap-1 text-xs">
                 <span className="text-zinc-400">{t('labelDateFrom')}</span>

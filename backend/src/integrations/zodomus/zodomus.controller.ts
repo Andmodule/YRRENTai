@@ -147,14 +147,16 @@ export class ZodomusController {
       await this.propertyService.findOneForUser(propertyId, user.sub, user.role);
     }
     try {
-      await this.availabilityPush.pushAvailabilityNow(propertyId, { ignoreAutoPushDisable: true });
+      const summary = await this.availabilityPush.pushAvailabilityNow(propertyId, {
+        ignoreAutoPushDisable: true,
+      });
+      return { data: { ok: true as const, ...summary } };
     } catch (e) {
       if (e instanceof ServiceUnavailableException) throw e;
       throw new ServiceUnavailableException(
         `Zodomus availability push failed: ${e instanceof Error ? e.message : String(e)}`,
       );
     }
-    return { data: { ok: true as const } };
   }
 
   @Post('import-summary')

@@ -43,6 +43,8 @@
     "zoneActivationHelp": "То же, что в Postman, но ключи на сервере, ответ — в логе справа.\n\nНомер объекта в Zodomus (длинный, типа 10322630) задаётся в карточке объекта RentAI (zodomusPropertyId), не в поле «модель цены». В поле модели — только 1–5 из ответа GET price-model.\n\nВторой объект: новый zodomusPropertyId в другой карточке + активация один раз. Уже активированный объект снова активировать нельзя.",
     "zoneBTitle": "Зона B — данные и тесты (proxy Zodomus)",
     "zoneBHelp": "Чтение и sandbox-тесты: тарифы/номера, очередь броней, доступность по датам, тестовая бронь. Нужен выбранный объект с zodomusPropertyId. Ответы — в логе.",
+    "btnAvailabilityPushTargets": "GET availability-push-targets",
+    "hintAvailabilityPushTargets": "RentAI: какой roomId в Zodomus уходит в POST /availability по каждому листингу. Сравните resolvedRoomId с GET availability → rooms[].id.",
     "labelPriceModelId": "Модель цены (1–5)",
     "btnPriceModel": "GET price-model",
     "hintPriceModelId": "Только id из models[] (1, 2, 3…). Не номер объекта OTA.",

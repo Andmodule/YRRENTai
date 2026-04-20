@@ -11,6 +11,7 @@ import { PropertyService } from '../../property/property.service';
 import { PropertyChannelListingEntity } from '../../property/entities/property-channel-listing.entity';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { ZodomusAvailabilityPushService } from './zodomus-availability-push.service';
 
 /**
  * SUPERADMIN-only proxies to Zodomus upstream (price-model, property-activation, room-rates, queue, createtest).
@@ -24,6 +25,7 @@ export class ZodomusAdminController {
   constructor(
     private readonly zodomus: ZodomusService,
     private readonly propertyService: PropertyService,
+    private readonly availabilityPush: ZodomusAvailabilityPushService,
     @InjectRepository(PropertyChannelListingEntity)
     private readonly channelListingRepo: Repository<PropertyChannelListingEntity>,
   ) {}
@@ -78,6 +80,21 @@ export class ZodomusAdminController {
       throw new BadRequestException('Property has no external listing id for this channel');
     }
     const data = await this.zodomus.checkProperty(channel, ext);
+    return { data };
+  }
+
+  /**
+   * Which `roomId` RentAI uses for Zodomus `POST /availability` per target — compare to GET availability `rooms[].id`.
+   */
+  @Get('availability-push-targets')
+  @Roles('SUPERADMIN')
+  async availabilityPushTargets(@Query('propertyId') propertyId: string): Promise<{ data: unknown }> {
+    const pid = propertyId?.trim();
+    if (!pid) {
+      throw new BadRequestException('propertyId is required');
+    }
+    await this.propertyService.findByIdForAdmin(pid);
+    const data = await this.availabilityPush.describeAvailabilityPushTargets(pid);
     return { data };
   }
 

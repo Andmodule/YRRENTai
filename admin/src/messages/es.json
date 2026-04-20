@@ -43,6 +43,8 @@
     "zoneActivationHelp": "Igual que Postman; credenciales en el servidor; respuesta en el log.\n\nEl id largo del property va en zodomusPropertyId en RentAI. El campo de modelo solo 1–5 de GET /price-model.\n\nOtro listado: nueva fila + nuevo id + activar una vez.",
     "zoneBTitle": "Zone B — lecturas y pruebas (proxy Zodomus)",
     "zoneBHelp": "Habitaciones/tarifas, cola, disponibilidad, reserva de prueba. Elija property con zodomusPropertyId.",
+    "btnAvailabilityPushTargets": "GET availability-push-targets",
+    "hintAvailabilityPushTargets": "RentAI: which Zodomus roomId is used for POST /availability per listing. Compare resolvedRoomId to GET availability → rooms[].id.",
     "labelPriceModelId": "Modelo de precio (1–5)",
     "btnPriceModel": "GET price-model",
     "hintPriceModelId": "Solo id de models[] (1, 2, 3…). No el id largo del objeto OTA.",

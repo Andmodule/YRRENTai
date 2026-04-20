@@ -43,6 +43,8 @@
     "zoneActivationHelp": "Jak Postman, dane logowania na serwerze, odpowiedź w logu.\n\nDługi id obiektu OTA — w zodomusPropertyId w RentAI. Pole modelu tylko 1–5 z GET /price-model.\n\nKolejny obiekt: nowy wiersz + nowy id + jedna aktywacja.",
     "zoneBTitle": "Strefa B — odczyty i testy (proxy Zodomus)",
     "zoneBHelp": "Pokoje/stawki, kolejka, dostępność, testowa rezerwacja. Wybierz obiekt z zodomusPropertyId.",
+    "btnAvailabilityPushTargets": "GET availability-push-targets",
+    "hintAvailabilityPushTargets": "RentAI: which Zodomus roomId is used for POST /availability per listing. Compare resolvedRoomId to GET availability → rooms[].id.",
     "labelPriceModelId": "Model cen (1–5)",
     "btnPriceModel": "GET price-model",
     "hintPriceModelId": "Tylko id z models[] (1, 2, 3…). Nie długi id obiektu OTA.",
