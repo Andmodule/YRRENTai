@@ -32,11 +32,53 @@ type AvailabilitySegment = {
   propertyId: string;
 };
 
+/** Permanent Zodomus errors that mean the property configuration is wrong — don't keep retrying. */
+const AVAIL_PERMANENT_MSGS = ['invalid property id', 'property status not active'];
+function isAvailPermanentError(e: unknown): boolean {
+  if (!(e instanceof Error)) return false;
+  const msg = e.message.toLowerCase();
+  return AVAIL_PERMANENT_MSGS.some((m) => msg.includes(m));
+}
+
 @Injectable()
 export class ZodomusAvailabilityPushService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(ZodomusAvailabilityPushService.name);
   private queue: Queue<AvailabilitySegment> | null = null;
   private worker: Worker<AvailabilitySegment> | null = null;
+
+  /** Circuit breaker for availability push: tracks consecutive failures per property. */
+  private readonly _availFailCount = new Map<string, number>();
+  private readonly _availFailSince = new Map<string, number>();
+  private static readonly AVAIL_CIRCUIT_AFTER = 3;
+  private static readonly AVAIL_RESET_MS = 15 * 60 * 1000;
+
+  private isAvailCircuitOpen(propertyId: string): boolean {
+    const count = this._availFailCount.get(propertyId) ?? 0;
+    if (count < ZodomusAvailabilityPushService.AVAIL_CIRCUIT_AFTER) return false;
+    const since = this._availFailSince.get(propertyId) ?? 0;
+    if (Date.now() - since > ZodomusAvailabilityPushService.AVAIL_RESET_MS) {
+      this._availFailCount.delete(propertyId);
+      this._availFailSince.delete(propertyId);
+      return false;
+    }
+    return true;
+  }
+
+  private recordAvailFailure(propertyId: string, permanent: boolean): void {
+    const count = (this._availFailCount.get(propertyId) ?? 0) + 1;
+    this._availFailCount.set(propertyId, count);
+    if (count === 1) this._availFailSince.set(propertyId, Date.now());
+    if (permanent && count >= ZodomusAvailabilityPushService.AVAIL_CIRCUIT_AFTER) {
+      this.logger.warn(
+        `Availability push circuit OPEN for ${propertyId} — permanent Zodomus error. Fix externalListingId or activate property in Zodomus.`,
+      );
+    }
+  }
+
+  private recordAvailSuccess(propertyId: string): void {
+    this._availFailCount.delete(propertyId);
+    this._availFailSince.delete(propertyId);
+  }
 
   constructor(
     private readonly zodomus: ZodomusService,
@@ -153,12 +195,19 @@ export class ZodomusAvailabilityPushService implements OnModuleInit, OnModuleDes
     if (rows.length === 0) return;
     this.logger.log(`Zodomus availability dirty retry: ${rows.length} property(ies)`);
     for (const p of rows) {
+      if (this.isAvailCircuitOpen(p.id)) continue;
       try {
         await this.pushAvailabilityNow(p.id, { ignoreAutoPushDisable: true });
+        this.recordAvailSuccess(p.id);
         // When BullMQ is active the dirty flag is cleared in the worker's 'completed' handler.
         // When running inline (no Redis) clearDirty happens inside pushAvailabilityNow already.
       } catch (e) {
-        this.logger.warn(`Dirty retry failed for ${p.id}: ${String(e)}`);
+        const permanent = isAvailPermanentError(e);
+        this.recordAvailFailure(p.id, permanent);
+        const failCount = this._availFailCount.get(p.id) ?? 0;
+        if (failCount < ZodomusAvailabilityPushService.AVAIL_CIRCUIT_AFTER) {
+          this.logger.warn(`Dirty retry failed for ${p.id}: ${String(e)}`);
+        }
       }
     }
   }

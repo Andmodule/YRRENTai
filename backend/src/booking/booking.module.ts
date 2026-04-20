@@ -5,10 +5,11 @@ import { BookingService } from './booking.service';
 import { BookingEntity } from './entities/booking.entity';
 import { PropertyModule } from '../property/property.module';
 import { ZodomusModule } from '../integrations/zodomus/zodomus.module';
+import { CalendarModule } from '../calendar/calendar.module';
 import { GuestModule } from '../guest/guest.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([BookingEntity]), PropertyModule, ZodomusModule, GuestModule],
+  imports: [TypeOrmModule.forFeature([BookingEntity]), PropertyModule, ZodomusModule, CalendarModule, GuestModule],
   controllers: [BookingController],
   providers: [BookingService],
   exports: [BookingService],

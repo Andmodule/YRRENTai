@@ -1,11 +1,14 @@
 import { BadRequestException, Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { ZodomusService } from './zodomus.service';
 import { CreateZodomusTestReservationDto } from './dto/create-zodomus-test-reservation.dto';
 import { ZodomusPropertyActivationDto } from './dto/zodomus-property-activation.dto';
 import { ZodomusPropertyCheckDto } from './dto/zodomus-property-check.dto';
 import { PropertyService } from '../../property/property.service';
+import { PropertyChannelListingEntity } from '../../property/entities/property-channel-listing.entity';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
 
@@ -21,6 +24,8 @@ export class ZodomusAdminController {
   constructor(
     private readonly zodomus: ZodomusService,
     private readonly propertyService: PropertyService,
+    @InjectRepository(PropertyChannelListingEntity)
+    private readonly channelListingRepo: Repository<PropertyChannelListingEntity>,
   ) {}
 
   /** GET /price-model — list valid price model ids for activation (no property required). */
@@ -149,6 +154,27 @@ export class ZodomusAdminController {
       throw new BadRequestException('Property has no external listing id for this channel');
     }
     const data = await this.zodomus.getReservationQueue(channel, ext);
+    return { data };
+  }
+
+  /**
+   * GET /channel-mappings — diagnostic: all PropertyChannelListings with externalListingId.
+   * Use to verify which internal property UUID maps to which Zodomus property id.
+   */
+  @Get('channel-mappings')
+  @Roles('SUPERADMIN')
+  async channelMappings(): Promise<{ data: unknown[] }> {
+    const rows = await this.channelListingRepo.find({
+      relations: ['property', 'otaPlatform'],
+      order: { propertyId: 'ASC' },
+    });
+    const data = rows.map((r) => ({
+      propertyId: r.propertyId,
+      propertyName: (r as unknown as { property?: { name?: string } }).property?.name ?? null,
+      otaPlatform: r.otaPlatform?.name ?? null,
+      zodomusChannelId: r.otaPlatform?.zodomusChannelId ?? null,
+      externalListingId: r.externalListingId ?? null,
+    }));
     return { data };
   }
 

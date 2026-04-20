@@ -23,9 +23,51 @@ const QUEUE_STATUS = {
   CANCELLED: 3,
 } as const;
 
+/** Zodomus API error codes that indicate a permanent misconfiguration — no point retrying on every cron tick. */
+const PERMANENT_ERROR_CODES = new Set(['400']);
+const PERMANENT_ERROR_MESSAGES = ['invalid property id', 'property status not active'];
+
+function isPermanentZodomusError(e: unknown): boolean {
+  if (e instanceof Error) {
+    const msg = e.message.toLowerCase();
+    return PERMANENT_ERROR_MESSAGES.some((m) => msg.includes(m));
+  }
+  return false;
+}
+
 @Injectable()
 export class ZodomusSyncService {
   private readonly logger = new Logger(ZodomusSyncService.name);
+
+  /** In-memory circuit breaker: propertyId → ISO timestamp of first failure.
+   *  After 3 consecutive failures the property is skipped for CIRCUIT_RESET_MS. */
+  private readonly _failCount = new Map<string, number>();
+  private readonly _failSince = new Map<string, number>();
+  private static readonly CIRCUIT_OPEN_AFTER = 3;
+  private static readonly CIRCUIT_RESET_MS = 10 * 60 * 1000; // 10 minutes
+
+  private isCircuitOpen(propertyId: string): boolean {
+    const count = this._failCount.get(propertyId) ?? 0;
+    if (count < ZodomusSyncService.CIRCUIT_OPEN_AFTER) return false;
+    const since = this._failSince.get(propertyId) ?? 0;
+    if (Date.now() - since > ZodomusSyncService.CIRCUIT_RESET_MS) {
+      this._failCount.delete(propertyId);
+      this._failSince.delete(propertyId);
+      return false;
+    }
+    return true;
+  }
+
+  private recordFailure(propertyId: string): void {
+    const count = (this._failCount.get(propertyId) ?? 0) + 1;
+    this._failCount.set(propertyId, count);
+    if (count === 1) this._failSince.set(propertyId, Date.now());
+  }
+
+  private recordSuccess(propertyId: string): void {
+    this._failCount.delete(propertyId);
+    this._failSince.delete(propertyId);
+  }
 
   constructor(
     private readonly zodomus: ZodomusService,
@@ -262,15 +304,32 @@ export class ZodomusSyncService {
     let propertiesTouched = 0;
     for (const p of list) {
       if (!this.propertyService.getExternalListingIdForZodomusChannel(p, channelId)) continue;
+      if (this.isCircuitOpen(p.id)) {
+        skipped += 1;
+        continue;
+      }
       propertiesTouched += 1;
       try {
         const r = await this.syncQueueRaw(p, channelId, force);
         processed += r.processed;
         skipped += r.skipped;
         failed += r.failed;
+        this.recordSuccess(p.id);
       } catch (e) {
         failed += 1;
-        this.logger.warn(`syncAllProperties: property ${p.id} failed: ${String(e)}`);
+        this.recordFailure(p.id);
+        if (isPermanentZodomusError(e)) {
+          const count = this._failCount.get(p.id) ?? 0;
+          if (count >= ZodomusSyncService.CIRCUIT_OPEN_AFTER) {
+            this.logger.warn(
+              `syncAllProperties: property ${p.id} circuit OPEN (permanent Zodomus error — check externalListingId / Zodomus status): ${String(e)}`,
+            );
+          } else {
+            this.logger.warn(`syncAllProperties: property ${p.id} failed: ${String(e)}`);
+          }
+        } else {
+          this.logger.warn(`syncAllProperties: property ${p.id} failed: ${String(e)}`);
+        }
       }
     }
     return { processed, skipped, failed, propertiesTouched };

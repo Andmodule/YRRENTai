@@ -22,6 +22,7 @@ import {
 import type { z } from 'zod';
 import { PropertyService } from '../property/property.service';
 import { ZodomusAvailabilityPushService } from '../integrations/zodomus/zodomus-availability-push.service';
+import { CalendarGateway } from '../calendar/calendar.gateway';
 import { GuestService } from '../guest/guest.service';
 import { nightsBetweenInPropertyTimezone } from './booking-availability.util';
 
@@ -35,6 +36,7 @@ export class BookingService {
     private readonly eventEmitter: EventEmitter2,
     private readonly propertyService: PropertyService,
     private readonly zodomusAvailabilityPush: ZodomusAvailabilityPushService,
+    private readonly calendarGateway: CalendarGateway,
     private readonly guestService: GuestService,
   ) {}
 
@@ -355,6 +357,8 @@ export class BookingService {
       dateFromISO: saved.checkIn.toISOString(),
       dateToISO: saved.checkOut.toISOString(),
     });
+
+    this.calendarGateway.emitCalendarChanged({ propertyId: saved.propertyId, source: 'booking:transition' });
 
     return saved;
   }
