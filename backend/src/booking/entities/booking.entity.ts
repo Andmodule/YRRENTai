@@ -78,6 +78,10 @@ export class BookingEntity {
   @Column({ type: 'varchar', length: 16, default: 'unpaid' })
   paymentStatus!: 'unpaid' | 'partial' | 'paid';
 
+  /** Short label from OTA payload (Zodomus) — payment / payout type when provided by channel. */
+  @Column({ type: 'varchar', length: 512, nullable: true })
+  otaPaymentHint!: string | null;
+
   @Column({ default: 'PENDING' })
   status!: string;
 

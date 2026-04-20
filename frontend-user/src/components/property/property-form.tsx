@@ -4,16 +4,18 @@ import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslations } from 'next-intl';
+import { ChevronDown, Check, Loader2, X } from 'lucide-react';
 import { z } from 'zod';
 import { createPropertySchema } from '@rentai/shared';
 import type { CreatePropertyDto, Property } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { parseIcalImportLines } from '@/lib/ical-import-lines';
 import { Select } from '@/components/ui/select';
-import { TIMEZONES, CURRENCIES } from './property-field-options';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { cn } from '@/lib/utils';
+import { TIMEZONES, CURRENCIES, DEFAULT_PROPERTY_TIMEZONE } from './property-field-options';
 import { PropertyChannelIntegrationSection } from './property-channel-integration-section';
 
 type FormInput = z.input<typeof createPropertySchema>;
@@ -23,10 +25,28 @@ interface PropertyFormProps {
   onSubmit: (data: CreatePropertyDto) => Promise<unknown>;
   onCancel: () => void;
   submitLabel: string;
+  /**
+   * When omitted: new objects (`defaultValues` without `id`) use a collapsed “Advanced” block
+   * for integrations + WhatsApp; editing an existing property keeps the full layout.
+   */
+  collapseAdvancedSection?: boolean;
+  /** Compact icon actions (draft card on property list). */
+  footerStyle?: 'default' | 'draft-icons';
 }
 
-export function PropertyForm({ defaultValues, onSubmit, onCancel, submitLabel }: PropertyFormProps) {
+export function PropertyForm({
+  defaultValues,
+  onSubmit,
+  onCancel,
+  submitLabel,
+  collapseAdvancedSection,
+  footerStyle = 'default',
+}: PropertyFormProps) {
   const t = useTranslations('properties.form');
+  const useCompactAdvanced =
+    collapseAdvancedSection !== undefined
+      ? collapseAdvancedSection
+      : defaultValues?.id == null || String(defaultValues?.id ?? '').trim() === '';
 
   const {
     register,
@@ -42,10 +62,8 @@ export function PropertyForm({ defaultValues, onSubmit, onCancel, submitLabel }:
       country: defaultValues?.country ?? '',
       city: defaultValues?.city ?? '',
       address: defaultValues?.address ?? '',
-      description: defaultValues?.description ?? '',
-      timezone: defaultValues?.timezone ?? 'UTC',
+      timezone: defaultValues?.timezone ?? DEFAULT_PROPERTY_TIMEZONE,
       currency: defaultValues?.currency ?? 'USD',
-      maxGuests: defaultValues?.maxGuests,
       channelListings: (() => {
         const list = defaultValues?.channelListings;
         if (list?.length) {
@@ -90,6 +108,117 @@ export function PropertyForm({ defaultValues, onSubmit, onCancel, submitLabel }:
     setIcalLines((defaultValues?.icalImportUrls ?? []).join('\n'));
   }, [defaultValues?.id, defaultValues?.updatedAt]);
 
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [whatsappOpen, setWhatsappOpen] = useState(false);
+
+  useEffect(() => {
+    if (
+      defaultValues?.whatsappPhoneNumberId?.trim() ||
+      defaultValues?.whatsappAccessTokenSet
+    ) {
+      setWhatsappOpen(true);
+    }
+  }, [defaultValues?.id, defaultValues?.whatsappPhoneNumberId, defaultValues?.whatsappAccessTokenSet]);
+
+  useEffect(() => {
+    if (!useCompactAdvanced) return;
+    const hasAdvancedErrors =
+      !!errors.channelListings ||
+      !!errors.zodomusPropertyId ||
+      !!errors.whatsappPhoneNumberId ||
+      !!errors.whatsappAccessToken;
+    if (hasAdvancedErrors) setAdvancedOpen(true);
+  }, [
+    useCompactAdvanced,
+    errors.channelListings,
+    errors.zodomusPropertyId,
+    errors.whatsappPhoneNumberId,
+    errors.whatsappAccessToken,
+  ]);
+
+  useEffect(() => {
+    if (!!errors.whatsappPhoneNumberId || !!errors.whatsappAccessToken) {
+      setWhatsappOpen(true);
+    }
+  }, [errors.whatsappPhoneNumberId, errors.whatsappAccessToken]);
+
+  const integrationsAndWhatsApp = (
+    <>
+      <PropertyChannelIntegrationSection
+        register={register}
+        control={control}
+        errors={errors}
+        watch={watch}
+        setValue={setValue}
+        icalLines={icalLines}
+        onIcalLinesChange={setIcalLines}
+      />
+
+      <Collapsible open={whatsappOpen} onOpenChange={setWhatsappOpen} className="border-t border-border/60 pt-3">
+        <CollapsibleTrigger asChild>
+          <button
+            type="button"
+            className="flex w-full items-start gap-2 rounded-md py-1.5 text-left text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <ChevronDown
+              className={cn(
+                'mt-0.5 h-3.5 w-3.5 shrink-0 opacity-70 transition-transform',
+                whatsappOpen && 'rotate-180',
+              )}
+              aria-hidden
+            />
+            <span className="min-w-0 leading-snug">
+              <span className="text-foreground/90">{t('whatsappSection')}</span>
+              <span className="text-muted-foreground"> — {t('whatsappCollapsibleHint')}</span>
+            </span>
+          </button>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="mt-3 space-y-3 data-[state=closed]:hidden">
+          <p className="text-xs text-muted-foreground">{t('whatsappSectionHint')}</p>
+          <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+            <p className="font-medium text-foreground">{t('whatsappRulesTitle')}</p>
+            <p className="mt-1 leading-relaxed">{t('whatsappRulesBody')}</p>
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label htmlFor="whatsappPhoneNumberId" className="text-xs">
+                {t('whatsappPhoneNumberId')}
+              </Label>
+              <Input
+                id="whatsappPhoneNumberId"
+                placeholder={t('whatsappPhoneNumberIdPlaceholder')}
+                autoComplete="off"
+                {...register('whatsappPhoneNumberId')}
+              />
+              <p className="text-xs text-muted-foreground">{t('whatsappPhoneNumberIdHint')}</p>
+            </div>
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label htmlFor="whatsappAccessToken" className="text-xs">
+                {t('whatsappAccessToken')}
+              </Label>
+              <Input
+                id="whatsappAccessToken"
+                type="password"
+                placeholder={
+                  defaultValues?.whatsappAccessTokenSet
+                    ? t('whatsappAccessTokenPlaceholderKeep')
+                    : t('whatsappAccessTokenPlaceholder')
+                }
+                autoComplete="new-password"
+                {...register('whatsappAccessToken')}
+              />
+              <p className="text-xs text-muted-foreground">
+                {defaultValues?.whatsappAccessTokenSet
+                  ? t('whatsappAccessTokenHintKeep')
+                  : t('whatsappAccessTokenHint')}
+              </p>
+            </div>
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
+    </>
+  );
+
   return (
     <form
       onSubmit={handleSubmit((data) => {
@@ -106,61 +235,7 @@ export function PropertyForm({ defaultValues, onSubmit, onCancel, submitLabel }:
       })}
       className="space-y-3"
     >
-      <PropertyChannelIntegrationSection
-        register={register}
-        control={control}
-        errors={errors}
-        watch={watch}
-        setValue={setValue}
-        icalLines={icalLines}
-        onIcalLinesChange={setIcalLines}
-      />
-
-      <div className="space-y-3 border-t border-border/60 pt-4">
-        <p className="text-xs font-semibold tracking-tight text-foreground">{t('whatsappSection')}</p>
-        <p className="text-xs text-muted-foreground">{t('whatsappSectionHint')}</p>
-        <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-          <p className="font-medium text-foreground">{t('whatsappRulesTitle')}</p>
-          <p className="mt-1 leading-relaxed">{t('whatsappRulesBody')}</p>
-        </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div className="space-y-1.5 sm:col-span-2">
-            <Label htmlFor="whatsappPhoneNumberId" className="text-xs">
-              {t('whatsappPhoneNumberId')}
-            </Label>
-            <Input
-              id="whatsappPhoneNumberId"
-              placeholder={t('whatsappPhoneNumberIdPlaceholder')}
-              autoComplete="off"
-              {...register('whatsappPhoneNumberId')}
-            />
-            <p className="text-xs text-muted-foreground">{t('whatsappPhoneNumberIdHint')}</p>
-          </div>
-          <div className="space-y-1.5 sm:col-span-2">
-            <Label htmlFor="whatsappAccessToken" className="text-xs">
-              {t('whatsappAccessToken')}
-            </Label>
-            <Input
-              id="whatsappAccessToken"
-              type="password"
-              placeholder={
-                defaultValues?.whatsappAccessTokenSet
-                  ? t('whatsappAccessTokenPlaceholderKeep')
-                  : t('whatsappAccessTokenPlaceholder')
-              }
-              autoComplete="new-password"
-              {...register('whatsappAccessToken')}
-            />
-            <p className="text-xs text-muted-foreground">
-              {defaultValues?.whatsappAccessTokenSet
-                ? t('whatsappAccessTokenHintKeep')
-                : t('whatsappAccessTokenHint')}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <div className="space-y-3 border-t border-border/60 pt-4">
+      <div className="space-y-3">
         <p className="text-xs font-semibold tracking-tight text-foreground">{t('basicDetailsSection')}</p>
 
         <div className="space-y-1.5">
@@ -224,18 +299,6 @@ export function PropertyForm({ defaultValues, onSubmit, onCancel, submitLabel }:
           )}
         </div>
 
-        <div className="space-y-1.5">
-          <Label htmlFor="description" className="text-xs">
-            {t('description')}
-          </Label>
-          <Textarea
-            id="description"
-            placeholder={t('descriptionPlaceholder')}
-            rows={3}
-            {...register('description')}
-          />
-        </div>
-
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="space-y-1.5">
             <Label htmlFor="timezone" className="text-xs">
@@ -263,32 +326,70 @@ export function PropertyForm({ defaultValues, onSubmit, onCancel, submitLabel }:
             </Select>
           </div>
         </div>
-
-        <div className="max-w-[8rem] space-y-1.5">
-          <Label htmlFor="maxGuests" className="text-xs">
-            {t('maxGuests')}
-          </Label>
-          <Input
-            id="maxGuests"
-            type="number"
-            min={1}
-            max={100}
-            placeholder={t('maxGuestsPlaceholder')}
-            className="tabular-nums"
-            {...register('maxGuests', {
-              setValueAs: (v: string) => (v === '' || v === undefined ? undefined : Number(v)),
-            })}
-          />
-        </div>
       </div>
 
-      <div className="flex justify-end gap-2 pt-2">
-        <Button type="button" variant="outline" onClick={onCancel} disabled={isSubmitting}>
-          {t('cancel')}
-        </Button>
-        <Button type="submit" disabled={isSubmitting}>
-          {isSubmitting ? t('saving') : submitLabel}
-        </Button>
+      {useCompactAdvanced ? (
+        <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen} className="space-y-2">
+          <CollapsibleTrigger asChild>
+            <Button
+              type="button"
+              variant="outline"
+              className="flex h-auto min-h-11 w-full items-center justify-between gap-2 px-3 py-2.5 text-left font-normal"
+            >
+              <span className="flex flex-col items-start gap-0.5">
+                <span className="text-sm font-medium text-foreground">{t('advancedSettingsSection')}</span>
+                <span className="text-[11px] font-normal text-muted-foreground">{t('advancedSettingsHint')}</span>
+              </span>
+              <ChevronDown
+                className={cn('h-4 w-4 shrink-0 text-muted-foreground transition-transform', advancedOpen && 'rotate-180')}
+                aria-hidden
+              />
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="space-y-3 data-[state=closed]:hidden">
+            {integrationsAndWhatsApp}
+          </CollapsibleContent>
+        </Collapsible>
+      ) : (
+        integrationsAndWhatsApp
+      )}
+
+      <div
+        className={cn(
+          'flex justify-end gap-2 pt-2',
+          footerStyle === 'draft-icons' && 'border-t border-primary/20 pt-3',
+        )}
+      >
+        {footerStyle === 'draft-icons' ? (
+          <>
+            <button
+              type="button"
+              onClick={onCancel}
+              disabled={isSubmitting}
+              className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted disabled:opacity-50"
+              aria-label={t('cancel')}
+            >
+              <X className="h-4 w-4" />
+            </button>
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+              aria-label={submitLabel}
+            >
+              {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+            </button>
+          </>
+        ) : (
+          <>
+            <Button type="button" variant="outline" onClick={onCancel} disabled={isSubmitting}>
+              {t('cancel')}
+            </Button>
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? t('saving') : submitLabel}
+            </Button>
+          </>
+        )}
       </div>
     </form>
   );

@@ -1,9 +1,12 @@
+/** Default for new properties (Poland). */
+export const DEFAULT_PROPERTY_TIMEZONE = 'Europe/Warsaw';
+
 export const TIMEZONES = [
   'UTC',
   'Europe/Moscow',
   'Europe/Minsk',
   'Europe/Kiev',
-  'Europe/Warsaw',
+  DEFAULT_PROPERTY_TIMEZONE,
   'Europe/Berlin',
   'Europe/Paris',
   'Europe/London',

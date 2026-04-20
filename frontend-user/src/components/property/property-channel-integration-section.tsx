@@ -16,11 +16,10 @@ import { AnimatePresence, motion } from 'framer-motion';
 import {
   BedDouble,
   Building2,
+  ChevronDown,
   Download,
   Home,
   Loader2,
-  Plug2,
-  Plus,
   Trash2,
 } from 'lucide-react';
 import type { z } from 'zod';
@@ -30,6 +29,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
 import { useOtaPlatforms } from '@/hooks/use-ota-platforms';
 import type { ZodomusPropertyPreview } from '@/hooks/use-zodomus-property-preview';
@@ -67,6 +67,8 @@ interface PropertyChannelIntegrationSectionProps {
   setValue: UseFormSetValue<FormInput>;
   icalLines: string;
   onIcalLinesChange: (value: string) => void;
+  /** When true, the iCal block is a collapsible submenu (default: true). */
+  icalAsCollapsible?: boolean;
 }
 
 function platformIcon(code: string) {
@@ -93,11 +95,17 @@ export function PropertyChannelIntegrationSection({
   setValue,
   icalLines,
   onIcalLinesChange,
+  icalAsCollapsible = true,
 }: PropertyChannelIntegrationSectionProps) {
   const t = useTranslations('properties.form');
   const { platforms, isLoading } = useOtaPlatforms();
   const previewMutation = useZodomusPropertyPreview();
   const listingsWatch = watch('channelListings');
+  const [icalOpen, setIcalOpen] = useState(() => Boolean(icalLines.trim()));
+
+  useEffect(() => {
+    if (icalLines.trim()) setIcalOpen(true);
+  }, [icalLines]);
 
   const { fields, append, remove } = useFieldArray({
     control,
@@ -213,14 +221,13 @@ export function PropertyChannelIntegrationSection({
       />
 
       <div className="relative space-y-4 p-4 sm:p-5">
-        <header className="space-y-2">
-          <div>
-            <p className="text-sm font-semibold tracking-tight text-foreground">{t('integrationsSection')}</p>
-            <p className="mt-1 max-w-prose text-[12px] leading-relaxed text-muted-foreground sm:text-[13px]">
+        {fields.length > 0 && (
+          <header className="space-y-2">
+            <p className="max-w-prose text-[12px] leading-relaxed text-muted-foreground sm:text-[13px]">
               {t('channelListingsIntro')}
             </p>
-          </div>
-        </header>
+          </header>
+        )}
 
         {duplicateErr && (
           <p className="rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">
@@ -233,17 +240,16 @@ export function PropertyChannelIntegrationSection({
             <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
               {t('channelListingsHeading')}
             </span>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              className="h-8 gap-1.5"
-              disabled={isLoading || platforms.length === 0}
-              onClick={() => addChannelRow()}
-            >
-              <Plus className="h-3.5 w-3.5" aria-hidden />
-              {t('addChannelButton')}
-            </Button>
+            {fields.length > 0 && (
+              <button
+                type="button"
+                disabled={isLoading || platforms.length === 0}
+                onClick={() => addChannelRow()}
+                className="text-[11px] font-normal text-muted-foreground underline decoration-muted-foreground/40 underline-offset-2 transition-colors hover:text-foreground hover:decoration-foreground/50 disabled:cursor-not-allowed disabled:opacity-50 sm:text-xs"
+              >
+                {t('addChannelButton')}
+              </button>
+            )}
           </div>
 
           {isLoading && (
@@ -255,20 +261,28 @@ export function PropertyChannelIntegrationSection({
           {!isLoading && fields.length === 0 && (
             <div className="space-y-3">
               <div className="rounded-xl border border-border/50 bg-muted/10 p-3 sm:p-4">
-                <Label htmlFor="manual-zodomus-property-id" className="text-xs">
-                  {t('manualZodomusStandaloneLabel')}
-                </Label>
-                <Input
-                  id="manual-zodomus-property-id"
-                  placeholder={t('manualZodomusStandalonePlaceholder')}
-                  autoComplete="off"
-                  className="mt-1.5 min-h-11 w-full font-mono text-sm tabular-nums"
-                  aria-invalid={!!errors.zodomusPropertyId}
-                  aria-describedby="manual-zodomus-hint"
-                  {...register('zodomusPropertyId')}
-                />
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                  <Label
+                    htmlFor="manual-zodomus-property-id"
+                    className="text-xs leading-snug sm:mb-0 sm:max-w-[min(22rem,42%)] sm:shrink-0"
+                  >
+                    {t('manualZodomusStandaloneLabel')}
+                  </Label>
+                  <Input
+                    id="manual-zodomus-property-id"
+                    placeholder={t('manualZodomusStandalonePlaceholder')}
+                    autoComplete="off"
+                    className="min-h-11 min-w-0 flex-1 font-mono text-sm tabular-nums sm:mt-0"
+                    aria-invalid={!!errors.zodomusPropertyId}
+                    aria-describedby="manual-zodomus-hint"
+                    {...register('zodomusPropertyId')}
+                  />
+                </div>
                 <p id="manual-zodomus-hint" className="mt-1.5 text-[11px] leading-snug text-muted-foreground sm:text-[12px]">
                   {t('manualZodomusStandaloneHint')}
+                </p>
+                <p className="mt-2 text-[11px] leading-snug text-muted-foreground/90 sm:text-[12px]">
+                  {t('manualZodomusQuickHint')}
                 </p>
                 {errors.zodomusPropertyId && (
                   <p className="mt-1 text-xs text-destructive">
@@ -276,19 +290,18 @@ export function PropertyChannelIntegrationSection({
                   </p>
                 )}
               </div>
-              <div className="rounded-xl border border-dashed border-border/60 bg-muted/15 px-4 py-4 text-center">
-              <p className="text-[12px] leading-relaxed text-muted-foreground sm:text-[13px]">{t('channelsEmptyHint')}</p>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="mt-3 gap-1.5"
-                disabled={platforms.length === 0}
-                onClick={() => addChannelRow()}
-              >
-                <Plug2 className="h-3.5 w-3.5" aria-hidden />
-                {t('addFirstChannel')}
-              </Button>
+              <div className="border-t border-border/40 pt-3">
+                <p className="text-[11px] leading-relaxed text-muted-foreground sm:text-[12px]">
+                  <span>{t('channelsEmptyCompact')}</span>{' '}
+                  <button
+                    type="button"
+                    disabled={platforms.length === 0}
+                    onClick={() => addChannelRow()}
+                    className="inline font-normal text-muted-foreground underline decoration-muted-foreground/40 underline-offset-2 transition-colors hover:text-foreground hover:decoration-foreground/50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {t('addFirstChannel')}
+                  </button>
+                </p>
               </div>
             </div>
           )}
@@ -395,7 +408,7 @@ export function PropertyChannelIntegrationSection({
 
                         <div className="space-y-1.5 sm:col-span-2">
                           <Label htmlFor={`room-${field.id}`} className="text-xs">
-                            {t('zodomusObjectIdLabel')} *
+                            {t('zodomusObjectIdLabel')}
                           </Label>
                           <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
                             <Input
@@ -510,26 +523,64 @@ export function PropertyChannelIntegrationSection({
           </AnimatePresence>
         </div>
 
-        <div className="space-y-3 border-t border-border/50 pt-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="icalImportUrls" className="text-xs">
-              {t('icalImportUrls')}
-            </Label>
-            <p className="text-[11px] text-muted-foreground sm:text-[12px]">{t('icalBlockIntro')}</p>
-            <Textarea
-              id="icalImportUrls"
-              rows={4}
-              placeholder={t('icalImportUrlsPlaceholder')}
-              className="min-h-[7rem] resize-y font-mono text-xs sm:text-sm"
-              value={icalLines}
-              onChange={(e) => onIcalLinesChange(e.target.value)}
-              aria-describedby="ical-hint"
-            />
-            <p id="ical-hint" className="text-[11px] leading-snug text-muted-foreground sm:text-[12px]">
-              {t('icalImportUrlsHint')}
-            </p>
+        {icalAsCollapsible ? (
+          <Collapsible open={icalOpen} onOpenChange={setIcalOpen} className="border-t border-border/50 pt-3">
+            <CollapsibleTrigger asChild>
+              <button
+                type="button"
+                className="flex w-full items-start gap-2 rounded-md py-1.5 text-left text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <ChevronDown
+                  className={cn(
+                    'mt-0.5 h-3.5 w-3.5 shrink-0 opacity-70 transition-transform',
+                    icalOpen && 'rotate-180',
+                  )}
+                  aria-hidden
+                />
+                <span className="min-w-0 leading-snug">
+                  <span className="text-foreground/90">{t('icalImportUrls')}</span>
+                  <span className="text-muted-foreground"> — {t('icalCollapsibleHint')}</span>
+                </span>
+              </button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="mt-3 space-y-1.5 data-[state=closed]:hidden">
+              <p className="text-[11px] text-muted-foreground sm:text-[12px]">{t('icalBlockIntro')}</p>
+              <Textarea
+                id="icalImportUrls"
+                rows={4}
+                placeholder={t('icalImportUrlsPlaceholder')}
+                className="min-h-[7rem] resize-y font-mono text-xs sm:text-sm"
+                value={icalLines}
+                onChange={(e) => onIcalLinesChange(e.target.value)}
+                aria-describedby="ical-hint"
+              />
+              <p id="ical-hint" className="text-[11px] leading-snug text-muted-foreground sm:text-[12px]">
+                {t('icalImportUrlsHint')}
+              </p>
+            </CollapsibleContent>
+          </Collapsible>
+        ) : (
+          <div className="space-y-3 border-t border-border/50 pt-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="icalImportUrls" className="text-xs">
+                {t('icalImportUrls')}
+              </Label>
+              <p className="text-[11px] text-muted-foreground sm:text-[12px]">{t('icalBlockIntro')}</p>
+              <Textarea
+                id="icalImportUrls"
+                rows={4}
+                placeholder={t('icalImportUrlsPlaceholder')}
+                className="min-h-[7rem] resize-y font-mono text-xs sm:text-sm"
+                value={icalLines}
+                onChange={(e) => onIcalLinesChange(e.target.value)}
+                aria-describedby="ical-hint"
+              />
+              <p id="ical-hint" className="text-[11px] leading-snug text-muted-foreground sm:text-[12px]">
+                {t('icalImportUrlsHint')}
+              </p>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

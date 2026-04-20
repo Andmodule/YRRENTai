@@ -39,6 +39,8 @@ const STATUSES: { value: BookingStatus | 'all'; labelKey: string }[] = [
   { value: 'confirmed', labelKey: 'statusConfirmed' },
   { value: 'pending', labelKey: 'statusPending' },
   { value: 'cleaning', labelKey: 'statusCleaning' },
+  { value: 'cancelled', labelKey: 'statusCancelled' },
+  { value: 'blocked', labelKey: 'statusBlocked' },
 ];
 
 function ChannelStatusRow({

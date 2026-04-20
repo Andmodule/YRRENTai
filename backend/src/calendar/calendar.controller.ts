@@ -18,6 +18,18 @@ export class CalendarController {
     private readonly userService: UserService,
   ) {}
 
+  /** Guest / id search across all bookings (calendar grid still loads the visible window only). */
+  @Get('reservation-search')
+  @Roles('OWNER', 'MANAGER')
+  async searchReservations(
+    @Query('q') q: string | undefined,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    const ownerId = await this.userService.resolveTenantOwnerId(user.sub, user.role);
+    const reservations = await this.calendarService.searchReservationsAcrossCalendar(ownerId, q ?? '');
+    return { data: { reservations } };
+  }
+
   @Get()
   @Roles('OWNER', 'MANAGER')
   async getCalendar(

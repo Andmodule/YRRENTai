@@ -1,10 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useId, useMemo, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTheme } from 'next-themes';
 import { Epg, Layout, useEpg } from 'planby';
 import type { Channel } from 'planby';
-import { addDays, eachDayOfInterval, format, startOfDay } from 'date-fns';
+import { addDays, addHours, eachDayOfInterval, format, startOfDay, subDays } from 'date-fns';
 import { toast } from 'sonner';
 import { useTranslations } from 'next-intl';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -15,6 +15,7 @@ import { useIsMobile } from '@/hooks/useIsMobile';
 import type { CalendarDateRange, CalendarFilters, Reservation } from './types';
 import { useCalendarData } from './hooks/useCalendarData';
 import { useCalendarFilters } from './hooks/useCalendarFilters';
+import { useCalendarReservationSearch } from './hooks/useCalendarReservationSearch';
 import { useZodomusCalendarSync } from './hooks/useZodomusCalendarSync';
 import { getPropertyMeta } from './lib/property-meta';
 import { ProgramBlock } from './components/ProgramBlock';
@@ -29,6 +30,7 @@ import { NewBookingSheet } from './components/NewBookingSheet';
 import { ReservationDetailPanel, ReservationDetailPanelFooter } from './components/ReservationDetailPanel';
 import { getCalendarPlanbyTheme } from './lib/planby-app-theme';
 import { parseLocalCalendarDay } from './lib/calendar-api-dates';
+import { isBookingIdPinQuery, normalizeCalendarQuery, reservationMatchesQuery } from './calendarSearch';
 
 const ITEM_HEIGHT_PX = 64;
 
@@ -55,23 +57,90 @@ export function CalendarView({
     [resolvedTheme],
   );
   const { data, isLoading, isError, isFetching, refetch, isPending } = useCalendarData(dateRange);
+  const reservationSearch = useCalendarReservationSearch(filters.propertyQuery);
+  const globalSearchReservations = reservationSearch.data ?? [];
+  const searchDebouncedQuery = reservationSearch.debouncedQuery;
   const zodomusSync = useZodomusCalendarSync(1);
 
   const properties = data?.properties ?? [];
   const reservations = data?.reservations ?? [];
-  const { filteredProperties, filteredReservations } = useCalendarFilters(properties, reservations, filters);
+  const reservationPoolForPin = useMemo(() => {
+    const byId = new Map(reservations.map((r) => [r.uuid, r]));
+    for (const r of globalSearchReservations) {
+      byId.set(r.uuid, r);
+    }
+    return [...byId.values()];
+  }, [reservations, globalSearchReservations]);
+
+  const { filteredProperties, filteredReservations, reservationsForSearchIndex } = useCalendarFilters(
+    properties,
+    reservations,
+    filters,
+    globalSearchReservations,
+  );
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  const lastAutopanKeyRef = useRef<string>('');
+  useEffect(() => {
+    const dq = searchDebouncedQuery.trim();
+    const q = normalizeCalendarQuery(dq);
+    if (q.length < 2) {
+      lastAutopanKeyRef.current = '';
+      return;
+    }
+    const candidates = reservationPoolForPin.filter((r) => reservationMatchesQuery(r, q));
+    const key = `${q}::${candidates.map((c) => c.uuid).sort().join(',')}`;
+    if (candidates.length !== 1) {
+      lastAutopanKeyRef.current = '';
+      return;
+    }
+    const hit = candidates[0]!;
+    if (!isBookingIdPinQuery(dq, hit)) {
+      lastAutopanKeyRef.current = '';
+      return;
+    }
+    if (lastAutopanKeyRef.current === key) return;
+
+    const checkIn = parseLocalCalendarDay(hit.checkIn);
+    const ci = startOfDay(checkIn);
+    const rs = startOfDay(dateRange.start);
+    const re = startOfDay(dateRange.end);
+    const inWindow = ci >= rs && ci <= re;
+    if (!inWindow) {
+      onDateRangeChange({
+        start: startOfDay(subDays(checkIn, 3)),
+        end: startOfDay(addDays(checkIn, 18)),
+      });
+    }
+    setSelectedId(hit.uuid);
+    lastAutopanKeyRef.current = key;
+  }, [
+    searchDebouncedQuery,
+    reservationPoolForPin,
+    onDateRangeChange,
+    dateRange.start,
+    dateRange.end,
+  ]);
+
   const selected = useMemo(() => {
     if (!selectedId) return null;
-    return filteredReservations.find((r) => r.uuid === selectedId) ?? null;
-  }, [filteredReservations, selectedId]);
+    return (
+      filteredReservations.find((r) => r.uuid === selectedId) ??
+      reservations.find((r) => r.uuid === selectedId) ??
+      globalSearchReservations.find((r) => r.uuid === selectedId) ??
+      null
+    );
+  }, [filteredReservations, selectedId, reservations, globalSearchReservations]);
 
   useEffect(() => {
-    if (selectedId && !filteredReservations.some((r) => r.uuid === selectedId)) {
-      setSelectedId(null);
-    }
-  }, [selectedId, filteredReservations]);
+    if (!selectedId) return;
+    const exists =
+      filteredReservations.some((r) => r.uuid === selectedId) ||
+      reservations.some((r) => r.uuid === selectedId) ||
+      globalSearchReservations.some((r) => r.uuid === selectedId);
+    if (!exists) setSelectedId(null);
+  }, [selectedId, filteredReservations, reservations, globalSearchReservations]);
   const [newBookingOpen, setNewBookingOpen] = useState(false);
   /** Row clicked on grid → preselect property in «Новая бронь» (null = first object). */
   const [newBookingPropertyId, setNewBookingPropertyId] = useState<string | null>(null);
@@ -106,7 +175,8 @@ export function CalendarView({
         description: '',
         image: '',
         since: format(parseLocalCalendarDay(r.checkIn), "yyyy-MM-dd'T'HH:mm:ss"),
-        till: format(parseLocalCalendarDay(r.checkOut), "yyyy-MM-dd'T'HH:mm:ss"),
+        /** Noon on checkout calendar day: last half-day band (green) sits on the checkout column, not on last night only. */
+        till: format(addHours(parseLocalCalendarDay(r.checkOut), 12), "yyyy-MM-dd'T'HH:mm:ss"),
         _reservation: r,
       })),
     [filteredReservations],
@@ -129,7 +199,11 @@ export function CalendarView({
 
   const epgProps = getEpgProps();
   const layoutProps = getLayoutProps();
-  const { hourWidth: layoutHourWidth, itemHeight: layoutItemHeight, ref: planbyScrollRef } = layoutProps;
+  const {
+    hourWidth: layoutHourWidth,
+    itemHeight: layoutItemHeight,
+    ref: planbyScrollRef,
+  } = layoutProps;
   const dayColWidthPx = 24 * layoutHourWidth;
 
   useEffect(() => {
@@ -144,15 +218,16 @@ export function CalendarView({
       if (t.closest('[data-testid="calendar-timeline-header"]')) return;
       const content = t.closest('[data-testid="content"]') as HTMLElement | null;
       if (!content) return;
-      const rect = content.getBoundingClientRect();
-      const y = e.clientY - rect.top + el.scrollTop;
+      const contentRect = content.getBoundingClientRect();
+      const y = e.clientY - contentRect.top + el.scrollTop;
       const rowIndex = Math.floor(Math.max(0, y) / ITEM_HEIGHT_PX);
       const prop = filteredProperties[rowIndex];
       setNewBookingPropertyId(prop?.uuid ?? null);
-      const x = e.clientX - rect.left + el.scrollLeft;
+      /** X in timeline: same origin as Planby programs — relative to [data-testid="content"] + horizontal scroll. */
+      const xTimeline = e.clientX - contentRect.left + el.scrollLeft;
       const w = dayColWidthPx > 0 ? dayColWidthPx : 1;
       const dayIndex =
-        numDays > 0 ? Math.min(numDays - 1, Math.max(0, Math.floor(x / w))) : 0;
+        numDays > 0 ? Math.min(numDays - 1, Math.max(0, Math.floor(Math.max(0, xTimeline) / w))) : 0;
       const rangeStart = startOfDay(dateRange.start);
       setNewBookingGridDates({
         checkIn: format(addDays(rangeStart, dayIndex), 'yyyy-MM-dd'),
@@ -162,7 +237,13 @@ export function CalendarView({
     };
     el.addEventListener('click', onClick);
     return () => el.removeEventListener('click', onClick);
-  }, [planbyScrollRef, filteredProperties, dayColWidthPx, numDays, dateRange.start]);
+  }, [
+    planbyScrollRef,
+    filteredProperties,
+    dayColWidthPx,
+    numDays,
+    dateRange.start,
+  ]);
 
   const onSelectReservation = useCallback((r: Reservation) => setSelectedId(r.uuid), []);
 
@@ -395,7 +476,7 @@ export function CalendarView({
           filters={filters}
           onFiltersChange={onFiltersChange}
           properties={properties}
-          reservations={reservations}
+          reservations={reservationsForSearchIndex}
           onNewBooking={openNewBooking}
           showSyncOta={showSyncOta}
           onSyncOta={onSyncOta}
@@ -420,7 +501,7 @@ export function CalendarView({
           filters={filters}
           onFiltersChange={onFiltersChange}
           properties={properties}
-          reservations={reservations}
+          reservations={reservationsForSearchIndex}
           onNewBooking={openNewBooking}
           showSyncOta={showSyncOta}
           onSyncOta={onSyncOta}
@@ -468,7 +549,7 @@ export function CalendarView({
         filters={filters}
         onFiltersChange={onFiltersChange}
         properties={properties}
-        reservations={reservations}
+        reservations={reservationsForSearchIndex}
         onNewBooking={openNewBooking}
         showSyncOta={showSyncOta}
         onSyncOta={onSyncOta}

@@ -390,6 +390,31 @@ export class ZodomusService {
     if (meal) noteLines.push(meal);
     const notesMerged = noteLines.length > 0 ? noteLines.join('\n\n') : undefined;
 
+    const payParts: string[] = [];
+    const pushPay = (v: unknown) => {
+      const s = str(v);
+      if (s.length > 0) payParts.push(s);
+    };
+    const roomRec = firstRoom as Record<string, unknown> | null;
+    pushPay(resObj.paymentType);
+    pushPay(resObj.payment_type);
+    pushPay(resObj.paymentMethod);
+    pushPay(resObj.payment_method);
+    pushPay(resObj.paymentModel);
+    pushPay(resObj.payment_model);
+    pushPay(resObj.bookingPayment);
+    pushPay(resObj.booking_payment);
+    pushPay(resObj.payoutType);
+    pushPay(resObj.payout_type);
+    if (roomRec) {
+      pushPay(roomRec.paymentType);
+      pushPay(roomRec.payment_type);
+      pushPay(roomRec.paymentMethod);
+      pushPay(roomRec.payment_method);
+    }
+    const otaPaymentHint =
+      payParts.length > 0 ? Array.from(new Set(payParts)).join(' · ').slice(0, 512) : undefined;
+
     return {
       ...resObj,
       guestFirstName: cust.firstName,
@@ -401,6 +426,7 @@ export class ZodomusService {
       guestAdults,
       guestChildren,
       notes: notesMerged,
+      otaPaymentHint,
       currency: (resObj.currencyCode ?? resObj.currency) as unknown,
       checkIn: (firstRoom?.arrivalDate ?? resObj.checkIn) as unknown,
       checkOut: (firstRoom?.departureDate ?? resObj.checkOut) as unknown,

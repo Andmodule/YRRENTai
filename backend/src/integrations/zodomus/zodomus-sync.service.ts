@@ -463,6 +463,9 @@ export class ZodomusSyncService {
     row.zodomusSynced = false;
     row.status = mapZodomusReservationStatus(raw.status);
 
+    const hint = typeof raw.otaPaymentHint === 'string' ? raw.otaPaymentHint.trim().slice(0, 512) : '';
+    row.otaPaymentHint = hint.length > 0 ? hint : null;
+
     await this.bookingRepo.save(row);
 
     this.logger.debug(

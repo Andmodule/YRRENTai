@@ -8,7 +8,6 @@ import {
   Building2,
   MapPin,
   Clock,
-  Users,
   DollarSign,
   ArrowLeft,
   BookOpen,
@@ -107,11 +106,6 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
     { icon: MapPin, label: t('detail.address'), value: property.address },
     { icon: Clock, label: t('detail.timezone'), value: property.timezone },
     { icon: DollarSign, label: t('detail.currency'), value: property.currency },
-    {
-      icon: Users,
-      label: t('detail.maxGuests'),
-      value: property.maxGuests ? String(property.maxGuests) : t('detail.notSpecified'),
-    },
     {
       icon: Link2,
       label: t('detail.channels'),
@@ -212,6 +206,18 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
                 onCancel={() => setIsEditingSettings(false)}
                 submitLabel={t('updateSubmit')}
               />
+              <div className="mt-6 space-y-2">
+                <p className="text-xs text-muted-foreground">{t('integrations.syncUsesSavedSettings')}</p>
+                <PropertyIntegrationsCard
+                  propertyId={property.id}
+                  zodomusPropertyId={property.zodomusPropertyId}
+                  channelListings={property.channelListings}
+                  otaPlatform={property.otaPlatform ?? null}
+                  onSynced={async () => {
+                    await mutate();
+                  }}
+                />
+              </div>
               <div className="mt-4 flex justify-start border-t border-border pt-4">
                 <DeletePropertyDialog
                   propertyName={property.name}

@@ -9,7 +9,7 @@ import { formatPropertyLocation } from '@/lib/format/property-location';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 
-type SortKey = 'name' | 'address' | 'currency' | 'timezone' | 'maxGuests';
+type SortKey = 'name' | 'address' | 'currency' | 'timezone';
 
 interface PropertyListTableProps {
   properties: Property[];
@@ -71,11 +71,6 @@ export function PropertyListTable({ properties }: PropertyListTableProps) {
           return a.currency.localeCompare(b.currency) * dir;
         case 'timezone':
           return a.timezone.localeCompare(b.timezone) * dir;
-        case 'maxGuests': {
-          const ga = a.maxGuests ?? -1;
-          const gb = b.maxGuests ?? -1;
-          return (ga - gb) * dir;
-        }
         default:
           return 0;
       }
@@ -152,15 +147,12 @@ export function PropertyListTable({ properties }: PropertyListTableProps) {
               <th scope="col" className="w-14 px-2 py-2.5 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground/90">
                 {t('colOta')}
               </th>
-              <th scope="col" className="w-24 px-2 py-2.5">
-                {headerButton('maxGuests', t('colGuests'), 'right')}
-              </th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-3 py-10 text-center text-sm text-muted-foreground">
+                <td colSpan={6} className="px-3 py-10 text-center text-sm text-muted-foreground">
                   {query.trim() ? t('noSearchResults') : '—'}
                 </td>
               </tr>
@@ -217,9 +209,6 @@ export function PropertyListTable({ properties }: PropertyListTableProps) {
                       <span className="text-muted-foreground/50">—</span>
                     )}
                   </td>
-                  <td className="px-2 py-3 text-right tabular-nums text-muted-foreground">
-                    {property.maxGuests ?? '—'}
-                  </td>
                 </tr>
               ))
             )}
@@ -251,10 +240,6 @@ export function PropertyListTable({ properties }: PropertyListTableProps) {
                     <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
                       <span className="shrink-0">{t('colCurrency')}:</span>
                       <span className="font-medium text-slate-900 dark:text-foreground">{property.currency}</span>
-                    </div>
-                    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                      <span className="shrink-0">{t('colGuests')}:</span>
-                      <span className="font-medium text-slate-900 dark:text-foreground">{property.maxGuests ?? '—'}</span>
                     </div>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-1.5">

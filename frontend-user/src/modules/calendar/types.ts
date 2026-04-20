@@ -1,4 +1,4 @@
-export type BookingStatus = 'confirmed' | 'pending' | 'cleaning' | 'blocked';
+export type BookingStatus = 'confirmed' | 'pending' | 'cleaning' | 'blocked' | 'cancelled';
 export type BookingChannel = 'booking' | 'airbnb' | 'direct' | 'other';
 
 export interface Property {
@@ -27,6 +27,8 @@ export interface Reservation {
   /** Team-only; not overwritten by OTA sync. */
   internalNotes?: string | null;
   paymentStatus?: 'unpaid' | 'partial' | 'paid';
+  /** From OTA (Zodomus) when channel sends payment / payout type. */
+  otaPaymentHint?: string | null;
   /** Manual direct booking source; only when channel is direct. */
   directSource?: string | null;
   channel: BookingChannel;

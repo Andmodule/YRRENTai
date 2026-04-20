@@ -66,5 +66,7 @@ export interface ZodomusReservation {
   totalPrice?: number;
   currency?: string;
   status?: string;
+  /** Filled by flattenZodomusReservationsBlock from OTA payment fields when present. */
+  otaPaymentHint?: string;
   [key: string]: unknown;
 }

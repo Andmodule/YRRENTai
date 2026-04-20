@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { format, parseISO } from 'date-fns';
+import { format } from 'date-fns';
 import { ClipboardList, Copy, Loader2, MessageSquare } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
@@ -16,6 +16,7 @@ import { apiClient } from '@/lib/api/client';
 import { cn } from '@/lib/utils';
 import { useDateLocale } from '@/hooks/useDateLocale';
 import type { Reservation } from '../types';
+import { parseLocalCalendarDay } from '../lib/calendar-api-dates';
 import { countNights } from '../lib/property-meta';
 import { calendarStatusClasses } from '../lib/calendar-status-styles';
 import { InlineGuestContactFields } from './InlineGuestContactFields';
@@ -25,6 +26,7 @@ const statusLabelKey: Record<Reservation['status'], string> = {
   pending: 'statusPending',
   cleaning: 'statusCleaning',
   blocked: 'statusBlocked',
+  cancelled: 'statusCancelled',
 };
 
 const channelLabelKeys: Record<Reservation['channel'], string> = {
@@ -86,6 +88,7 @@ export function ReservationDetailPanel({
   const nights = countNights(reservation.checkIn, reservation.checkOut);
   const stClass = calendarStatusClasses[reservation.status];
   const paymentStatus = reservation.paymentStatus ?? 'unpaid';
+  const isOta = Boolean(reservation.fromOta);
 
   const [draftNotes, setDraftNotes] = useState(reservation.internalNotes ?? '');
   useEffect(() => {
@@ -132,8 +135,8 @@ export function ReservationDetailPanel({
         ) : null}
       </p>
       <p className="text-sm">
-        {format(parseISO(reservation.checkIn), 'dd MMM yyyy', { locale })} →{' '}
-        {format(parseISO(reservation.checkOut), 'dd MMM yyyy', { locale })}
+        {format(parseLocalCalendarDay(reservation.checkIn), 'dd MMM yyyy', { locale })} →{' '}
+        {format(parseLocalCalendarDay(reservation.checkOut), 'dd MMM yyyy', { locale })}
       </p>
       <p className="text-sm text-muted-foreground">
         {nights} {t('nights')}
@@ -144,26 +147,37 @@ export function ReservationDetailPanel({
             reservation.totalPrice,
           )}
         </p>
-        <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
-          <Label htmlFor={`pay-${reservation.uuid}`} className="text-xs text-muted-foreground">
-            {t('paymentStatusLabel')}
-          </Label>
-          <Select
-            id={`pay-${reservation.uuid}`}
-            className="h-9 max-w-[220px] text-sm"
-            value={paymentStatus}
-            disabled={patchMutation.isPending}
-            onChange={(e) => {
-              const v = e.target.value as 'unpaid' | 'partial' | 'paid';
-              if (v === paymentStatus) return;
-              patchMutation.mutate({ paymentStatus: v });
-            }}
-          >
-            <option value="unpaid">{t('paymentUnpaid')}</option>
-            <option value="partial">{t('paymentPartial')}</option>
-            <option value="paid">{t('paymentPaid')}</option>
-          </Select>
-        </div>
+        {isOta ? (
+          <div className="space-y-1">
+            <p className="text-xs text-muted-foreground">
+              {t('otaPaymentFromChannel', { channel: t(channelLabelKeys[reservation.channel]) })}
+            </p>
+            {reservation.otaPaymentHint?.trim() ? (
+              <p className="text-sm text-foreground/90">{reservation.otaPaymentHint.trim()}</p>
+            ) : null}
+          </div>
+        ) : (
+          <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
+            <Label htmlFor={`pay-${reservation.uuid}`} className="text-xs text-muted-foreground">
+              {t('paymentStatusLabel')}
+            </Label>
+            <Select
+              id={`pay-${reservation.uuid}`}
+              className="h-9 max-w-[220px] text-sm"
+              value={paymentStatus}
+              disabled={patchMutation.isPending}
+              onChange={(e) => {
+                const v = e.target.value as 'unpaid' | 'partial' | 'paid';
+                if (v === paymentStatus) return;
+                patchMutation.mutate({ paymentStatus: v });
+              }}
+            >
+              <option value="unpaid">{t('paymentUnpaid')}</option>
+              <option value="partial">{t('paymentPartial')}</option>
+              <option value="paid">{t('paymentPaid')}</option>
+            </Select>
+          </div>
+        )}
       </div>
 
       <Separator />

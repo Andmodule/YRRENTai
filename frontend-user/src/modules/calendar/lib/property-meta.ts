@@ -2,10 +2,10 @@ import {
   differenceInCalendarDays,
   eachDayOfInterval,
   isWithinInterval,
-  parseISO,
   startOfDay,
 } from 'date-fns';
 import type { CalendarDateRange, Reservation } from '../types';
+import { parseLocalCalendarDay } from './calendar-api-dates';
 
 function pluralizeBookings(n: number): string {
   const mod10 = n % 10;
@@ -18,8 +18,8 @@ function pluralizeBookings(n: number): string {
 
 /** Day [d, d+1) overlaps booking [checkIn, checkOut) with exclusive checkOut */
 function dayOverlapsBooking(day: Date, r: Reservation): boolean {
-  const start = startOfDay(parseISO(r.checkIn));
-  const endEx = startOfDay(parseISO(r.checkOut));
+  const start = parseLocalCalendarDay(r.checkIn);
+  const endEx = parseLocalCalendarDay(r.checkOut);
   return day >= start && day < endEx;
 }
 
@@ -46,7 +46,9 @@ export function getPropertyMeta(
   reservations: Reservation[],
   dateRange: CalendarDateRange,
 ): string {
-  const active = reservations.filter((r) => r.propertyId === propertyId && r.status !== 'blocked');
+  const active = reservations.filter(
+    (r) => r.propertyId === propertyId && r.status !== 'blocked' && r.status !== 'cancelled',
+  );
   if (active.length > 0) {
     return pluralizeBookings(active.length);
   }
@@ -63,5 +65,8 @@ export function isDateRangeAroundToday(dateRange: CalendarDateRange): boolean {
 }
 
 export function countNights(checkIn: string, checkOut: string): number {
-  return Math.max(0, differenceInCalendarDays(parseISO(checkOut), parseISO(checkIn)));
+  return Math.max(
+    0,
+    differenceInCalendarDays(parseLocalCalendarDay(checkOut), parseLocalCalendarDay(checkIn)),
+  );
 }
