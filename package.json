@@ -27,8 +27,5 @@
     "zodomus:fetch-samples": "node doc/zodomus/fetch-samples.mjs",
     "migration:run": "pnpm --filter backend run migration:run",
     "migration:revert": "pnpm --filter backend run migration:revert"
-  },
-  "dependencies": {
-    "@nestjs/schedule": "^6.1.3"
   }
 }
