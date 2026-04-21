@@ -61,7 +61,9 @@ function AppShellContent({ children }: { children: React.ReactNode }) {
   /** Tasks board: header + filters stay fixed; list scrolls inside main (same height lock as chat). */
   const isTasksBoardPage =
     pathname?.includes('/dashboard/tasks') && !pathname?.includes('/dashboard/tasks/new');
-  const lockViewportColumn = isChat || isTasksBoardPage;
+  /** Calendar: filter strip + timeline fixed; Planby grid scrolls inside main. */
+  const isCalendarPage = pathname?.includes('/dashboard/calendar');
+  const lockViewportColumn = isChat || isTasksBoardPage || isCalendarPage;
 
   return (
     <div className={cn('flex min-h-screen overflow-x-hidden bg-background', APP_SHELL_GRADIENT_DARK)}>
@@ -85,8 +87,11 @@ function AppShellContent({ children }: { children: React.ReactNode }) {
               : isTasksBoardPage
                 ? /* мобайл: меньше пустоты между шапкой и фильтрами; safe-area для вырезов iPhone */
                   'flex min-h-0 min-w-0 flex-col overflow-hidden pt-1 pb-[max(1rem,env(safe-area-inset-bottom,0px))] pl-[max(1rem,env(safe-area-inset-left,0px))] pr-[max(1rem,env(safe-area-inset-right,0px))] sm:pt-6 sm:pb-[max(1.5rem,env(safe-area-inset-bottom,0px))] sm:pl-6 sm:pr-6'
-                : /* overflow-x-hidden: широкий тулбар/сетка не расширяют viewport по X */
-                  'flex min-h-0 min-w-0 flex-col overflow-x-hidden pt-4 pb-[max(1rem,env(safe-area-inset-bottom,0px))] pl-[max(1rem,env(safe-area-inset-left,0px))] pr-[max(1rem,env(safe-area-inset-right,0px))] sm:pt-6 sm:pb-[max(1.5rem,env(safe-area-inset-bottom,0px))] sm:pl-6 sm:pr-6',
+                : isCalendarPage
+                  ? /* календарь: минимальный зазор под sticky-шапкой приложения; скролл только у сетки внутри CalendarView */
+                    'flex min-h-0 min-w-0 flex-col overflow-hidden pt-0 pb-[max(1rem,env(safe-area-inset-bottom,0px))] pl-[max(1rem,env(safe-area-inset-left,0px))] pr-[max(1rem,env(safe-area-inset-right,0px))] sm:pb-[max(1.5rem,env(safe-area-inset-bottom,0px))] sm:pl-6 sm:pr-6'
+                  : /* overflow-x-hidden: широкий тулбар/сетка не расширяют viewport по X */
+                    'flex min-h-0 min-w-0 flex-col overflow-x-hidden pt-4 pb-[max(1rem,env(safe-area-inset-bottom,0px))] pl-[max(1rem,env(safe-area-inset-left,0px))] pr-[max(1rem,env(safe-area-inset-right,0px))] sm:pt-6 sm:pb-[max(1.5rem,env(safe-area-inset-bottom,0px))] sm:pl-6 sm:pr-6',
           )}
         >
           {children}

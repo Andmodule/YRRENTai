@@ -55,7 +55,7 @@ export function TimelineNavBar({
   const rangeLabel = `${format(dateRange.start, 'd MMM', { locale })} — ${format(dateRange.end, 'd MMM yyyy', { locale })}`;
 
   return (
-    <div className="relative border-b border-border bg-card">
+    <div className="relative bg-card">
       {showFetchBar && (
         <div
           className="pointer-events-none fixed left-0 right-0 top-0 z-[100] h-0.5 overflow-hidden bg-blue-500/20"
@@ -65,7 +65,7 @@ export function TimelineNavBar({
           <div className="h-full w-full animate-pulse bg-blue-500" />
         </div>
       )}
-      <div className="flex items-center justify-between gap-2 px-4 py-2">
+      <div className="flex items-center justify-between gap-2 border-t border-border/60 px-4 py-1.5 sm:py-2">
         <Button variant="outline" size="sm" type="button" aria-label={t('navPrev')} onClick={goBack}>
           ←
         </Button>

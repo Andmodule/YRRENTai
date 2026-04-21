@@ -78,23 +78,14 @@ export function Header() {
         <div className="lg:hidden">
           <MobileTasksHeader title={tTasks('pageTitle')} />
         </div>
-        <div className="hidden lg:flex lg:flex-col">
-          <div className="grid h-11 grid-cols-[1fr_auto_1fr] items-center gap-2 px-3 sm:h-12 sm:px-4">
-            <div className="flex justify-start" />
-            <h1 className="truncate text-center text-lg font-semibold tracking-tight text-foreground">
-              {tTasks('pageTitle')}
-            </h1>
-            <div className="flex justify-end" aria-hidden />
-          </div>
-          <div className="flex w-full items-center border-t border-border/40">
-            <Suspense
-              fallback={<div className="h-14 w-full shrink animate-pulse bg-muted/20 px-4 py-2" aria-hidden />}
-            >
-              <div className="tasks-theme min-w-0 flex-1">
-                <TasksHeaderControls />
-              </div>
-            </Suspense>
-          </div>
+        <div className="hidden lg:flex lg:flex-col border-b border-border/40">
+          <Suspense
+            fallback={<div className="h-11 w-full shrink animate-pulse bg-muted/20 sm:h-12" aria-hidden />}
+          >
+            <div className="tasks-theme min-w-0">
+              <TasksHeaderControls layout="headerDesktopGrid" desktopPageTitle={tTasks('pageTitle')} />
+            </div>
+          </Suspense>
         </div>
       </header>
     );

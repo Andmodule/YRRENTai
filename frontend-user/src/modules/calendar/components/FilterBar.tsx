@@ -25,6 +25,8 @@ interface FilterBarProps {
   /** `force` — удерживайте Shift при клике (принудительная перезапись уже синхронизированных броней). */
   onSyncOta?: (force?: boolean) => void;
   isSyncingOta?: boolean;
+  /** false — без нижней границы (стык с `TimelineNavBar` в одной sticky-полосе). По умолчанию true. */
+  showBottomBorder?: boolean;
 }
 
 const CHANNELS: { value: BookingChannel | 'all'; labelKey: string }[] = [
@@ -144,6 +146,7 @@ export function FilterBar({
   showSyncOta,
   onSyncOta,
   isSyncingOta,
+  showBottomBorder = true,
 }: FilterBarProps) {
   const t = useTranslations('calendar');
   const isMobile = useIsMobile();
@@ -201,7 +204,12 @@ export function FilterBar({
   );
 
   return (
-    <div className="flex w-full min-w-0 max-w-full shrink-0 flex-col gap-3 border-b border-border px-4 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-x-2 sm:gap-y-2">
+    <div
+      className={cn(
+        'flex w-full min-w-0 max-w-full shrink-0 flex-col gap-1.5 px-4 py-1.5 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-x-2 sm:gap-y-1.5 sm:py-2',
+        showBottomBorder && 'border-b border-border',
+      )}
+    >
       {!isMobile && (
         <>
           <div className="flex min-w-0 flex-1 justify-center px-2">{search}</div>

@@ -12,6 +12,7 @@ import {
   useStartDeliveryRoute,
 } from '@/hooks/use-staff-delivery-route';
 import { resolveStaffAppShell } from '@/lib/staff-app-shell';
+import { parseRouteUuidFromTelegramStartParam, readTelegramWebAppStartParam } from '@/lib/telegram-start-param';
 import { apiClient } from '@/lib/api/client';
 import { ActiveRouteTimeline } from '@/modules/driver/components/ActiveRouteTimeline';
 import {
@@ -63,6 +64,17 @@ export default function DriverRoutePage() {
   const [voiceRouteCtx, setVoiceRouteCtx] = useState<{ propertyId: string; label: string } | null>(null);
   const [supplementCtx, setSupplementCtx] = useState<StaffSupplementContext | null>(null);
   const voiceRef = useRef<StaffVoiceReportSheetHandle>(null);
+  const tgRouteIdSyncedRef = useRef(false);
+
+  useEffect(() => {
+    if (!isAuthenticated || !shellDriver) return;
+    if (routeIdParam) return;
+    if (tgRouteIdSyncedRef.current) return;
+    const rid = parseRouteUuidFromTelegramStartParam(readTelegramWebAppStartParam());
+    if (!rid) return;
+    tgRouteIdSyncedRef.current = true;
+    router.replace(`/driver/route?routeId=${encodeURIComponent(rid)}`);
+  }, [isAuthenticated, shellDriver, routeIdParam, router]);
 
   const openVoiceForProperty = useCallback((ctx: { propertyId: string; label: string }) => {
     setVoiceRouteCtx(ctx);

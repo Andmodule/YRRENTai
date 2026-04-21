@@ -21,6 +21,8 @@ import {
 } from '../../task-toolbar-icon-button-classes';
 import { isTasksListSliceFiltered, TasksStatusPriorityFilterPanel } from './TasksStatusPriorityFilterPanel';
 
+export type TasksHeaderControlsLayout = 'default' | 'headerRow' | 'headerDesktopGrid';
+
 const WIDE = {
   start: new Date('2000-01-01T12:00:00'),
   end: new Date('2100-12-31T12:00:00'),
@@ -29,7 +31,14 @@ const WIDE = {
 const datePillInput =
   'h-7 w-[7.25rem] shrink-0 cursor-pointer rounded-full border border-border/60 bg-muted/30 px-2 py-0 text-[10px] font-medium text-foreground shadow-none [color-scheme:dark] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:w-[7.5rem]';
 
-export function TasksHeaderControls() {
+export function TasksHeaderControls({
+  layout = 'default',
+  desktopPageTitle,
+}: {
+  layout?: TasksHeaderControlsLayout;
+  /** Для `headerDesktopGrid`: заголовок по центру строки (как раньше в шапке). */
+  desktopPageTitle?: string;
+}) {
   const t = useTranslations('tasks');
   const { view, setView } = useTasksViewMode();
   const filters = useTasksFiltersStore((s) => s.filters);
@@ -95,121 +104,156 @@ export function TasksHeaderControls() {
   const datesActive = datesOpen || filters.dateRangeEnabled;
   const listSliceFiltered = isTasksListSliceFiltered(filters);
 
-  return (
-    <div className="flex min-w-0 flex-col gap-1 px-3 py-1 sm:gap-1.5 sm:px-4 sm:py-2">
-      <div className="flex min-h-9 w-full min-w-0 items-center">
-        <div
+  const isHeaderRow = layout === 'headerRow';
+  const isHeaderDesktopGrid = layout === 'headerDesktopGrid';
+  const compactHeaderTop = isHeaderRow || isHeaderDesktopGrid;
+
+  const viewModeToolbar = (
+    <div
+      className={cn(
+        'flex h-9 min-w-0 shrink-0 items-center gap-0.5 rounded-xl border border-border bg-card p-0.5 shadow-sm ring-1 ring-border/40',
+        'dark:bg-card/80 dark:ring-border/30',
+      )}
+      role="toolbar"
+      aria-label={t('viewModes.toolbarAria')}
+    >
+      {(
+        [
+          { id: 'list' as const, icon: LayoutList },
+          { id: 'kanban' as const, icon: Kanban },
+        ] as const
+      ).map(({ id, icon: Icon }) => (
+        <Button
+          key={id}
+          type="button"
+          variant="ghost"
+          size="sm"
           className={cn(
-            'flex h-9 min-w-0 shrink-0 items-center gap-0.5 rounded-xl border border-border bg-card p-0.5 shadow-sm ring-1 ring-border/40',
-            'dark:bg-card/80 dark:ring-border/30',
+            'h-8 gap-0.5 rounded-lg px-1.5 sm:px-2',
+            view === id
+              ? 'bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 hover:text-primary-foreground dark:shadow-[0_0_16px_-4px_rgba(0,180,200,0.35)]'
+              : 'text-muted-foreground hover:bg-muted/80 dark:hover:bg-muted/40',
           )}
-          role="toolbar"
-          aria-label={t('viewModes.toolbarAria')}
+          onClick={() => setView(id)}
+          aria-pressed={view === id}
+          aria-label={t(`viewModes.${id}`)}
         >
-          {(
-            [
-              { id: 'list' as const, icon: LayoutList },
-              { id: 'kanban' as const, icon: Kanban },
-            ] as const
-          ).map(({ id, icon: Icon }) => (
-            <Button
-              key={id}
-              type="button"
-              variant="ghost"
-              size="sm"
-              className={cn(
-                'h-8 gap-0.5 rounded-lg px-1.5 sm:px-2',
-                view === id
-                  ? 'bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 hover:text-primary-foreground dark:shadow-[0_0_16px_-4px_rgba(0,180,200,0.35)]'
-                  : 'text-muted-foreground hover:bg-muted/80 dark:hover:bg-muted/40',
-              )}
-              onClick={() => setView(id)}
-              aria-pressed={view === id}
-              aria-label={t(`viewModes.${id}`)}
-            >
-              <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden />
-              <span className="hidden text-[11px] font-medium sm:inline">{t(`viewModes.${id}`)}</span>
-            </Button>
-          ))}
-        </div>
+          <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden />
+          <span className="hidden text-[11px] font-medium sm:inline">{t(`viewModes.${id}`)}</span>
+        </Button>
+      ))}
+    </div>
+  );
 
-        {/* Разрыв между режимами просмотра и поиском/датами — не склеивать в одну «полосу» */}
-        <div className="min-w-2 flex-1" aria-hidden />
-
-        <div className="flex h-9 shrink-0 items-center gap-1.5">
+  const iconToolbar = (
+    <div className="flex h-9 shrink-0 items-center gap-1.5">
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className={cn(
+          tasksToolbarIconButtonBase,
+          searchActive ? tasksToolbarIconButtonActive : tasksToolbarIconButtonIdle,
+        )}
+        aria-label={t('filters.searchToggleAria')}
+        aria-expanded={searchOpen}
+        aria-pressed={searchOpen}
+        onClick={toggleSearch}
+      >
+        <Search className="h-4 w-4" aria-hidden />
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className={cn(
+          tasksToolbarIconButtonBase,
+          datesActive ? tasksToolbarIconButtonActive : tasksToolbarIconButtonIdle,
+        )}
+        aria-label={t('filters.periodAria')}
+        aria-expanded={datesOpen}
+        aria-pressed={datesOpen}
+        onClick={toggleDates}
+      >
+        <CalendarRange className="h-4 w-4" aria-hidden />
+      </Button>
+      <DropdownMenu
+        open={listFiltersOpen}
+        onOpenChange={(open) => {
+          setListFiltersOpen(open);
+          if (open) {
+            setSearchOpen(false);
+            setDatesOpen(false);
+          }
+        }}
+      >
+        <DropdownMenuTrigger asChild>
           <Button
             type="button"
             variant="ghost"
             size="icon"
             className={cn(
               tasksToolbarIconButtonBase,
-              searchActive ? tasksToolbarIconButtonActive : tasksToolbarIconButtonIdle,
+              'relative',
+              listFiltersOpen ? tasksToolbarIconButtonActive : tasksToolbarIconButtonIdle,
             )}
-            aria-label={t('filters.searchToggleAria')}
-            aria-expanded={searchOpen}
-            aria-pressed={searchOpen}
-            onClick={toggleSearch}
+            aria-label={t('filters.listFilterToggleAria')}
+            aria-expanded={listFiltersOpen}
           >
-            <Search className="h-4 w-4" aria-hidden />
+            <ListFilter className="h-4 w-4" aria-hidden />
+            {listSliceFiltered ? (
+              <span
+                className="absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-destructive ring-2 ring-background"
+                aria-hidden
+              />
+            ) : null}
           </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className={cn(
-              tasksToolbarIconButtonBase,
-              datesActive ? tasksToolbarIconButtonActive : tasksToolbarIconButtonIdle,
-            )}
-            aria-label={t('filters.periodAria')}
-            aria-expanded={datesOpen}
-            aria-pressed={datesOpen}
-            onClick={toggleDates}
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-[min(20rem,calc(100vw-2rem))] p-3">
+          <TasksStatusPriorityFilterPanel />
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+
+  return (
+    <div
+      className={cn(
+        'flex min-w-0 flex-col gap-1 sm:gap-1.5',
+        compactHeaderTop ? 'px-0 py-0' : 'px-3 py-1 sm:px-4 sm:py-2',
+      )}
+    >
+      {isHeaderDesktopGrid ? (
+        <div className="relative flex min-h-11 w-full min-w-0 items-center justify-between gap-3 px-4 pt-3 pb-2 sm:min-h-12 sm:pt-4 sm:pb-2.5">
+          <div className="z-20 flex shrink-0 items-center justify-start">{viewModeToolbar}</div>
+          <div className="z-20 flex shrink-0 items-center justify-end">{iconToolbar}</div>
+          <h1
+            className="pointer-events-none absolute left-1/2 top-1/2 z-10 max-w-[min(16rem,calc(100%-11rem))] -translate-x-1/2 -translate-y-1/2 truncate text-center text-lg font-semibold tracking-tight text-foreground"
           >
-            <CalendarRange className="h-4 w-4" aria-hidden />
-          </Button>
-          <DropdownMenu
-            open={listFiltersOpen}
-            onOpenChange={(open) => {
-              setListFiltersOpen(open);
-              if (open) {
-                setSearchOpen(false);
-                setDatesOpen(false);
-              }
-            }}
-          >
-            <DropdownMenuTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className={cn(
-                  tasksToolbarIconButtonBase,
-                  'relative',
-                  listFiltersOpen ? tasksToolbarIconButtonActive : tasksToolbarIconButtonIdle,
-                )}
-                aria-label={t('filters.listFilterToggleAria')}
-                aria-expanded={listFiltersOpen}
-              >
-                <ListFilter className="h-4 w-4" aria-hidden />
-                {listSliceFiltered ? (
-                  <span
-                    className="absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-destructive ring-2 ring-background"
-                    aria-hidden
-                  />
-                ) : null}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-[min(20rem,calc(100vw-2rem))] p-3">
-              <TasksStatusPriorityFilterPanel />
-            </DropdownMenuContent>
-          </DropdownMenu>
+            {desktopPageTitle ?? t('pageTitle')}
+          </h1>
         </div>
-      </div>
+      ) : (
+        <div className="flex min-h-9 w-full min-w-0 items-center">
+          {viewModeToolbar}
+          {/* Разрыв между режимами просмотра и поиском/датами — не склеивать в одну «полосу» */}
+          <div className="min-w-2 flex-1" aria-hidden />
+          {iconToolbar}
+        </div>
+      )}
 
       {searchOpen ? (
-        <div className="relative min-w-0">
+        <div
+          className={cn(
+            'relative min-w-0',
+            compactHeaderTop && 'border-t border-border/40 px-4 pb-1 pt-2 sm:pb-1.5 sm:pt-2.5',
+          )}
+        >
           <Search
-            className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
+            className={cn(
+              'pointer-events-none absolute top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground',
+              compactHeaderTop ? 'left-6' : 'left-2',
+            )}
             aria-hidden
           />
           <Input
@@ -224,7 +268,12 @@ export function TasksHeaderControls() {
       ) : null}
 
       {datesOpen ? (
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div
+          className={cn(
+            'flex flex-wrap items-center gap-1.5',
+            compactHeaderTop && 'border-t border-border/40 px-4 pb-2 pt-2 sm:pb-2.5 sm:pt-2.5',
+          )}
+        >
           <span className="inline-flex items-center gap-1 rounded-full border border-border/50 bg-muted/20 pl-2 pr-1">
             <span className="text-[9px] font-medium uppercase text-muted-foreground">{t('filters.from')}</span>
             <Input

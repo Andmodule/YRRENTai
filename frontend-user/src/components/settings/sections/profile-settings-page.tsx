@@ -60,7 +60,7 @@ export function ProfileSettingsPage() {
           <div className="space-y-1.5 sm:col-span-2">
             <Label htmlFor="sf-email">{t('email')}</Label>
             <p className="text-xs text-muted-foreground">{t('emailReadOnlyHint')}</p>
-            <Input id="sf-email" value={user.email} readOnly className="bg-muted/40" />
+            <Input id="sf-email" value={user.email} readOnly className="cursor-not-allowed opacity-90" />
           </div>
           <div className="space-y-1.5 sm:col-span-2">
             <Label htmlFor="sf-phone">{t('phone')}</Label>

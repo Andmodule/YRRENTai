@@ -24,7 +24,8 @@
     "seed:staff-web-test": "ts-node --transpile-only src/database/seed-staff-web-test-user.ts",
     "seed:drive-user": "ts-node --transpile-only src/database/seed-drive-user.ts",
     "seed:automation-rules": "ts-node --transpile-only src/database/seed-automation-rules.ts",
-    "cleanup:test-conversations": "ts-node scripts/cleanup-test-conversations.ts"
+    "cleanup:test-conversations": "ts-node scripts/cleanup-test-conversations.ts",
+    "cleanup:properties-keep-three": "ts-node scripts/cleanup-properties-keep-three.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1025.0",

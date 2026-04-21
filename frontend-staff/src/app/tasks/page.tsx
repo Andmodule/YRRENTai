@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useSWRConfig } from 'swr';
 import { useAuth } from '@/hooks/use-auth';
 import { resolveStaffAppShell } from '@/lib/staff-app-shell';
@@ -10,10 +10,12 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { apiClient } from '@/lib/api/client';
 import { LogOut } from 'lucide-react';
+import { STAFF_TASK_DETAIL_QUERY } from '@/lib/telegram-start-param';
 
-export default function TasksPage() {
+function TasksPageInner() {
   const { user, error, isLoading, isAuthenticated, isStaff } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { mutate: globalMutate } = useSWRConfig();
 
   useEffect(() => {
@@ -23,9 +25,12 @@ export default function TasksPage() {
       return;
     }
     if (user?.role === 'STAFF' && resolveStaffAppShell(user.staffJobType) === 'driver') {
-      router.replace('/driver');
+      const hasTaskDeepLink = searchParams.get(STAFF_TASK_DETAIL_QUERY);
+      if (!hasTaskDeepLink) {
+        router.replace('/driver');
+      }
     }
-  }, [isLoading, error, isAuthenticated, user, router]);
+  }, [isLoading, error, isAuthenticated, user, router, searchParams]);
 
   const handleLogout = async () => {
     try {
@@ -76,4 +81,19 @@ export default function TasksPage() {
   }
 
   return <StaffChecklist user={user!} onLogout={() => void handleLogout()} />;
+}
+
+export default function TasksPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen flex-col gap-4 p-4">
+          <Skeleton className="h-16 w-full rounded-2xl" />
+          <Skeleton className="h-40 w-full rounded-2xl" />
+        </div>
+      }
+    >
+      <TasksPageInner />
+    </Suspense>
+  );
 }

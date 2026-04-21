@@ -4,6 +4,11 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
 import { resolveStaffAppShell } from '@/lib/staff-app-shell';
+import {
+  parseRouteUuidFromTelegramStartParam,
+  parseTaskUuidFromTelegramStartParam,
+  readTelegramWebAppStartParam,
+} from '@/lib/telegram-start-param';
 import { Skeleton } from '@/components/ui/skeleton';
 
 export default function HomePage() {
@@ -16,6 +21,26 @@ export default function HomePage() {
       router.replace('/login');
       return;
     }
+    const tgSp = readTelegramWebAppStartParam();
+    const taskDeep = parseTaskUuidFromTelegramStartParam(tgSp);
+    const routeDeep = parseRouteUuidFromTelegramStartParam(tgSp);
+    if (taskDeep) {
+      router.replace(`/tasks?task=${encodeURIComponent(taskDeep)}`);
+      return;
+    }
+    if (routeDeep) {
+      router.replace(`/driver/route?routeId=${encodeURIComponent(routeDeep)}`);
+      return;
+    }
+    if (tgSp === 'tasks') {
+      if (user?.role === 'STAFF' && resolveStaffAppShell(user.staffJobType) === 'driver') {
+        router.replace('/driver');
+      } else {
+        router.replace('/tasks');
+      }
+      return;
+    }
+
     if (user?.role === 'STAFF') {
       const shell = resolveStaffAppShell(user.staffJobType);
       router.replace(shell === 'driver' ? '/driver' : '/tasks');

@@ -10,8 +10,9 @@ import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import type { Reservation } from '../types';
 
+/** Согласовано с `@/components/ui/input`: светлое поле `bg-input-fill`, без локального muted. */
 const inputClass =
-  'h-9 border-transparent bg-muted/40 px-2.5 text-sm shadow-none transition-colors placeholder:text-muted-foreground/70 hover:bg-muted/60 focus-visible:border-border focus-visible:bg-background focus-visible:ring-1 focus-visible:ring-ring';
+  'h-9 border border-input bg-input-fill px-2.5 text-sm shadow-sm transition-colors placeholder:text-muted-foreground/70 focus-visible:border-primary/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0';
 
 type FieldKey = 'email' | 'phone' | 'guests';
 

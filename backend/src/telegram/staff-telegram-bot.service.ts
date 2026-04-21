@@ -84,7 +84,7 @@ export class StaffTelegramBotService {
       this.logger.log(`Staff Mini App URL (кнопки / Web App): ${staffTma}`);
     } else {
       this.logger.warn(
-        'Staff Mini App URL пустой — задайте TELEGRAM_STAFF_MINI_APP_URL (или TELEGRAM_MINI_APP_URL) на Render.',
+        'Staff Mini App URL пустой — задайте TELEGRAM_STAFF_MINI_APP_URL (публичный HTTPS URL приложения frontend-staff, не гостевой /tma).',
       );
     }
   }

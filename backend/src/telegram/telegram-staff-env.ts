@@ -18,9 +18,11 @@ export function resolveStaffInviteBotUsername(config: ConfigService): string {
   return config.get<string>('TELEGRAM_BOT_USERNAME')?.trim().replace(/^@/, '') ?? '';
 }
 
-/** Mini App URL for staff (task deep links). Falls back to `TELEGRAM_MINI_APP_URL`. */
+/**
+ * Mini App URL for staff (кнопки «Открыть задачу» / маршрут / расписание).
+ * Только `TELEGRAM_STAFF_MINI_APP_URL` — без fallback на `TELEGRAM_MINI_APP_URL`,
+ * иначе в Telegram открывается гостевое приложение (legacy `/tma` в frontend-user).
+ */
 export function resolveStaffMiniAppUrl(config: ConfigService): string {
-  const staff = config.get<string>('TELEGRAM_STAFF_MINI_APP_URL')?.trim().replace(/\/$/, '');
-  if (staff) return staff;
-  return config.get<string>('TELEGRAM_MINI_APP_URL')?.trim().replace(/\/$/, '') ?? '';
+  return config.get<string>('TELEGRAM_STAFF_MINI_APP_URL')?.trim().replace(/\/$/, '') ?? '';
 }

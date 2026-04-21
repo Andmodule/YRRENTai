@@ -496,18 +496,23 @@ export function CalendarView({
 
   if (isError) {
     return (
-      <div className="flex flex-1 flex-col">
-        <FilterBar
-          filters={filters}
-          onFiltersChange={onFiltersChange}
-          properties={properties}
-          reservations={reservationsForSearchIndex}
-          onNewBooking={openNewBooking}
-          showSyncOta={showSyncOta}
-          onSyncOta={onSyncOta}
-          isSyncingOta={zodomusSync.isPending}
-        />
-        <CalendarError onRetry={() => refetch()} />
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="shrink-0 border-b border-border bg-background/95 backdrop-blur-sm supports-[backdrop-filter]:bg-background/90">
+          <FilterBar
+            filters={filters}
+            onFiltersChange={onFiltersChange}
+            properties={properties}
+            reservations={reservationsForSearchIndex}
+            onNewBooking={openNewBooking}
+            showSyncOta={showSyncOta}
+            onSyncOta={onSyncOta}
+            isSyncingOta={zodomusSync.isPending}
+            showBottomBorder={false}
+          />
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+          <CalendarError onRetry={() => refetch()} />
+        </div>
         <NewBookingSheet
           open={newBookingOpen}
           onOpenChange={onNewBookingSheetOpenChange}
@@ -521,18 +526,23 @@ export function CalendarView({
 
   if (isPending && !data) {
     return (
-      <div className="flex flex-1 flex-col">
-        <FilterBar
-          filters={filters}
-          onFiltersChange={onFiltersChange}
-          properties={properties}
-          reservations={reservationsForSearchIndex}
-          onNewBooking={openNewBooking}
-          showSyncOta={showSyncOta}
-          onSyncOta={onSyncOta}
-          isSyncingOta={zodomusSync.isPending}
-        />
-        <CalendarSkeleton />
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="shrink-0 border-b border-border bg-background/95 backdrop-blur-sm supports-[backdrop-filter]:bg-background/90">
+          <FilterBar
+            filters={filters}
+            onFiltersChange={onFiltersChange}
+            properties={properties}
+            reservations={reservationsForSearchIndex}
+            onNewBooking={openNewBooking}
+            showSyncOta={showSyncOta}
+            onSyncOta={onSyncOta}
+            isSyncingOta={zodomusSync.isPending}
+            showBottomBorder={false}
+          />
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+          <CalendarSkeleton />
+        </div>
         <NewBookingSheet
           open={newBookingOpen}
           onOpenChange={onNewBookingSheetOpenChange}
@@ -546,16 +556,21 @@ export function CalendarView({
 
   if (properties.length === 0) {
     return (
-      <div className="flex flex-1 flex-col">
-        <FilterBar
-          filters={filters}
-          onFiltersChange={onFiltersChange}
-          properties={[]}
-          reservations={[]}
-          onNewBooking={openNewBooking}
-          showSyncOta={false}
-        />
-        <CalendarEmptyNoProperties />
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="shrink-0 border-b border-border bg-background/95 backdrop-blur-sm supports-[backdrop-filter]:bg-background/90">
+          <FilterBar
+            filters={filters}
+            onFiltersChange={onFiltersChange}
+            properties={[]}
+            reservations={[]}
+            onNewBooking={openNewBooking}
+            showSyncOta={false}
+            showBottomBorder={false}
+          />
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+          <CalendarEmptyNoProperties />
+        </div>
         <NewBookingSheet
           open={newBookingOpen}
           onOpenChange={onNewBookingSheetOpenChange}
@@ -569,32 +584,36 @@ export function CalendarView({
 
   return (
     <TooltipProvider delayDuration={200}>
-    <div className="flex w-full min-w-0 max-w-full flex-col overflow-x-hidden">
-      <FilterBar
-        filters={filters}
-        onFiltersChange={onFiltersChange}
-        properties={properties}
-        reservations={reservationsForSearchIndex}
-        onNewBooking={openNewBooking}
-        showSyncOta={showSyncOta}
-        onSyncOta={onSyncOta}
-        isSyncingOta={zodomusSync.isPending}
-      />
-      {showFiltersEmptyHint ? (
-        <Alert className="mb-3 border-dashed" variant="default">
-          <AlertDescription>{t('emptyFiltersHint')}</AlertDescription>
-        </Alert>
-      ) : null}
-      <TimelineNavBar
-        dateRange={dateRange}
-        onDateRangeChange={onDateRangeChange}
-        isFetching={isFetching}
-        isLoading={isLoading}
-      />
+    <div className="flex min-h-0 w-full min-w-0 max-w-full flex-1 flex-col overflow-hidden">
+      <div className="shrink-0 border-b border-border bg-background/95 backdrop-blur-sm supports-[backdrop-filter]:bg-background/90">
+        <FilterBar
+          filters={filters}
+          onFiltersChange={onFiltersChange}
+          properties={properties}
+          reservations={reservationsForSearchIndex}
+          onNewBooking={openNewBooking}
+          showSyncOta={showSyncOta}
+          onSyncOta={onSyncOta}
+          isSyncingOta={zodomusSync.isPending}
+          showBottomBorder={false}
+        />
+        {showFiltersEmptyHint ? (
+          <Alert className="border-x-0 border-t border-dashed border-b-0 border-border/60 px-4 py-2" variant="default">
+            <AlertDescription>{t('emptyFiltersHint')}</AlertDescription>
+          </Alert>
+        ) : null}
+        <TimelineNavBar
+          dateRange={dateRange}
+          onDateRangeChange={onDateRangeChange}
+          isFetching={isFetching}
+          isLoading={isLoading}
+        />
+      </div>
 
+      <div className="min-h-0 flex-1 overflow-hidden">
       <div
         id={`cal-${calendarScopeId}`}
-        className="relative w-full min-w-0 max-w-full overflow-hidden rounded-lg border border-border bg-card shadow-sm"
+        className="relative flex min-h-0 w-full min-w-0 max-w-full flex-1 flex-col overflow-hidden rounded-lg border border-border bg-card shadow-sm"
       >
         {filteredProperties.length === 0 ? (
           <CalendarEmptyNoReservations />
@@ -602,7 +621,7 @@ export function CalendarView({
           <>
             {/* eslint-disable-next-line react/no-danger -- scoped grid overlay for Planby content */}
             <style dangerouslySetInnerHTML={{ __html: calendarGridCss }} />
-            <div className="w-full min-w-0">
+            <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
               <Epg {...epgProps}>
                 <Layout
                   {...layoutProps}
@@ -614,6 +633,7 @@ export function CalendarView({
             </div>
           </>
         )}
+      </div>
       </div>
 
       <ResponsiveModal

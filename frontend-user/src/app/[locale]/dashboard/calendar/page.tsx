@@ -21,11 +21,13 @@ export default function CalendarPage() {
   const [filters, setFilters] = useState<CalendarFilters>(DEFAULT_FILTERS);
 
   return (
-    <CalendarView
-      dateRange={dateRange}
-      onDateRangeChange={setDateRange}
-      filters={filters}
-      onFiltersChange={setFilters}
-    />
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <CalendarView
+        dateRange={dateRange}
+        onDateRangeChange={setDateRange}
+        filters={filters}
+        onFiltersChange={setFilters}
+      />
+    </div>
   );
 }

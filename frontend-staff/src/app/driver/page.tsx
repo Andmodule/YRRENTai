@@ -1,11 +1,12 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSWRConfig } from 'swr';
 import { useAuth } from '@/hooks/use-auth';
 import { useStaffDeliveryRoutesList, useStartDeliveryRoute } from '@/hooks/use-staff-delivery-route';
 import { resolveStaffAppShell } from '@/lib/staff-app-shell';
+import { parseRouteUuidFromTelegramStartParam, readTelegramWebAppStartParam } from '@/lib/telegram-start-param';
 import { apiClient } from '@/lib/api/client';
 import { DriverDashboard } from '@/modules/driver/components/DriverDashboard';
 import { Button } from '@/components/ui/button';
@@ -28,6 +29,16 @@ export default function DriverDashboardPage() {
 
   const startRoute = useStartDeliveryRoute();
   const [startingRouteId, setStartingRouteId] = useState<string | null>(null);
+  const routeTgSyncedRef = useRef(false);
+
+  useEffect(() => {
+    if (!isAuthenticated || !shellDriver) return;
+    if (routeTgSyncedRef.current) return;
+    const rid = parseRouteUuidFromTelegramStartParam(readTelegramWebAppStartParam());
+    if (!rid) return;
+    routeTgSyncedRef.current = true;
+    router.replace(`/driver/route?routeId=${encodeURIComponent(rid)}`);
+  }, [isAuthenticated, shellDriver, router]);
 
   const handleStartAssignedRoute = useCallback(
     async (routeId: string) => {

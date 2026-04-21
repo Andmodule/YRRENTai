@@ -210,7 +210,7 @@ export const envSchema = z
     TELEGRAM_STAFF_WEBHOOK_SECRET: z.string().optional(),
     /** Public HTTPS URL of the Telegram Mini App (e.g. https://app.example.com/ru/tma/tasks). */
     TELEGRAM_MINI_APP_URL: optionalUrlEnv(),
-    /** Staff Mini App base URL; falls back to TELEGRAM_MINI_APP_URL when unset. */
+    /** Staff Mini App (frontend-staff) HTTPS base URL. Не подставляется из TELEGRAM_MINI_APP_URL — иначе откроется гостевой /tma. */
     TELEGRAM_STAFF_MINI_APP_URL: optionalUrlEnv(),
     /**
      * Manager web dashboard base URL for Telegram incident buttons (e.g. https://app.example.com/en/dashboard).

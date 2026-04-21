@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState, useEffect, useCallback, useRef } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { flushSync } from 'react-dom';
 import { toast } from 'sonner';
 import { format, startOfDay, parseISO } from 'date-fns';
@@ -47,6 +48,12 @@ import {
 } from './staff-history-supplement-sheet';
 import { StaffDeliveryRoutePanel } from './staff-delivery-route-panel';
 import { useStaffStrings } from '@/locales/staff-strings';
+import { apiClient } from '@/lib/api/client';
+import {
+  parseTaskUuidFromTelegramStartParam,
+  readTelegramWebAppStartParam,
+  STAFF_TASK_DETAIL_QUERY,
+} from '@/lib/telegram-start-param';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { Drawer, DrawerContent } from '@/components/ui/drawer';
@@ -70,6 +77,9 @@ interface StaffChecklistProps {
 }
 
 export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const taskQuery = searchParams.get(STAFF_TASK_DETAIL_QUERY);
   useTasksSocket(user.id);
   const strings = useStaffStrings();
 
@@ -176,6 +186,58 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
       null,
     [activeTasks, todayTasks, data?.tasks],
   );
+
+  /** Telegram `startapp=task_…` → тот же deep link, что в legacy TMA (frontend-user). */
+  const tgTaskSyncedRef = useRef(false);
+  useEffect(() => {
+    if (tgTaskSyncedRef.current) return;
+    const fromTg = parseTaskUuidFromTelegramStartParam(readTelegramWebAppStartParam());
+    if (!fromTg) return;
+    tgTaskSyncedRef.current = true;
+    if (taskQuery === fromTg) return;
+    const params = new URLSearchParams(searchParams.toString());
+    params.set(STAFF_TASK_DETAIL_QUERY, fromTg);
+    router.replace(`/tasks?${params.toString()}`);
+  }, [router, searchParams, taskQuery]);
+
+  useEffect(() => {
+    if (!taskQuery) {
+      return;
+    }
+    const local = resolveTaskByUuid(taskQuery);
+    if (local) {
+      setDetailTask((prev) => (prev?.uuid === local.uuid ? prev : local));
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await apiClient.get<{ data: { task: Task } }>(`/tasks/${taskQuery}`);
+        if (cancelled) return;
+        const t = res.data.data.task;
+        setDetailTask((prev) => (prev?.uuid === t.uuid ? prev : t));
+      } catch {
+        if (cancelled) return;
+        const params = new URLSearchParams(searchParams.toString());
+        params.delete(STAFF_TASK_DETAIL_QUERY);
+        const q = params.toString();
+        router.replace(q ? `/tasks?${q}` : '/tasks');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [taskQuery, resolveTaskByUuid, searchParams, router]);
+
+  const closeTaskDetail = useCallback(() => {
+    if (searchParams.get(STAFF_TASK_DETAIL_QUERY)) {
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete(STAFF_TASK_DETAIL_QUERY);
+      const q = params.toString();
+      router.replace(q ? `/tasks?${q}` : '/tasks');
+    }
+    setDetailTask(null);
+  }, [router, searchParams]);
 
   const doneCount = todayTasks.filter((t) => t.status === 'done').length;
   const verifiedCount = todayTasks.filter((t) => t.status === 'done' && t.hasVerificationPhoto).length;
@@ -494,14 +556,20 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
           onStart={handleQuickStart}
           onMarkDone={handleMarkDoneTask}
           onMarkIssue={handleQuickIssue}
-          onOpenDetails={(t) => setDetailTask(t)}
+          onOpenDetails={(t) => {
+            const q = searchParams.get(STAFF_TASK_DETAIL_QUERY);
+            if (q && q !== t.uuid) {
+              router.replace('/tasks');
+            }
+            setDetailTask(t);
+          }}
           startPending={statusPending}
         />
 
         <TaskDetailStaff
           task={detailTask}
           open={!!detailTask}
-          onClose={() => setDetailTask(null)}
+          onClose={closeTaskDetail}
           checklistScrollNonce={checklistScrollNonce}
         />
 
