@@ -96,3 +96,8 @@ node doc/zodomus/fetch-samples.mjs
 - Эндпоинты: **`status`**, **`sync`**, **`sync-all`**
 - Календарь: маппинг канала из **`zodomusChannelId`**, **`zodomusLinked`**, кнопка синка OTA
 - `doc/zodomus/fetch-samples.mjs` + примеры JSON для **`rooms-activation`**
+
+## Статус тестов (чекпоинт 3.5)
+
+- **Sandbox / createtest:** сценарий ок; очередь/тестовая бронь **сама снимается за ~2–3 минуты** (ожидаемое поведение песочницы).
+- **Занятость (POST / availability → согласование с каналом):** надёжно проверять **в production**; в sandbox ответы и задержки могут не совпадать с боем.
