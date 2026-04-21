@@ -48,6 +48,10 @@ const zodomusEnvFields = z.object({
   ZODOMUS_AVAILABILITY_HORIZON_DAYS: z.coerce.number().int().min(1).max(730).default(366),
   /** Coalesce rapid booking updates into one push per property (ms). 0 = no debounce. Default: 2000. */
   ZODOMUS_AVAILABILITY_PUSH_DEBOUNCE_MS: z.coerce.number().int().min(0).max(60_000).default(2000),
+  /** Minimum pause after each successful POST /availability (ms; reduces same-second bursts). Default: 300. */
+  ZODOMUS_AVAILABILITY_POST_GAP_MS: z.coerce.number().int().min(0).max(10_000).default(300),
+  /** BullMQ limiter for POST /availability worker: max jobs per minute. Default: 60. */
+  ZODOMUS_AVAILABILITY_MAX_PER_MINUTE: z.coerce.number().int().min(1).max(600).default(60),
   /** Retry properties with zodomusAvailabilityDirty on this interval (minutes). Default: 15. */
   ZODOMUS_AVAILABILITY_DIRTY_RETRY_MINUTES: z.coerce.number().int().min(1).max(1440).default(15),
   /** Nightly full availability push for all Zodomus-linked properties (drift guard). Default: true. */
@@ -61,6 +65,10 @@ const zodomusEnvFields = z.object({
   ZODOMUS_AVAILABILITY_BATCH_GAP_MS: z.coerce.number().int().min(0).max(60_000).default(1000),
   /** Pause between GET /reservations calls when draining the queue (rate-limit / channel throttling). Default: 400. */
   ZODOMUS_QUEUE_ITEM_DELAY_MS: z.coerce.number().int().min(0).max(30_000).default(400),
+  /** Persistent backoff for queue polling after repeated transient sync errors on one listing. Default: 30. */
+  ZODOMUS_SYNC_SOFT_BACKOFF_MINUTES: z.coerce.number().int().min(1).max(1440).default(30),
+  /** Persistent quarantine for permanent listing/property errors (invalid id, inactive). Default: 1440 (1 day). */
+  ZODOMUS_SYNC_PERMANENT_BLOCK_MINUTES: z.coerce.number().int().min(5).max(10_080).default(1440),
   /** Per-attempt HTTP timeout for Zodomus upstream fetch (ms). Retries use a fresh timer each attempt. Default: 8000. */
   ZODOMUS_FETCH_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(8000),
 });
@@ -261,6 +269,12 @@ export const envSchema = z
      * Trusted staging only; never enable on public production.
      */
     KB_DEV_ALLOW_CLEAR: z.string().optional(),
+
+    /**
+     * Set to "true" to allow POST/GET `/api/v1/ai-chat/test-intent*` when NODE_ENV is not development.
+     * Trusted staging only; keep disabled on public production.
+     */
+    AI_INTENT_TESTING_ALLOW: z.string().optional(),
   })
   .merge(zodomusEnvFields)
   .merge(icalEnvFields)

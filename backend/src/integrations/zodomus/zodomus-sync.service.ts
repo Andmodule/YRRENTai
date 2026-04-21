@@ -5,6 +5,7 @@ import { Repository } from 'typeorm';
 import { addDays, isValid, parseISO } from 'date-fns';
 import { BOOKING_STATUS } from '@rentai/shared';
 import { BookingEntity } from '../../booking/entities/booking.entity';
+import { PropertyChannelListingEntity } from '../../property/entities/property-channel-listing.entity';
 import type { PropertyEntity } from '../../property/entities/property.entity';
 import { PropertyService } from '../../property/property.service';
 import { CalendarGateway } from '../../calendar/calendar.gateway';
@@ -12,6 +13,7 @@ import { ZodomusService } from './zodomus.service';
 import { ZodomusAvailabilityPushService } from './zodomus-availability-push.service';
 import {
   formatZodomusHttpException,
+  isZodomusPermanentMisconfiguration,
   isZodomusReservationDownloadLimitError,
 } from './zodomus-status.util';
 import type { ZodomusReservation, ZodomusReservationQueueItem } from './zodomus.types';
@@ -23,51 +25,9 @@ const QUEUE_STATUS = {
   CANCELLED: 3,
 } as const;
 
-/** Zodomus API error codes that indicate a permanent misconfiguration — no point retrying on every cron tick. */
-const PERMANENT_ERROR_CODES = new Set(['400']);
-const PERMANENT_ERROR_MESSAGES = ['invalid property id', 'property status not active'];
-
-function isPermanentZodomusError(e: unknown): boolean {
-  if (e instanceof Error) {
-    const msg = e.message.toLowerCase();
-    return PERMANENT_ERROR_MESSAGES.some((m) => msg.includes(m));
-  }
-  return false;
-}
-
 @Injectable()
 export class ZodomusSyncService {
   private readonly logger = new Logger(ZodomusSyncService.name);
-
-  /** In-memory circuit breaker: propertyId → ISO timestamp of first failure.
-   *  After 3 consecutive failures the property is skipped for CIRCUIT_RESET_MS. */
-  private readonly _failCount = new Map<string, number>();
-  private readonly _failSince = new Map<string, number>();
-  private static readonly CIRCUIT_OPEN_AFTER = 3;
-  private static readonly CIRCUIT_RESET_MS = 10 * 60 * 1000; // 10 minutes
-
-  private isCircuitOpen(propertyId: string): boolean {
-    const count = this._failCount.get(propertyId) ?? 0;
-    if (count < ZodomusSyncService.CIRCUIT_OPEN_AFTER) return false;
-    const since = this._failSince.get(propertyId) ?? 0;
-    if (Date.now() - since > ZodomusSyncService.CIRCUIT_RESET_MS) {
-      this._failCount.delete(propertyId);
-      this._failSince.delete(propertyId);
-      return false;
-    }
-    return true;
-  }
-
-  private recordFailure(propertyId: string): void {
-    const count = (this._failCount.get(propertyId) ?? 0) + 1;
-    this._failCount.set(propertyId, count);
-    if (count === 1) this._failSince.set(propertyId, Date.now());
-  }
-
-  private recordSuccess(propertyId: string): void {
-    this._failCount.delete(propertyId);
-    this._failSince.delete(propertyId);
-  }
 
   constructor(
     private readonly zodomus: ZodomusService,
@@ -77,7 +37,64 @@ export class ZodomusSyncService {
     private readonly calendarGateway: CalendarGateway,
     @InjectRepository(BookingEntity)
     private readonly bookingRepo: Repository<BookingEntity>,
+    @InjectRepository(PropertyChannelListingEntity)
+    private readonly listingRepo: Repository<PropertyChannelListingEntity>,
   ) {}
+
+  private findListingByChannel(
+    property: PropertyEntity,
+    channelId: number,
+  ): PropertyChannelListingEntity | null {
+    for (const row of property.channelListings ?? []) {
+      if (row.otaPlatform?.zodomusChannelId === channelId) return row;
+    }
+    return null;
+  }
+
+  private isListingBackoffActive(listing: PropertyChannelListingEntity): boolean {
+    const until = listing.zodomusSyncBlockedUntil;
+    return Boolean(until && until.getTime() > Date.now());
+  }
+
+  private async clearListingBackoff(listingId: string): Promise<void> {
+    await this.listingRepo.update(
+      { id: listingId },
+      {
+        zodomusSyncFailCount: 0,
+        zodomusSyncBlockedUntil: null,
+      },
+    );
+  }
+
+  private async markListingFailure(
+    listing: PropertyChannelListingEntity,
+    err: unknown,
+    permanent: boolean,
+  ): Promise<{ failCount: number; blockedUntil: Date | null }> {
+    const nextCount = (listing.zodomusSyncFailCount ?? 0) + 1;
+    const now = Date.now();
+    let blockedUntil: Date | null = null;
+
+    if (permanent) {
+      const mins = this.config.get<number>('ZODOMUS_SYNC_PERMANENT_BLOCK_MINUTES') ?? 1440;
+      blockedUntil = new Date(now + mins * 60_000);
+    } else if (nextCount >= 3) {
+      const base = this.config.get<number>('ZODOMUS_SYNC_SOFT_BACKOFF_MINUTES') ?? 30;
+      const scaled = Math.min(24 * 60, base * Math.pow(2, nextCount - 3));
+      blockedUntil = new Date(now + scaled * 60_000);
+    }
+
+    await this.listingRepo.update(
+      { id: listing.id },
+      {
+        zodomusSyncFailCount: nextCount,
+        zodomusSyncBlockedUntil: blockedUntil,
+        zodomusSyncLastError: formatZodomusHttpException(err).slice(0, 2000),
+        zodomusSyncLastErrorAt: new Date(),
+      },
+    );
+    return { failCount: nextCount, blockedUntil };
+  }
 
   /**
    * Pull reservation queue for one property (must have `zodomusPropertyId`), upsert/cancel bookings.
@@ -304,8 +321,12 @@ export class ZodomusSyncService {
     let propertiesTouched = 0;
     for (const p of list) {
       if (!this.propertyService.getExternalListingIdForZodomusChannel(p, channelId)) continue;
-      if (this.isCircuitOpen(p.id)) {
+      const listing = this.findListingByChannel(p, channelId);
+      if (listing && this.isListingBackoffActive(listing)) {
         skipped += 1;
+        this.logger.warn(
+          `syncAllProperties: listing ${listing.id} skipped until ${listing.zodomusSyncBlockedUntil?.toISOString()} (property ${p.id}, channel ${channelId})`,
+        );
         continue;
       }
       propertiesTouched += 1;
@@ -314,21 +335,28 @@ export class ZodomusSyncService {
         processed += r.processed;
         skipped += r.skipped;
         failed += r.failed;
-        this.recordSuccess(p.id);
+        if (listing && (listing.zodomusSyncFailCount > 0 || listing.zodomusSyncBlockedUntil)) {
+          await this.clearListingBackoff(listing.id);
+        }
       } catch (e) {
         failed += 1;
-        this.recordFailure(p.id);
-        if (isPermanentZodomusError(e)) {
-          const count = this._failCount.get(p.id) ?? 0;
-          if (count >= ZodomusSyncService.CIRCUIT_OPEN_AFTER) {
+        const permanent = isZodomusPermanentMisconfiguration(e);
+        if (listing) {
+          const state = await this.markListingFailure(listing, e, permanent);
+          if (state.blockedUntil) {
+            const mode = permanent ? 'PERMANENT' : 'BACKOFF';
             this.logger.warn(
-              `syncAllProperties: property ${p.id} circuit OPEN (permanent Zodomus error — check externalListingId / Zodomus status): ${String(e)}`,
+              `syncAllProperties: listing ${listing.id} ${mode} until ${state.blockedUntil.toISOString()} (property ${p.id}, channel ${channelId}): ${formatZodomusHttpException(e)}`,
             );
           } else {
-            this.logger.warn(`syncAllProperties: property ${p.id} failed: ${String(e)}`);
+            this.logger.warn(
+              `syncAllProperties: listing ${listing.id} failed x${state.failCount} (property ${p.id}, channel ${channelId}): ${formatZodomusHttpException(e)}`,
+            );
           }
         } else {
-          this.logger.warn(`syncAllProperties: property ${p.id} failed: ${String(e)}`);
+          this.logger.warn(
+            `syncAllProperties: legacy property ${p.id} failed on channel ${channelId}: ${formatZodomusHttpException(e)}`,
+          );
         }
       }
     }
@@ -418,8 +446,9 @@ export class ZodomusSyncService {
       await this.pauseAfterQueueItem();
     }
 
-    this.availabilityPush.scheduleAvailabilityPush(property.id);
+    /** Do not POST /availability on every empty queue poll — only when bookings actually changed (Zodomus / partner rate limits). */
     if (processed > 0 || calendarDirtyFromLimitSave) {
+      this.availabilityPush.scheduleAvailabilityPush(property.id);
       this.calendarGateway.emitCalendarChanged({ propertyId: property.id, source: 'sync-queue' });
     }
 

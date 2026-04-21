@@ -82,6 +82,30 @@ export function isZodomusReservationDownloadLimitError(e: unknown): boolean {
   );
 }
 
+/** Substrings from Zodomus logs that mean the listing/property is misconfigured — do not retry in a loop. */
+const ZODOMUS_PERMANENT_MISCONFIG_SUBSTRINGS = [
+  'invalid property id',
+  'property status not active',
+  'invalid listing',
+] as const;
+
+/** Lowercase fingerprint for matching permanent upstream errors (HTTP body or Error.message). */
+export function zodomusErrorFingerprint(e: unknown): string {
+  if (e instanceof HttpException) {
+    return formatZodomusHttpException(e).toLowerCase();
+  }
+  if (e instanceof Error) {
+    return e.message.toLowerCase();
+  }
+  return String(e).toLowerCase();
+}
+
+/** True when Zodomus indicates wrong external id / inactive property — stop queue + availability retries. */
+export function isZodomusPermanentMisconfiguration(e: unknown): boolean {
+  const t = zodomusErrorFingerprint(e);
+  return ZODOMUS_PERMANENT_MISCONFIG_SUBSTRINGS.some((s) => t.includes(s));
+}
+
 /** Человекочитаемая строка для логов при HttpException из Zodomus. */
 export function formatZodomusHttpException(e: unknown): string {
   if (e instanceof HttpException) {

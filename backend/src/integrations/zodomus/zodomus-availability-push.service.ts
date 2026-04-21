@@ -11,11 +11,12 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, Repository } from 'typeorm';
 import { addDays } from 'date-fns';
 import { formatInTimeZone, fromZonedTime } from 'date-fns-tz';
-import { Queue, Worker } from 'bullmq';
+import { Queue, UnrecoverableError, Worker } from 'bullmq';
 import { BOOKING_STATUS } from '@rentai/shared';
 import { BookingEntity } from '../../booking/entities/booking.entity';
 import { PropertyEntity } from '../../property/entities/property.entity';
 import { ZodomusService } from './zodomus.service';
+import { isZodomusPermanentMisconfiguration, zodomusErrorFingerprint } from './zodomus-status.util';
 
 /** Statuses that do not block inventory on OTAs. */
 const NON_BLOCKING = new Set<string>([BOOKING_STATUS.CANCELLED, BOOKING_STATUS.DECLINED]);
@@ -28,6 +29,31 @@ export type PushAvailabilityOptions = {
   /** Limit the sync to a specific date range (Delta Sync). */
   dateToISO?: string;
 };
+
+/** Widen date window when several debounced triggers stack for one property. */
+function mergeAvailabilityPushOptions(
+  prev: PushAvailabilityOptions | undefined,
+  next: PushAvailabilityOptions | undefined,
+): PushAvailabilityOptions | undefined {
+  if (!prev) return next;
+  if (!next) return prev;
+  const out: PushAvailabilityOptions = {
+    ignoreAutoPushDisable: Boolean(prev.ignoreAutoPushDisable || next.ignoreAutoPushDisable),
+  };
+  const pick = (mode: 'min' | 'max', a?: string, b?: string): string | undefined => {
+    const ta = a ? Date.parse(a) : NaN;
+    const tb = b ? Date.parse(b) : NaN;
+    const vals = [ta, tb].filter(Number.isFinite) as number[];
+    if (vals.length === 0) return undefined;
+    const ts = mode === 'min' ? Math.min(...vals) : Math.max(...vals);
+    return new Date(ts).toISOString();
+  };
+  const df = pick('min', prev.dateFromISO, next.dateFromISO);
+  const dt = pick('max', prev.dateToISO, next.dateToISO);
+  if (df) out.dateFromISO = df;
+  if (dt) out.dateToISO = dt;
+  return out;
+}
 
 /** Returned by `pushAvailabilityNow` / `executePush` for APIs and debugging. */
 export type AvailabilityPushSummary = {
@@ -75,19 +101,15 @@ export type AvailabilityPushTargetsDescription = {
   hint: string;
 };
 
-/** Permanent Zodomus errors that mean the property configuration is wrong — don't keep retrying. */
-const AVAIL_PERMANENT_MSGS = ['invalid property id', 'property status not active'];
-function isAvailPermanentError(e: unknown): boolean {
-  if (!(e instanceof Error)) return false;
-  const msg = e.message.toLowerCase();
-  return AVAIL_PERMANENT_MSGS.some((m) => msg.includes(m));
-}
-
 @Injectable()
 export class ZodomusAvailabilityPushService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(ZodomusAvailabilityPushService.name);
   private queue: Queue<AvailabilitySegment> | null = null;
   private worker: Worker<AvailabilitySegment> | null = null;
+
+  /** Debounce `scheduleAvailabilityPush` per property (see ZODOMUS_AVAILABILITY_PUSH_DEBOUNCE_MS). */
+  private readonly _pushDebounceTimer = new Map<string, NodeJS.Timeout>();
+  private readonly _pushAccumulatedOptions = new Map<string, PushAvailabilityOptions | undefined>();
 
   /** Circuit breaker for availability push: tracks consecutive failures per property. */
   private readonly _availFailCount = new Map<string, number>();
@@ -147,17 +169,29 @@ export class ZodomusAvailabilityPushService implements OnModuleInit, OnModuleDes
     
     this.queue = new Queue<AvailabilitySegment>('zodomus-availability', { connection });
 
+    const maxPerMinute = this.config.get<number>('ZODOMUS_AVAILABILITY_MAX_PER_MINUTE') ?? 60;
+
     this.worker = new Worker<AvailabilitySegment>(
       'zodomus-availability',
       async (job) => {
-        const { channelId, extProp, roomId, dateFrom, dateToExclusive, availability } = job.data;
-        await this.zodomus.setAvailability(channelId, extProp, roomId, dateFrom, dateToExclusive, availability);
+        const { channelId, extProp, roomId, dateFrom, dateToExclusive, availability, propertyId } = job.data;
+        try {
+          await this.zodomus.setAvailability(channelId, extProp, roomId, dateFrom, dateToExclusive, availability);
+          await this.sleepBetweenAvailabilityPosts();
+        } catch (e) {
+          if (isZodomusPermanentMisconfiguration(e)) {
+            await this.clearDirty(propertyId);
+            this.recordAvailFailure(propertyId, true);
+            throw new UnrecoverableError(zodomusErrorFingerprint(e));
+          }
+          throw e;
+        }
       },
       {
         connection,
         concurrency: 1,
         limiter: {
-          max: 60, // 60 requests per 60 seconds (Zodomus rate limit)
+          max: maxPerMinute,
           duration: 60_000,
         },
       }
@@ -175,17 +209,35 @@ export class ZodomusAvailabilityPushService implements OnModuleInit, OnModuleDes
       this.logger.error(
         `Zodomus availability push failed for ${job?.data.propertyId} (${job?.data.dateFrom}–${job?.data.dateToExclusive}): ${(err as Error).message}`,
       );
-      if (job?.data.propertyId) {
-        await this.markDirty(job.data.propertyId);
+      if (!job?.data.propertyId) return;
+      if (isZodomusPermanentMisconfiguration(err)) {
+        await this.clearDirty(job.data.propertyId);
+        return;
       }
+      await this.markDirty(job.data.propertyId);
     });
 
-    this.logger.log('Zodomus availability BullMQ queue initialized (rate limited to 60 req/min).');
+    this.logger.log(`Zodomus availability BullMQ queue initialized (rate limited to ${maxPerMinute} req/min).`);
   }
 
   async onModuleDestroy(): Promise<void> {
+    for (const t of this._pushDebounceTimer.values()) {
+      clearTimeout(t);
+    }
+    this._pushDebounceTimer.clear();
+    this._pushAccumulatedOptions.clear();
     await this.worker?.close();
     await this.queue?.close();
+  }
+
+  /** Spreads POST /availability in time (partner logs often show same-second bursts). */
+  private async sleepBetweenAvailabilityPosts(): Promise<void> {
+    const ms = Math.max(0, this.config.get<number>('ZODOMUS_AVAILABILITY_POST_GAP_MS') ?? 300);
+    if (ms > 0) {
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, ms);
+      });
+    }
   }
 
   /**
@@ -291,17 +343,50 @@ export class ZodomusAvailabilityPushService implements OnModuleInit, OnModuleDes
   }
 
   /**
-   * Pushes availability changes. Now accepts optional date ranges for delta sync.
+   * Pushes availability changes. Debounces rapid calls per property (env: ZODOMUS_AVAILABILITY_PUSH_DEBOUNCE_MS).
+   * Cron / dirty / nightly passes `ignoreAutoPushDisable` and runs without debounce so backlog is not delayed.
    */
   scheduleAvailabilityPush(propertyId: string, options?: PushAvailabilityOptions): void {
-    const run = () => {
-      void this.pushAvailabilityNow(propertyId, options).catch((e) =>
+    if (options?.ignoreAutoPushDisable) {
+      const pending = this._pushDebounceTimer.get(propertyId);
+      if (pending) {
+        clearTimeout(pending);
+        this._pushDebounceTimer.delete(propertyId);
+      }
+      const merged = mergeAvailabilityPushOptions(this._pushAccumulatedOptions.get(propertyId), options);
+      this._pushAccumulatedOptions.delete(propertyId);
+      void this.pushAvailabilityNow(propertyId, merged ?? options).catch((e) =>
         this.logger.warn(`Zodomus availability push failed for ${propertyId}: ${String(e)}`),
       );
-    };
-    
-    // We can run immediately because execution just enqueues segments into BullMQ.
-    run();
+      return;
+    }
+
+    const prev = this._pushAccumulatedOptions.get(propertyId);
+    this._pushAccumulatedOptions.set(propertyId, mergeAvailabilityPushOptions(prev, options));
+
+    const debounceMs = this.config.get<number>('ZODOMUS_AVAILABILITY_PUSH_DEBOUNCE_MS') ?? 2000;
+    const existing = this._pushDebounceTimer.get(propertyId);
+    if (existing) clearTimeout(existing);
+
+    if (debounceMs <= 0) {
+      this._pushDebounceTimer.delete(propertyId);
+      const opts = this._pushAccumulatedOptions.get(propertyId);
+      this._pushAccumulatedOptions.delete(propertyId);
+      void this.pushAvailabilityNow(propertyId, opts).catch((e) =>
+        this.logger.warn(`Zodomus availability push failed for ${propertyId}: ${String(e)}`),
+      );
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      this._pushDebounceTimer.delete(propertyId);
+      const opts = this._pushAccumulatedOptions.get(propertyId);
+      this._pushAccumulatedOptions.delete(propertyId);
+      void this.pushAvailabilityNow(propertyId, opts).catch((e) =>
+        this.logger.warn(`Zodomus availability push failed for ${propertyId}: ${String(e)}`),
+      );
+    }, debounceMs);
+    this._pushDebounceTimer.set(propertyId, timer);
   }
 
   /**
@@ -317,7 +402,11 @@ export class ZodomusAvailabilityPushService implements OnModuleInit, OnModuleDes
       return summary;
     } catch (e) {
       if (!(e instanceof ServiceUnavailableException)) {
-        await this.markDirty(propertyId);
+        if (isZodomusPermanentMisconfiguration(e)) {
+          await this.clearDirty(propertyId);
+        } else {
+          await this.markDirty(propertyId);
+        }
       }
       throw e;
     }
@@ -348,11 +437,16 @@ export class ZodomusAvailabilityPushService implements OnModuleInit, OnModuleDes
         // When BullMQ is active the dirty flag is cleared in the worker's 'completed' handler.
         // When running inline (no Redis) clearDirty happens inside pushAvailabilityNow already.
       } catch (e) {
-        const permanent = isAvailPermanentError(e);
+        const permanent = isZodomusPermanentMisconfiguration(e);
         this.recordAvailFailure(p.id, permanent);
-        const failCount = this._availFailCount.get(p.id) ?? 0;
-        if (failCount < ZodomusAvailabilityPushService.AVAIL_CIRCUIT_AFTER) {
-          this.logger.warn(`Dirty retry failed for ${p.id}: ${String(e)}`);
+        if (permanent) {
+          await this.clearDirty(p.id);
+          this.logger.warn(`Zodomus dirty retry stopped for ${p.id} (fix external listing / activate property): ${String(e)}`);
+        } else {
+          const failCount = this._availFailCount.get(p.id) ?? 0;
+          if (failCount < ZodomusAvailabilityPushService.AVAIL_CIRCUIT_AFTER) {
+            this.logger.warn(`Dirty retry failed for ${p.id}: ${String(e)}`);
+          }
         }
       }
     }
@@ -505,8 +599,9 @@ export class ZodomusAvailabilityPushService implements OnModuleInit, OnModuleDes
           const jobId = `zodomus-avail-${propertyId}-${t.channelId}-${roomId}-${seg.dateFrom}-${seg.dateToExclusive}-${seg.availability}`;
           await this.queue.add('push-segment', payload, {
             jobId,
-            attempts: 5,
-            backoff: { type: 'exponential', delay: 60000 },
+            /** Transient errors only — permanent misconfig uses UnrecoverableError (no retry storm). */
+            attempts: 2,
+            backoff: { type: 'exponential', delay: 45_000 },
             removeOnComplete: true,
             removeOnFail: { age: 86400 },
           });
@@ -519,6 +614,7 @@ export class ZodomusAvailabilityPushService implements OnModuleInit, OnModuleDes
             seg.dateToExclusive,
             seg.availability,
           );
+          await this.sleepBetweenAvailabilityPosts();
         }
         segmentsDispatched += 1;
       }
