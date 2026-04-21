@@ -474,6 +474,7 @@
     "tasks": "Zadania",
     "operations": "Operacje",
     "calendar": "Kalendarz",
+    "automations": "Automatyzacja",
     "chat": "Czat",
     "calls": "Rozmowy",
     "kbImprovement": "Ulepszenie agenta",
@@ -485,6 +486,223 @@
     "signOut": "Wyloguj",
     "collapseSidebar": "Zwiń panel boczny",
     "expandSidebar": "Rozwiń panel boczny"
+  },
+  "automations": {
+    "nav": {
+      "sectionTitle": "Automatyzacja",
+      "openMenu": "Otwórz menu automatyzacji",
+      "mobileTitle": "Automatyzacja",
+      "mobileDescription": "Wybierz kategorię",
+      "overview": "Przegląd",
+      "operations": "Logistyka i sprzątanie",
+      "intentTest": "Symulacja intencji",
+      "guests": "Goście",
+      "smartHome": "Smart home",
+      "revenue": "Przychody",
+      "support": "Wsparcie"
+    },
+    "overview": {
+      "title": "Przegląd automatyzacji",
+      "subtitle": "Reguły zdarzeniowe dla operacji, gości i przychodu.",
+      "hint": "Zacznij od logistyki i sprzątania — opóźnienia, bufory i przekazania na miejscu.",
+      "ctaOperations": "Otwórz logistykę i sprzątanie",
+      "ctaIntentTest": "Symulacja intencji AI"
+    },
+    "intentTest": {
+      "title": "Test intencji AI (dry run)",
+      "subtitle": "Wyślij przykładową wiadomość gościa lub personelu i zobacz, jaki intent automatyzacji wybierze model — bez zapisu czatu i bez uruchamiania reguł.",
+      "hintTitle": "Jak to działa",
+      "hintBody": "Ten sam API co w produkcji. W development zawsze włączone; na staging/production serwer musi zezwalać (AI_INTENT_TESTING_ALLOW).",
+      "propertyLabel": "Obiekt",
+      "pickProperty": "Wybierz obiekt…",
+      "loadingProperties": "Ładowanie obiektów…",
+      "roleLabel": "Rola nadawcy",
+      "roleHint": "Wiadomości SYSTEM i MANAGER są pomijane przez worker (bez LLM).",
+      "messageLabel": "Treść wiadomości",
+      "messagePlaceholder": "Wpisz tekst lub wybierz przykład…",
+      "skipGateLabel": "Pomiń warunek „brak aktywnych reguł”",
+      "skipGateHint": "Gdy włączone, LLM działa nawet przy zerze aktywnych reguł (domyślnie w API testowym).",
+      "run": "Uruchom symulację",
+      "running": "Trwa…",
+      "reloadExamples": "Odśwież przykłady",
+      "loadingExamples": "Ładowanie…",
+      "samplesTitle": "Szybkie przykłady",
+      "resultTitle": "Wynik",
+      "resultEmpty": "Uruchom symulację, aby zobaczyć intent, czas i czy automatyzacja by zadziałała.",
+      "fieldActiveRules": "Aktywne reguły na obiekcie",
+      "fieldWouldEmit": "Czy byłby emit ai.intent.detected",
+      "fieldIntent": "Wykryty intent",
+      "fieldLatency": "Opóźnienie / model",
+      "fieldRule": "Pasująca aktywna reguła",
+      "fieldExecutor": "Zaimplementowany wykonawca w backendzie",
+      "yes": "Tak",
+      "no": "Nie",
+      "rawJson": "Pełny JSON",
+      "forbidden": "Endpoint wyłączony na serwerze (nie development i brak AI_INTENT_TESTING_ALLOW).",
+      "errorGeneric": "Błąd żądania. Sprawdź logowanie i sieć."
+    },
+    "roadmap": {
+      "sectionHint": "Mapa drogowa: klucze zdarzeń ze słownika automatyzacji. Na razie bez wykonania i reguł per obiekt — checklista rozwoju.",
+      "guests": {
+        "earlyCheckin": {
+          "title": "Prośba o wcześniejsze zameldowanie",
+          "description": "Kalendarz → dopłata lub uprzejma odmowa, gdy apartament niegotowy."
+        },
+        "lateCheckout": {
+          "title": "Prośba o późniejsze wymeldowanie",
+          "description": "Jak wcześniejsze: dostępność, opłata, wpływ na sprzątanie."
+        },
+        "bookingExtension": {
+          "title": "Przedłużenie pobytu",
+          "description": "Weryfikacja terminów → link do płatności → przedłużenie sprzątania i dostępu."
+        },
+        "cancellation": {
+          "title": "Anulacja w ostatniej chwili",
+          "description": "Anuluj sprzątanie/transfer i odblokuj daty w channel managerze."
+        },
+        "luggageStorage": {
+          "title": "Przechowanie bagażu",
+          "description": "Instrukcje skrytki/biura zgodnie z polityką dostępu."
+        }
+      },
+      "smartHome": {
+        "codeGen": {
+          "title": "PIN zamka przed przyjazdem",
+          "description": "Kod czasowy przed zameldowaniem i wysyłka do gościa."
+        },
+        "firstEntry": {
+          "title": "Pierwsze użycie PIN",
+          "description": "Status „Zameldowany”, powitanie i opcjonalne reguły obecności."
+        },
+        "noiseAlert": {
+          "title": "Alert hałasu z czujnika",
+          "description": "Próg przekroczony → automatyczny telefon lub wiadomość z przypomnieniem zasad."
+        },
+        "acLeftOn": {
+          "title": "Klimatyzacja po wyjeździe",
+          "description": "Wyjazd wg zamka, urządzenie włączone → zdalne wyłączenie."
+        }
+      },
+      "revenue": {
+        "depositRequired": {
+          "title": "Przypomnienie o kaucji",
+          "description": "N dni przed przyjazdem — płatność lub blokada na karcie."
+        },
+        "depositRefund": {
+          "title": "Zwrot kaucji",
+          "description": "Po wymeldowaniu i ciszy bez incydentów — automatyczne zwolnienie blokady."
+        },
+        "upsell": {
+          "title": "Upsell „pusta noc”",
+          "description": "Luka między rezerwacjami → oferta przedłużenia z promocją."
+        },
+        "paymentFailed": {
+          "title": "Błąd płatności",
+          "description": "Odmowa karty → nowy link i ewentualnie zadanie dla managera."
+        }
+      },
+      "support": {
+        "reviewRequest": {
+          "title": "Prośba o opinię",
+          "description": "Dzień po wymeldowaniu przy pozytywnym tonie czatu."
+        },
+        "badReview": {
+          "title": "Niska ocena publiczna",
+          "description": "Poniżej progu → pilne zadanie dla managera."
+        },
+        "faqWifi": {
+          "title": "FAQ: Wi‑Fi",
+          "description": "Natychmiast SSID, hasło i podstawowe kroki."
+        },
+        "faqParking": {
+          "title": "FAQ: parking",
+          "description": "Mapa, cena, miejsca dla gości bez ticketu."
+        },
+        "faqTrash": {
+          "title": "FAQ: śmieci i recykling",
+          "description": "Dni odbioru, lokalizacja, segregacja."
+        },
+        "faqShops": {
+          "title": "FAQ: sklepy w pobliżu",
+          "description": "Żywność, apteka, całodobowe."
+        },
+        "faqAppliances": {
+          "title": "FAQ: sprzęty AGD",
+          "description": "Krótkie instrukcje lub linki."
+        }
+      }
+    },
+    "operations": {
+      "title": "Logistyka i sprzątanie",
+      "subtitle": "Reguły dla harmonogramu sprzątania, kierowców i stanów magazynowych.",
+      "catalogHint": "Poniżej widać wszystkie scenariusze. Włącz obsługiwane reguły dla obiektu; pozostałe to plan rozwoju.",
+      "badgeNotConfigured": "Nie skonfigurowano",
+      "badgeComingSoon": "Wkrótce",
+      "enableForProperty": "Włącz dla obiektu",
+      "creating": "Zapisywanie…",
+      "roadmapNote": "W planach",
+      "propertyLabel": "Obiekt",
+      "pickProperty": "Wybierz obiekt…",
+      "loadingProperties": "Ładowanie obiektów…",
+      "selectPropertyHint": "Wybierz obiekt, aby wczytać reguły z bazy.",
+      "addCleanerRule": "Dodaj regułę „opóźnienie sprzątania”",
+      "addingRule": "Dodawanie…",
+      "addRuleSuccess": "Reguła utworzona",
+      "addRuleConflict": "Reguła już istnieje dla tego obiektu. Odświeżono listę.",
+      "addRuleError": "Nie udało się utworzyć reguły.",
+      "loadError": "Nie udało się wczytać reguł. Spróbuj ponownie.",
+      "retry": "Ponów",
+      "emptyTitle": "Brak reguł dla tego obiektu",
+      "emptyDescription": "Dodaj regułę opóźnienia sprzątania, aby testować AI → automatyzację, lub użyj seeda / API."
+    },
+    "placeholders": {
+      "guestsTitle": "Goście",
+      "guestsBody": "Tutaj znajdą się check-in, kody do drzwi i upsell.",
+      "smartHomeTitle": "Smart home",
+      "smartHomeBody": "Zamki, termostaty i alerty urządzeń — w kolejnych wersjach.",
+      "revenueTitle": "Przychody",
+      "revenueBody": "Ceny, OTA i wypłaty — później w tym module.",
+      "supportTitle": "Wsparcie",
+      "supportBody": "Eskalacje i routing SLA — wkrótce."
+    },
+    "rules": {
+      "generic": {
+        "title": "Automatyzacja: {key}",
+        "description": "Klucz reguły {key}."
+      },
+      "active": "Wł.",
+      "inactive": "Wył.",
+      "configure": "Edytuj",
+      "toggleError": "Nie udało się zaktualizować reguły.",
+      "cleanerDelayed": {
+        "title": "Opóźnienie sprzątania",
+        "description": "Przy opóźnieniu powiadom grupę zapasową i ogranicz czas oczekiwania przed ponownym przydziałem."
+      },
+      "turnoverBuffer": {
+        "title": "Mały bufor między pobytami",
+        "description": "Ostrzegaj, gdy luka między wymeldowaniem a następnym zameldowaniem jest zbyt mała."
+      },
+      "linenShortage": {
+        "title": "Prognozowany brak pościeli",
+        "description": "Prognozuj zapotrzebowanie z nadchodzących rezerwacji i ostrzegaj wcześniej."
+      },
+      "driverNoShow": {
+        "title": "Kierowca nie wyjechał",
+        "description": "Ponowny przydział, gdy kierowca nie oznaczy wyjazdu w terminie."
+      }
+    },
+    "sheet": {
+      "title": "Ustawienia reguły",
+      "description": "Dostosuj zachowanie. Później możliwy zakres na obiekty.",
+      "save": "Zapisz",
+      "cancel": "Anuluj",
+      "saveSuccess": "Reguła zaktualizowana",
+      "saveError": "Nie udało się zapisać",
+      "fields": {
+        "notifyManager": "Powiadom menedżera",
+        "delayThreshold": "Maks. opóźnienie (min)"
+      }
+    }
   },
   "staff": {
     "title": "Personel",
@@ -798,7 +1016,11 @@
       "mobileSummary": "Filtry",
       "mobileClose": "Zamknij filtry",
       "periodAria": "Zakres terminu",
-      "searchToggleAria": "Szukaj po obiekcie"
+      "searchToggleAria": "Szukaj po obiekcie",
+      "listFilterToggleAria": "Filtruj według statusu i priorytetu",
+      "listFilterReset": "Wyczyść",
+      "listFilterSheetTitle": "Status i priorytet",
+      "listFilterSheetDescription": "Które zadania pokazywać na liście i tablicy."
     },
     "viewModes": {
       "list": "Lista",
@@ -814,9 +1036,6 @@
       "tabsAria": "Zadania lub kolejka zaopatrzenia",
       "tabTasks": "Zadania",
       "tabSupply": "Zaopatrzenie i logistyka",
-      "supplyBannerTitle": "Podsumowanie zaopatrzenia wymaga uwagi",
-      "supplyBannerHint": "{count} poz. w kolejce — otwórz zakładkę, aby zobaczyć macierz i przekazanie.",
-      "supplyBannerCta": "Otwórz zaopatrzenie",
       "supplySubViewAria": "Podsumowanie lub feed",
       "matrixTab": "Podsumowanie",
       "routesTab": "Trasy",
@@ -843,8 +1062,6 @@
       "matrixHandoffSheetCancel": "Anuluj",
       "matrixHandoffSheetConfirm": "Przypisz i przekaż",
       "matrixHandoffDriverLabel": "Kierowca / wykonawca",
-      "matrixHandoffDriverPlaceholder": "Kto dowozi",
-      "matrixHandoffSheetNote": "Dla wierszy z katalogiem i bez. Tylko szkic bez kierowcy: «Utwórz trasę dostawy».",
       "matrixHandoffNeedDriver": "Wybierz członka zespołu.",
       "matrixHandoffSuccessWithDriver": "Trasa utworzona, kierowca przypisany",
       "matrixHandoffSuccessDriverReassigned": "Zmieniono kierowcę dla tej trasy",
@@ -880,6 +1097,17 @@
       "matrixCellCheckboxAria": "{item} — {place}",
       "matrixSelectAll": "Zaznacz wszystko",
       "matrixDeselectAll": "Wyczyść zaznaczenie",
+      "matrixDetailEntryTask": "Zadanie: {title}",
+      "matrixDetailEntryIncident": "Incydent: {text}",
+      "matrixDetailEntryProperty": "Obiekt: {title}",
+      "matrixDetailEntryOther": "Raport staff",
+      "matrixDetailRemoveFromPoolAria": "Usuń tę linię z puli",
+      "matrixDetailRemoveLineConfirmTitle": "Usunąć z puli?",
+      "matrixDetailRemoveLineConfirmDescription": "Nieprzypisana linia zostanie trwale usunięta z podsumowania. Źródło: {contextLine}.",
+      "matrixDetailRemoveLineConfirm": "Usuń",
+      "matrixRemovePoolLinesSuccess": "Usunięto {count} linię(e).",
+      "matrixRemovePoolLinesError": "Nie udało się usunąć linii.",
+      "matrixCellDetailEmpty": "Brak wiadomości dla tego wyboru.",
       "matrixRowCheckboxAria": "Wybierz {name} do przekazania",
       "matrixRowCheckboxRawAria": "Wybierz surowy wiersz «{name}» (bez katalogu) do przekazania kierowcy",
       "catalogPreviewTitle": "Katalog pozycji",
@@ -983,6 +1211,11 @@
         "hint": "Opisz, co dostarczyć. Głos lub tekst — ten sam potok AI co w raportach personelu.",
         "propertyLabel": "Obiekt",
         "propertyPlaceholder": "Wybierz obiekt",
+        "propertyPickerTitle": "Wybierz obiekt",
+        "propertyPickerHint": "Dotknij wiersza na liście. Wyszukiwanie zawęża listę.",
+        "addPropertyAria": "Wybierz obiekt",
+        "propertySearchPlaceholder": "Szukaj po nazwie lub adresie…",
+        "propertySearchNoResults": "Brak obiektów dla tego zapytania.",
         "propertyRequired": "Najpierw wybierz obiekt.",
         "textLabel": "Prośba",
         "textPlaceholder": "np. przywieź 2 komplety ręczników i papier toaletowy…",
@@ -1013,6 +1246,7 @@
       "kebabAria": "Więcej akcji",
       "menuSearch": "Szukaj",
       "menuDateRange": "Zakres dat",
+      "menuListFilters": "Status i priorytet",
       "menuView": "Widok",
       "viewSheetTitle": "Wybierz widok",
       "backAria": "Wstecz",
@@ -1122,6 +1356,16 @@
         "statusSelectAria": "Status incydentu",
         "relatedTasksTitle": "Powiązane zadania",
         "relatedTasksEmpty": "Brak.",
+        "relatedTasksAwaitingHint": "Przypisz osobę odpowiedzialną i utwórz zadanie.",
+        "relatedTasksAssignButton": "Przypisz",
+        "relatedTasksAssignDialogTitle": "Przypisz technika",
+        "relatedTasksAssignDialogDescription": "Pracownik otrzyma powiązane zadanie do tego incydentu.",
+        "relatedTasksAssignStaffLabel": "Technik",
+        "relatedTasksAssignPlaceholder": "Wybierz pracownika…",
+        "relatedTasksAssignSubmit": "Przypisz",
+        "relatedTasksAssignCancel": "Anuluj",
+        "relatedTasksAssignSuccess": "Technik przypisany",
+        "relatedTasksAssignNoStaff": "Brak pracowników z rolą technika w koncie.",
         "reporterInlinePrefix": "Zgłosił",
         "createTaskCta": "Utwórz zadanie",
         "createTaskAria": "Utwórz powiązane zadanie",

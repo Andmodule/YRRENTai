@@ -1,5 +1,6 @@
 import { join } from 'path';
 import { Module } from '@nestjs/common';
+import { BullModule } from '@nestjs/bullmq';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ThrottlerModule } from '@nestjs/throttler';
@@ -31,6 +32,9 @@ import { ZodomusModule } from './integrations/zodomus/zodomus.module';
 import { ICalModule } from './integrations/ical/ical.module';
 import { MessagingModule } from './messaging/messaging.module';
 import { AdminModule } from './admin/admin.module';
+import { AutomationsModule } from './modules/automations/automations.module';
+import { RedisModule } from './modules/redis/redis.module';
+import { AiChatModule } from './modules/ai-chat/ai-chat.module';
 
 @Module({
   imports: [
@@ -64,7 +68,18 @@ import { AdminModule } from './admin/admin.module';
         limit: 100,
       },
     ]),
+    BullModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        connection: {
+          url:
+            config.get<string>('REDIS_URL')?.trim() ||
+            'redis://127.0.0.1:6379',
+        },
+      }),
+    }),
     EventEmitterModule.forRoot(),
+    RedisModule,
     ScheduleModule.forRoot(),
     DatabaseInitModule,
     EmbeddingModule,
@@ -89,6 +104,8 @@ import { AdminModule } from './admin/admin.module';
     ICalModule,
     MessagingModule,
     AdminModule,
+    AutomationsModule,
+    AiChatModule,
   ],
   providers: [
     {

@@ -474,6 +474,7 @@
     "tasks": "Задачи",
     "operations": "Операции",
     "calendar": "Календарь",
+    "automations": "Автоматизация",
     "chat": "Чат",
     "calls": "Звонки",
     "kbImprovement": "Улучшение агента",
@@ -485,6 +486,223 @@
     "signOut": "Выйти",
     "collapseSidebar": "Свернуть меню",
     "expandSidebar": "Развернуть меню"
+  },
+  "automations": {
+    "nav": {
+      "sectionTitle": "Автоматизация",
+      "openMenu": "Открыть меню автоматизаций",
+      "mobileTitle": "Автоматизация",
+      "mobileDescription": "Выберите раздел",
+      "overview": "Обзор",
+      "operations": "Логистика и клининг",
+      "intentTest": "Проверка интента",
+      "guests": "Гости",
+      "smartHome": "Умный дом",
+      "revenue": "Финансы",
+      "support": "Поддержка"
+    },
+    "overview": {
+      "title": "Обзор автоматизаций",
+      "subtitle": "Правила по событиям: операции, гости и выручка без ручного контроля.",
+      "hint": "Начните с логистики и клининга — задержки, буферы и передачи на объекте.",
+      "ctaOperations": "Логистика и клининг",
+      "ctaIntentTest": "Проверить интент ИИ"
+    },
+    "intentTest": {
+      "title": "Проверка интента ИИ (dry run)",
+      "subtitle": "Введите текст как от гостя или персонала и посмотрите, какой интент автоматизации выберет модель — без записи в чат и без реального запуска правил.",
+      "hintTitle": "Как это устроено",
+      "hintBody": "Тот же API, что и у классификации в проде. В development доступно всегда; на staging/production на сервере должно быть разрешено тестирование (см. AI_INTENT_TESTING_ALLOW в бэкенде).",
+      "propertyLabel": "Объект",
+      "pickProperty": "Выберите объект…",
+      "loadingProperties": "Загрузка объектов…",
+      "roleLabel": "Роль отправителя",
+      "roleHint": "Сообщения SYSTEM и MANAGER реальный воркер не обрабатывает (LLM не вызывается).",
+      "messageLabel": "Текст сообщения",
+      "messagePlaceholder": "Введите текст или выберите пример ниже…",
+      "skipGateLabel": "Игнорировать проверку «нет активных правил»",
+      "skipGateHint": "Если включено, LLM вызывается даже при нуле активных правил на объекте (как в тестовом API по умолчанию).",
+      "run": "Запустить симуляцию",
+      "running": "Выполняется…",
+      "reloadExamples": "Обновить примеры",
+      "loadingExamples": "Загрузка…",
+      "samplesTitle": "Быстрые примеры",
+      "resultTitle": "Результат",
+      "resultEmpty": "Запустите симуляцию — увидите интент, время ответа и сработала бы автоматизация.",
+      "fieldActiveRules": "Активных правил на объекте",
+      "fieldWouldEmit": "Был бы emit ai.intent.detected",
+      "fieldIntent": "Распознанный интент",
+      "fieldLatency": "Задержка / модель",
+      "fieldRule": "Совпавшее активное правило",
+      "fieldExecutor": "Есть исполнитель в бэкенде",
+      "yes": "Да",
+      "no": "Нет",
+      "rawJson": "Полный JSON",
+      "forbidden": "Эндпоинт отключён на сервере (не development и не задан AI_INTENT_TESTING_ALLOW).",
+      "errorGeneric": "Ошибка запроса. Проверьте вход и сеть."
+    },
+    "roadmap": {
+      "sectionHint": "Дорожная карта: ключи событий из словаря автоматизаций. Пока без исполнения и правил по объекту — ориентир для поэтапной реализации.",
+      "guests": {
+        "earlyCheckin": {
+          "title": "Запрос на ранний заезд",
+          "description": "Проверка календаря → счёт на доплату или вежливый отказ, если номер не готов."
+        },
+        "lateCheckout": {
+          "title": "Запрос на поздний выезд",
+          "description": "Как ранний заезд: доступность, доплата, влияние на уборку и персонал."
+        },
+        "bookingExtension": {
+          "title": "Продление брони",
+          "description": "Проверка слотов → ссылка на оплату → продление уборки и доступа."
+        },
+        "cancellation": {
+          "title": "Отмена в последний момент",
+          "description": "Снять задачи уборки/трансфера и открыть даты в channel manager."
+        },
+        "luggageStorage": {
+          "title": "Хранение багажа",
+          "description": "Инструкции по локерам/офису в рамках политики доступа."
+        }
+      },
+      "smartHome": {
+        "codeGen": {
+          "title": "PIN умного замка до заезда",
+          "description": "Сгенерировать код с окном времени и отправить гостю."
+        },
+        "firstEntry": {
+          "title": "Первый ввод PIN",
+          "description": "Статус «Заехал», приветствие и опциональные правила занятости."
+        },
+        "noiseAlert": {
+          "title": "Тревога по датчику шума",
+          "description": "Порог превышен → авто-звонок или сообщение с напоминанием правил."
+        },
+        "acLeftOn": {
+          "title": "Кондиционер после выезда",
+          "description": "Выезд по замку, климат включён → команда на отключение."
+        }
+      },
+      "revenue": {
+        "depositRequired": {
+          "title": "Напоминание о залоге",
+          "description": "За N дней до заезда — оплата или холд по карте."
+        },
+        "depositRefund": {
+          "title": "Возврат залога",
+          "description": "После выезда и тихого периода без инцидентов — авто-снятие холда."
+        },
+        "upsell": {
+          "title": "Upsell «пустая ночь»",
+          "description": "Окно между бронями → предложение текущему гостю продлить со скидкой."
+        },
+        "paymentFailed": {
+          "title": "Ошибка оплаты",
+          "description": "Отказ карты → новая ссылка на оплату и при необходимости задача менеджеру."
+        }
+      },
+      "support": {
+        "reviewRequest": {
+          "title": "Запрос отзыва",
+          "description": "На следующий день после выезда при позитивном тоне переписки."
+        },
+        "badReview": {
+          "title": "Низкая оценка на площадке",
+          "description": "Оценка ниже порога → срочная задача менеджеру на отработку."
+        },
+        "faqWifi": {
+          "title": "FAQ: Wi‑Fi",
+          "description": "Мгновенная отправка SSID, пароля и базовых шагов."
+        },
+        "faqParking": {
+          "title": "FAQ: парковка",
+          "description": "Схема проезда, цена и гостевые места без тикета."
+        },
+        "faqTrash": {
+          "title": "FAQ: мусор и переработка",
+          "description": "Дни выноса, расположение контейнеров, сортировка."
+        },
+        "faqShops": {
+          "title": "FAQ: магазины рядом",
+          "description": "Продукты, аптека, круглосуточные точки."
+        },
+        "faqAppliances": {
+          "title": "FAQ: техника",
+          "description": "Стиралка, духовка, кондиционер — короткие инструкции или ссылки."
+        }
+      }
+    },
+    "operations": {
+      "title": "Логистика и клининг",
+      "subtitle": "Правила для уборки, водителей и сигналов по складу.",
+      "catalogHint": "Ниже показаны все сценарии. Подключайте поддерживаемые правила для объекта; остальные — в дорожной карте.",
+      "badgeNotConfigured": "Не подключено",
+      "badgeComingSoon": "Скоро",
+      "enableForProperty": "Подключить для объекта",
+      "creating": "Сохранение…",
+      "roadmapNote": "В планах",
+      "propertyLabel": "Объект",
+      "pickProperty": "Выберите объект…",
+      "loadingProperties": "Загрузка объектов…",
+      "selectPropertyHint": "Выберите объект — правила подгрузятся из базы.",
+      "addCleanerRule": "Добавить правило «задержка уборки»",
+      "addingRule": "Добавление…",
+      "addRuleSuccess": "Правило создано",
+      "addRuleConflict": "Такое правило уже есть у объекта. Список обновлён.",
+      "addRuleError": "Не удалось создать правило.",
+      "loadError": "Не удалось загрузить правила. Повторите попытку.",
+      "retry": "Повторить",
+      "emptyTitle": "Пока нет правил у этого объекта",
+      "emptyDescription": "Добавьте правило задержки уборки для проверки ИИ → автоматизации или используйте сид / API."
+    },
+    "placeholders": {
+      "guestsTitle": "Гости",
+      "guestsBody": "Здесь будут чек-ин, коды от дверей и допродажи.",
+      "smartHomeTitle": "Умный дом",
+      "smartHomeBody": "Замки, климат и уведомления с устройств — в следующих версиях.",
+      "revenueTitle": "Финансы",
+      "revenueBody": "Цены, OTA и выплаты — позже в этом модуле.",
+      "supportTitle": "Поддержка",
+      "supportBody": "Эскалации и SLA-маршрутизация — позже."
+    },
+    "rules": {
+      "generic": {
+        "title": "Автоматизация: {key}",
+        "description": "Ключ правила {key}. Добавьте переводы в automations.rules, когда появится отдельная карточка."
+      },
+      "active": "Вкл",
+      "inactive": "Выкл",
+      "configure": "Изменить",
+      "toggleError": "Не удалось обновить правило. Попробуйте снова.",
+      "cleanerDelayed": {
+        "title": "Задержка клинера",
+        "description": "Если уборка опаздывает — уведомить резерв и ограничить ожидание до переназначения."
+      },
+      "turnoverBuffer": {
+        "title": "Мало буфера между заездами",
+        "description": "Предупредить, если окно между выездом и следующим заездом уже вашего порога."
+      },
+      "linenShortage": {
+        "title": "Прогноз нехватки белья",
+        "description": "Спрогнозировать расход по предстоящим бронированиям и предупредить заранее."
+      },
+      "driverNoShow": {
+        "title": "Водитель не выехал",
+        "description": "Перезапуск назначения, если водитель не отметил выезд в срок."
+      }
+    },
+    "sheet": {
+      "title": "Настройки правила",
+      "description": "Поведение правила. Позже можно будет ограничить объектами.",
+      "save": "Сохранить",
+      "cancel": "Отмена",
+      "saveSuccess": "Правило обновлено",
+      "saveError": "Не удалось сохранить",
+      "fields": {
+        "notifyManager": "Уведомлять менеджера",
+        "delayThreshold": "Макс. задержка (мин)"
+      }
+    }
   },
   "staff": {
     "title": "Персонал",
@@ -848,7 +1066,11 @@
       "periodSheetTitle": "Период по сроку",
       "periodSheetDescription": "Показываются задачи, у которых дата выполнения попадает в выбранный интервал.",
       "periodApply": "Применить",
-      "periodClear": "Сбросить"
+      "periodClear": "Сбросить",
+      "listFilterToggleAria": "Фильтр по статусу и приоритету",
+      "listFilterReset": "Сбросить",
+      "listFilterSheetTitle": "Статус и приоритет",
+      "listFilterSheetDescription": "Какие задачи показывать в списке и на доске."
     },
     "viewModes": {
       "list": "Список",
@@ -864,9 +1086,6 @@
       "tabsAria": "Задачи или очередь снабжения",
       "tabTasks": "Задачи",
       "tabSupply": "Снабжение и логистика",
-      "supplyBannerTitle": "Сводка снабжения ждёт разбора",
-      "supplyBannerHint": "В очереди {count} поз. — откройте вкладку для матрицы и передачи водителю.",
-      "supplyBannerCta": "Открыть снабжение",
       "supplySubViewAria": "Сводная матрица или лента запросов",
       "matrixTab": "Сводка",
       "routesTab": "Маршруты",
@@ -893,8 +1112,6 @@
       "matrixHandoffSheetCancel": "Отмена",
       "matrixHandoffSheetConfirm": "Назначить и передать",
       "matrixHandoffDriverLabel": "Водитель / исполнитель",
-      "matrixHandoffDriverPlaceholder": "Кто повезёт",
-      "matrixHandoffSheetNote": "Подходит и для строк со справочником, и для сырых. Если нужен только черновик маршрута без исполнителя — используйте «Собрать маршрут».",
       "matrixHandoffNeedDriver": "Выберите сотрудника.",
       "matrixHandoffSuccessWithDriver": "Маршрут создан, исполнитель назначен",
       "matrixHandoffSuccessDriverReassigned": "Исполнитель по маршруту изменён",
@@ -930,6 +1147,17 @@
       "matrixCellCheckboxAria": "{item} — {place}",
       "matrixSelectAll": "Выбрать все",
       "matrixDeselectAll": "Снять выбор",
+      "matrixDetailEntryTask": "Задача: {title}",
+      "matrixDetailEntryIncident": "Инцидент: {text}",
+      "matrixDetailEntryProperty": "Объект: {title}",
+      "matrixDetailEntryOther": "Отчёт staff",
+      "matrixDetailRemoveFromPoolAria": "Убрать эту строку из пула сводки",
+      "matrixDetailRemoveLineConfirmTitle": "Убрать из пула?",
+      "matrixDetailRemoveLineConfirmDescription": "Строка будет безвозвратно удалена из сводки снабжения. Источник: {contextLine}.",
+      "matrixDetailRemoveLineConfirm": "Удалить",
+      "matrixRemovePoolLinesSuccess": "Удалено строк: {count}.",
+      "matrixRemovePoolLinesError": "Не удалось удалить строки.",
+      "matrixCellDetailEmpty": "Нет сообщений по этому выбору.",
       "matrixRowCheckboxAria": "Выбрать {name} для передачи водителю",
       "matrixRowCheckboxRawAria": "Выбрать строку «{name}» без каталога — передать водителю по сырым строкам",
       "catalogPreviewTitle": "Справочник номенклатуры",
@@ -1033,6 +1261,11 @@
         "hint": "Опишите, что привезти на объект. Голос или текст — тот же разбор ИИ, что и у отчётов staff.",
         "propertyLabel": "Объект",
         "propertyPlaceholder": "Выберите объект",
+        "propertyPickerTitle": "Выберите объект",
+        "propertyPickerHint": "Нажмите на строку в списке. Поиск сужает список.",
+        "addPropertyAria": "Выбрать объект",
+        "propertySearchPlaceholder": "Поиск по названию или адресу…",
+        "propertySearchNoResults": "Нет объектов по этому запросу.",
         "propertyRequired": "Сначала выберите объект.",
         "textLabel": "Запрос",
         "textPlaceholder": "Например: привезти 2 комплекта полотенец и туалетную бумагу…",
@@ -1063,6 +1296,7 @@
       "kebabAria": "Ещё действия",
       "menuSearch": "Поиск",
       "menuDateRange": "Период по датам",
+      "menuListFilters": "Статус и приоритет",
       "menuView": "Вид",
       "viewSheetTitle": "Режим отображения",
       "backAria": "Назад",
@@ -1180,6 +1414,16 @@
         "statusSelectAria": "Статус инцидента",
         "relatedTasksTitle": "Связанные задачи",
         "relatedTasksEmpty": "Пока нет.",
+        "relatedTasksAwaitingHint": "Назначьте ответственного и создайте задачу.",
+        "relatedTasksAssignButton": "Назначить",
+        "relatedTasksAssignDialogTitle": "Назначить техника",
+        "relatedTasksAssignDialogDescription": "Сотрудник получит связанную задачу по этому инциденту.",
+        "relatedTasksAssignStaffLabel": "Техник",
+        "relatedTasksAssignPlaceholder": "Выберите сотрудника…",
+        "relatedTasksAssignSubmit": "Назначить",
+        "relatedTasksAssignCancel": "Отмена",
+        "relatedTasksAssignSuccess": "Техник назначен",
+        "relatedTasksAssignNoStaff": "В аккаунте нет сотрудников с ролью техника.",
         "reporterInlinePrefix": "Сообщил",
         "createTaskCta": "Создать задачу",
         "createTaskAria": "Создать связанную задачу",

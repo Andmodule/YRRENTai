@@ -18,6 +18,7 @@ import {
   Sparkles,
   Users,
   Warehouse,
+  Workflow,
 } from 'lucide-react';
 import { useOpenIncidentsCount } from '@/modules/incidents/hooks/useIncidents';
 import { useChatNeedsHumanPending } from '@/hooks/use-conversations';
@@ -36,6 +37,7 @@ const navItems = [
   { href: '/dashboard/staff',     icon: Users,           key: 'staff',         roles: null },
   { href: '/dashboard/operations',icon: Warehouse,       key: 'operations',    roles: null },
   { href: '/dashboard/calendar',  icon: LayoutGrid,      key: 'calendar',      roles: null },
+  { href: '/automations',         icon: Workflow,        key: 'automations',   roles: null },
   { href: '/chat',                icon: MessageSquare,   key: 'chat',          roles: null },
   { href: '/dashboard/calls',     icon: Phone,           key: 'calls',         roles: ['OWNER', 'MANAGER'] as const },
   { href: '/kb-improvement',      icon: Sparkles,        key: 'kbImprovement', roles: null },
@@ -50,6 +52,7 @@ const NAV_LIMITED_ALLOWED_KEYS = new Set<string>([
   'staff',
   'operations',
   'calendar',
+  'automations',
   'chat',
 ]);
 const navLimitedMode =
@@ -195,7 +198,9 @@ export function Sidebar() {
                           ? pathname.includes('/dashboard/operations')
                           : href === '/dashboard/calendar'
                             ? pathname.includes('/dashboard/calendar')
-                            : href === '/dashboard'
+                            : href === '/automations'
+                              ? pathname.includes('/automations')
+                              : href === '/dashboard'
                               ? pathname.includes('/dashboard') &&
                                 !pathname.includes('/dashboard/tasks') &&
                                 !pathname.includes('/dashboard/calls') &&

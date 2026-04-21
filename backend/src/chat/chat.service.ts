@@ -1,8 +1,15 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bullmq';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import type { Queue } from 'bullmq';
 import { DataSource, FindOptionsWhere, Repository } from 'typeorm';
 import type { ChatMessageMetadata, ConversationChannel } from '@rentai/shared';
 import { staffOutboundMetadataForClient } from '@rentai/shared';
+import type {
+  ChatMessageSavedChannel,
+  ChatMessageSavedEvent,
+  ChatMessageSavedSenderRole,
+} from '../modules/ai-chat/events/chat-message-saved.event';
 import { conversationChannelToMessageChannel } from './chat-channel.mapper';
 import { ChatMessageEntity, type MessageSource } from './entities/chat-message.entity';
 import { MessageChannel } from './enums/message-channel.enum';
@@ -10,11 +17,15 @@ import { MessageDeliveryStatus } from './enums/message-delivery-status.enum';
 
 @Injectable()
 export class ChatService {
+  private readonly logger = new Logger(ChatService.name);
+
   constructor(
     @InjectRepository(ChatMessageEntity)
     private readonly messageRepository: Repository<ChatMessageEntity>,
     @InjectDataSource()
     private readonly dataSource: DataSource,
+    @InjectQueue('ai-intent-extraction')
+    private readonly aiIntentExtractionQueue: Queue,
   ) {}
 
   /**
@@ -54,14 +65,72 @@ export class ChatService {
     metadata?: ChatMessageMetadata | null;
     channel?: MessageChannel;
     deliveryStatus?: MessageDeliveryStatus;
+    /** When set, overrides role→sender mapping for the AI intent extraction job payload. */
+    automationSenderRole?: ChatMessageSavedSenderRole;
+    /** When true, skips enqueueing AI intent extraction (e.g. automation system lines — avoids LLM feedback loops). */
+    skipAutomationEvent?: boolean;
   }): Promise<ChatMessageEntity> {
+    const { automationSenderRole, skipAutomationEvent, ...persist } = data;
     const message = this.messageRepository.create({
-      ...data,
+      ...persist,
       source: data.source ?? 'ai',
       channel: data.channel ?? MessageChannel.BOOKING_API,
       deliveryStatus: data.deliveryStatus ?? MessageDeliveryStatus.SENT,
     });
-    return this.messageRepository.save(message);
+    const saved = await this.messageRepository.save(message);
+    if (!skipAutomationEvent) {
+      await this.enqueueAiIntentExtraction(saved, { automationSenderRole });
+    }
+    return saved;
+  }
+
+  private async enqueueAiIntentExtraction(
+    m: ChatMessageEntity,
+    data: {
+      automationSenderRole?: ChatMessageSavedSenderRole | undefined;
+    },
+  ): Promise<void> {
+    try {
+      const payload: ChatMessageSavedEvent = {
+        messageId: m.id,
+        propertyId: m.propertyId,
+        senderId: (m.userId?.trim() || m.id) satisfies string,
+        senderRole: data.automationSenderRole ?? ChatService.inferAutomationSenderRole(m),
+        text: m.content,
+        channel: ChatService.messageChannelToSavedChannel(m.channel),
+      };
+      await this.aiIntentExtractionQueue.add('extract-intent', payload, {
+        jobId: payload.messageId,
+        removeOnComplete: true,
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 2000 },
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      this.logger.warn(`enqueue ai-intent-extraction failed: ${msg}`);
+    }
+  }
+
+  private static inferAutomationSenderRole(m: ChatMessageEntity): ChatMessageSavedSenderRole {
+    if (m.role === 'system') return 'SYSTEM';
+    if (m.source === 'staff') return 'STAFF';
+    if (m.role === 'user') return 'GUEST';
+    return 'MANAGER';
+  }
+
+  private static messageChannelToSavedChannel(ch: MessageChannel): ChatMessageSavedChannel {
+    switch (ch) {
+      case MessageChannel.WHATSAPP:
+        return 'whatsapp';
+      case MessageChannel.TELEGRAM:
+        return 'telegram';
+      case MessageChannel.BOOKING_API:
+      case MessageChannel.AIRBNB_API:
+      case MessageChannel.EMAIL:
+        return 'booking';
+      default:
+        return 'web';
+    }
   }
 
   async resolveOutboundChannel(

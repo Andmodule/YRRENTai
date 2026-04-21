@@ -474,6 +474,7 @@
     "tasks": "Tasks",
     "operations": "Operations",
     "calendar": "Calendar",
+    "automations": "Automations",
     "chat": "Chat",
     "calls": "Calls",
     "kbImprovement": "Agent improvement",
@@ -485,6 +486,223 @@
     "signOut": "Sign out",
     "collapseSidebar": "Collapse sidebar",
     "expandSidebar": "Expand sidebar"
+  },
+  "automations": {
+    "nav": {
+      "sectionTitle": "Automations",
+      "openMenu": "Open automations menu",
+      "mobileTitle": "Automations",
+      "mobileDescription": "Choose a category",
+      "overview": "Overview",
+      "operations": "Logistics & cleaning",
+      "intentTest": "Intent simulation",
+      "guests": "Guest journey",
+      "smartHome": "Smart home",
+      "revenue": "Revenue",
+      "support": "Support"
+    },
+    "overview": {
+      "title": "Automations overview",
+      "subtitle": "Event-driven rules that keep operations, guests, and revenue on track.",
+      "hint": "Start with logistics and cleaning rules — they cover delays, buffers, and on-site handoffs.",
+      "ctaOperations": "Open logistics & cleaning",
+      "ctaIntentTest": "Simulate AI intent"
+    },
+    "intentTest": {
+      "title": "Test AI intent (dry run)",
+      "subtitle": "Send a sample guest or staff message and see which automation intent the model would choose — without saving chat or firing real automations.",
+      "hintTitle": "How it works",
+      "hintBody": "Uses the same API as production classification. In development it is always available; on staging/production the server must allow testing (see backend AI_INTENT_TESTING_ALLOW).",
+      "propertyLabel": "Property",
+      "pickProperty": "Select a property…",
+      "loadingProperties": "Loading properties…",
+      "roleLabel": "Sender role",
+      "roleHint": "SYSTEM and MANAGER messages are skipped by the real worker (no LLM).",
+      "messageLabel": "Message text",
+      "messagePlaceholder": "Type or pick a sample below…",
+      "skipGateLabel": "Ignore “no active rules” gate",
+      "skipGateHint": "When on, the LLM runs even if this property has zero active automation rules (matches the test API default).",
+      "run": "Run simulation",
+      "running": "Running…",
+      "reloadExamples": "Reload samples",
+      "loadingExamples": "Loading…",
+      "samplesTitle": "Quick samples",
+      "resultTitle": "Result",
+      "resultEmpty": "Run a simulation to see intent, timing, and whether an automation would execute.",
+      "fieldActiveRules": "Active rules on property",
+      "fieldWouldEmit": "Would emit ai.intent.detected",
+      "fieldIntent": "Detected intent",
+      "fieldLatency": "Latency / model",
+      "fieldRule": "Matching active rule",
+      "fieldExecutor": "Executor implemented in backend",
+      "yes": "Yes",
+      "no": "No",
+      "rawJson": "Full JSON",
+      "forbidden": "This endpoint is disabled on the server (not development and AI_INTENT_TESTING_ALLOW is not set).",
+      "errorGeneric": "Request failed. Check login and network."
+    },
+    "roadmap": {
+      "sectionHint": "Roadmap: event keys from the automation dictionary. No execution or property rules here yet — placeholders for incremental delivery.",
+      "guests": {
+        "earlyCheckin": {
+          "title": "Early check-in request",
+          "description": "Check calendar → surcharge invoice or polite decline when the unit is not ready."
+        },
+        "lateCheckout": {
+          "title": "Late check-out request",
+          "description": "Same flow as early check-in: availability, fee, and staff / cleaning impact."
+        },
+        "bookingExtension": {
+          "title": "Stay extension",
+          "description": "Verify availability → send payment link → extend housekeeping and access windows."
+        },
+        "cancellation": {
+          "title": "Last-minute cancellation",
+          "description": "Cancel cleaning / transfer tasks and reopen dates in the channel manager."
+        },
+        "luggageStorage": {
+          "title": "Luggage storage",
+          "description": "Send locker or office instructions; align with access policy."
+        }
+      },
+      "smartHome": {
+        "codeGen": {
+          "title": "Smart lock PIN (pre-arrival)",
+          "description": "Generate a time-bound code before check-in and deliver it to the guest."
+        },
+        "firstEntry": {
+          "title": "First PIN entry",
+          "description": "Mark as checked in, trigger welcome message and optional occupancy rules."
+        },
+        "noiseAlert": {
+          "title": "Noise sensor alert",
+          "description": "Sensor threshold exceeded → automated call or message with house rules reminder."
+        },
+        "acLeftOn": {
+          "title": "HVAC left on after departure",
+          "description": "Guest checked out (lock signal) but climate still running → remote off command."
+        }
+      },
+      "revenue": {
+        "depositRequired": {
+          "title": "Security deposit reminder",
+          "description": "N days before arrival → remind to pay or authorize the deposit hold."
+        },
+        "depositRefund": {
+          "title": "Deposit release",
+          "description": "After checkout + quiet period with no incidents → auto-release the hold."
+        },
+        "upsell": {
+          "title": "Gap-night upsell",
+          "description": "Empty night between bookings → offer current guest an extension at a promo rate."
+        },
+        "paymentFailed": {
+          "title": "Payment failed",
+          "description": "Card error → new payment link and optional manager task."
+        }
+      },
+      "support": {
+        "reviewRequest": {
+          "title": "Review request",
+          "description": "Day after checkout, if sentiment was positive → ask for a public review."
+        },
+        "badReview": {
+          "title": "Low public rating",
+          "description": "Score under threshold → urgent manager task to respond and recover."
+        },
+        "faqWifi": {
+          "title": "FAQ: Wi‑Fi",
+          "description": "Instant send of SSID / password and basic troubleshooting."
+        },
+        "faqParking": {
+          "title": "FAQ: Parking",
+          "description": "Map, pricing, and guest spots without opening a ticket."
+        },
+        "faqTrash": {
+          "title": "FAQ: Trash & recycling",
+          "description": "Pickup days, chute location, and sorting rules."
+        },
+        "faqShops": {
+          "title": "FAQ: Nearby shops",
+          "description": "Curated list for groceries, pharmacy, and late-night options."
+        },
+        "faqAppliances": {
+          "title": "FAQ: Appliances",
+          "description": "Washer, oven, AC — short how-to links or embedded instructions."
+        }
+      }
+    },
+    "operations": {
+      "title": "Logistics & cleaning",
+      "subtitle": "Rules for housekeeping timing, drivers, and stock signals.",
+      "catalogHint": "Every scenario appears below. Enable supported rules for this property; others stay visible as roadmap items.",
+      "badgeNotConfigured": "Not configured",
+      "badgeComingSoon": "Coming soon",
+      "enableForProperty": "Enable for this property",
+      "creating": "Saving…",
+      "roadmapNote": "On the roadmap",
+      "propertyLabel": "Property",
+      "pickProperty": "Select a property…",
+      "loadingProperties": "Loading properties…",
+      "selectPropertyHint": "Choose a property to load and manage automation rules from the database.",
+      "addCleanerRule": "Add “cleaner delayed” rule",
+      "addingRule": "Adding…",
+      "addRuleSuccess": "Rule created",
+      "addRuleConflict": "This rule already exists for the property. List refreshed.",
+      "addRuleError": "Could not create the rule. Try again.",
+      "loadError": "We could not load automation rules. Try again.",
+      "retry": "Retry",
+      "emptyTitle": "No rules yet for this property",
+      "emptyDescription": "Add the cleaner-delay rule to test AI intent → automation, or insert rules via API / seed script."
+    },
+    "placeholders": {
+      "guestsTitle": "Guest journey",
+      "guestsBody": "Check-in messages, door codes, and upsell flows will live here.",
+      "smartHomeTitle": "Smart home",
+      "smartHomeBody": "Locks, thermostats, and device alerts will be configurable here.",
+      "revenueTitle": "Revenue",
+      "revenueBody": "Pricing guards, OTA sync, and payout reminders will appear here.",
+      "supportTitle": "Support",
+      "supportBody": "Escalations to humans and SLA-based routing will be managed here."
+    },
+    "rules": {
+      "generic": {
+        "title": "Automation: {key}",
+        "description": "Rule key {key}. Add translations under automations.rules when this type gets a dedicated card."
+      },
+      "active": "Active",
+      "inactive": "Off",
+      "configure": "Edit",
+      "toggleError": "Could not update the rule. Please try again.",
+      "cleanerDelayed": {
+        "title": "Cleaner delayed",
+        "description": "If a cleaner is late, notify a backup group and cap wait time before reassigning."
+      },
+      "turnoverBuffer": {
+        "title": "Low turnover buffer",
+        "description": "Warn when the gap between checkout and next check-in is tighter than your safe buffer."
+      },
+      "linenShortage": {
+        "title": "Predicted linen shortage",
+        "description": "Forecast linen demand from upcoming stays and flag shortages before they happen."
+      },
+      "driverNoShow": {
+        "title": "Driver no-show",
+        "description": "Trigger reassignment when a driver misses pickup without marking en route."
+      }
+    },
+    "sheet": {
+      "title": "Rule settings",
+      "description": "Adjust how this automation behaves. Changes apply to all properties unless scoped later.",
+      "save": "Save",
+      "cancel": "Cancel",
+      "saveSuccess": "Rule updated",
+      "saveError": "Could not save changes",
+      "fields": {
+        "notifyManager": "Notify manager",
+        "delayThreshold": "Max delay (minutes)"
+      }
+    }
   },
   "staff": {
     "title": "Staff",
@@ -848,7 +1066,11 @@
       "periodSheetTitle": "Due date range",
       "periodSheetDescription": "Only tasks whose due date falls in this range are shown.",
       "periodApply": "Apply",
-      "periodClear": "Clear"
+      "periodClear": "Clear",
+      "listFilterToggleAria": "Filter by status and priority",
+      "listFilterReset": "Reset",
+      "listFilterSheetTitle": "Status & priority",
+      "listFilterSheetDescription": "Choose which tasks appear in the list and board."
     },
     "viewModes": {
       "list": "List",
@@ -864,9 +1086,6 @@
       "tabsAria": "Tasks or supply queue",
       "tabTasks": "Tasks",
       "tabSupply": "Supply & logistics",
-      "supplyBannerTitle": "Supply summary needs attention",
-      "supplyBannerHint": "{count} item(s) in the queue — open the tab for the matrix and handoff.",
-      "supplyBannerCta": "Open supply",
       "supplySubViewAria": "Matrix summary or request feed",
       "matrixTab": "Summary",
       "routesTab": "Routes",
@@ -893,8 +1112,6 @@
       "matrixHandoffSheetCancel": "Cancel",
       "matrixHandoffSheetConfirm": "Assign and hand over",
       "matrixHandoffDriverLabel": "Driver / performer",
-      "matrixHandoffDriverPlaceholder": "Choose who will deliver",
-      "matrixHandoffSheetNote": "Works for catalog-mapped rows and raw lines. If you only need a draft route without a driver yet, use «Build delivery route».",
       "matrixHandoffNeedDriver": "Select a team member.",
       "matrixHandoffSuccessWithDriver": "Route created and driver assigned",
       "matrixHandoffSuccessDriverReassigned": "Driver reassigned for this route",
@@ -930,6 +1147,17 @@
       "matrixCellCheckboxAria": "Select {item} for {place}",
       "matrixSelectAll": "Select all",
       "matrixDeselectAll": "Clear selection",
+      "matrixDetailEntryTask": "Task: {title}",
+      "matrixDetailEntryIncident": "Incident: {text}",
+      "matrixDetailEntryProperty": "Object: {title}",
+      "matrixDetailEntryOther": "Staff report",
+      "matrixDetailRemoveFromPoolAria": "Remove this line from the pool",
+      "matrixDetailRemoveLineConfirmTitle": "Remove from pool?",
+      "matrixDetailRemoveLineConfirmDescription": "This permanently removes the unassigned supply line from the summary. Source: {contextLine}.",
+      "matrixDetailRemoveLineConfirm": "Remove",
+      "matrixRemovePoolLinesSuccess": "Removed {count} line(s).",
+      "matrixRemovePoolLinesError": "Could not remove lines.",
+      "matrixCellDetailEmpty": "No messages for this selection.",
       "matrixRowCheckboxAria": "Select {name} for handoff",
       "matrixRowCheckboxRawAria": "Select raw row «{name}» for driver handoff (no catalog match)",
       "catalogPreviewTitle": "Catalog items",
@@ -1033,6 +1261,11 @@
         "hint": "Describe what to deliver. Voice or text uses the same AI pipeline as staff reports.",
         "propertyLabel": "Property",
         "propertyPlaceholder": "Select property",
+        "propertyPickerTitle": "Choose property",
+        "propertyPickerHint": "Tap a row to select. Use search to filter the list.",
+        "addPropertyAria": "Choose property",
+        "propertySearchPlaceholder": "Search by name or address…",
+        "propertySearchNoResults": "No properties match this search.",
         "propertyRequired": "Select a property first.",
         "textLabel": "Request",
         "textPlaceholder": "e.g. Bring 2 towel sets and toilet paper…",
@@ -1063,6 +1296,7 @@
       "kebabAria": "More actions",
       "menuSearch": "Search",
       "menuDateRange": "Due date range",
+      "menuListFilters": "Status & priority",
       "menuView": "View",
       "viewSheetTitle": "Choose view",
       "backAria": "Back",
@@ -1180,6 +1414,16 @@
         "statusSelectAria": "Incident status",
         "relatedTasksTitle": "Linked tasks",
         "relatedTasksEmpty": "None yet.",
+        "relatedTasksAwaitingHint": "Assign a responsible person and create a task.",
+        "relatedTasksAssignButton": "Assign",
+        "relatedTasksAssignDialogTitle": "Assign technician",
+        "relatedTasksAssignDialogDescription": "The staff member will receive a linked task for this incident.",
+        "relatedTasksAssignStaffLabel": "Technician",
+        "relatedTasksAssignPlaceholder": "Choose staff…",
+        "relatedTasksAssignSubmit": "Assign",
+        "relatedTasksAssignCancel": "Cancel",
+        "relatedTasksAssignSuccess": "Technician assigned",
+        "relatedTasksAssignNoStaff": "No staff with the technician role in the account.",
         "reporterInlinePrefix": "Reported by",
         "createTaskCta": "Create task",
         "createTaskAria": "Create linked task",
