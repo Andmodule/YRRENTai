@@ -104,18 +104,20 @@ export const TaskListRow = memo(function TaskListRow({
     [onOpen, task],
   );
 
+  /**
+   * Leading dot = **exceptions only** (urgent priority or issue status). Status/priority detail stays in
+   * `TaskStatusBadge` and row tint — avoids a third parallel color scale in the same row.
+   */
   const priorityDot = (() => {
+    const dotFrame =
+      'size-[5px] shrink-0 rounded-full ring-1 ring-card/80 dark:ring-slate-900/80';
     if (task.priority === 'urgent') {
-      return (
-        <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-rose-500 shadow-sm" title={t('priority.urgent')} />
-      );
+      return <span className={cn(dotFrame, 'bg-rose-500')} title={t('priority.urgent')} />;
     }
-    return (
-      <span
-        className="h-2.5 w-2.5 shrink-0 rounded-full bg-muted-foreground/25 dark:bg-muted-foreground/40"
-        title={t('priority.normal')}
-      />
-    );
+    if (task.status === 'issue') {
+      return <span className={cn(dotFrame, 'bg-amber-500')} title={t('status.issue')} />;
+    }
+    return <span className={cn(dotFrame, 'pointer-events-none opacity-0')} aria-hidden />;
   })();
 
   const checklist = task.checklistSummary;

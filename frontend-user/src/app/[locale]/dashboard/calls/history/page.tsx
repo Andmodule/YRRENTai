@@ -284,10 +284,10 @@ export default function CallsHistoryPage() {
             <Filter className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
             <input type="search" placeholder="Номер…" value={search}
               onChange={(e) => set({ search: e.target.value || undefined, page: '0' })}
-              className="h-6 w-full rounded-lg border border-input bg-background pl-6 pr-2 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary/50 focus:outline-none dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-200" />
+              className="h-6 w-full rounded-lg border border-input bg-input-fill pl-6 pr-2 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary/50 focus:outline-none dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-200" />
           </div>
           <select value={provider} onChange={(e) => set({ provider: e.target.value || undefined, page: '0' })}
-            className="h-6 rounded-lg border border-input bg-background px-1.5 text-[10px] text-muted-foreground focus:outline-none dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-400">
+            className="h-6 rounded-lg border border-input bg-input-fill px-1.5 text-[10px] text-muted-foreground focus:outline-none dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-400">
             <option value="">Провайдер</option>
             <option value="retell">Retell</option>
             <option value="vapi">Vapi</option>

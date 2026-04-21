@@ -37,10 +37,16 @@ const channelLabelKeys: Record<Reservation['channel'], string> = {
 };
 
 /** Sticky footer for booking modal — keep outside scroll area. */
-export function ReservationDetailPanelFooter({ reservation }: { reservation: Reservation }) {
+export function ReservationDetailPanelFooter({
+  reservation,
+  onCreateTask,
+}: {
+  reservation: Reservation;
+  /** Открыть тот же сценарий, что «+» у объекта на доске задач (SmartCreateSheet), с привязкой к брони. */
+  onCreateTask: (reservation: Reservation) => void;
+}) {
   const t = useTranslations('calendar');
   const chatLabel = t('openChatShort');
-  const taskHref = `/dashboard/tasks/new?bookingId=${encodeURIComponent(reservation.uuid)}&propertyId=${encodeURIComponent(reservation.propertyId)}`;
 
   return (
     <div className="flex flex-row gap-2">
@@ -65,11 +71,14 @@ export function ReservationDetailPanelFooter({ reservation }: { reservation: Res
           {chatLabel}
         </Button>
       )}
-      <Button asChild variant="outline" className="min-h-10 min-w-0 flex-1 px-2 text-sm sm:px-4 sm:text-base">
-        <Link href={taskHref} className="inline-flex min-w-0 items-center justify-center gap-1.5 truncate sm:gap-2">
-          <ClipboardList className="h-4 w-4 shrink-0" aria-hidden />
-          <span className="truncate">{t('createTask')}</span>
-        </Link>
+      <Button
+        type="button"
+        variant="outline"
+        className="min-h-10 min-w-0 flex-1 px-2 text-sm sm:px-4 sm:text-base"
+        onClick={() => onCreateTask(reservation)}
+      >
+        <ClipboardList className="h-4 w-4 shrink-0" aria-hidden />
+        <span className="truncate">{t('createTask')}</span>
       </Button>
     </div>
   );

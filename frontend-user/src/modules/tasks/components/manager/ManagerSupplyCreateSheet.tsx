@@ -1,20 +1,21 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { isAxiosError } from 'axios';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { normalizePendingSupplyEvent } from '../../hooks/usePendingSupplyInterpretations';
 import type { PendingSupplyInterpretationEvent } from '../../types';
 import { useLocale, useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { Loader2, Mic, X } from 'lucide-react';
+import { Loader2, Mic, Plus, Search, X } from 'lucide-react';
 import { Drawer as VaulDrawer } from 'vaul';
 import { cn } from '@/lib/utils';
 import { DrawerOverlay } from '@/components/ui/drawer';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Select } from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
+import { ResponsiveModal, ResponsiveModalContent } from '@/components/ui/responsive-modal';
 import { useMatchMedia } from '@/hooks/use-match-media';
 import { useProperties } from '@/hooks/use-properties';
 import { apiClient } from '@/lib/api/client';
@@ -74,6 +75,23 @@ export function ManagerSupplyCreateSheet({
   const [phase, setPhase] = useState<Phase>('voice');
   const [propertyId, setPropertyId] = useState<string>('');
   const [text, setText] = useState('');
+  const [propertyPickerOpen, setPropertyPickerOpen] = useState(false);
+  const [propertySearchQuery, setPropertySearchQuery] = useState('');
+
+  const selectedProperty = useMemo(
+    () => properties.find((p) => p.id === propertyId) ?? null,
+    [properties, propertyId],
+  );
+
+  const filteredPickerProperties = useMemo(() => {
+    const q = propertySearchQuery.trim().toLowerCase();
+    return properties.filter((p) => {
+      if (!q) return true;
+      const name = (p.name || '').toLowerCase();
+      const addr = [p.city, p.address].filter(Boolean).join(' ').toLowerCase();
+      return name.includes(q) || addr.includes(q);
+    });
+  }, [properties, propertySearchQuery]);
 
   const { mutate: submitMutate, isPending: isSubmitting } = useMutation({
     mutationFn: async () => {
@@ -160,6 +178,8 @@ export function ManagerSupplyCreateSheet({
       setPhase('voice');
       setPropertyId('');
       setText('');
+      setPropertyPickerOpen(false);
+      setPropertySearchQuery('');
       resetRecording();
     }
   }, [open, resetRecording]);
@@ -187,7 +207,46 @@ export function ManagerSupplyCreateSheet({
   const propertyOk = propertyId.trim().length > 0;
   const canSubmit = propertyOk && text.trim().length >= 3 && !isSubmitting;
 
+  const propertyField = (
+    <div className="space-y-2">
+      <Label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+        {t('propertyLabel')}
+      </Label>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {propertyId && selectedProperty ? (
+          <button
+            type="button"
+            onClick={() => setPropertyId('')}
+            className={cn(
+              'inline-flex max-w-full min-w-0 items-center rounded-full border border-primary/40 bg-primary/10 px-2.5 py-1.5 text-left text-[11px] font-normal text-foreground transition-colors',
+              'hover:bg-primary/15',
+            )}
+          >
+            <span className="truncate">{selectedProperty.name || selectedProperty.address || selectedProperty.id}</span>
+          </button>
+        ) : null}
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          className="h-7 w-7 shrink-0 rounded-full border-dashed border-primary/35 text-primary hover:bg-primary/10"
+          onClick={() => {
+            setPropertySearchQuery('');
+            setPropertyPickerOpen(true);
+          }}
+          aria-label={t('addPropertyAria')}
+        >
+          <Plus className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden />
+        </Button>
+      </div>
+      {!propertyOk ? (
+        <p className="text-xs font-normal text-amber-600 dark:text-amber-400">{t('propertyRequired')}</p>
+      ) : null}
+    </div>
+  );
+
   return (
+    <>
     <VaulDrawer.Root open={open} onOpenChange={onOpenChange} direction={isDesktop ? 'right' : 'bottom'} modal>
       <VaulDrawer.Portal>
         <DrawerOverlay />
@@ -225,25 +284,7 @@ export function ManagerSupplyCreateSheet({
               {phase === 'voice' ? (
                 <div className="relative z-0 flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">
                   <div className="space-y-4 px-5 py-4 sm:px-6">
-                    <div className="space-y-2">
-                      <Label htmlFor="supply-create-property">{t('propertyLabel')}</Label>
-                      <Select
-                        id="supply-create-property"
-                        className="w-full"
-                        value={propertyId}
-                        onChange={(e) => setPropertyId(e.target.value)}
-                      >
-                        <option value="">{t('propertyPlaceholder')}</option>
-                        {properties.map((p: Property) => (
-                          <option key={p.id} value={p.id}>
-                            {p.name || p.address || p.id}
-                          </option>
-                        ))}
-                      </Select>
-                      {!propertyOk ? (
-                        <p className="text-xs text-amber-600 dark:text-amber-400">{t('propertyRequired')}</p>
-                      ) : null}
-                    </div>
+                    {propertyField}
 
                     <div
                       className={cn(
@@ -322,22 +363,7 @@ export function ManagerSupplyCreateSheet({
             </>
           ) : (
             <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4 sm:px-6">
-              <div className="space-y-2">
-                <Label htmlFor="supply-review-property">{t('propertyLabel')}</Label>
-                <Select
-                  id="supply-review-property"
-                  className="w-full"
-                  value={propertyId}
-                  onChange={(e) => setPropertyId(e.target.value)}
-                >
-                  <option value="">{t('propertyPlaceholder')}</option>
-                  {properties.map((p: Property) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name || p.address || p.id}
-                    </option>
-                  ))}
-                </Select>
-              </div>
+              {propertyField}
               <div className="mt-4 space-y-2">
                 <Label htmlFor="supply-text">{t('textLabel')}</Label>
                 <Textarea
@@ -378,5 +404,71 @@ export function ManagerSupplyCreateSheet({
         </VaulDrawer.Content>
       </VaulDrawer.Portal>
     </VaulDrawer.Root>
+
+    <ResponsiveModal
+      open={propertyPickerOpen}
+      onOpenChange={(o) => {
+        setPropertyPickerOpen(o);
+        if (!o) setPropertySearchQuery('');
+      }}
+    >
+      <ResponsiveModalContent
+        title={t('propertyPickerTitle')}
+        description={t('propertyPickerHint')}
+        className="tasks-theme max-w-md"
+        bodyClassName="flex min-h-0 flex-col gap-3 px-5 pb-4 pt-2 sm:px-6"
+      >
+        <div className="relative shrink-0">
+          <Search
+            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+            aria-hidden
+          />
+          <Input
+            value={propertySearchQuery}
+            onChange={(e) => setPropertySearchQuery(e.target.value)}
+            placeholder={t('propertySearchPlaceholder')}
+            autoComplete="off"
+            autoFocus
+            className="h-10 pl-9"
+            aria-label={t('propertySearchPlaceholder')}
+          />
+        </div>
+        <div
+          className="min-h-[min(12rem,35dvh)] max-h-[min(50dvh,22rem)] overflow-y-auto overscroll-contain rounded-lg border border-border/60 bg-muted/20"
+          role="listbox"
+          aria-label={t('propertyPickerTitle')}
+        >
+          {filteredPickerProperties.length === 0 ? (
+            <p className="px-3 py-8 text-center text-sm font-normal text-muted-foreground">
+              {t('propertySearchNoResults')}
+            </p>
+          ) : (
+            <ul className="divide-y divide-border/50 p-1">
+              {filteredPickerProperties.map((p: Property) => (
+                <li key={p.id}>
+                  <button
+                    type="button"
+                    className="flex w-full flex-col items-start gap-0.5 rounded-md px-3 py-2.5 text-left transition-colors hover:bg-muted/60"
+                    onClick={() => {
+                      setPropertyId(p.id);
+                      setPropertyPickerOpen(false);
+                      setPropertySearchQuery('');
+                    }}
+                  >
+                    <span className="text-sm font-normal text-foreground">{p.name || p.address || p.id}</span>
+                    {[p.city, p.address].filter((x) => x && x !== '-').length > 0 ? (
+                      <span className="line-clamp-2 text-xs font-normal text-muted-foreground">
+                        {[p.city, p.address].filter((x) => x && x !== '-').join(', ')}
+                      </span>
+                    ) : null}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </ResponsiveModalContent>
+    </ResponsiveModal>
+    </>
   );
 }

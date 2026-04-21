@@ -6,7 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useLocale, useTranslations } from 'next-intl';
-import { format, addDays } from 'date-fns';
+import { format, addDays, parseISO } from 'date-fns';
 import { toast } from 'sonner';
 import {
   ArrowDownLeft,
@@ -23,6 +23,7 @@ import {
 import { Drawer as VaulDrawer } from 'vaul';
 import { cn } from '@/lib/utils';
 import { DrawerOverlay } from '@/components/ui/drawer';
+import { ModalNestedPortalProvider } from '@/components/ui/modal-nested-portal';
 import { ResponsiveModal, ResponsiveModalContent } from '@/components/ui/responsive-modal';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -105,7 +106,7 @@ const pillClass = (active: boolean) =>
   );
 
 const dateFieldClass =
-  'h-10 w-full min-w-0 rounded-md border border-input bg-background px-2.5 py-1.5 text-sm shadow-sm outline-none transition-colors [color-scheme:dark] focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary/20';
+  'h-10 w-full min-w-0 rounded-md border border-input bg-input-fill px-2.5 py-1.5 text-sm shadow-sm outline-none transition-colors [color-scheme:dark] focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary/20';
 
 const INCIDENT_TYPE_OPTIONS = [
   { value: 'damage' as const, labelKey: 'typeDamage' as const },
@@ -139,6 +140,12 @@ type SmartCreateSheetProps = {
   startWithManualForm?: boolean;
   /** When `startWithManualForm` is true: which flow to open (set from pencil menu). */
   manualEntityTab?: 'task' | 'incident';
+  /** Календарь → «Задача»: объект и срок по выезду, `reservationId` в POST /tasks. */
+  bookingLink?: {
+    reservationUuid: string;
+    propertyId: string;
+    checkOut?: string;
+  } | null;
 };
 
 /** Call `startRecordingFromUserGesture` synchronously from the same pointer/click handler that opens the sheet (not from `useEffect`). iOS Safari requires this for `getUserMedia`. */
@@ -263,7 +270,15 @@ const defaultForm = (): SmartFormValues => ({
 });
 
 export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSheetProps>(function SmartCreateSheet(
-  { open, onOpenChange, propertyId, incidentPrefill, startWithManualForm = false, manualEntityTab = 'task' },
+  {
+    open,
+    onOpenChange,
+    propertyId,
+    incidentPrefill,
+    startWithManualForm = false,
+    manualEntityTab = 'task',
+    bookingLink = null,
+  },
   ref,
 ) {
   const t = useTranslations('tasks.voiceCreate');
@@ -313,7 +328,6 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
     watch,
     reset,
     setValue,
-    getValues,
     formState: { errors },
   } = form;
 
@@ -366,16 +380,6 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
     }
     return properties[0]?.id ?? null;
   }, [contextPropertyId, properties]);
-
-  /** Incident: suggest a default property only when none selected (no longer forcing single id). */
-  useEffect(() => {
-    if (entityTab !== 'incident') return;
-    const ids = getValues('propertyIds');
-    if (ids.length === 0) {
-      const fp = resolveGeneralPropertyId();
-      if (fp) setValue('propertyIds', [fp], { shouldDirty: true });
-    }
-  }, [entityTab, getValues, setValue, resolveGeneralPropertyId]);
 
   const [phase, setPhase] = useState<FlowPhase>('voice');
 
@@ -506,11 +510,28 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
     } else if (dispatchPrefill?.uuid) {
       /* Задача по инциденту: форма уже заполнена в onAssignTechnicianAfterIncident — не сбрасывать в голос. */
       return;
+    } else if (bookingLink?.reservationUuid?.trim() && bookingLink.propertyId?.trim()) {
+      const due =
+        bookingLink.checkOut?.trim() &&
+        !Number.isNaN(Date.parse(bookingLink.checkOut))
+          ? format(parseISO(bookingLink.checkOut), 'yyyy-MM-dd')
+          : format(addDays(new Date(), 1), 'yyyy-MM-dd');
+      reset({
+        ...defaultForm(),
+        entityTab: 'task',
+        propertyIds: [bookingLink.propertyId],
+        type: 'checkout_cleaning',
+        title: tType('checkout_cleaning'),
+        dueDate: due,
+      });
+      setPhase('review');
+      resetRecording();
     } else if (startWithManualForm) {
       reset({
         ...defaultForm(),
         entityTab: manualEntityTab,
-        propertyIds: contextPropertyId ? [contextPropertyId] : [],
+        /** Ручной ввод с FAB: без предвыбранного объекта — пользователь жмёт «+» или «Общая задача». */
+        propertyIds: [],
       });
       setPhase('review');
       resetRecording();
@@ -536,6 +557,10 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
     resetRecording,
     contextPropertyId,
     tTasks,
+    bookingLink?.reservationUuid,
+    bookingLink?.propertyId,
+    bookingLink?.checkOut,
+    tType,
   ]);
 
   const handleStopRecording = useCallback(async () => {
@@ -571,7 +596,7 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
         assigneeId: values.assigneeId?.trim() ? values.assigneeId : null,
         dueDate: values.dueDate!,
         dueTime: null,
-        reservationId: null,
+        reservationId: bookingLink?.reservationUuid?.trim() || null,
         notes: values.notes.trim() || undefined,
         ...(incidentLinkUuid ? { incidentId: incidentLinkUuid } : {}),
       });
@@ -738,12 +763,12 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
             'data-[state=open]:animate-in data-[state=closed]:animate-out',
             'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
             // Solid shell: avoid translucent bg-* /50 classes so the list does not show through.
-            phase === 'review' && entityTab === 'incident' && 'border-t-2 border-red-600 dark:border-red-500',
             isDesktop
               ? 'inset-y-0 right-0 top-0 bottom-0 left-auto h-dvh max-h-dvh w-[min(26rem,calc(100svw-0.5rem))] rounded-none rounded-l-xl border-l data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right'
               : 'inset-x-0 bottom-0 max-h-[min(92dvh,92vh)] rounded-t-xl data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom',
           )}
         >
+          <ModalNestedPortalProvider>
           {phase === 'voice' || phase === 'parsing' ? (
             <>
               {!isDesktop ? (
@@ -914,76 +939,26 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
                 <div className="relative z-[2] space-y-4">
                   {isIncidentDispatch ? (
                     <p className="text-xs text-muted-foreground">{tTasks('smartCreate.dispatchFromIncidentHint')}</p>
-                  ) : (
-                    <div className="flex w-full rounded-lg bg-muted/50 p-1">
-                      <button
-                        type="button"
-                        onClick={() => setValue('entityTab', 'task', { shouldValidate: true })}
-                        className={cn(
-                          'flex-1 rounded-md py-1.5 text-xs font-medium transition-colors',
-                          entityTab === 'task'
-                            ? 'bg-background text-foreground shadow-sm'
-                            : 'text-muted-foreground hover:text-foreground',
-                        )}
-                      >
-                        {tTasks('smartCreate.tabTask')}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setValue('entityTab', 'incident', { shouldValidate: true })}
-                        className={cn(
-                          'flex-1 rounded-md py-1.5 text-xs font-medium transition-colors',
-                          entityTab === 'incident'
-                            ? 'bg-background text-foreground shadow-sm'
-                            : 'text-muted-foreground hover:text-foreground',
-                        )}
-                      >
-                        {tTasks('smartCreate.tabIncident')}
-                      </button>
-                    </div>
-                  )}
+                  ) : null}
 
                   <div className="space-y-1.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <Label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                        {t('apartmentsLabel')}
-                      </Label>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon"
-                        disabled={
-                          !canAddAnotherProperty ||
-                          properties.length === 0 ||
-                          isIncidentDispatch
-                        }
-                        className="h-7 w-7 shrink-0 rounded-full border-dashed border-primary/35 text-primary hover:bg-primary/10"
-                        aria-label={t('addPropertyAria')}
-                        onClick={() => {
-                          setPropertySearchQuery('');
-                          setPropertyPickerOpen(true);
-                        }}
-                      >
-                        <Plus className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden />
-                      </Button>
-                    </div>
+                    <Label className="block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      {t('apartmentsLabel')}
+                    </Label>
                     <Controller
                       name="propertyIds"
                       control={control}
                       render={({ field }) => {
-                        const generalSelected = field.value.length === 0;
                         const selectedOnly = properties.filter((p: Property) => field.value.includes(p.id));
                         return (
-                          <div className="flex flex-wrap gap-1.5">
+                          <div className="flex flex-wrap items-center gap-1.5">
                             {entityTab === 'task' ? (
                               <button
                                 type="button"
                                 onClick={() => field.onChange([])}
                                 className={cn(
                                   'inline-flex max-w-full items-center gap-1 rounded-full border px-2.5 py-1.5 text-left text-[11px] font-medium transition-colors md:text-xs',
-                                  generalSelected
-                                    ? 'border-primary/50 bg-primary/10 text-foreground shadow-sm'
-                                    : 'border-border/60 text-muted-foreground hover:border-border hover:bg-muted/50 hover:text-foreground',
+                                  'border-border/60 text-muted-foreground hover:border-border hover:bg-muted/50 hover:text-foreground',
                                 )}
                               >
                                 {t('generalTaskChip')}
@@ -1014,6 +989,24 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
                                 </button>
                               );
                             })}
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              disabled={
+                                !canAddAnotherProperty ||
+                                properties.length === 0 ||
+                                isIncidentDispatch
+                              }
+                              className="h-7 w-7 shrink-0 rounded-full border-dashed border-primary/35 text-primary hover:bg-primary/10"
+                              aria-label={t('addPropertyAria')}
+                              onClick={() => {
+                                setPropertySearchQuery('');
+                                setPropertyPickerOpen(true);
+                              }}
+                            >
+                              <Plus className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden />
+                            </Button>
                           </div>
                         );
                       }}
@@ -1024,7 +1017,7 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
                   <Label htmlFor="voice-task-title" className="sr-only">
                     {t('titleLabel')}
                   </Label>
-                  <div className="relative rounded-lg border border-input bg-background shadow-sm transition-[box-shadow]">
+                  <div className="relative rounded-lg border border-input bg-input-fill shadow-sm transition-[box-shadow]">
                     <Input
                       id="voice-task-title"
                       {...titleRegister}
@@ -1217,6 +1210,7 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
               </div>
             </form>
           ) : null}
+          </ModalNestedPortalProvider>
         </VaulDrawer.Content>
       </VaulDrawer.Portal>
     </VaulDrawer.Root>

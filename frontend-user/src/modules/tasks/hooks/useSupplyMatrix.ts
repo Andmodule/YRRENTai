@@ -39,6 +39,12 @@ export function useSupplyMatrixLineDetail(requestLineIds: string[] | null, enabl
             quantity: string | null;
             unit: string | null;
             llmRawName: string | null;
+            targetType: string;
+            targetId: string;
+            targetSummary: string | null;
+            lineStatus: string;
+            deliveryRouteId: string | null;
+            canRemoveFromPool: boolean;
           }>;
         };
       }>('/tasks/manager/supply-matrix/detail-lines', { requestLineIds: requestLineIds ?? [] });
@@ -83,6 +89,22 @@ export function useSupplyMatrixMarkDelivered() {
   });
 }
 
+export function useSupplyMatrixRemovePoolLines() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (requestLineIds: string[]) => {
+      const res = await apiClient.post<{ data: { deleted: number } }>('/tasks/manager/supply-matrix/remove-pool-lines', {
+        requestLineIds,
+      });
+      return res.data.data;
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: [...MANAGER_SUPPLY_MATRIX_ROOT] });
+      void queryClient.invalidateQueries({ queryKey: ['tasks', 'manager-supply-interpretations'] });
+    },
+  });
+}
+
 export function useSupplyCatalogItems(enabled = true) {
   return useQuery({
     queryKey: ['tasks', 'manager-supply-catalog'],
@@ -95,6 +117,8 @@ export function useSupplyCatalogItems(enabled = true) {
       return res.data.data.items;
     },
     enabled,
+    staleTime: 120_000,
+    refetchOnWindowFocus: false,
   });
 }
 

@@ -82,7 +82,7 @@ export function InboundSenderFilterSettingsPage() {
                 <p className="text-sm text-muted-foreground">{t('allowedHostsHint')}</p>
                 <textarea
                   id="inbound-hosts"
-                  className="min-h-[140px] w-full max-w-2xl rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="min-h-[140px] w-full max-w-2xl rounded-md border border-input bg-input-fill px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   value={hostsText}
                   onChange={(e) => setHostsText(e.target.value)}
                   spellCheck={false}

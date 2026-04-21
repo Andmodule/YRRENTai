@@ -7,7 +7,7 @@ import { useTranslations } from 'next-intl';
 import { format, parseISO } from 'date-fns';
 import { ru, enUS } from 'date-fns/locale';
 import { useLocale } from 'next-intl';
-import { ChevronDown, ChevronRight, Loader2, Plus } from 'lucide-react';
+import { ChevronDown, ChevronRight, Loader2, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -23,7 +23,11 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
 import { useMatchMedia } from '@/hooks/use-match-media';
-import { useSupplyMatrix, useSupplyMatrixLineDetail } from '../../hooks/useSupplyMatrix';
+import {
+  useSupplyMatrix,
+  useSupplyMatrixLineDetail,
+  useSupplyMatrixRemovePoolLines,
+} from '../../hooks/useSupplyMatrix';
 import { useSupplyMatrixCollapsedSections } from '../../hooks/useSupplyMatrixCollapsedSections';
 import {
   useAssignDeliveryRouteDriver,
@@ -34,7 +38,8 @@ import {
 import { DeliveryRouteDetailBody } from './delivery-route-detail-body';
 import { ManagerSupplyDeliveryRoutesSection } from './ManagerSupplyDeliveryRoutesSection';
 import { usePendingSupplyInterpretations } from '../../hooks/usePendingSupplyInterpretations';
-import type { PendingSupplyInterpretationEvent, SupplyMatrixRow } from '../../types';
+import { AssigneePickerField } from '../shared/AssigneePickerField';
+import type { PendingSupplyInterpretationEvent, StaffMember, SupplyMatrixRow } from '../../types';
 
 /** Portaled modal — same teal primary as task detail / matrix actions (not global blue). */
 const ROUTE_REASSIGN_PORTAL_STYLE = {
@@ -188,11 +193,11 @@ function MatrixLlmProcessingEmbeddedRow({
     >
       <Loader2 className="h-5 w-5 shrink-0 animate-spin text-primary" aria-hidden />
       <div className="min-w-0 flex-1">
-        <p className="font-medium text-foreground">{truncateMatrixText(event.textRaw, 220)}</p>
+        <p className="font-normal text-foreground">{truncateMatrixText(event.textRaw, 220)}</p>
         {event.llmIntent?.trim() ? (
           <p className="mt-0.5 text-sm text-muted-foreground">{event.llmIntent.trim()}</p>
         ) : null}
-        <p className="mt-1 text-xs font-medium text-primary">{t('matrixProcessingStatus')}</p>
+        <p className="mt-1 text-xs font-normal text-primary">{t('matrixProcessingStatus')}</p>
       </div>
     </div>
   );
@@ -282,7 +287,7 @@ export function ManagerSupplyMatrixView({
     return (
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-[11px] text-muted-foreground">{t('deliveryRouteResponsibleLabel')}</span>
-        <span className="text-sm font-medium text-foreground">
+        <span className="text-sm font-normal text-foreground">
           {routeDetailData.driverName?.trim() || t('deliveryRouteNoDriver')}
         </span>
         {canReassign ? (
@@ -352,6 +357,12 @@ export function ManagerSupplyMatrixView({
   );
   /** Пока нет ответа — спиннер; пустой массив — не крутить при refetch. */
   const matrixCellDetailBodyLoading = Boolean(drawerLineIds?.length) && detailLoading && detailLines === undefined;
+
+  const [lineDeleteConfirm, setLineDeleteConfirm] = useState<{
+    requestLineId: string;
+    contextLine: string;
+  } | null>(null);
+  const removePoolLinesMutation = useSupplyMatrixRemovePoolLines();
 
   const sortedRows = useMemo(() => {
     if (!rows?.length) return [];
@@ -532,6 +543,8 @@ export function ManagerSupplyMatrixView({
       const collapsePropKey =
         routeContextId != null ? `supply-onroute-${routeContextId}-prop-${group.propertyId}` : null;
       const inRoute = Boolean(routeContextId && collapsePropKey);
+      const routeCardOpen =
+        inRoute && collapsePropKey ? collapsedById[collapsePropKey] !== true : false;
 
       const llmBlock =
         group.pendingLlmEvents && group.pendingLlmEvents.length > 0 ? (
@@ -562,7 +575,6 @@ export function ManagerSupplyMatrixView({
           <div className="divide-y divide-border/70 dark:divide-border/50">
           {group.items.map(({ row, cell, key }) => {
             const fs = cell.fulfillmentStatus ?? row.fulfillmentStatus ?? 'pending';
-            const isCatalog = Boolean(row.supplyItemId);
             const checked = selectedCellKeys.has(key);
             const qtyLabel = qtyBadgeLabel(cell, row, fs);
             const hideCellCheckbox = fs === 'in_delivery' || fs === 'delivered';
@@ -601,7 +613,7 @@ export function ManagerSupplyMatrixView({
                 )}
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
-                    <span className="text-[13px] font-medium leading-snug text-foreground sm:text-sm">
+                    <span className="text-[13px] font-normal leading-snug text-foreground sm:text-sm">
                       {row.displayName}
                     </span>
                     {qtyLabel != null ? (
@@ -617,9 +629,6 @@ export function ManagerSupplyMatrixView({
                     <p className="mt-0.5 text-[10px] text-muted-foreground sm:text-[11px]">
                       {t('matrixSourceEvents', { count: row.sourceEventCount })}
                     </p>
-                  ) : null}
-                  {!isCatalog ? (
-                    <p className="mt-0.5 text-[10px] text-amber-700 sm:text-[11px] dark:text-amber-400">{t('matrixNoCatalogMatch')}</p>
                   ) : null}
                 </div>
                 <div className="flex shrink-0 flex-col justify-center self-stretch sm:self-center sm:pl-1">
@@ -646,7 +655,7 @@ export function ManagerSupplyMatrixView({
         return (
           <Collapsible
             key={group.propertyId}
-            open={collapsedById[collapsePropKey] !== true}
+            open={routeCardOpen}
             onOpenChange={(open) => setCollapsed(collapsePropKey, !open)}
           >
             <section className="overflow-hidden rounded-lg border border-border bg-muted/30 dark:border-border dark:bg-card/60">
@@ -660,12 +669,12 @@ export function ManagerSupplyMatrixView({
                 <ChevronRight
                   className={cn(
                     'h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-200',
-                    collapsedById[collapsePropKey] !== true && 'rotate-90',
+                    routeCardOpen && 'rotate-90',
                   )}
                   aria-hidden
                 />
                 <div className="min-w-0 flex-1">
-                  <p className="text-[13px] font-semibold leading-snug text-foreground sm:text-sm">
+                  <p className="text-[13px] font-normal leading-snug text-foreground sm:text-sm">
                     {group.propertyTitle}
                   </p>
                   {group.propertyAddress ? (
@@ -701,7 +710,7 @@ export function ManagerSupplyMatrixView({
               <span className="inline-flex h-4 w-4 shrink-0" aria-hidden />
             )}
             <div className="min-w-0 flex-1">
-              <p className="text-[13px] font-semibold leading-snug text-foreground sm:text-sm">
+              <p className="text-[13px] font-normal leading-snug text-foreground sm:text-sm">
                 {group.propertyTitle}
               </p>
               {group.propertyAddress ? (
@@ -716,6 +725,79 @@ export function ManagerSupplyMatrixView({
         </section>
       );
     });
+
+  const matrixDetailLinesBody = useMemo(() => {
+    if (matrixCellDetailBodyLoading) {
+      return (
+        <div className="flex justify-center py-10">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" aria-hidden />
+        </div>
+      );
+    }
+    const lines = detailLines ?? [];
+    if (!lines.length) {
+      return <p className="text-sm text-muted-foreground">{t('matrixCellDetailEmpty')}</p>;
+    }
+    return (
+      <div className="space-y-3">
+        {lines.map((line) => {
+          const tt = (line.targetType ?? '').trim();
+          const contextLine =
+            tt === 'task'
+              ? t('matrixDetailEntryTask', { title: line.targetSummary ?? '—' })
+              : tt === 'incident'
+                ? t('matrixDetailEntryIncident', { text: line.targetSummary ?? '—' })
+                : tt === 'property'
+                  ? t('matrixDetailEntryProperty', { title: line.propertyTitle ?? '—' })
+                  : t('matrixDetailEntryOther');
+          const poolRemovable =
+            typeof line.canRemoveFromPool === 'boolean'
+              ? line.canRemoveFromPool
+              : (line.lineStatus ?? 'pending') === 'pending' && !String(line.deliveryRouteId ?? '').trim();
+          const showRemove = Boolean(poolRemovable && contextLine);
+          return (
+            <div
+              key={line.requestLineId}
+              className="flex items-start gap-2 rounded-lg border border-border/50 bg-muted/20 p-3 sm:gap-3"
+            >
+              <div className="min-w-0 flex-1">
+                {contextLine ? (
+                  <p className="mb-2 text-[11px] font-medium leading-snug text-primary">{contextLine}</p>
+                ) : null}
+                <p className="text-[11px] text-muted-foreground">
+                  {format(new Date(line.createdAt), 'PPp', { locale: dateLocale })} · {line.authorName || '—'}
+                </p>
+                <p className="mt-2 whitespace-pre-wrap text-sm text-foreground">{line.textRaw}</p>
+                {(line.quantity || line.unit) && (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {t('itemsHeading')}: {line.llmRawName ?? '—'} · {[line.quantity, line.unit].filter(Boolean).join(' ')}
+                  </p>
+                )}
+              </div>
+              {showRemove ? (
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  className="h-8 w-8 shrink-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive sm:h-9 sm:w-9"
+                  aria-label={t('matrixDetailRemoveFromPoolAria')}
+                  disabled={removePoolLinesMutation.isPending}
+                  onClick={() =>
+                    setLineDeleteConfirm({
+                      requestLineId: line.requestLineId,
+                      contextLine,
+                    })
+                  }
+                >
+                  <Trash2 className="h-4 w-4" aria-hidden />
+                </Button>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }, [matrixCellDetailBodyLoading, detailLines, t, dateLocale, removePoolLinesMutation.isPending]);
 
   /** Пока ИИ обрабатывает запрос, строки уже есть в ленте — не прячем сводку целиком скелетоном. */
   if (isLoading && llmProcessingSupply.length === 0) {
@@ -991,6 +1073,7 @@ export function ManagerSupplyMatrixView({
 
         <Sheet open={handoffOpen} onOpenChange={setHandoffOpen}>
           <SheetContent
+            className="tasks-theme"
             title={t('matrixHandoffSheetTitle')}
             description={t('matrixHandoffSheetHint')}
             footer={
@@ -1000,8 +1083,11 @@ export function ManagerSupplyMatrixView({
                 </Button>
                 <Button
                   type="button"
-                  variant="default"
-                  className="w-full sm:w-auto"
+                  variant="outline"
+                  className={cn(
+                    'w-full sm:w-auto border-2 border-primary bg-primary/15 font-semibold text-foreground shadow-sm ring-2 ring-primary/25',
+                    'hover:bg-primary/25 hover:text-foreground',
+                  )}
                   disabled={handoffBusy || !handoffDriverId}
                   onClick={() => void confirmHandoffToDriver()}
                 >
@@ -1011,84 +1097,82 @@ export function ManagerSupplyMatrixView({
               </div>
             }
           >
-            <div className="space-y-3">
-              <label className="block">
-                <span className="mb-1.5 block text-xs font-medium text-muted-foreground">{t('matrixHandoffDriverLabel')}</span>
-                <Select
-                  className="w-full"
-                  value={handoffDriverId}
-                  onChange={(e) => setHandoffDriverId(e.target.value)}
-                  aria-label={t('matrixHandoffDriverLabel')}
-                >
-                  <option value="">{t('matrixHandoffDriverPlaceholder')}</option>
-                  {(staffMembers ?? []).map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.displayName} ({m.role})
-                    </option>
-                  ))}
-                </Select>
-              </label>
-              <p className="text-[11px] leading-snug text-muted-foreground">{t('matrixHandoffSheetNote')}</p>
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-muted-foreground">{t('matrixHandoffDriverLabel')}</p>
+              <AssigneePickerField
+                variant="full"
+                staff={(staffMembers ?? []) as StaffMember[]}
+                value={handoffDriverId || null}
+                onChange={(id) => setHandoffDriverId(id ?? '')}
+                quickPickLimit={4}
+                omitUnassignedQuickButton
+                showAssigneeModalHint={false}
+                allowUnassignedInModal={false}
+              />
             </div>
           </SheetContent>
         </Sheet>
 
+        <Dialog open={Boolean(lineDeleteConfirm)} onOpenChange={(o) => !o && setLineDeleteConfirm(null)}>
+          <DialogContent
+            title={t('matrixDetailRemoveLineConfirmTitle')}
+            description={
+              lineDeleteConfirm
+                ? t('matrixDetailRemoveLineConfirmDescription', { contextLine: lineDeleteConfirm.contextLine })
+                : undefined
+            }
+            footer={
+              <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full sm:w-auto"
+                  onClick={() => setLineDeleteConfirm(null)}
+                >
+                  {t('matrixHandoffSheetCancel')}
+                </Button>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  className="w-full sm:w-auto"
+                  disabled={removePoolLinesMutation.isPending || !lineDeleteConfirm?.requestLineId}
+                  onClick={() => {
+                    if (!lineDeleteConfirm?.requestLineId) return;
+                    const rid = lineDeleteConfirm.requestLineId;
+                    removePoolLinesMutation.mutate([rid], {
+                      onSuccess: (data) => {
+                        setDrawerLineIds((prev) => {
+                          if (!prev?.length) return prev;
+                          const next = prev.filter((id) => id !== rid);
+                          return next.length ? next : null;
+                        });
+                        toast.success(t('matrixRemovePoolLinesSuccess', { count: data.deleted }));
+                        setLineDeleteConfirm(null);
+                      },
+                      onError: () => toast.error(t('matrixRemovePoolLinesError')),
+                    });
+                  }}
+                >
+                  {removePoolLinesMutation.isPending ? (
+                    <Loader2 className="mr-2 h-4 w-4 shrink-0 animate-spin" aria-hidden />
+                  ) : null}
+                  {t('matrixDetailRemoveLineConfirm')}
+                </Button>
+              </div>
+            }
+          />
+        </Dialog>
+
         {isMdUp ? (
           <Sheet open={Boolean(drawerLineIds?.length)} onOpenChange={(o) => !o && setDrawerLineIds(null)}>
             <SheetContent title={t('matrixCellDetailTitle')} description={t('matrixCellDetailHint')}>
-              {matrixCellDetailBodyLoading ? (
-                <div className="flex justify-center py-10">
-                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {(detailLines ?? []).map((line) => (
-                    <blockquote
-                      key={line.requestLineId}
-                      className="rounded-lg border border-border/50 bg-muted/20 p-3 text-sm"
-                    >
-                      <p className="text-[11px] text-muted-foreground">
-                        {format(new Date(line.createdAt), 'PPp', { locale: dateLocale })} · {line.authorName || '—'}
-                      </p>
-                      <p className="mt-2 whitespace-pre-wrap text-foreground">{line.textRaw}</p>
-                      {(line.quantity || line.unit) && (
-                        <p className="mt-2 text-xs text-muted-foreground">
-                          {t('itemsHeading')}: {line.llmRawName ?? '—'} · {[line.quantity, line.unit].filter(Boolean).join(' ')}
-                        </p>
-                      )}
-                    </blockquote>
-                  ))}
-                </div>
-              )}
+              {matrixDetailLinesBody}
             </SheetContent>
           </Sheet>
         ) : (
           <Drawer open={Boolean(drawerLineIds?.length)} onOpenChange={(o) => !o && setDrawerLineIds(null)}>
             <DrawerContent title={t('matrixCellDetailTitle')} description={t('matrixCellDetailHint')}>
-              <div className="max-h-[min(60vh,420px)] space-y-3 overflow-y-auto px-4 pb-6 pt-2">
-                {matrixCellDetailBodyLoading ? (
-                  <div className="flex justify-center py-8">
-                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                  </div>
-                ) : (
-                  (detailLines ?? []).map((line) => (
-                    <blockquote
-                      key={line.requestLineId}
-                      className="rounded-lg border border-border/50 bg-muted/20 p-3 text-sm"
-                    >
-                      <p className="text-[11px] text-muted-foreground">
-                        {format(new Date(line.createdAt), 'PPp', { locale: dateLocale })} · {line.authorName || '—'}
-                      </p>
-                      <p className="mt-2 whitespace-pre-wrap text-foreground">{line.textRaw}</p>
-                      {(line.quantity || line.unit) && (
-                        <p className="mt-2 text-xs text-muted-foreground">
-                          {t('itemsHeading')}: {line.llmRawName ?? '—'} · {[line.quantity, line.unit].filter(Boolean).join(' ')}
-                        </p>
-                      )}
-                    </blockquote>
-                  ))
-                )}
-              </div>
+              <div className="max-h-[min(60vh,420px)] overflow-y-auto px-4 pb-6 pt-2">{matrixDetailLinesBody}</div>
             </DrawerContent>
           </Drawer>
         )}

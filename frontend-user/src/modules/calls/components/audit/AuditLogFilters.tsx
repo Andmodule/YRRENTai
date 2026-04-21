@@ -42,7 +42,7 @@ export function AuditLogFilters({ filters, onChange, onReset }: Props) {
         <select
           value={filters.actionType ?? ''}
           onChange={(e) => onChange({ actionType: e.target.value || undefined })}
-          className="w-full rounded-lg border border-input bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:focus:ring-cyan-500"
+          className="w-full rounded-lg border border-input bg-input-fill px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:focus:ring-cyan-500"
         >
           {ACTION_TYPE_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>{o.label}</option>
@@ -56,7 +56,7 @@ export function AuditLogFilters({ filters, onChange, onReset }: Props) {
           value={filters.propertyId ?? ''}
           onChange={(e) => onChange({ propertyId: e.target.value || undefined })}
           placeholder="UUID объекта"
-          className="w-full rounded-lg border border-input bg-background px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-600 dark:focus:ring-cyan-500"
+          className="w-full rounded-lg border border-input bg-input-fill px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-600 dark:focus:ring-cyan-500"
         />
       </div>
 
@@ -66,7 +66,7 @@ export function AuditLogFilters({ filters, onChange, onReset }: Props) {
           type="date"
           value={filters.dateFrom ?? ''}
           onChange={(e) => onChange({ dateFrom: e.target.value || undefined })}
-          className="w-full rounded-lg border border-input bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:focus:ring-cyan-500"
+          className="w-full rounded-lg border border-input bg-input-fill px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:focus:ring-cyan-500"
         />
       </div>
 
@@ -76,7 +76,7 @@ export function AuditLogFilters({ filters, onChange, onReset }: Props) {
           type="date"
           value={filters.dateTo ?? ''}
           onChange={(e) => onChange({ dateTo: e.target.value || undefined })}
-          className="w-full rounded-lg border border-input bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:focus:ring-cyan-500"
+          className="w-full rounded-lg border border-input bg-input-fill px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:focus:ring-cyan-500"
         />
       </div>
 

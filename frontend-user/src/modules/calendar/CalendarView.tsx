@@ -17,6 +17,7 @@ import { useCalendarData } from './hooks/useCalendarData';
 import { useCalendarFilters } from './hooks/useCalendarFilters';
 import { useCalendarReservationSearch } from './hooks/useCalendarReservationSearch';
 import { useZodomusCalendarSync } from './hooks/useZodomusCalendarSync';
+import { useCalendarTimelinePan } from './hooks/use-calendar-timeline-pan';
 import { getPropertyMeta } from './lib/property-meta';
 import { ProgramBlock } from './components/ProgramBlock';
 import { TimelineHeader } from './components/TimelineHeader';
@@ -26,6 +27,7 @@ import { CalendarEmptyNoProperties, CalendarEmptyNoReservations } from './compon
 import { CalendarError } from './components/CalendarError';
 import { FilterBar } from './components/FilterBar';
 import { TimelineNavBar } from './components/TimelineNavBar';
+import { SmartCreateSheet } from '@/modules/tasks/components/manager/SmartCreateSheet';
 import { NewBookingSheet } from './components/NewBookingSheet';
 import { ReservationDetailPanel, ReservationDetailPanelFooter } from './components/ReservationDetailPanel';
 import { getCalendarPlanbyTheme } from './lib/planby-app-theme';
@@ -149,6 +151,13 @@ export function CalendarView({
     checkIn: string;
     checkOut: string;
   } | null>(null);
+  /** Создание задачи из карточки брони — тот же SmartCreateSheet, что и «+» на доске задач. */
+  const [taskCreateReservation, setTaskCreateReservation] = useState<Reservation | null>(null);
+
+  const openTaskCreateFromBooking = useCallback((r: Reservation) => {
+    setSelectedId(null);
+    setTaskCreateReservation(r);
+  }, []);
 
   const numDays = useMemo(
     () => eachDayOfInterval({ start: startOfDay(dateRange.start), end: startOfDay(dateRange.end) }).length,
@@ -205,6 +214,23 @@ export function CalendarView({
     ref: planbyScrollRef,
   } = layoutProps;
   const dayColWidthPx = 24 * layoutHourWidth;
+
+  const timelinePanEnabled = Boolean(
+    data &&
+      !isError &&
+      properties.length > 0 &&
+      filteredProperties.length > 0 &&
+      dayColWidthPx > 0,
+  );
+
+  useCalendarTimelinePan({
+    enabled: timelinePanEnabled,
+    scrollRef: planbyScrollRef,
+    dayColWidthPx,
+    numDays,
+    dateRange,
+    onDateRangeChange,
+  });
 
   useEffect(() => {
     if (filteredProperties.length === 0) return;
@@ -590,11 +616,17 @@ export function CalendarView({
         )}
       </div>
 
-      <ResponsiveModal open={!!selected} onOpenChange={(o) => !o && setSelectedId(null)}>
+      <ResponsiveModal
+        open={!!selected}
+        onOpenChange={(o) => !o && setSelectedId(null)}
+        desktopPresentation="side"
+      >
         {selected && (
           <ResponsiveModalContent
             title={selected.guestName}
-            footer={<ReservationDetailPanelFooter reservation={selected} />}
+            footer={
+              <ReservationDetailPanelFooter reservation={selected} onCreateTask={openTaskCreateFromBooking} />
+            }
           >
             <ReservationDetailPanel reservation={selected} onCopy={() => toast.success(t('copied'))} />
           </ResponsiveModalContent>
@@ -608,6 +640,25 @@ export function CalendarView({
         initialPropertyId={newBookingPropertyId}
         initialGridDates={newBookingGridDates}
       />
+
+      <div className="tasks-theme">
+        <SmartCreateSheet
+          open={!!taskCreateReservation}
+          onOpenChange={(o) => {
+            if (!o) setTaskCreateReservation(null);
+          }}
+          propertyId={taskCreateReservation?.propertyId ?? ''}
+          bookingLink={
+            taskCreateReservation
+              ? {
+                  reservationUuid: taskCreateReservation.uuid,
+                  propertyId: taskCreateReservation.propertyId,
+                  checkOut: taskCreateReservation.checkOut,
+                }
+              : null
+          }
+        />
+      </div>
     </div>
     </TooltipProvider>
   );

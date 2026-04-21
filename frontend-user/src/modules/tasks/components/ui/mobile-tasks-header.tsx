@@ -7,6 +7,7 @@ import {
   CalendarRange,
   Kanban,
   LayoutList,
+  ListFilter,
   Menu,
   MoreVertical,
   Search,
@@ -21,6 +22,10 @@ import { cn } from '@/lib/utils';
 import { useTasksFiltersStore } from '@/stores/tasks-filters.store';
 import { useUiStore } from '@/stores/ui.store';
 import { useTasksViewMode } from '../../hooks/useTasksViewMode';
+import {
+  isTasksListSliceFiltered,
+  TasksStatusPriorityFilterPanel,
+} from '../manager/TasksStatusPriorityFilterPanel';
 
 const WIDE = {
   start: new Date('2000-01-01T12:00:00'),
@@ -48,6 +53,7 @@ export function MobileTasksHeader({ title }: MobileTasksHeaderProps) {
   const [mode, setMode] = useState<MobileTasksHeaderMode>('default');
   const [searchQuery, setSearchQuery] = useState(filters.propertyQuery);
   const [viewSheetOpen, setViewSheetOpen] = useState(false);
+  const [filterSheetOpen, setFilterSheetOpen] = useState(false);
 
   const fromStr = format(filters.dateRange.start, 'yyyy-MM-dd');
   const toStr = format(filters.dateRange.end, 'yyyy-MM-dd');
@@ -119,6 +125,7 @@ export function MobileTasksHeader({ title }: MobileTasksHeaderProps) {
   }, []);
 
   const mobileView: MobileTasksViewMode = view === 'kanban' ? 'kanban' : 'list';
+  const listSliceFiltered = isTasksListSliceFiltered(filters);
 
   const pickView = useCallback(
     (next: MobileTasksViewMode) => {
@@ -278,6 +285,12 @@ export function MobileTasksHeader({ title }: MobileTasksHeaderProps) {
               aria-label={t('mobileHeader.kebabAria')}
             >
               <MoreVertical className="h-6 w-6" aria-hidden />
+              {listSliceFiltered ? (
+                <span
+                  className="absolute right-1 top-1 h-2 w-2 rounded-full bg-destructive ring-2 ring-background"
+                  aria-hidden
+                />
+              ) : null}
             </Button>
           </DropdownMenu.Trigger>
           <DropdownMenu.Portal>
@@ -302,6 +315,16 @@ export function MobileTasksHeader({ title }: MobileTasksHeaderProps) {
                 <CalendarRange className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
                 {t('mobileHeader.menuDateRange')}
               </DropdownMenu.Item>
+              <DropdownMenu.Item
+                className="relative flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2.5 text-sm outline-none data-[highlighted]:bg-accent"
+                onSelect={() => setFilterSheetOpen(true)}
+              >
+                <ListFilter className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
+                {t('mobileHeader.menuListFilters')}
+                {listSliceFiltered ? (
+                  <span className="ml-auto h-2 w-2 shrink-0 rounded-full bg-destructive" aria-hidden />
+                ) : null}
+              </DropdownMenu.Item>
               <DropdownMenu.Separator className="my-1 h-px bg-border" />
               <DropdownMenu.Item
                 className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2.5 text-sm outline-none data-[highlighted]:bg-accent"
@@ -314,6 +337,25 @@ export function MobileTasksHeader({ title }: MobileTasksHeaderProps) {
           </DropdownMenu.Portal>
         </DropdownMenu.Root>
       </header>
+
+      <RadixDialog.Root open={filterSheetOpen} onOpenChange={setFilterSheetOpen}>
+        <RadixDialog.Portal>
+          <RadixDialog.Overlay className="fixed inset-0 z-[100] bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+          <RadixDialog.Content
+            className={cn(
+              'tasks-theme fixed inset-x-0 bottom-0 z-[101] max-h-[85dvh] rounded-t-2xl border border-border/60 bg-background p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-xl outline-none',
+              'data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:slide-out-to-bottom-2 data-[state=open]:slide-in-from-bottom-4',
+            )}
+            onOpenAutoFocus={(e) => e.preventDefault()}
+          >
+            <RadixDialog.Title className="sr-only">{t('filters.listFilterSheetTitle')}</RadixDialog.Title>
+            <RadixDialog.Description className="sr-only">{t('filters.listFilterSheetDescription')}</RadixDialog.Description>
+            <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-muted" aria-hidden />
+            <p className="mb-3 text-center text-base font-semibold text-foreground">{t('filters.listFilterSheetTitle')}</p>
+            <TasksStatusPriorityFilterPanel />
+          </RadixDialog.Content>
+        </RadixDialog.Portal>
+      </RadixDialog.Root>
 
       <RadixDialog.Root open={viewSheetOpen} onOpenChange={setViewSheetOpen}>
         <RadixDialog.Portal>

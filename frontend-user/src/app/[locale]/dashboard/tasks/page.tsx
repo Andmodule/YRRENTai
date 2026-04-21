@@ -29,12 +29,11 @@ function TasksBoardFallback() {
 
 export default function TasksPage() {
   const filters = useTasksFiltersStore((s) => s.filters);
-  const setFilters = useTasksFiltersStore((s) => s.setFilters);
 
   return (
     <div className="tasks-theme flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background max-md:-mx-4 max-md:px-2 max-md:pb-2 max-md:pt-0 md:space-y-4">
       <Suspense fallback={<TasksBoardFallback />}>
-        <ManagerKanban filters={filters} onFiltersChange={setFilters} />
+        <ManagerKanban filters={filters} />
       </Suspense>
     </div>
   );

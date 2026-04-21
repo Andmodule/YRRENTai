@@ -194,6 +194,18 @@ export class TasksController {
     return { data };
   }
 
+  /** Удалить из пула сводки строки `supply_request_items` (только pending, без маршрута). */
+  @Post('manager/supply-matrix/remove-pool-lines')
+  @Roles('OWNER', 'MANAGER')
+  async managerSupplyRemovePoolLines(
+    @CurrentUser() user: JwtPayload,
+    @Body() body: { requestLineIds?: string[] },
+  ) {
+    const ownerId = await this.userService.resolveTenantOwnerId(user.sub, user.role);
+    const data = await this.supplyCatalogService.removePoolLinesForOwner(ownerId, body?.requestLineIds ?? []);
+    return { data };
+  }
+
   @Get('manager/supply-catalog/items')
   @Roles('OWNER', 'MANAGER')
   async managerSupplyCatalogItems(@CurrentUser() user: JwtPayload) {

@@ -146,7 +146,7 @@ const pillClass = (active: boolean) =>
   );
 
 const dateTimeFieldClass =
-  'h-10 w-full min-w-0 rounded-md border border-input bg-background px-2.5 py-1.5 text-sm shadow-sm outline-none transition-colors [color-scheme:dark] focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary/20';
+  'h-10 w-full min-w-0 rounded-md border border-input bg-input-fill px-2.5 py-1.5 text-sm shadow-sm outline-none transition-colors [color-scheme:dark] focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary/20';
 
 /** Framed block + colored left accent (tighter on small screens). */
 function KeySection({
@@ -363,7 +363,7 @@ export default function NewTaskFromBookingPage() {
             <span className="font-medium text-foreground/80">{propertyName || '…'}</span>
           </p>
 
-          <div className="rounded-lg border border-input bg-background px-3 py-2.5 shadow-sm dark:bg-card">
+          <div className="rounded-lg border border-input bg-input-fill px-3 py-2.5 shadow-sm">
             <input
               id="task-title"
               autoFocus
@@ -511,7 +511,7 @@ export default function NewTaskFromBookingPage() {
               onKeyDown={handleCmdEnter}
               rows={3}
               placeholder={t('descriptionPlaceholder')}
-              className="resize-none rounded-lg border border-input bg-background px-3 py-2.5 text-sm shadow-sm focus-visible:border-primary/40 focus-visible:ring-2 focus-visible:ring-primary/20 dark:bg-card"
+              className="resize-none rounded-lg border border-input bg-input-fill px-3 py-2.5 text-sm shadow-sm focus-visible:border-primary/40 focus-visible:ring-2 focus-visible:ring-primary/20"
             />
           </div>
         </div>

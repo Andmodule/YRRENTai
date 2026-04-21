@@ -84,7 +84,7 @@ export function QaAssignDialog({ reviewId, reviewIds, onSuccess, children }: Pro
                 onChange={(e) => setAssigneeId(e.target.value)}
                 placeholder="UUID пользователя"
                 required
-                className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:focus:ring-cyan-500"
+                className="w-full rounded-lg border border-input bg-input-fill px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:focus:ring-cyan-500"
               />
             </div>
 
@@ -94,7 +94,7 @@ export function QaAssignDialog({ reviewId, reviewIds, onSuccess, children }: Pro
                 type="datetime-local"
                 value={dueAt}
                 onChange={(e) => setDueAt(e.target.value)}
-                className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:focus:ring-cyan-500"
+                className="w-full rounded-lg border border-input bg-input-fill px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:focus:ring-cyan-500"
               />
             </div>
 

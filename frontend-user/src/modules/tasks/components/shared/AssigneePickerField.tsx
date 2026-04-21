@@ -21,6 +21,7 @@ const assigneePillClass = (disabled?: boolean) =>
 function getQuickStaffMembers(
   staff: StaffMember[],
   assigneeId: string | null | undefined,
+  limit: number,
 ): StaffMember[] {
   const id = assigneeId?.trim() || null;
   const selected = id ? staff.find((s) => idEquals(s.id, id)) : null;
@@ -28,7 +29,7 @@ function getQuickStaffMembers(
   const out: StaffMember[] = [];
   if (selected) out.push(selected);
   for (const s of rest) {
-    if (out.length >= 3) break;
+    if (out.length >= limit) break;
     out.push(s);
   }
   return out;
@@ -42,6 +43,14 @@ export type AssigneePickerFieldProps = {
   loading?: boolean;
   fallbackName?: string | null;
   variant?: 'compact' | 'full';
+  /** Number of round quick-pick buttons in `full` variant (default 3). */
+  quickPickLimit?: number;
+  /** Hide the «—» unassign control (e.g. driver picker). */
+  omitUnassignedQuickButton?: boolean;
+  /** Show assigneePickerHint above the search list in the «+» modal. */
+  showAssigneeModalHint?: boolean;
+  /** Include «Unassigned» in the search modal list. */
+  allowUnassignedInModal?: boolean;
 };
 
 function AssigneeListPanel({
@@ -50,6 +59,7 @@ function AssigneeListPanel({
   modalStaff,
   currentId,
   onPick,
+  allowUnassigned,
   t,
 }: {
   search: string;
@@ -57,6 +67,7 @@ function AssigneeListPanel({
   modalStaff: StaffMember[];
   currentId: string | null;
   onPick: (id: string | null) => void;
+  allowUnassigned: boolean;
   t: (key: string) => string;
 }) {
   return (
@@ -79,17 +90,21 @@ function AssigneeListPanel({
         />
       </div>
       <div className="max-h-[min(52dvh,420px)] space-y-0.5 overflow-y-auto overscroll-contain">
-        <button
-          type="button"
-          onClick={() => onPick(null)}
-          className={cn(
-            'flex w-full rounded-lg px-3 py-2.5 text-left text-sm transition-colors',
-            currentId == null ? 'bg-muted font-medium' : 'hover:bg-muted/80',
-          )}
-        >
-          {t('unassigned')}
-        </button>
-        <div className="my-1 h-px bg-border/60" />
+        {allowUnassigned ? (
+          <>
+            <button
+              type="button"
+              onClick={() => onPick(null)}
+              className={cn(
+                'flex w-full rounded-lg px-3 py-2.5 text-left text-sm transition-colors',
+                currentId == null ? 'bg-muted font-medium' : 'hover:bg-muted/80',
+              )}
+            >
+              {t('unassigned')}
+            </button>
+            <div className="my-1 h-px bg-border/60" />
+          </>
+        ) : null}
         {modalStaff.length === 0 ? (
           <p className="px-2 py-6 text-center text-sm text-muted-foreground">{t('assigneeSearchNoResults')}</p>
         ) : (
@@ -212,6 +227,10 @@ export function AssigneePickerField({
   loading,
   fallbackName,
   variant = 'compact',
+  quickPickLimit = 3,
+  omitUnassignedQuickButton = false,
+  showAssigneeModalHint = true,
+  allowUnassignedInModal = true,
 }: AssigneePickerFieldProps) {
   const t = useTranslations('tasks.detail');
   const [open, setOpen] = useState(false);
@@ -219,7 +238,10 @@ export function AssigneePickerField({
 
   const currentId = value?.trim() ? value.trim() : null;
 
-  const quick = useMemo(() => getQuickStaffMembers(staff, currentId), [staff, currentId]);
+  const quick = useMemo(
+    () => getQuickStaffMembers(staff, currentId, quickPickLimit),
+    [staff, currentId, quickPickLimit],
+  );
 
   const modalStaff = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -267,13 +289,16 @@ export function AssigneePickerField({
 
   const portalPanel = (
     <AssigneePickerPortal open={open} onClose={closeSheet} title={t('assigneePickerTitle')}>
-      <p className="mb-3 text-xs text-muted-foreground">{t('assigneePickerHint')}</p>
+      {showAssigneeModalHint ? (
+        <p className="mb-3 text-xs text-muted-foreground">{t('assigneePickerHint')}</p>
+      ) : null}
       <AssigneeListPanel
         search={search}
         onSearchChange={setSearch}
         modalStaff={modalStaff}
         currentId={currentId}
         onPick={pickAndClose}
+        allowUnassigned={allowUnassignedInModal}
         t={t}
       />
     </AssigneePickerPortal>
@@ -319,21 +344,23 @@ export function AssigneePickerField({
   return (
     <div className="min-w-0">
       <div className="flex min-w-0 flex-wrap items-center gap-2">
-        <button
-          type="button"
-          title={t('unassigned')}
-          disabled={disabled}
-          onClick={() => onChange(null)}
-          className={cn(
-            'flex h-10 min-w-10 max-w-[10rem] shrink-0 items-center justify-center rounded-full border-2 px-1.5 text-[10px] font-semibold leading-tight transition-colors',
-            currentId == null
-              ? 'border-primary bg-primary/15 text-foreground shadow-sm ring-2 ring-primary/25'
-              : 'border-border/70 bg-background text-muted-foreground hover:border-primary/40',
-            disabled && 'pointer-events-none opacity-60',
-          )}
-        >
-          —
-        </button>
+        {!omitUnassignedQuickButton ? (
+          <button
+            type="button"
+            title={t('unassigned')}
+            disabled={disabled}
+            onClick={() => onChange(null)}
+            className={cn(
+              'flex h-10 min-w-10 max-w-[10rem] shrink-0 items-center justify-center rounded-full border-2 px-1.5 text-[10px] font-semibold leading-tight transition-colors',
+              currentId == null
+                ? 'border-primary bg-primary/15 text-foreground shadow-sm ring-2 ring-primary/25'
+                : 'border-border/70 bg-background text-muted-foreground hover:border-primary/40',
+              disabled && 'pointer-events-none opacity-60',
+            )}
+          >
+            —
+          </button>
+        ) : null}
         {quick.map((s) => (
           <button
             key={s.id}

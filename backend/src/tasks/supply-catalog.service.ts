@@ -6,6 +6,7 @@ import { SupplyItemAliasEntity } from './entities/supply-item-alias.entity';
 import { SupplyRequestItemEntity } from './entities/supply-request-item.entity';
 import { StaffInterpretationEventEntity } from './entities/staff-interpretation-event.entity';
 import { TaskEntity } from './entities/task.entity';
+import { IncidentEntity } from '../incidents/entities/incident.entity';
 import { DeliveryRouteStopEntity } from './entities/delivery-route-stop.entity';
 import { UserEntity } from '../user/entities/user.entity';
 import { TasksGateway } from './tasks.gateway';
@@ -284,8 +285,7 @@ export class SupplyCatalogService {
     )) as { id: string }[];
     const ids = rows.map((r) => r.id).filter(Boolean);
     if (!ids.length) return 0;
-    await this.applyResolutionToRequestLines(companyId, ids);
-    return ids.length;
+    return this.applyResolutionToRequestLines(companyId, ids);
   }
 
   async listItemsForCompany(companyId: string): Promise<
@@ -474,13 +474,18 @@ export class SupplyCatalogService {
     return saved;
   }
 
-  /** После вставки строк supply_request_items — проставить supplyItemId и каноническое имя */
-  async applyResolutionToRequestLines(companyId: string, lineIds: string[]): Promise<void> {
-    if (!lineIds.length) return;
+  /**
+   * После вставки строк supply_request_items — проставить supplyItemId и каноническое имя.
+   * @returns число строк, у которых не было каталога и после вызова появился supplyItemId.
+   */
+  async applyResolutionToRequestLines(companyId: string, lineIds: string[]): Promise<number> {
+    if (!lineIds.length) return 0;
     const lines = await this.dataSource.getRepository(SupplyRequestItemEntity).find({
       where: { id: In(lineIds) },
     });
+    let newlyMapped = 0;
     for (const line of lines) {
+      const wasUnmapped = line.supplyItemId == null;
       const raw = line.name?.trim() ?? '';
       line.llmRawName = line.llmRawName ?? raw;
       const hit = await this.resolveRawNameToCatalogItem(companyId, raw);
@@ -490,10 +495,12 @@ export class SupplyCatalogService {
         if (!line.unit && hit.defaultUnit) {
           line.unit = hit.defaultUnit;
         }
+        if (wasUnmapped) newlyMapped += 1;
       }
       line.lineStatus = line.lineStatus || 'pending';
       await this.dataSource.getRepository(SupplyRequestItemEntity).save(line);
     }
+    return newlyMapped;
   }
 
   private static parseQuantity(q: string | null): number | null {
@@ -754,6 +761,15 @@ export class SupplyCatalogService {
       quantity: string | null;
       unit: string | null;
       llmRawName: string | null;
+      /** Источник отчёта staff: задача / инцидент / объект и т.д. */
+      targetType: string;
+      targetId: string;
+      /** Заголовок задачи или краткий текст инцидента — для подписи в UI, не для объекта. */
+      targetSummary: string | null;
+      lineStatus: string;
+      deliveryRouteId: string | null;
+      /** Можно снять с пула сводки (только pending, без маршрута). */
+      canRemoveFromPool: boolean;
     }>
   > {
     const ids = [...new Set(requestLineIds.filter(Boolean))];
@@ -770,10 +786,54 @@ export class SupplyCatalogService {
       .orderBy('e.createdAt', 'DESC')
       .getMany();
 
+    const taskIds = new Set<string>();
+    const incidentIds = new Set<string>();
+    for (const sri of lines) {
+      const ev = sri.interpretationEvent as StaffInterpretationEventEntity;
+      const tt = (ev.targetType ?? '').trim();
+      if (tt === 'task') taskIds.add(ev.targetId);
+      else if (tt === 'incident') incidentIds.add(ev.targetId);
+    }
+
+    const taskTitleById = new Map<string, string>();
+    if (taskIds.size > 0) {
+      const tasks = await this.dataSource.getRepository(TaskEntity).find({
+        where: { id: In([...taskIds]) },
+        select: ['id', 'title'],
+      });
+      for (const t of tasks) taskTitleById.set(t.id, (t.title ?? '').trim());
+    }
+
+    const incidentPreviewById = new Map<string, string>();
+    if (incidentIds.size > 0) {
+      const incs = await this.dataSource.getRepository(IncidentEntity).find({
+        where: { id: In([...incidentIds]) },
+        select: ['id', 'description'],
+      });
+      for (const inc of incs) {
+        const d = (inc.description ?? '').trim().replace(/\s+/g, ' ');
+        incidentPreviewById.set(
+          inc.id,
+          d.length > 120 ? `${d.slice(0, 119)}…` : d || '—',
+        );
+      }
+    }
+
     return lines.map((sri) => {
       const ev = sri.interpretationEvent as StaffInterpretationEventEntity;
       const prop = ev.property;
       const a = ev.author;
+      const targetType = (ev.targetType ?? '').trim();
+      let targetSummary: string | null = null;
+      if (targetType === 'task') {
+        targetSummary = taskTitleById.get(ev.targetId) ?? null;
+      } else if (targetType === 'incident') {
+        targetSummary = incidentPreviewById.get(ev.targetId) ?? null;
+      }
+      const routeId = sri.deliveryRouteId?.trim() ?? null;
+      const ls = (sri.lineStatus ?? 'pending').trim();
+      const canRemoveFromPool = ls === 'pending' && !routeId;
+
       return {
         requestLineId: sri.id,
         propertyId: prop.id,
@@ -785,6 +845,12 @@ export class SupplyCatalogService {
         quantity: sri.quantity,
         unit: sri.unit,
         llmRawName: sri.llmRawName,
+        targetType,
+        targetId: ev.targetId,
+        targetSummary,
+        lineStatus: ls,
+        deliveryRouteId: routeId,
+        canRemoveFromPool,
       };
     });
   }
@@ -845,6 +911,34 @@ export class SupplyCatalogService {
       this.tasksGateway.emitSupplyInterpretationsChanged();
     }
     return { updated };
+  }
+
+  /**
+   * Убрать строки из пула сводки: только `pending` и без привязки к маршруту (не «в доставке»).
+   */
+  async removePoolLinesForOwner(ownerId: string, requestLineIds: string[]): Promise<{ deleted: number }> {
+    const ids = [...new Set(requestLineIds.map((x) => x.trim()).filter(Boolean))];
+    if (!ids.length) throw new BadRequestException('requestLineIds required');
+
+    const res = await this.dataSource.query(
+      `
+      DELETE FROM supply_request_items sri
+      USING staff_interpretation_events e
+      INNER JOIN properties p ON p.id = e."propertyId"
+      WHERE sri."interpretationEventId" = e.id
+        AND p."ownerId" = $1
+        AND sri.id = ANY($2::uuid[])
+        AND sri."lineStatus" = 'pending'
+        AND sri."deliveryRouteId" IS NULL
+      RETURNING sri.id
+      `,
+      [ownerId, ids],
+    );
+    const deleted = Array.isArray(res) ? res.length : 0;
+    if (deleted > 0) {
+      this.tasksGateway.emitSupplyInterpretationsChanged();
+    }
+    return { deleted };
   }
 
   /** Строки в статусе «у водителя» → «доставлено» (пока связанная задача не закрыта — строка видна в сводке). */

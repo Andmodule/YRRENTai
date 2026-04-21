@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { TaskFilters } from '@/modules/tasks/types';
 
+/** In-memory only: full reload clears filters (no localStorage). */
 const WIDE_START = new Date('2000-01-01T12:00:00');
 const WIDE_END = new Date('2100-12-31T12:00:00');
 

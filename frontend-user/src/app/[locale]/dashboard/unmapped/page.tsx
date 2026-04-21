@@ -86,7 +86,7 @@ export default function UnmappedInboxPage() {
                   <label className="text-xs text-muted-foreground">{t('attachToTask')}</label>
                   <select
                     className={cn(
-                      'mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm',
+                      'mt-1 flex h-10 w-full rounded-md border border-input bg-input-fill px-3 py-2 text-sm',
                       'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                     )}
                     disabled={tasksLoading}

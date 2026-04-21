@@ -71,10 +71,14 @@ export const IncidentListRow = memo(function IncidentListRow({
   })();
 
   const statusKey = incidentStatusLabelKey(incident.status);
+  const listDotColor = incidentListStatusDotClass(incident.status);
   const statusDot = (
     <span
-      className={cn('h-2.5 w-2.5 shrink-0 rounded-full shadow-sm', incidentListStatusDotClass(incident.status))}
-      title={tCard(statusKey)}
+      className={cn(
+        'size-[5px] shrink-0 rounded-full ring-1 ring-card/80 dark:ring-slate-900/80',
+        listDotColor ?? 'pointer-events-none opacity-0',
+      )}
+      title={listDotColor ? tCard(statusKey) : undefined}
       aria-hidden
     />
   );

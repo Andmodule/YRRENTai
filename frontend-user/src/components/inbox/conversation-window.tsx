@@ -252,7 +252,7 @@ export function ConversationWindow({ conversation, onStaffReplySuccess }: Conver
             rows={1}
             className={cn(
               'flex-1 resize-none rounded-lg border px-4 py-3 text-sm',
-              'border-input bg-background text-foreground placeholder:text-muted-foreground',
+              'border-input bg-input-fill text-foreground placeholder:text-muted-foreground',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
               'dark:border-slate-700 dark:bg-slate-800/90 dark:text-slate-200 dark:placeholder:text-slate-500 dark:focus-visible:ring-cyan-500/40',
               'disabled:cursor-not-allowed disabled:opacity-50',

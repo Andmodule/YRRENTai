@@ -151,7 +151,7 @@ export function KbCard({ entry, onUpdate, onDelete }: KbCardProps) {
           <button
             type="button"
             onClick={() => setStatus('idle')}
-            className="rounded-md border border-input bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted"
+            className="rounded-md border border-input bg-input-fill px-3 py-1.5 text-xs font-medium hover:bg-muted"
           >
             {t('form.cancel')}
           </button>

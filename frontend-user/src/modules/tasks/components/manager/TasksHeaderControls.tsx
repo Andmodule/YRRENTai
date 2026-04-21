@@ -1,10 +1,15 @@
 'use client';
 
 import { useCallback, useState } from 'react';
-import { CalendarRange, Kanban, LayoutList, Search } from 'lucide-react';
+import { CalendarRange, Kanban, LayoutList, ListFilter, Search } from 'lucide-react';
 import { addDays, format } from 'date-fns';
 import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { useTasksFiltersStore } from '@/stores/tasks-filters.store';
@@ -14,6 +19,7 @@ import {
   tasksToolbarIconButtonBase,
   tasksToolbarIconButtonIdle,
 } from '../../task-toolbar-icon-button-classes';
+import { isTasksListSliceFiltered, TasksStatusPriorityFilterPanel } from './TasksStatusPriorityFilterPanel';
 
 const WIDE = {
   start: new Date('2000-01-01T12:00:00'),
@@ -31,6 +37,7 @@ export function TasksHeaderControls() {
 
   const [searchOpen, setSearchOpen] = useState(false);
   const [datesOpen, setDatesOpen] = useState(false);
+  const [listFiltersOpen, setListFiltersOpen] = useState(false);
 
   const propertyQuery = filters.propertyQuery;
   const fromStr = format(filters.dateRange.start, 'yyyy-MM-dd');
@@ -38,11 +45,13 @@ export function TasksHeaderControls() {
 
   const toggleSearch = useCallback(() => {
     setDatesOpen(false);
+    setListFiltersOpen(false);
     setSearchOpen((v) => !v);
   }, []);
 
   const toggleDates = useCallback(() => {
     setSearchOpen(false);
+    setListFiltersOpen(false);
     setDatesOpen((v) => !v);
   }, []);
 
@@ -84,6 +93,7 @@ export function TasksHeaderControls() {
 
   const searchActive = searchOpen || propertyQuery.trim().length > 0;
   const datesActive = datesOpen || filters.dateRangeEnabled;
+  const listSliceFiltered = isTasksListSliceFiltered(filters);
 
   return (
     <div className="flex min-w-0 flex-col gap-1 px-3 py-1 sm:gap-1.5 sm:px-4 sm:py-2">
@@ -157,6 +167,42 @@ export function TasksHeaderControls() {
           >
             <CalendarRange className="h-4 w-4" aria-hidden />
           </Button>
+          <DropdownMenu
+            open={listFiltersOpen}
+            onOpenChange={(open) => {
+              setListFiltersOpen(open);
+              if (open) {
+                setSearchOpen(false);
+                setDatesOpen(false);
+              }
+            }}
+          >
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className={cn(
+                  tasksToolbarIconButtonBase,
+                  'relative',
+                  listFiltersOpen ? tasksToolbarIconButtonActive : tasksToolbarIconButtonIdle,
+                )}
+                aria-label={t('filters.listFilterToggleAria')}
+                aria-expanded={listFiltersOpen}
+              >
+                <ListFilter className="h-4 w-4" aria-hidden />
+                {listSliceFiltered ? (
+                  <span
+                    className="absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-destructive ring-2 ring-background"
+                    aria-hidden
+                  />
+                ) : null}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-[min(20rem,calc(100vw-2rem))] p-3">
+              <TasksStatusPriorityFilterPanel />
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 

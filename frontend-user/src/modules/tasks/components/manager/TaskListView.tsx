@@ -246,15 +246,11 @@ export const TaskListView = memo(function TaskListView({
         ? null
         : group.propertyAddress || null;
 
-    const isPropertySection =
-      group.propertyId !== GENERAL_TASK_PROPERTY_GROUP_KEY &&
-      group.propertyId !== INCIDENTS_BOARD_GROUP_KEY &&
-      group.propertyId !== SHORTAGE_BOARD_GROUP_KEY;
-    /** Десктоп: «+ Добавить задачу» и для общих/инцидентов; мобайл — только FAB. Блок нехватки — без FAB-футера. */
-    const showAddTaskFooter =
+    /** В шапке только desktop: на мобайле без текста — создание через FAB «матрёшку». Блок нехватки — без кнопки. */
+    const showAddTaskInHeader =
       voiceQuickAdd &&
-      group.propertyId !== SHORTAGE_BOARD_GROUP_KEY &&
-      (isPropertySection || (isMdUp && !isPropertySection));
+      isMdUp &&
+      group.propertyId !== SHORTAGE_BOARD_GROUP_KEY;
 
     const incidentsSectionCount =
       group.propertyId === INCIDENTS_BOARD_GROUP_KEY ? group.incidents.length : 0;
@@ -263,7 +259,7 @@ export const TaskListView = memo(function TaskListView({
       <section
         key={group.propertyId}
         className={cn(
-          'min-w-0 overflow-hidden rounded-2xl border border-border bg-card shadow-sm',
+          'relative isolate min-w-0 overflow-hidden rounded-2xl border border-border bg-card shadow-sm',
           nested ? 'scroll-mt-1' : 'scroll-mt-2',
           'dark:border-border dark:bg-card/80',
         )}
@@ -272,14 +268,14 @@ export const TaskListView = memo(function TaskListView({
         <Collapsible open={!collapsed} onOpenChange={(open) => setCollapsed(group.propertyId, !open)}>
           <div
             className={cn(
-              'sticky top-0 z-20 rounded-t-2xl border-b border-border',
-              'bg-muted/50 backdrop-blur-md',
-              'dark:border-border dark:bg-muted/30',
+              'sticky top-0 z-20 flex w-full min-w-0 items-center gap-1 border-b border-border',
+              'bg-muted/80 dark:bg-muted/40',
+              'dark:border-border',
             )}
           >
             <CollapsibleTrigger
               className={cn(
-                'flex w-full min-w-0 items-start gap-2 px-2 py-2.5 text-left transition-colors md:px-3',
+                'flex min-w-0 flex-1 items-start gap-2 py-2.5 pl-2 pr-1 text-left transition-colors md:pl-3',
                 'hover:bg-muted/60 dark:hover:bg-muted/20',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
               )}
@@ -324,6 +320,22 @@ export const TaskListView = memo(function TaskListView({
                 ) : null}
               </div>
             </CollapsibleTrigger>
+            {showAddTaskInHeader ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  openVoiceSheet(group.propertyId);
+                }}
+                className={cn(
+                  'shrink-0 whitespace-nowrap rounded-md px-2 py-1.5 text-right text-xs font-semibold text-primary transition-colors',
+                  'hover:bg-primary/10 hover:text-primary/90',
+                  'md:px-2.5 md:text-sm',
+                )}
+              >
+                {tList(group.propertyId === INCIDENTS_BOARD_GROUP_KEY ? 'addIncident' : 'addTask')}
+              </button>
+            ) : null}
           </div>
 
           <CollapsibleContent className="bg-card dark:bg-transparent">
@@ -349,63 +361,33 @@ export const TaskListView = memo(function TaskListView({
                 </li>
               ))}
               {group.propertyId === INCIDENTS_BOARD_GROUP_KEY
-                ? group.incidents.map((incident) => {
-                    const isAwaitingDispatchHighlight = incident.status === 'awaiting_dispatch';
-                    return (
-                      <li
-                        key={`inc-${incident.uuid}`}
-                        className={cn(
-                          'min-w-0',
-                          isAwaitingDispatchHighlight &&
-                            'border-l-2 border-l-destructive/50 bg-destructive/[0.06] dark:bg-red-950/30',
-                        )}
-                      >
-                        <IncidentListRow
-                          incident={incident}
-                          onOpen={handleOpenIncident}
-                          swipeOpenRowId={swipeOpenRowId}
-                          onSwipeRowOpenChange={setSwipeOpenRowId}
-                          onSwipeCloseIncident={onSwipeCloseIncident}
-                          hidePropertyContext={false}
-                          className={
-                            isAwaitingDispatchHighlight
-                              ? 'border-b border-destructive/15 hover:bg-destructive/8 dark:hover:bg-red-950/40'
-                              : undefined
-                          }
-                        />
-                      </li>
-                    );
-                  })
-                : group.incidents.map((incident) => {
-                    const isAwaitingDispatchHighlight = incident.status === 'awaiting_dispatch';
-                    return (
-                      <li
-                        key={`inc-${incident.uuid}`}
-                        className={cn(
-                          'min-w-0',
-                          isAwaitingDispatchHighlight &&
-                            'border-l-2 border-l-destructive/50 bg-destructive/[0.06] dark:bg-red-950/30',
-                        )}
-                      >
-                        <IncidentListRow
-                          incident={incident}
-                          onOpen={handleOpenIncident}
-                          swipeOpenRowId={swipeOpenRowId}
-                          onSwipeRowOpenChange={setSwipeOpenRowId}
-                          onSwipeCloseIncident={onSwipeCloseIncident}
-                          hidePropertyContext={
-                            group.propertyId !== GENERAL_TASK_PROPERTY_GROUP_KEY &&
-                            group.propertyId !== INCIDENTS_BOARD_GROUP_KEY
-                          }
-                          className={
-                            isAwaitingDispatchHighlight
-                              ? 'border-b border-destructive/15 hover:bg-destructive/8 dark:hover:bg-red-950/40'
-                              : undefined
-                          }
-                        />
-                      </li>
-                    );
-                  })}
+                ? group.incidents.map((incident) => (
+                    <li key={`inc-${incident.uuid}`} className="min-w-0">
+                      <IncidentListRow
+                        incident={incident}
+                        onOpen={handleOpenIncident}
+                        swipeOpenRowId={swipeOpenRowId}
+                        onSwipeRowOpenChange={setSwipeOpenRowId}
+                        onSwipeCloseIncident={onSwipeCloseIncident}
+                        hidePropertyContext={false}
+                      />
+                    </li>
+                  ))
+                : group.incidents.map((incident) => (
+                    <li key={`inc-${incident.uuid}`} className="min-w-0">
+                      <IncidentListRow
+                        incident={incident}
+                        onOpen={handleOpenIncident}
+                        swipeOpenRowId={swipeOpenRowId}
+                        onSwipeRowOpenChange={setSwipeOpenRowId}
+                        onSwipeCloseIncident={onSwipeCloseIncident}
+                        hidePropertyContext={
+                          group.propertyId !== GENERAL_TASK_PROPERTY_GROUP_KEY &&
+                          group.propertyId !== INCIDENTS_BOARD_GROUP_KEY
+                        }
+                      />
+                    </li>
+                  ))}
               {group.tasks.map((task) => (
                 <li key={task.uuid} className="min-w-0">
                   <TaskListRow
@@ -420,25 +402,6 @@ export const TaskListView = memo(function TaskListView({
                 </li>
               ))}
             </ul>
-            {showAddTaskFooter ? (
-              <div
-                className={cn(
-                  'border-t border-border/40 px-2 py-1 md:px-3',
-                  !isMdUp && 'hidden',
-                )}
-              >
-                <button
-                  type="button"
-                  onClick={() => openVoiceSheet(group.propertyId)}
-                  className={cn(
-                    'flex w-full items-center justify-center rounded-md py-2 text-sm font-medium',
-                    'text-primary transition-colors hover:bg-primary/10 hover:text-primary/90',
-                  )}
-                >
-                  {tList(group.propertyId === INCIDENTS_BOARD_GROUP_KEY ? 'addIncident' : 'addTask')}
-                </button>
-              </div>
-            ) : null}
           </CollapsibleContent>
         </Collapsible>
       </section>
@@ -459,7 +422,7 @@ export const TaskListView = memo(function TaskListView({
         <section
           key={OBJECTS_WRAPPER_GROUP_KEY}
           className={cn(
-            'min-w-0 overflow-hidden scroll-mt-2 rounded-2xl border border-border bg-card shadow-sm',
+            'relative isolate min-w-0 overflow-hidden scroll-mt-2 rounded-2xl border border-border bg-card shadow-sm',
             'dark:border-border dark:bg-card/80',
           )}
           aria-label={tList('objectsTopHeading')}
@@ -470,9 +433,9 @@ export const TaskListView = memo(function TaskListView({
           >
             <div
               className={cn(
-                'sticky top-0 z-20 rounded-t-2xl border-b border-border',
-                'bg-muted/50 backdrop-blur-md',
-                'dark:border-border dark:bg-muted/30',
+                'sticky top-0 z-20 border-b border-border',
+                'bg-muted/80 dark:bg-muted/40',
+                'dark:border-border',
               )}
             >
               <CollapsibleTrigger
@@ -565,7 +528,7 @@ export const TaskListView = memo(function TaskListView({
                       'data-[highlighted]:border-primary/60 data-[highlighted]:bg-primary/10 data-[highlighted]:shadow-md',
                       'dark:bg-card/80 dark:data-[highlighted]:bg-primary/15',
                     )}
-                    onSelect={() => openManualSheet(fabPropertyId, 'task')}
+                    onSelect={() => openManualSheet(GENERAL_TASK_PROPERTY_GROUP_KEY, 'task')}
                   >
                     {tTasks('smartCreate.tabTask')}
                   </DropdownMenu.Item>
@@ -577,7 +540,7 @@ export const TaskListView = memo(function TaskListView({
                       'data-[highlighted]:border-primary/60 data-[highlighted]:bg-primary/10 data-[highlighted]:shadow-md',
                       'dark:bg-card/80 dark:data-[highlighted]:bg-primary/15',
                     )}
-                    onSelect={() => openManualSheet(fabPropertyId, 'incident')}
+                    onSelect={() => openManualSheet(GENERAL_TASK_PROPERTY_GROUP_KEY, 'incident')}
                   >
                     {tTasks('smartCreate.tabIncident')}
                   </DropdownMenu.Item>

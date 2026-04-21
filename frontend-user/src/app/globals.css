@@ -7,8 +7,8 @@
 /* Light theme */
 :root {
   --space-4: 1rem;
-  /* Light: warm neutral page, slightly stronger muted text for WCAG on cards */
-  --background: #f8f7f5;
+  /* Light: warm neutral canvas — чуть темнее чистого белого, «бумага», без ухода в серый интерфейс */
+  --background: #f1f0eb;
   --foreground: #18181b;
   --primary: #2563eb;
   --primary-foreground: #ffffff;
@@ -26,6 +26,8 @@
   --popover: #ffffff;
   --popover-foreground: #18181b;
   --input: #e4e4e7;
+  /** Залив полей ввода: светлее страницы (`--background`), обычно как карточка */
+  --input-fill: #ffffff;
   --ring: #2563eb;
 
   /* Slate inversion for light theme:
@@ -63,6 +65,7 @@ html.dark {
   --popover: #0f172a;
   --popover-foreground: #f1f5f9;
   --input: #334155;
+  --input-fill: var(--card);
   --ring: #3b82f6;
 
   /* Restore standard dark slate values */
@@ -115,6 +118,7 @@ html.dark .tasks-theme {
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);
   --color-input: var(--input);
+  --color-input-fill: var(--input-fill);
   --color-ring: var(--ring);
 }
 

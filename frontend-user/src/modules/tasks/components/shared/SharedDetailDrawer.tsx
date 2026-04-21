@@ -49,7 +49,10 @@ import { useDateLocale } from '@/hooks/useDateLocale';
 import { useMediaQuery } from '@/hooks/use-media-query';
 import { useStaffUsers } from '@/hooks/use-staff-users';
 import { cn, idEquals } from '@/lib/utils';
-import { usePatchIncident, type Incident } from '@/modules/incidents/hooks/useIncidents';
+import {
+  usePatchIncident,
+  type Incident,
+} from '@/modules/incidents/hooks/useIncidents';
 import {
   incidentStatusLabelKey,
   incidentStatusUi as getIncidentStatusUi,
@@ -116,11 +119,11 @@ const taskDetailSurfaceBase =
   'rounded-2xl border border-border/80 bg-muted/35 shadow-sm dark:border-border/70 dark:bg-muted/25';
 const taskDetailSurface = cn(taskDetailSurfaceBase, 'p-3');
 const taskTitleShell =
-  'min-h-[3rem] rounded-xl border border-input bg-background px-3 py-2.5 shadow-sm dark:bg-card';
+  'min-h-[3rem] rounded-xl border border-input bg-input-fill px-3 py-2.5 shadow-sm';
 const taskTitleInputClass =
   'w-full border-none bg-transparent p-0 text-base font-semibold leading-snug text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-0 sm:text-lg';
 const taskNotesTextareaClass = cn(
-  'min-h-[4.5rem] w-full resize-none rounded-lg border border-input bg-background px-3 py-2.5 text-sm leading-relaxed shadow-sm outline-none transition-colors [color-scheme:dark]',
+  'min-h-[4.5rem] w-full resize-none rounded-lg border border-input bg-input-fill px-3 py-2.5 text-sm leading-relaxed shadow-sm outline-none transition-colors [color-scheme:dark]',
   'placeholder:text-muted-foreground/70',
   'focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary/20',
   'dark:bg-card',
@@ -1045,7 +1048,7 @@ function TaskDetailMode({
                     onChange={(e) => setIssueText(e.target.value)}
                     placeholder={tIssue('placeholder')}
                     rows={4}
-                    className="rounded-lg border border-input bg-background shadow-sm focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary/20 dark:bg-card"
+                    className="rounded-lg border border-input bg-input-fill shadow-sm focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary/20"
                   />
                   <input ref={issueFilesRef} type="file" accept="image/*" multiple className="hidden" />
                   <Button
@@ -1179,6 +1182,11 @@ function IncidentDetailMode({
   }
 
   const relatedTasks = incident.relatedTasks ?? [];
+  /** Как список `/dashboard/incidents`: пока инцидент ждёт назначения — CTA «Назначить» открывает постановку задачи. */
+  const needsManagerDispatchCta =
+    isManagerView &&
+    (incident.status === 'awaiting_dispatch' ||
+      (incident.status === 'open' && !incident.dispatchedTaskId));
 
   const created = format(new Date(incident.createdAt), 'd MMMM yyyy, HH:mm', { locale: dateLocale });
   const panelTitle =
@@ -1351,60 +1359,49 @@ function IncidentDetailMode({
         }
       >
         <div className="detail-scroll-body flex flex-col gap-[var(--space-4,1rem)] max-md:gap-3">
-            <div
-              className={cn(
-                taskDetailSurfaceBase,
-                'p-3 text-sm shadow-sm',
-                incident.type === 'damage' &&
-                  'border-red-500/35 bg-red-50/80 text-red-950 dark:border-red-500/25 dark:bg-red-950/15 dark:text-red-100',
-                incident.type === 'lost_item' &&
-                  'border-amber-500/35 bg-amber-50/80 text-amber-950 dark:border-amber-500/25 dark:bg-amber-950/20 dark:text-amber-50',
-                incident.type === 'rule_violation' &&
-                  'border-orange-500/35 bg-orange-50/85 text-orange-950 dark:border-orange-500/25 dark:bg-orange-950/25 dark:text-orange-50',
-                incident.type === 'emergency' &&
-                  'border-violet-500/40 bg-violet-50/90 text-violet-950 dark:border-violet-500/30 dark:bg-violet-950/30 dark:text-violet-50',
-                incident.type === 'task_report' &&
-                  'border-sky-500/35 bg-sky-50/85 text-sky-950 dark:border-sky-500/25 dark:bg-sky-950/25 dark:text-sky-50',
-              )}
-            >
-              <p className="whitespace-pre-wrap">{incident.description}</p>
-            </div>
-
-          {incident.reporterName ? (
-            <p className="text-[11px] leading-snug text-muted-foreground">
-              <span className="text-muted-foreground/70">{t('reporterInlinePrefix')}</span>{' '}
-              <span className="font-normal text-muted-foreground">{incident.reporterName}</span>
-            </p>
-          ) : null}
-
             {isManagerView ? (
-              <div className="rounded-xl border border-border/60 bg-muted/10 px-2.5 py-2 shadow-sm dark:bg-muted/15">
-                <div className="flex min-h-8 items-center gap-2">
-                  <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-                    <span className="text-foreground/85">{t('relatedTasksTitle')}</span>
-                    {relatedTasks.length === 0 ? (
-                      <>
-                        <span className="mx-1.5 text-muted-foreground/40" aria-hidden>
-                          ·
-                        </span>
-                        <span>{t('relatedTasksEmpty')}</span>
-                      </>
-                    ) : null}
+              <div
+                className={cn(
+                  'rounded-xl border px-2.5 py-2.5 shadow-sm',
+                  needsManagerDispatchCta
+                    ? 'border-primary/40 bg-primary/10 dark:border-primary/35 dark:bg-primary/15'
+                    : 'border-border/60 bg-muted/10 dark:bg-muted/15',
+                )}
+              >
+                <p className="text-xs font-semibold text-foreground">{t('relatedTasksTitle')}</p>
+                {needsManagerDispatchCta ? (
+                  <p className="mt-1 text-[11px] leading-snug text-muted-foreground">{t('relatedTasksAwaitingHint')}</p>
+                ) : relatedTasks.length === 0 ? (
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    <span>{t('relatedTasksEmpty')}</span>
                   </p>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
-                    onClick={() => setCreateTaskOpen(true)}
-                    title={t('createTaskAria')}
-                  >
-                    <Plus className="h-4 w-4" aria-hidden />
-                    <span className="sr-only">{t('createTaskAria')}</span>
-                  </Button>
-                </div>
+                ) : null}
+                {needsManagerDispatchCta ? (
+                  <div className="mt-3 flex flex-wrap items-stretch gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="min-h-9 flex-1 font-semibold"
+                      onClick={() => setCreateTaskOpen(true)}
+                    >
+                      {t('relatedTasksAssignButton')}
+                    </Button>
+                  </div>
+                ) : relatedTasks.length === 0 ? (
+                  <div className="mt-2 flex flex-wrap items-stretch gap-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="min-h-9 w-full font-medium text-muted-foreground hover:text-foreground"
+                      onClick={() => setCreateTaskOpen(true)}
+                    >
+                      {t('createTaskCta')}
+                    </Button>
+                  </div>
+                ) : null}
                 {relatedTasks.length > 0 ? (
-                  <ul className="mt-2 space-y-2 border-t border-border/40 pt-2">
+                  <ul className="mt-3 space-y-2 border-t border-border/40 pt-2">
                     {relatedTasks.map((rt) => (
                       <li key={rt.uuid}>
                         <button
@@ -1437,6 +1434,32 @@ function IncidentDetailMode({
                 ) : null}
               </div>
             ) : null}
+
+            <div
+              className={cn(
+                taskDetailSurfaceBase,
+                'p-3 text-sm shadow-sm',
+                incident.type === 'damage' &&
+                  'border-red-500/35 bg-red-50/80 text-red-950 dark:border-red-500/25 dark:bg-red-950/15 dark:text-red-100',
+                incident.type === 'lost_item' &&
+                  'border-amber-500/35 bg-amber-50/80 text-amber-950 dark:border-amber-500/25 dark:bg-amber-950/20 dark:text-amber-50',
+                incident.type === 'rule_violation' &&
+                  'border-orange-500/35 bg-orange-50/85 text-orange-950 dark:border-orange-500/25 dark:bg-orange-950/25 dark:text-orange-50',
+                incident.type === 'emergency' &&
+                  'border-violet-500/40 bg-violet-50/90 text-violet-950 dark:border-violet-500/30 dark:bg-violet-950/30 dark:text-violet-50',
+                incident.type === 'task_report' &&
+                  'border-sky-500/35 bg-sky-50/85 text-sky-950 dark:border-sky-500/25 dark:bg-sky-950/25 dark:text-sky-50',
+              )}
+            >
+              <p className="whitespace-pre-wrap">{incident.description}</p>
+            </div>
+
+          {incident.reporterName ? (
+            <p className="text-[11px] leading-snug text-muted-foreground">
+              <span className="text-muted-foreground/70">{t('reporterInlinePrefix')}</span>{' '}
+              <span className="font-normal text-muted-foreground">{incident.reporterName}</span>
+            </p>
+          ) : null}
 
             {showBookingCard ? (
               <div className="rounded-xl border border-border/60 bg-card p-3 text-sm shadow-sm">
@@ -1630,10 +1653,12 @@ function IncidentDetailMode({
           incidentPrefill={{
             incidentUuid: incident.uuid,
             notes: incident.description,
-            title: incident.description.slice(0, 160)
+            title: incident.description.slice(0, 160),
+            suggestedTaskDraft: incident.suggestedTaskDraft ?? null,
           }}
         />
       )}
+
     </>
   );
 }

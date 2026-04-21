@@ -36,7 +36,6 @@ import { IncidentDetailDrawer } from '@/modules/incidents/components/IncidentDet
 import { IncidentKanbanCard } from '@/modules/incidents/components/IncidentKanbanCard';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { KanbanBoardRail } from './KanbanBoardRail';
-import { TasksFiltersBar } from './TasksFiltersBar';
 import { usePendingTaskDelete } from '../../hooks/usePendingTaskDelete';
 import { usePendingTaskMarkDone } from '../../hooks/usePendingTaskMarkDone';
 import { usePendingIncidentClose } from '@/modules/incidents/hooks/usePendingIncidentClose';
@@ -49,13 +48,7 @@ import { ManagerBoardPanelTabs } from './ManagerBoardPanelTabs';
 import { ManagerSupplyPanel } from './ManagerSupplyPanel';
 import { ManagerSupplyToolbar } from './ManagerSupplyToolbar';
 
-export function ManagerKanban({
-  filters,
-  onFiltersChange,
-}: {
-  filters: TaskFilters;
-  onFiltersChange: (f: TaskFilters | ((prev: TaskFilters) => TaskFilters)) => void;
-}) {
+export function ManagerKanban({ filters }: { filters: TaskFilters }) {
   const t = useTranslations('tasks');
   const tTma = useTranslations('tma');
   const { enqueueDeleteAfterSwipe } = usePendingTaskDelete({
@@ -326,12 +319,6 @@ export function ManagerKanban({
           ) : undefined
         }
       />
-      {managerPanel === 'tasks' && (
-        <div className="flex shrink-0 items-center max-md:-mx-2">
-          <TasksFiltersBar filters={filters} onFiltersChange={onFiltersChange} />
-        </div>
-      )}
-
       {managerPanel === 'tasks' && isError && (
         <Alert variant="destructive" className="shrink-0">
           <AlertCircle className="h-4 w-4" />
