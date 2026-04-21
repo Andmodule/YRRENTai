@@ -46,7 +46,6 @@ import {
   TASK_MANAGER_PANEL_QUERY,
 } from '../../task-url-params';
 import { ManagerBoardPanelTabs } from './ManagerBoardPanelTabs';
-import { ManagerSupplyAttentionBanner } from './ManagerSupplyAttentionBanner';
 import { ManagerSupplyPanel } from './ManagerSupplyPanel';
 import { ManagerSupplyToolbar } from './ManagerSupplyToolbar';
 
@@ -281,12 +280,6 @@ export function ManagerKanban({
     [pathname, router, searchParams],
   );
 
-  const openSupplyPanel = useCallback(() => {
-    const params = new URLSearchParams(searchParams.toString());
-    params.set(TASK_MANAGER_PANEL_QUERY, 'supply');
-    router.replace(`${pathname}?${params.toString()}`);
-  }, [pathname, router, searchParams]);
-
   const openSupplyInterpretation = useCallback(
     (e: PendingSupplyInterpretationEvent) => {
       const params = new URLSearchParams(searchParams.toString());
@@ -333,9 +326,6 @@ export function ManagerKanban({
           ) : undefined
         }
       />
-      {managerPanel === 'tasks' && (
-        <ManagerSupplyAttentionBanner count={supplyBadgeCount} onOpenSupply={openSupplyPanel} />
-      )}
       {managerPanel === 'tasks' && (
         <div className="flex shrink-0 items-center max-md:-mx-2">
           <TasksFiltersBar filters={filters} onFiltersChange={onFiltersChange} />
