@@ -2,11 +2,12 @@
  * ZodomusAvailabilityPushService — unit tests.
  *
  * Key invariants guarded here:
- *   1. Segment merging: POST /availability is sent once per SEGMENT, NOT once per night.
- *      Violating this causes rate-limit warnings from Zodomus (as seen in prod logs).
- *   2. Per-property mutex: concurrent pushAvailabilityNow() calls for the same property
- *      are coalesced into one execution (same-RUID burst fix).
- *   3. Inline mode (no Redis): service runs without BullMQ; rate limiting is handled in-process.
+ *   1. Batch API: all segments for a target go in ONE POST /availability-multiple call.
+ *      This is the Zodomus-recommended approach — sending one call per segment was the
+ *      root cause of rate-limit complaints (same-RUID bursts in their logs).
+ *   2. Segment content: correct number of segments with correct availability values.
+ *   3. Per-property mutex: concurrent pushAvailabilityNow() calls coalesce into one.
+ *   4. Inline mode (no Redis): service runs without BullMQ; rate limiting is in-process.
  *
  * All tests use direct instantiation with mocks — no NestJS test module needed.
  * onModuleInit() is NOT called → service runs in inline mode (queue = null).
@@ -84,7 +85,7 @@ function buildService(overrides: {
   postGapMs?: number;
   maxPerMinute?: number;
 } = {}) {
-  const mockSetAvailability = jest.fn().mockResolvedValue(undefined);
+  const mockSetAvailabilityMultiple = jest.fn().mockResolvedValue(undefined);
   const mockGetRoomRates = jest.fn().mockResolvedValue([{ id: ROOM_ID, name: 'Standard Room' }]);
   const mockBookingFind = jest.fn().mockResolvedValue(overrides.bookings ?? []);
   const mockPropertyFindOne = jest.fn().mockResolvedValue(
@@ -93,7 +94,7 @@ function buildService(overrides: {
 
   const zodomus = {
     isEnabled: true,
-    setAvailability: mockSetAvailability,
+    setAvailabilityMultiple: mockSetAvailabilityMultiple,
     getRoomRates: mockGetRoomRates,
   } as unknown as ZodomusService;
 
@@ -125,7 +126,7 @@ function buildService(overrides: {
 
   return {
     service,
-    mockSetAvailability,
+    mockSetAvailabilityMultiple,
     mockGetRoomRates,
     mockBookingFind,
     mockPropertyFindOne,
@@ -137,81 +138,99 @@ function buildService(overrides: {
 describe('ZodomusAvailabilityPushService', () => {
   afterEach(() => jest.clearAllMocks());
 
-  // ── 1. Segment merging ─────────────────────────────────────────────────────
-  describe('segment merging — POST /availability once per segment, NOT once per night', () => {
-    it('sends exactly 1 call for a fully available property (no bookings)', async () => {
-      const { service, mockSetAvailability } = buildService();
+  // ── 1. Batch API — ONE POST /availability-multiple per target ─────────────
+  describe('availability-multiple — ONE API call per target containing all segments', () => {
+    it('sends exactly 1 API call for a fully available property (1 segment in batch)', async () => {
+      const { service, mockSetAvailabilityMultiple } = buildService();
 
       const summary = await service.pushAvailabilityNow(PROPERTY_ID);
 
       expect(summary.segmentCount).toBe(1);
-      expect(mockSetAvailability).toHaveBeenCalledTimes(1);
+      // ONE call regardless of segment count — this is the fix for Zodomus rate-limit issue
+      expect(mockSetAvailabilityMultiple).toHaveBeenCalledTimes(1);
 
-      const [, , , dateFrom, dateTo, avail] = mockSetAvailability.mock.calls[0] as [
-        unknown, unknown, unknown, string, string, number
+      const [, , roomIds] = mockSetAvailabilityMultiple.mock.calls[0] as [
+        unknown, unknown, Array<{ availability: number; dateFrom: string; dateTo: string }>
       ];
-      expect(avail).toBe(1);
-      expect(dateTo > dateFrom).toBe(true);
+      expect(roomIds).toHaveLength(1);
+      expect(roomIds[0]!.availability).toBe(1);
     });
 
-    it('sends 3 calls for 1 booking in the middle of the horizon', async () => {
+    it('sends exactly 1 API call with 3 segments for 1 booking in the middle of the horizon', async () => {
       // Horizon: 30 days. Booking: day+5 → day+8.
       // Expected segments: avail(0–4) | occupied(5–7) | avail(8–29)
-      const { service, mockSetAvailability } = buildService({
+      const { service, mockSetAvailabilityMultiple } = buildService({
         bookings: [makeBooking(5, 8)],
       });
 
       const summary = await service.pushAvailabilityNow(PROPERTY_ID);
 
       expect(summary.segmentCount).toBe(3);
-      expect(mockSetAvailability).toHaveBeenCalledTimes(3);
+      // KEY: still only 1 API call — all segments batched into availability-multiple
+      expect(mockSetAvailabilityMultiple).toHaveBeenCalledTimes(1);
 
-      const availValues = mockSetAvailability.mock.calls.map((c) => c[5] as number);
-      expect(availValues).toEqual([1, 0, 1]);
+      const [, , roomIds] = mockSetAvailabilityMultiple.mock.calls[0] as [
+        unknown, unknown, Array<{ availability: number }>
+      ];
+      expect(roomIds).toHaveLength(3);
+      expect(roomIds.map((r) => r.availability)).toEqual([1, 0, 1]);
     });
 
-    it('sends 2 calls when booking starts at day 0 (no leading available segment)', async () => {
-      const { service, mockSetAvailability } = buildService({
+    it('sends exactly 1 API call with 2 segments when booking starts at day 0', async () => {
+      const { service, mockSetAvailabilityMultiple } = buildService({
         bookings: [makeBooking(0, 5)],
       });
 
       const summary = await service.pushAvailabilityNow(PROPERTY_ID);
 
       expect(summary.segmentCount).toBe(2);
-      expect(mockSetAvailability).toHaveBeenCalledTimes(2);
+      expect(mockSetAvailabilityMultiple).toHaveBeenCalledTimes(1);
 
-      const availValues = mockSetAvailability.mock.calls.map((c) => c[5] as number);
-      expect(availValues).toEqual([0, 1]);
+      const [, , roomIds] = mockSetAvailabilityMultiple.mock.calls[0] as [
+        unknown, unknown, Array<{ availability: number }>
+      ];
+      expect(roomIds).toHaveLength(2);
+      expect(roomIds.map((r) => r.availability)).toEqual([0, 1]);
     });
 
-    it('sends 5 calls for 2 non-adjacent bookings', async () => {
-      // Segments: avail(0–2) | occ(3–5) | avail(6–9) | occ(10–12) | avail(13–29)
-      const { service, mockSetAvailability } = buildService({
+    it('sends exactly 1 API call with 5 segments for 2 non-adjacent bookings', async () => {
+      // Segments: avail | occ | avail | occ | avail
+      const { service, mockSetAvailabilityMultiple } = buildService({
         bookings: [makeBooking(3, 6), makeBooking(10, 13)],
       });
 
       const summary = await service.pushAvailabilityNow(PROPERTY_ID);
 
       expect(summary.segmentCount).toBe(5);
-      expect(mockSetAvailability).toHaveBeenCalledTimes(5);
+      expect(mockSetAvailabilityMultiple).toHaveBeenCalledTimes(1);
+
+      const [, , roomIds] = mockSetAvailabilityMultiple.mock.calls[0] as [
+        unknown, unknown, Array<{ availability: number }>
+      ];
+      expect(roomIds).toHaveLength(5);
     });
 
     /**
-     * KEY REGRESSION GUARD: we must never send one POST /availability per night.
-     * This was the root cause of Zodomus rate-limit complaints.
-     * A 30-day horizon → at most a handful of segments, never 30 individual calls.
+     * CORE REGRESSION GUARD: must never make one API call per night.
+     * Before the fix: 30-day horizon = up to 30 individual POST /availability calls.
+     * After the fix: always exactly 1 POST /availability-multiple call.
      */
-    it('NEVER sends one call per night (regression: rate-limit violation)', async () => {
-      const { service, mockSetAvailability } = buildService({ horizonDays: 30 });
-
+    it('ALWAYS makes exactly 1 API call regardless of horizon length (regression guard)', async () => {
+      const { service, mockSetAvailabilityMultiple } = buildService({ horizonDays: 30 });
       await service.pushAvailabilityNow(PROPERTY_ID);
+      expect(mockSetAvailabilityMultiple).toHaveBeenCalledTimes(1);
 
-      // No bookings → 1 segment. Even with many bookings it should be << 30.
-      expect(mockSetAvailability.mock.calls.length).toBeLessThan(10);
+      const { service: s2, mockSetAvailabilityMultiple: m2 } = buildService({
+        horizonDays: 30,
+        bookings: [makeBooking(2, 5), makeBooking(10, 15), makeBooking(20, 25)],
+      });
+      await s2.pushAvailabilityNow(PROPERTY_ID);
+      // Still 1 call — all 7 segments go in one availability-multiple payload
+      expect(m2).toHaveBeenCalledTimes(1);
     });
 
     it('ignores cancelled and declined bookings (they do not block availability)', async () => {
-      const { service, mockSetAvailability } = buildService({
+      const { service, mockSetAvailabilityMultiple } = buildService({
         bookings: [
           makeBooking(5, 8, BOOKING_STATUS.CANCELLED),
           makeBooking(10, 13, BOOKING_STATUS.DECLINED),
@@ -220,20 +239,23 @@ describe('ZodomusAvailabilityPushService', () => {
 
       const summary = await service.pushAvailabilityNow(PROPERTY_ID);
 
-      // Cancelled/declined don't block → all-available → 1 segment
+      // Cancelled/declined don't block → all-available → 1 segment in 1 call
       expect(summary.segmentCount).toBe(1);
-      expect(mockSetAvailability).toHaveBeenCalledTimes(1);
-      expect((mockSetAvailability.mock.calls[0] as unknown[])[5]).toBe(1);
+      expect(mockSetAvailabilityMultiple).toHaveBeenCalledTimes(1);
+      const [, , roomIds] = mockSetAvailabilityMultiple.mock.calls[0] as [
+        unknown, unknown, Array<{ availability: number }>
+      ];
+      expect(roomIds[0]!.availability).toBe(1);
     });
   });
 
   // ── 2. Per-property mutex ─────────────────────────────────────────────────
   describe('per-property mutex — concurrent pushes coalesce into one execution', () => {
     it('coalesces 3 concurrent calls into 1 actual execution', async () => {
-      const { service, mockSetAvailability } = buildService();
+      const { service, mockSetAvailabilityMultiple } = buildService();
 
       // Add slight delay to guarantee overlap
-      mockSetAvailability.mockImplementation(
+      mockSetAvailabilityMultiple.mockImplementation(
         () => new Promise<void>((r) => setTimeout(r, 10)),
       );
 
@@ -247,22 +269,22 @@ describe('ZodomusAvailabilityPushService', () => {
       expect(r1).toBe(r2);
       expect(r2).toBe(r3);
 
-      // Only 1 actual push executed (no bookings → 1 segment)
-      expect(mockSetAvailability).toHaveBeenCalledTimes(1);
+      // Only 1 actual API call
+      expect(mockSetAvailabilityMultiple).toHaveBeenCalledTimes(1);
     });
 
     it('allows sequential pushes — mutex releases after completion', async () => {
-      const { service, mockSetAvailability } = buildService();
+      const { service, mockSetAvailabilityMultiple } = buildService();
 
       await service.pushAvailabilityNow(PROPERTY_ID);
       await service.pushAvailabilityNow(PROPERTY_ID);
 
-      // Two independent sequential pushes → 2 executions
-      expect(mockSetAvailability).toHaveBeenCalledTimes(2);
+      // Two independent sequential pushes → 2 API calls
+      expect(mockSetAvailabilityMultiple).toHaveBeenCalledTimes(2);
     });
 
     it('different properties run independently (no cross-property blocking)', async () => {
-      const { service, mockSetAvailability, mockPropertyFindOne } = buildService();
+      const { service, mockSetAvailabilityMultiple, mockPropertyFindOne } = buildService();
 
       mockPropertyFindOne
         .mockResolvedValueOnce(makeProperty())
@@ -273,17 +295,16 @@ describe('ZodomusAvailabilityPushService', () => {
         service.pushAvailabilityNow(OTHER_PROPERTY_ID),
       ]);
 
-      // 2 properties × 1 segment each = 2 calls
-      expect(mockSetAvailability).toHaveBeenCalledTimes(2);
+      // 2 properties × 1 API call each = 2 total
+      expect(mockSetAvailabilityMultiple).toHaveBeenCalledTimes(2);
     });
   });
 
   // ── 3. Push gating ────────────────────────────────────────────────────────
   describe('push gating', () => {
     it('skips push when ZODOMUS_AUTO_PUSH_AVAILABILITY is false', async () => {
-      const { service, mockSetAvailability } = buildService();
+      const { service, mockSetAvailabilityMultiple } = buildService();
 
-      // Override config to disable auto-push
       (service as unknown as { config: ConfigService }).config = {
         get: jest.fn((key: string) =>
           key === 'ZODOMUS_AUTO_PUSH_AVAILABILITY' ? false : undefined,
@@ -293,13 +314,12 @@ describe('ZodomusAvailabilityPushService', () => {
       const summary = await service.pushAvailabilityNow(PROPERTY_ID);
 
       expect(summary.pushed).toBe(false);
-      expect(mockSetAvailability).not.toHaveBeenCalled();
+      expect(mockSetAvailabilityMultiple).not.toHaveBeenCalled();
     });
 
     it('pushes even when AUTO_PUSH is false when ignoreAutoPushDisable=true', async () => {
-      const { service, mockSetAvailability } = buildService();
+      const { service, mockSetAvailabilityMultiple } = buildService();
 
-      // Patch config to return false for AUTO_PUSH but true for rest
       const originalGet = (service as unknown as { config: { get: jest.Mock } }).config.get;
       (service as unknown as { config: { get: jest.Mock } }).config.get = jest.fn(
         (key: string) =>
@@ -313,11 +333,11 @@ describe('ZodomusAvailabilityPushService', () => {
       });
 
       expect(summary.pushed).toBe(true);
-      expect(mockSetAvailability).toHaveBeenCalled();
+      expect(mockSetAvailabilityMultiple).toHaveBeenCalled();
     });
 
     it('returns empty summary when property has no Zodomus targets', async () => {
-      const { service, mockSetAvailability } = buildService({
+      const { service, mockSetAvailabilityMultiple } = buildService({
         property: makeProperty({
           zodomusPropertyId: undefined,
           channelListings: [],
@@ -329,16 +349,16 @@ describe('ZodomusAvailabilityPushService', () => {
 
       expect(summary.pushed).toBe(false);
       expect(summary.targetCount).toBe(0);
-      expect(mockSetAvailability).not.toHaveBeenCalled();
+      expect(mockSetAvailabilityMultiple).not.toHaveBeenCalled();
     });
 
     it('returns empty summary when property not found', async () => {
-      const { service, mockSetAvailability } = buildService({ property: null });
+      const { service, mockSetAvailabilityMultiple } = buildService({ property: null });
 
       const summary = await service.pushAvailabilityNow(PROPERTY_ID);
 
       expect(summary.pushed).toBe(false);
-      expect(mockSetAvailability).not.toHaveBeenCalled();
+      expect(mockSetAvailabilityMultiple).not.toHaveBeenCalled();
     });
   });
 
@@ -346,35 +366,31 @@ describe('ZodomusAvailabilityPushService', () => {
   describe('scheduleAvailabilityPush — debounce coalesces rapid triggers', () => {
     it('executes only once when called several times within debounce window', async () => {
       jest.useFakeTimers();
-      const { service, mockSetAvailability } = buildService();
+      const { service, mockSetAvailabilityMultiple } = buildService();
 
-      // Schedule 3 times rapidly
       service.scheduleAvailabilityPush(PROPERTY_ID);
       service.scheduleAvailabilityPush(PROPERTY_ID);
       service.scheduleAvailabilityPush(PROPERTY_ID);
 
-      // No call before debounce fires
-      expect(mockSetAvailability).not.toHaveBeenCalled();
+      expect(mockSetAvailabilityMultiple).not.toHaveBeenCalled();
 
-      // Advance past debounce window (config mock returns 50ms)
       jest.advanceTimersByTime(200);
 
-      // Let promises settle
       await Promise.resolve();
       await Promise.resolve();
       await Promise.resolve();
 
       jest.useRealTimers();
 
-      // Exactly 1 execution (1 segment, no bookings)
-      expect(mockSetAvailability.mock.calls.length).toBeLessThanOrEqual(1);
+      // At most 1 API call after debounce fires
+      expect(mockSetAvailabilityMultiple.mock.calls.length).toBeLessThanOrEqual(1);
     });
   });
 
   // ── 5. Delta sync (dateFrom/dateTo window) ────────────────────────────────
   describe('delta sync — partial date window', () => {
     it('restricts availability push to specified date range', async () => {
-      const { service, mockSetAvailability } = buildService();
+      const { service, mockSetAvailabilityMultiple } = buildService();
 
       const dateFrom = new Date();
       dateFrom.setUTCDate(dateFrom.getUTCDate() + 2);
@@ -386,14 +402,15 @@ describe('ZodomusAvailabilityPushService', () => {
         dateToISO: dateTo.toISOString(),
       });
 
-      expect(mockSetAvailability).toHaveBeenCalledTimes(1);
+      // Still 1 API call — even delta sync uses availability-multiple
+      expect(mockSetAvailabilityMultiple).toHaveBeenCalledTimes(1);
 
-      const [, , , segFrom, segTo] = mockSetAvailability.mock.calls[0] as [
-        unknown, unknown, unknown, string, string
+      const [, , roomIds] = mockSetAvailabilityMultiple.mock.calls[0] as [
+        unknown, unknown, Array<{ dateFrom: string; dateTo: string }>
       ];
-      // The segment start should be at or after dateFrom
+      const segFrom = roomIds[0]!.dateFrom;
+      const segTo = roomIds[roomIds.length - 1]!.dateTo;
       expect(segFrom >= dateFrom.toISOString().slice(0, 10)).toBe(true);
-      // The segment end should be at or before dateTo
       expect(segTo <= dateTo.toISOString().slice(0, 10)).toBe(true);
     });
   });

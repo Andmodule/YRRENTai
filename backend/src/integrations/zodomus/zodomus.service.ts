@@ -122,8 +122,8 @@ export class ZodomusService {
   }
 
   /**
-   * POST /availability — set room availability for a date range.
-   * Correct format per Zodomus docs: dateFrom/dateTo/availability (not dates[]).
+   * POST /availability — set room availability for a single date range.
+   * Kept for BullMQ worker (one job = one segment) and fallback.
    */
   async setAvailability(
     channelId: number,
@@ -140,6 +140,41 @@ export class ZodomusService {
       dateFrom,
       dateTo,
       availability,
+    });
+  }
+
+  /**
+   * POST /availability-multiple — send ALL availability segments for a property in ONE API call.
+   * Recommended by Zodomus to reduce per-minute call count; segments go into `roomIds[]` array.
+   * Supports Booking (channelId=1), Expedia (2), Airbnb (3) with the same body shape.
+   *
+   * @param channelId  — OTA channel id
+   * @param propertyId — external property id (OTA string)
+   * @param segments   — array of { roomId, dateFrom, dateTo, availability }
+   */
+  async setAvailabilityMultiple(
+    channelId: number,
+    propertyId: string,
+    segments: Array<{ roomId: string; dateFrom: string; dateTo: string; availability: number }>,
+  ): Promise<void> {
+    if (segments.length === 0) return;
+    await this.ensureEnabled().post('/availability-multiple', {
+      channelId,
+      propertyId,
+      roomIds: segments.map((s) => ({
+        roomId: s.roomId,
+        dateFrom: s.dateFrom,
+        dateTo: s.dateTo,
+        availability: s.availability,
+      })),
+    });
+  }
+
+  /** POST /property-cancellation — cancel property mapping (required before remapping rooms/rates). */
+  async cancelProperty(channelId: number, propertyId: string): Promise<unknown> {
+    return this.ensureEnabled().post('/property-cancellation', {
+      channelId,
+      propertyId,
     });
   }
 

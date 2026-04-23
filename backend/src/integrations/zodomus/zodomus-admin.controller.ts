@@ -195,6 +195,30 @@ export class ZodomusAdminController {
     return { data };
   }
 
+  /**
+   * POST /property-cancellation — cancel property mapping.
+   * Required before remapping (rooms/rates changed on OTA side): cancel → activate → room-rates → rooms-activation.
+   */
+  @Post('property-cancellation')
+  @Roles('SUPERADMIN')
+  async propertyCancellation(@Body() dto: ZodomusPropertyCheckDto): Promise<{ data: unknown }> {
+    if (!this.zodomus.isEnabled) {
+      throw new BadRequestException('Zodomus is disabled');
+    }
+    const channel = Number(dto.channelId);
+    const pid = dto.propertyId?.trim();
+    if (!pid || !Number.isFinite(channel)) {
+      throw new BadRequestException('channelId and propertyId are required');
+    }
+    const prop = await this.propertyService.findByIdForAdmin(pid);
+    const ext = this.propertyService.getExternalListingIdForZodomusChannel(prop, channel);
+    if (!ext) {
+      throw new BadRequestException('Property has no external listing id for this channel');
+    }
+    const data = await this.zodomus.cancelProperty(channel, ext);
+    return { data };
+  }
+
   /** POST /reservations-createtest — E2E: Zodomus may call your webhook, then sync picks up queue. */
   @Post('create-test-reservation')
   @Roles('SUPERADMIN')

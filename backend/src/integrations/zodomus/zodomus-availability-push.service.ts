@@ -70,14 +70,26 @@ export type AvailabilityPushSummary = {
   dispatchMode: 'bullmq' | 'inline';
 };
 
+/** One date-range segment inside an availability-multiple payload. */
+type AvailabilitySegmentItem = {
+  roomId: string;
+  dateFrom: string;
+  /** dateToExclusive: exclusive end date (Zodomus dateTo = last inclusive day + 1). */
+  dateToExclusive: string;
+  availability: number;
+};
+
+/**
+ * BullMQ job payload: one job = one POST /availability-multiple for a single (channel, property) target.
+ * All segments for that target are batched inside `segments[]`.
+ */
 type AvailabilitySegment = {
   channelId: number;
   extProp: string;
   roomId: string;
-  dateFrom: string;
-  dateToExclusive: string;
-  availability: number;
   propertyId: string;
+  /** All availability segments batched for this target — sent as POST /availability-multiple roomIds[]. */
+  segments: AvailabilitySegmentItem[];
 };
 
 type PushTarget = { channelId: number; extProp: string; storedRoomId: string | null };
@@ -190,9 +202,16 @@ export class ZodomusAvailabilityPushService implements OnModuleInit, OnModuleDes
     this.worker = new Worker<AvailabilitySegment>(
       'zodomus-availability',
       async (job) => {
-        const { channelId, extProp, roomId, dateFrom, dateToExclusive, availability, propertyId } = job.data;
+        const { channelId, extProp, roomId, propertyId, segments } = job.data;
         try {
-          await this.zodomus.setAvailability(channelId, extProp, roomId, dateFrom, dateToExclusive, availability);
+          // One job = one POST /availability-multiple for this (channel, property, room) target.
+          const payload = segments.map((s) => ({
+            roomId,
+            dateFrom: s.dateFrom,
+            dateTo: s.dateToExclusive,
+            availability: s.availability,
+          }));
+          await this.zodomus.setAvailabilityMultiple(channelId, extProp, payload);
           await this.sleepBetweenAvailabilityPosts();
         } catch (e) {
           if (isZodomusPermanentMisconfiguration(e)) {
@@ -655,46 +674,56 @@ export class ZodomusAvailabilityPushService implements OnModuleInit, OnModuleDes
         continue;
       }
 
-      for (const seg of segments) {
-        const payload: AvailabilitySegment = {
+      // Build the batch payload (POST /availability-multiple roomIds[]).
+      const batchItems: AvailabilitySegmentItem[] = segments.map((seg) => ({
+        roomId,
+        dateFrom: seg.dateFrom,
+        dateToExclusive: seg.dateToExclusive,
+        availability: seg.availability,
+      }));
+
+      if (this.queue) {
+        /**
+         * One BullMQ job per (property, channel, room) target — carries ALL segments.
+         * jobId deduplication: if the same push is re-scheduled before the job runs
+         * (e.g. debounce + dirty retry overlap), the existing job is replaced with
+         * the latest segment set.
+         */
+        const jobId = `zodomus-avail-${propertyId}-${t.channelId}-${roomId}`;
+        const jobPayload: AvailabilitySegment = {
           channelId: t.channelId,
           extProp: t.extProp,
           roomId,
-          dateFrom: seg.dateFrom,
-          dateToExclusive: seg.dateToExclusive,
-          availability: seg.availability,
           propertyId,
+          segments: batchItems,
         };
-
-        if (this.queue) {
-          // Deduplicate same segment updates in queue
-          const jobId = `zodomus-avail-${propertyId}-${t.channelId}-${roomId}-${seg.dateFrom}-${seg.dateToExclusive}-${seg.availability}`;
-          await this.queue.add('push-segment', payload, {
-            jobId,
-            /** Transient errors only — permanent misconfig uses UnrecoverableError (no retry storm). */
-            attempts: 2,
-            backoff: { type: 'exponential', delay: 45_000 },
-            removeOnComplete: true,
-            removeOnFail: { age: 86400 },
-          });
-        } else {
-          // Inline mode: enforce sliding-window rate limit before each POST /availability.
-          const maxPerMin = this.config.get<number>('ZODOMUS_AVAILABILITY_MAX_PER_MINUTE') ?? 40;
-          await this.inlineRateLimit(maxPerMin);
-          await this.zodomus.setAvailability(
-            t.channelId,
-            t.extProp,
-            roomId,
-            seg.dateFrom,
-            seg.dateToExclusive,
-            seg.availability,
-          );
-          await this.sleepBetweenAvailabilityPosts();
-        }
-        segmentsDispatched += 1;
+        await this.queue.add('push-segment', jobPayload, {
+          jobId,
+          attempts: 2,
+          backoff: { type: 'exponential', delay: 45_000 },
+          removeOnComplete: true,
+          removeOnFail: { age: 86400 },
+        });
+      } else {
+        // Inline mode: ONE POST /availability-multiple per target.
+        const maxPerMin = this.config.get<number>('ZODOMUS_AVAILABILITY_MAX_PER_MINUTE') ?? 40;
+        await this.inlineRateLimit(maxPerMin);
+        await this.zodomus.setAvailabilityMultiple(
+          t.channelId,
+          t.extProp,
+          batchItems.map((s) => ({
+            roomId: s.roomId,
+            dateFrom: s.dateFrom,
+            dateTo: s.dateToExclusive,
+            availability: s.availability,
+          })),
+        );
+        await this.sleepBetweenAvailabilityPosts();
       }
+
+      segmentsDispatched += segments.length;
       this.logger.log(
-        `Zodomus availability: property ${propertyId} channel ${t.channelId} — ${segments.length} segment(s) enqueued/pushed.`,
+        `Zodomus availability: property ${propertyId} channel ${t.channelId} — ${segments.length} segment(s) in 1 API call (availability-multiple).`,
       );
     }
 
