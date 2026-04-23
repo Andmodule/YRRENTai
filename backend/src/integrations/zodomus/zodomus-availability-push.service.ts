@@ -92,6 +92,19 @@ type AvailabilitySegment = {
   segments: AvailabilitySegmentItem[];
 };
 
+function availabilityJobRangeHint(data: AvailabilitySegment | undefined): string {
+  const segs = data?.segments;
+  const first = segs?.[0];
+  if (!segs?.length || !first) return 'no segments';
+  let minF = first.dateFrom;
+  let maxT = first.dateToExclusive;
+  for (const s of segs) {
+    if (s.dateFrom < minF) minF = s.dateFrom;
+    if (s.dateToExclusive > maxT) maxT = s.dateToExclusive;
+  }
+  return `${minF}–${maxT} (${segs.length} segs)`;
+}
+
 type PushTarget = { channelId: number; extProp: string; storedRoomId: string | null };
 
 export type AvailabilityPushTargetRow = {
@@ -242,7 +255,7 @@ export class ZodomusAvailabilityPushService implements OnModuleInit, OnModuleDes
 
     this.worker.on('failed', async (job, err) => {
       this.logger.error(
-        `Zodomus availability push failed for ${job?.data.propertyId} (${job?.data.dateFrom}–${job?.data.dateToExclusive}): ${(err as Error).message}`,
+        `Zodomus availability push failed for ${job?.data.propertyId} (${availabilityJobRangeHint(job?.data)}): ${(err as Error).message}`,
       );
       if (!job?.data.propertyId) return;
       if (isZodomusPermanentMisconfiguration(err)) {
