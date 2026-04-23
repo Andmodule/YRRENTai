@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { addDays, format } from 'date-fns';
 import {
   ArrowLeft,
@@ -26,6 +27,9 @@ import {
   isTasksListSliceFiltered,
   TasksStatusPriorityFilterPanel,
 } from '../manager/TasksStatusPriorityFilterPanel';
+import { parseManagerBoardPanel } from '../manager/ManagerBoardPanelTabs';
+import { StaffMessagesFilterPanel } from '../manager/StaffMessagesFilterPanel';
+import { TASK_MANAGER_PANEL_QUERY, isStaffMessagesQueryFiltered } from '../../task-url-params';
 import { preventCloseIfAssigneePickerOutside } from '../shared/AssigneePickerField';
 
 const WIDE = {
@@ -46,6 +50,8 @@ interface MobileTasksHeaderProps {
 
 export function MobileTasksHeader({ title }: MobileTasksHeaderProps) {
   const t = useTranslations('tasks');
+  const searchParams = useSearchParams();
+  const managerPanel = parseManagerBoardPanel(searchParams.get(TASK_MANAGER_PANEL_QUERY));
   const { toggleSidebar } = useUiStore();
   const filters = useTasksFiltersStore((s) => s.filters);
   const setFilters = useTasksFiltersStore((s) => s.setFilters);
@@ -126,7 +132,10 @@ export function MobileTasksHeader({ title }: MobileTasksHeaderProps) {
   }, []);
 
   const mobileView: MobileTasksViewMode = view === 'kanban' ? 'kanban' : 'list';
-  const listSliceFiltered = isTasksListSliceFiltered(filters);
+  const listSliceFiltered =
+    managerPanel === 'staffMessages'
+      ? isStaffMessagesQueryFiltered(searchParams)
+      : isTasksListSliceFiltered(filters);
 
   const pickView = useCallback(
     (next: MobileTasksViewMode) => {
@@ -356,7 +365,11 @@ export function MobileTasksHeader({ title }: MobileTasksHeaderProps) {
             <RadixDialog.Description className="sr-only">{t('filters.listFilterSheetDescription')}</RadixDialog.Description>
             <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-muted" aria-hidden />
             <p className="mb-3 text-center text-base font-semibold text-foreground">{t('filters.listFilterSheetTitle')}</p>
-            <TasksStatusPriorityFilterPanel />
+            {managerPanel === 'staffMessages' ? (
+              <StaffMessagesFilterPanel />
+            ) : (
+              <TasksStatusPriorityFilterPanel />
+            )}
           </RadixDialog.Content>
         </RadixDialog.Portal>
       </RadixDialog.Root>

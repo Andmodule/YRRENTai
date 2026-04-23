@@ -21,7 +21,7 @@ import { useTodayTasks } from '@/hooks/use-tasks';
 import { useTasksSocket } from '@/hooks/use-tasks-socket';
 import type { Task } from '@/hooks/use-tasks';
 import type { StaffUser } from '@/hooks/use-auth';
-import { useUpdateTaskStatus, useCompleteShift } from '@/hooks/use-tasks';
+import { useUpdateTaskStatus } from '@/hooks/use-tasks';
 import { usePendingTaskMarkDoneStaff } from '@/hooks/use-pending-task-mark-done';
 import { ChecklistItem } from './checklist-item';
 import { ProgressBar } from './progress-bar';
@@ -50,13 +50,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { Drawer, DrawerContent } from '@/components/ui/drawer';
-import {
-  deadlineUrgency,
-  estimateShiftEnd,
-  isShiftDoneToday,
-  pickNextTaskByDueTime,
-  formatShiftDurationLabel,
-} from '@/lib/shift-utils';
+import { deadlineUrgency, estimateShiftEnd, pickNextTaskByDueTime } from '@/lib/shift-utils';
 import { isTaskCompletedToday } from '@/lib/staff-history-date';
 
 /**
@@ -83,9 +77,6 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
 
   const { data, isLoading, isError, refetch } = useTodayTasks();
   const { mutate: updateStatus, isPending: statusPending } = useUpdateTaskStatus();
-  const { mutateAsync: completeShift, isPending: shiftPending } = useCompleteShift();
-  const [shiftAutocompleteFailed, setShiftAutocompleteFailed] = useState(false);
-  const shiftFirstAutoFiredRef = useRef(false);
 
   const onMarkDoneCommitted = useCallback((task: Task) => {
     setQuickTask(null);
@@ -136,13 +127,6 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
       window.removeEventListener('offline', off);
     };
   }, []);
-
-  useEffect(() => {
-    const key = `staffShiftStart_${todayStr}`;
-    if (typeof sessionStorage !== 'undefined' && !sessionStorage.getItem(key)) {
-      sessionStorage.setItem(key, String(Date.now()));
-    }
-  }, [todayStr]);
 
   /** Все назначенные задачи из API (широкий диапазон дат) — для поиска и открытого списка. */
   const allAssigned = useMemo(() => data?.tasks ?? [], [data?.tasks]);
@@ -306,12 +290,6 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
     [activeTasks, strings],
   );
 
-  const [sessionShiftStartMs, setSessionShiftStartMs] = useState<number | null>(null);
-  useEffect(() => {
-    const raw = sessionStorage.getItem(`staffShiftStart_${todayStr}`);
-    setSessionShiftStartMs(raw ? Number(raw) : null);
-  }, [todayStr]);
-
   const incidentPropertyId = activeTasks[0]?.propertyId ?? null;
 
   const initials = `${user.firstName[0] ?? ''}${user.lastName[0] ?? ''}`.toUpperCase();
@@ -338,48 +316,6 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
     },
     [allAssigned, cancelPendingForUuid, updateStatus],
   );
-
-  const shiftCompletedDurationLabel = formatShiftDurationLabel(
-    todayScopeTasks,
-    user.staffShiftCompletedAt ?? null,
-    sessionShiftStartMs,
-  );
-
-  const shiftAlreadyDoneToday = isShiftDoneToday(user.staffShiftCompletedAt ?? null);
-
-  useEffect(() => {
-    if (isLoading || isError || !allDone) {
-      if (!allDone) {
-        shiftFirstAutoFiredRef.current = false;
-        setShiftAutocompleteFailed(false);
-      }
-      return;
-    }
-    if (shiftAlreadyDoneToday || shiftAutocompleteFailed) return;
-    if (shiftFirstAutoFiredRef.current) return;
-    shiftFirstAutoFiredRef.current = true;
-    void completeShift().catch(() => {
-      setShiftAutocompleteFailed(true);
-      toast.error(strings.tasks.checklist.shiftRecordError);
-    });
-  }, [
-    allDone,
-    completeShift,
-    isError,
-    isLoading,
-    shiftAlreadyDoneToday,
-    shiftAutocompleteFailed,
-    strings.tasks.checklist.shiftRecordError,
-  ]);
-
-  const handleRetryShiftRecord = useCallback(() => {
-    void completeShift()
-      .then(() => setShiftAutocompleteFailed(false))
-      .catch(() => {
-        setShiftAutocompleteFailed(true);
-        toast.error(strings.tasks.checklist.shiftRecordError);
-      });
-  }, [completeShift, strings.tasks.checklist.shiftRecordError]);
 
   const handleQuickStart = (uuid: string) => {
     updateStatus(
@@ -487,45 +423,10 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
           </div>
         )}
 
-        {shiftAlreadyDoneToday && (
-          <div className="mb-4 rounded-2xl border-2 border-teal-500/70 bg-gradient-to-br from-teal-50 via-white to-emerald-50/80 p-5 shadow-md shadow-teal-900/5">
-            <p className="text-xl font-bold text-slate-900">🎉 Смена завершена!</p>
-            <p className="mt-3 text-sm text-slate-700">
-              Выполнено задач:{' '}
-              <span className="font-semibold text-teal-900">
-                {doneCount} / {total || '—'}
-              </span>
-            </p>
-            <p className="mt-1 text-sm text-slate-700">
-              С фото-верификацией:{' '}
-              <span className="font-semibold text-teal-900">{verifiedCount}</span>
-            </p>
-            <p className="mt-1 text-sm text-slate-700">
-              Время смены: <span className="font-semibold text-slate-900">{shiftCompletedDurationLabel}</span>
-            </p>
-          </div>
-        )}
-
-        {!isLoading && !isError && allDone && !shiftAlreadyDoneToday && (
-          <div className="mb-4 space-y-3">
-            {shiftAutocompleteFailed ? (
-              <div className="flex flex-col gap-3 rounded-2xl border border-rose-200/80 bg-rose-50/90 px-4 py-3 text-sm text-rose-900">
-                <p>{strings.tasks.checklist.shiftRecordError}</p>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full rounded-xl border-rose-300"
-                  disabled={shiftPending}
-                  onClick={() => void handleRetryShiftRecord()}
-                >
-                  {strings.tasks.checklist.shiftRecordRetry}
-                </Button>
-              </div>
-            ) : (
-              <p className="rounded-2xl border border-teal-200/80 bg-teal-50/80 px-4 py-3 text-sm text-teal-900">
-                {strings.tasks.checklist.shiftRecording}
-              </p>
-            )}
+        {!isLoading && !isError && allDone && total > 0 && (
+          <div className="mb-4 rounded-2xl border border-teal-200/80 bg-teal-50/80 px-4 py-3 text-sm text-teal-900">
+            <p className="font-semibold">{strings.tasks.checklist.allTasksDoneTitle}</p>
+            <p className="mt-1 text-teal-800/95">{strings.tasks.checklist.allTasksDoneHint}</p>
           </div>
         )}
 

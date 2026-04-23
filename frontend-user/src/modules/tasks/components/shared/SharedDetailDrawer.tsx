@@ -167,6 +167,7 @@ export type SharedDetailDrawerProps =
       open: boolean;
       onOpenChange: (open: boolean) => void;
       isStaffView?: boolean;
+      focusStaffNotes?: boolean;
     }
   | {
       mode: 'incident';
@@ -187,6 +188,7 @@ export function SharedDetailDrawer(props: SharedDetailDrawerProps) {
         open={props.open}
         onOpenChange={props.onOpenChange}
         isStaffView={props.isStaffView}
+        focusStaffNotes={props.focusStaffNotes}
       />
     );
   }
@@ -206,11 +208,13 @@ function TaskDetailMode({
   open,
   onOpenChange,
   isStaffView = false,
+  focusStaffNotes = false,
 }: {
   task: Task | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   isStaffView?: boolean;
+  focusStaffNotes?: boolean;
 }) {
   const t = useTranslations('tasks.detail');
   const tVoice = useTranslations('tasks.voiceCreate');
@@ -236,6 +240,7 @@ function TaskDetailMode({
   const [issueText, setIssueText] = useState('');
   const issueFilesRef = useRef<HTMLInputElement>(null);
   const notesRef = useRef<HTMLTextAreaElement>(null);
+  const staffNotesSectionRef = useRef<HTMLDivElement | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const dateInputRef = useRef<HTMLInputElement>(null);
   const timeInputRef = useRef<HTMLInputElement>(null);
@@ -248,6 +253,18 @@ function TaskDetailMode({
 
   const { data: staffNotes } = useTaskNotes(task?.uuid ?? null, open && !!task && !effectiveStaffView);
   const { mutate: markSeen } = useMarkTaskSeen();
+
+  useLayoutEffect(() => {
+    if (!open || effectiveStaffView || !focusStaffNotes) return;
+    const n = staffNotes?.length ?? 0;
+    if (n === 0) return;
+    const el = staffNotesSectionRef.current;
+    if (!el) return;
+    const id = window.setTimeout(() => {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
+    return () => clearTimeout(id);
+  }, [open, effectiveStaffView, focusStaffNotes, staffNotes?.length, task?.uuid]);
   const { data: checklistData } = useTaskChecklist(task?.uuid ?? null, open && !!task);
   const { staff, isLoading: staffLoading } = useStaffUsers({ enabled: !effectiveStaffView });
 
@@ -1003,7 +1020,11 @@ function TaskDetailMode({
           )}
 
           {!effectiveStaffView && staffNotes && staffNotes.length > 0 && (
-            <div className="rounded-lg border border-amber-200/90 bg-amber-50/95 p-2.5 dark:border-amber-800/55 dark:bg-amber-950/45">
+            <div
+              ref={staffNotesSectionRef}
+              id="task-detail-staff-notes"
+              className="rounded-lg border border-amber-200/90 bg-amber-50/95 p-2.5 dark:border-amber-800/55 dark:bg-amber-950/45"
+            >
               <p className="mb-1.5 text-xs font-medium text-amber-950 dark:text-amber-100">{t('staffNotesTitle')}</p>
               <ul className="space-y-2 text-sm">
                 {staffNotes.map((n) => (

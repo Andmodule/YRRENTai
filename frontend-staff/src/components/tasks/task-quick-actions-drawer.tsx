@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import {
   Play,
   CheckCircle2,
@@ -15,6 +16,8 @@ import { Button } from '@/components/ui/button';
 import type { Task } from '@/hooks/use-tasks';
 import { useStaffStrings } from '@/locales/staff-strings';
 import { cn } from '@/lib/utils';
+import { isVideoAttachmentUrl } from '@/lib/media-url';
+import { StaffMediaViewerDrawer } from '@/components/tasks/staff-media-viewer-drawer';
 
 const typeLabels: Record<string, string> = {
   checkout_cleaning: 'Уборка (выезд)',
@@ -59,10 +62,14 @@ export function TaskQuickActionsDrawer({
 }: TaskQuickActionsDrawerProps) {
   const strings = useStaffStrings();
   const v = strings.tasks.verification;
+  const h = strings.tasks.history;
   const ti = strings.tasks.taskIssue;
   const tr = strings.driver.route;
   const generalLabel = strings.tasks.checklist.generalTaskLabel;
+  const [mediaViewerOpen, setMediaViewerOpen] = useState(false);
   if (!task) return null;
+
+  const existingMediaUrls = task.photoUrls?.filter(Boolean) ?? [];
 
   const isDone = task.status === 'done';
   const isIssue = task.status === 'issue';
@@ -88,6 +95,7 @@ export function TaskQuickActionsDrawer({
           : 'border-slate-200/90 bg-slate-50/60 dark:border-slate-700/80 dark:bg-slate-900';
 
   return (
+    <>
     <Drawer open={open} onOpenChange={onOpenChange}>
       <DrawerContent title={readOnlyActions ? 'Детали задачи' : 'Действия по задаче'} className="max-h-[min(92svh,900px)]">
         <div className="space-y-4 pb-10">
@@ -131,6 +139,45 @@ export function TaskQuickActionsDrawer({
                     ? ` · обязательных не сделано: ${summary.requiredUnchecked}`
                     : ''}
                 </span>
+              </div>
+            ) : null}
+            {existingMediaUrls.length > 0 ? (
+              <div className="space-y-2">
+                <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  {h.detailAttachments}
+                </p>
+                <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  {existingMediaUrls.map((url) => (
+                    <button
+                      key={url}
+                      type="button"
+                      onClick={() => setMediaViewerOpen(true)}
+                      className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl border border-slate-200/90 bg-slate-100 ring-offset-2 transition hover:opacity-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 dark:border-slate-600 dark:bg-slate-800"
+                    >
+                      {isVideoAttachmentUrl(url) ? (
+                        <video
+                          src={url}
+                          muted
+                          playsInline
+                          className="h-full w-full object-cover"
+                          preload="metadata"
+                        />
+                      ) : (
+                        // eslint-disable-next-line @next/next/no-img-element -- staff attachment URL
+                        <img src={url} alt="" className="h-full w-full object-cover" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-full rounded-xl border-teal-200 text-teal-900 hover:bg-teal-50 dark:border-teal-800 dark:text-teal-100"
+                  onClick={() => setMediaViewerOpen(true)}
+                >
+                  {h.viewMedia}
+                </Button>
               </div>
             ) : null}
             {isDone && onAddVerification && !readOnlyActions ? (
@@ -243,5 +290,12 @@ export function TaskQuickActionsDrawer({
         </div>
       </DrawerContent>
     </Drawer>
+    <StaffMediaViewerDrawer
+      open={mediaViewerOpen}
+      onOpenChange={setMediaViewerOpen}
+      title={h.detailAttachments}
+      urls={existingMediaUrls}
+    />
+    </>
   );
 }

@@ -9,9 +9,17 @@ interface TaskDetailDrawerProps {
   onOpenChange: (open: boolean) => void;
   /** Staff view: read-only manager fields */
   isStaffView?: boolean;
+  /** Manager: scroll to «Заметки от персонала» when opening (e.g. from staff messages tab). */
+  focusStaffNotes?: boolean;
 }
 
-export function TaskDetailDrawer({ task, open, onOpenChange, isStaffView }: TaskDetailDrawerProps) {
+export function TaskDetailDrawer({
+  task,
+  open,
+  onOpenChange,
+  isStaffView,
+  focusStaffNotes,
+}: TaskDetailDrawerProps) {
   /** Remount per task so title/notes state is not one frame empty before useEffect (fixes blank «Задача»). */
   return (
     <SharedDetailDrawer
@@ -21,6 +29,7 @@ export function TaskDetailDrawer({ task, open, onOpenChange, isStaffView }: Task
       open={open}
       onOpenChange={onOpenChange}
       isStaffView={isStaffView}
+      focusStaffNotes={focusStaffNotes}
     />
   );
 }

@@ -527,3 +527,259 @@ if (fetchReservationSample && firstRid && q.ok && queueApiOk) {
 } else if (fetchReservationSample && !firstRid) {
   console.log('GET /reservations sample skipped: queue empty or no id in body.reservations');
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ZODOMUS_TEST_AVAILABILITY_CYCLE=true
+//
+// Full property lifecycle test — the CORRECT way to test availability:
+//   1. GET /room-rates          — get roomId (one GET, not per-night)
+//   2. POST /availability       — set available=1 for test window (ONE call, not per-night)
+//   3. GET  /availability       — verify (1 GET)
+//   4. POST /reservations-createtest (status=new)
+//   5. GET  /reservations-queue — verify reservation arrived
+//   6. GET  /reservations       — ACK from queue (fetch full details)
+//   7. POST /availability       — set occupied=0 for booking dates (ONE call)
+//   8. GET  /availability       — verify occupied
+//   9. POST /reservations-createtest (status=cancelled)
+//  10. POST /availability       — restore available=1 (ONE call)
+//  11. GET  /availability       — verify restored
+//
+// Total POST /availability calls = 3 (one per state change), NOT one per night.
+//
+// Optional env:
+//   ZODOMUS_TEST_DATE_FROM  — start date YYYY-MM-DD (default: today+1)
+//   ZODOMUS_TEST_DATE_TO    — end   date YYYY-MM-DD (default: today+8, exclusive)
+//   ZODOMUS_TEST_ROOM_ID    — override roomId (default: first room from GET /room-rates)
+// ─────────────────────────────────────────────────────────────────────────────
+if (truthy(env.ZODOMUS_TEST_AVAILABILITY_CYCLE)) {
+  console.log('\n── Availability lifecycle cycle ──────────────────────────────────');
+
+  if (!propertyId || channelId == null) {
+    console.warn('Availability cycle skipped: ZODOMUS_SAMPLE_PROPERTY_ID or channelId missing.');
+  } else {
+    /** ISO date string YYYY-MM-DD offset by N days from today (UTC). */
+    function isoDate(offsetDays) {
+      const d = new Date();
+      d.setUTCDate(d.getUTCDate() + offsetDays);
+      return d.toISOString().slice(0, 10);
+    }
+
+    const testDateFrom = env.ZODOMUS_TEST_DATE_FROM?.trim() || isoDate(1);
+    const testDateTo   = env.ZODOMUS_TEST_DATE_TO?.trim()   || isoDate(8); // exclusive
+
+    // Step 1: GET /room-rates — find roomId
+    const rrCycleUrl = new URL(`${base}/room-rates`);
+    rrCycleUrl.searchParams.set('channelId', String(channelId));
+    rrCycleUrl.searchParams.set('propertyId', String(propertyId));
+    const rrCycle = await fetchGet(rrCycleUrl.toString(), authHeader);
+
+    let testRoomId = env.ZODOMUS_TEST_ROOM_ID?.trim() || null;
+    if (!testRoomId) {
+      const rooms = rrCycle.body?.rooms;
+      if (Array.isArray(rooms) && rooms[0]?.id) {
+        testRoomId = String(rooms[0].id);
+      }
+    }
+
+    if (!testRoomId) {
+      console.warn('Availability cycle: could not determine roomId — set ZODOMUS_TEST_ROOM_ID or run activation first.');
+    } else {
+      console.log(`  roomId=${testRoomId}  window=${testDateFrom} → ${testDateTo} (exclusive)`);
+
+      // Step 2: POST /availability — set available=1 for the whole test window (ONE call)
+      const avSet1 = await fetchPost(base, '/availability', authHeader, {
+        channelId,
+        propertyId,
+        roomId: testRoomId,
+        dateFrom: testDateFrom,
+        dateTo:   testDateTo,
+        availability: 1,
+      });
+      writeJson('response-avail-set-available.json', {
+        _meta: {
+          step: 'availability-set-available',
+          note: 'ONE call covers full date range — not one call per night',
+          channelId, propertyId, roomId: testRoomId,
+          dateFrom: testDateFrom, dateTo: testDateTo, availability: 1,
+          httpStatus: avSet1.status, ok: avSet1.ok, zodomusApiOk: zodomusReturnOk(avSet1.body),
+        },
+        body: avSet1.body,
+      });
+      console.log(`  [2] POST /availability (available=1): ${avSet1.ok && zodomusReturnOk(avSet1.body) ? 'OK' : 'WARN — see response-avail-set-available.json'}`);
+
+      // Step 3: GET /availability — verify available
+      const avGet1Url = new URL(`${base}/availability`);
+      avGet1Url.searchParams.set('channelId', String(channelId));
+      avGet1Url.searchParams.set('propertyId', String(propertyId));
+      avGet1Url.searchParams.set('dateFrom', testDateFrom);
+      avGet1Url.searchParams.set('dateTo', testDateTo);
+      const avGet1 = await fetchGet(avGet1Url.toString(), authHeader);
+      writeJson('response-avail-get-1.json', {
+        _meta: {
+          step: 'availability-get-after-set-available',
+          channelId, propertyId, dateFrom: testDateFrom, dateTo: testDateTo,
+          httpStatus: avGet1.status, ok: avGet1.ok, zodomusApiOk: zodomusReturnOk(avGet1.body),
+        },
+        body: avGet1.body,
+      });
+      console.log(`  [3] GET  /availability (verify available=1): ${avGet1.ok ? 'OK' : 'WARN — see response-avail-get-1.json'}`);
+
+      // Step 4: POST /reservations-createtest (status=new)
+      const testResId = env.ZODOMUS_CREATE_TEST_RESERVATION_ID?.trim() || undefined;
+      const createBody = { channelId, propertyId, status: 'new', ...(testResId ? { reservationId: testResId } : {}) };
+      const ctNew = await fetchPost(base, '/reservations-createtest', authHeader, createBody);
+      writeJson('response-avail-createtest-new.json', {
+        _meta: {
+          step: 'createtest-new',
+          httpStatus: ctNew.status, ok: ctNew.ok, zodomusApiOk: zodomusReturnOk(ctNew.body),
+        },
+        body: ctNew.body,
+      });
+      console.log(`  [4] POST /reservations-createtest (status=new): ${ctNew.ok && zodomusReturnOk(ctNew.body) ? 'OK' : 'WARN'}`);
+
+      // Brief pause — sandbox may need a moment for reservation to appear in queue
+      await new Promise((r) => setTimeout(r, 1500));
+
+      // Step 5: GET /reservations-queue
+      const qCycleUrl = new URL(`${base}/reservations-queue`);
+      qCycleUrl.searchParams.set('channelId', String(channelId));
+      qCycleUrl.searchParams.set('propertyId', String(propertyId));
+      const qCycle = await fetchGet(qCycleUrl.toString(), authHeader);
+      writeJson('response-avail-queue.json', {
+        _meta: {
+          step: 'queue-after-createtest',
+          httpStatus: qCycle.status, ok: qCycle.ok, zodomusApiOk: zodomusReturnOk(qCycle.body),
+        },
+        body: qCycle.body,
+      });
+      const cycleRid = firstQueueReservationId(qCycle.body);
+      console.log(`  [5] GET  /reservations-queue: ${cycleRid ? `reservationId=${cycleRid}` : 'empty / no id'}`);
+
+      // Step 6: GET /reservations — ACK from queue, get check-in/check-out
+      let bookingCheckIn = testDateFrom;
+      let bookingCheckOut = testDateTo;
+
+      if (cycleRid) {
+        const resUrl = new URL(`${base}/reservations`);
+        resUrl.searchParams.set('channelId', String(channelId));
+        resUrl.searchParams.set('propertyId', String(propertyId));
+        resUrl.searchParams.set('reservationId', cycleRid);
+        const resCycle = await fetchGet(resUrl.toString(), authHeader);
+        writeJson('response-avail-reservation.json', {
+          _meta: {
+            step: 'get-reservation',
+            reservationId: cycleRid,
+            httpStatus: resCycle.status, ok: resCycle.ok, zodomusApiOk: zodomusReturnOk(resCycle.body),
+          },
+          body: resCycle.body,
+        });
+
+        // Extract actual check-in / check-out from response
+        const resBody = resCycle.body;
+        const r = resBody?.reservations?.reservation ?? resBody?.reservation ?? resBody ?? {};
+        const rooms = resBody?.reservations?.rooms ?? resBody?.rooms ?? [];
+        const firstRoom = Array.isArray(rooms) ? rooms[0] : null;
+        const ci = firstRoom?.arrivalDate ?? r.checkIn ?? r.check_in;
+        const co = firstRoom?.departureDate ?? r.checkOut ?? r.check_out;
+        if (ci) bookingCheckIn = String(ci).slice(0, 10);
+        if (co) bookingCheckOut = String(co).slice(0, 10);
+        console.log(`  [6] GET  /reservations (ACK): checkIn=${bookingCheckIn} checkOut=${bookingCheckOut}`);
+      } else {
+        console.log('  [6] GET  /reservations: skipped (no reservationId in queue)');
+      }
+
+      // Step 7: POST /availability — set occupied=0 for booking dates (ONE call, not per-night!)
+      const avSet0 = await fetchPost(base, '/availability', authHeader, {
+        channelId,
+        propertyId,
+        roomId: testRoomId,
+        dateFrom: bookingCheckIn,
+        dateTo:   bookingCheckOut,
+        availability: 0,
+      });
+      writeJson('response-avail-set-occupied.json', {
+        _meta: {
+          step: 'availability-set-occupied',
+          note: 'ONE call for the booking range — not one call per night',
+          channelId, propertyId, roomId: testRoomId,
+          dateFrom: bookingCheckIn, dateTo: bookingCheckOut, availability: 0,
+          httpStatus: avSet0.status, ok: avSet0.ok, zodomusApiOk: zodomusReturnOk(avSet0.body),
+        },
+        body: avSet0.body,
+      });
+      console.log(`  [7] POST /availability (occupied=0, ${bookingCheckIn}→${bookingCheckOut}): ${avSet0.ok && zodomusReturnOk(avSet0.body) ? 'OK' : 'WARN — see response-avail-set-occupied.json'}`);
+
+      // Step 8: GET /availability — verify occupied
+      const avGet2Url = new URL(`${base}/availability`);
+      avGet2Url.searchParams.set('channelId', String(channelId));
+      avGet2Url.searchParams.set('propertyId', String(propertyId));
+      avGet2Url.searchParams.set('dateFrom', testDateFrom);
+      avGet2Url.searchParams.set('dateTo', testDateTo);
+      const avGet2 = await fetchGet(avGet2Url.toString(), authHeader);
+      writeJson('response-avail-get-2.json', {
+        _meta: {
+          step: 'availability-get-after-occupied',
+          channelId, propertyId, dateFrom: testDateFrom, dateTo: testDateTo,
+          httpStatus: avGet2.status, ok: avGet2.ok, zodomusApiOk: zodomusReturnOk(avGet2.body),
+        },
+        body: avGet2.body,
+      });
+      console.log(`  [8] GET  /availability (verify occupied): ${avGet2.ok ? 'OK — see response-avail-get-2.json' : 'WARN'}`);
+
+      // Step 9: POST /reservations-createtest (status=cancelled)
+      const ctCancel = await fetchPost(base, '/reservations-createtest', authHeader, {
+        channelId, propertyId, status: 'cancelled',
+        ...(cycleRid ? { reservationId: cycleRid } : {}),
+      });
+      writeJson('response-avail-createtest-cancelled.json', {
+        _meta: {
+          step: 'createtest-cancelled',
+          httpStatus: ctCancel.status, ok: ctCancel.ok, zodomusApiOk: zodomusReturnOk(ctCancel.body),
+        },
+        body: ctCancel.body,
+      });
+      console.log(`  [9] POST /reservations-createtest (status=cancelled): ${ctCancel.ok && zodomusReturnOk(ctCancel.body) ? 'OK' : 'WARN'}`);
+
+      // Step 10: POST /availability — restore available=1 (ONE call)
+      const avSet1b = await fetchPost(base, '/availability', authHeader, {
+        channelId,
+        propertyId,
+        roomId: testRoomId,
+        dateFrom: testDateFrom,
+        dateTo:   testDateTo,
+        availability: 1,
+      });
+      writeJson('response-avail-set-restored.json', {
+        _meta: {
+          step: 'availability-restore-available',
+          note: 'ONE call to restore full test window — cancellation frees the dates',
+          channelId, propertyId, roomId: testRoomId,
+          dateFrom: testDateFrom, dateTo: testDateTo, availability: 1,
+          httpStatus: avSet1b.status, ok: avSet1b.ok, zodomusApiOk: zodomusReturnOk(avSet1b.body),
+        },
+        body: avSet1b.body,
+      });
+      console.log(`  [10] POST /availability (restore available=1): ${avSet1b.ok && zodomusReturnOk(avSet1b.body) ? 'OK' : 'WARN — see response-avail-set-restored.json'}`);
+
+      // Step 11: GET /availability — verify restored
+      const avGet3Url = new URL(`${base}/availability`);
+      avGet3Url.searchParams.set('channelId', String(channelId));
+      avGet3Url.searchParams.set('propertyId', String(propertyId));
+      avGet3Url.searchParams.set('dateFrom', testDateFrom);
+      avGet3Url.searchParams.set('dateTo', testDateTo);
+      const avGet3 = await fetchGet(avGet3Url.toString(), authHeader);
+      writeJson('response-avail-get-3.json', {
+        _meta: {
+          step: 'availability-get-final',
+          channelId, propertyId, dateFrom: testDateFrom, dateTo: testDateTo,
+          httpStatus: avGet3.status, ok: avGet3.ok, zodomusApiOk: zodomusReturnOk(avGet3.body),
+        },
+        body: avGet3.body,
+      });
+      console.log(`  [11] GET  /availability (verify restored): ${avGet3.ok ? 'OK — see response-avail-get-3.json' : 'WARN'}`);
+
+      console.log(`\n  Summary: 3 POST /availability calls total (set-available, set-occupied, restore)`);
+      console.log('  Full lifecycle complete.\n');
+    }
+  }
+}

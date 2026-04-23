@@ -32,12 +32,10 @@ export interface StaffStrings {
       activeListHeading: (count: number) => string;
       /** Заголовок сворачиваемого блока выполненных задач. */
       completedTasksHeading: (count: number) => string;
-      /** Смена фиксируется на сервере автоматически — строка в процессе. */
-      shiftRecording: string;
-      /** Смена: ошибка сети / сервера. */
-      shiftRecordError: string;
-      /** Повторить фиксацию смены после ошибки. */
-      shiftRecordRetry: string;
+      /** Все задачи на сегодняшнюю дату в списке смены выполнены. */
+      allTasksDoneTitle: string;
+      /** Пояснение: новые задачи от менеджера снова появятся в списке. */
+      allTasksDoneHint: string;
       /** Задача без привязки к объекту (`isGeneralTask`). */
       generalTaskLabel: string;
     };
@@ -299,9 +297,9 @@ const MESSAGES: Record<StaffLocale, StaffStrings> = {
         profileTaskStatsLabel: 'По списку назначений',
         activeListHeading: (count: number) => `Список (${count})`,
         completedTasksHeading: (count: number) => `Завершенные за сегодня (${count})`,
-        shiftRecording: 'Фиксируем смену…',
-        shiftRecordError: 'Не удалось зафиксировать смену',
-        shiftRecordRetry: 'Повторить',
+        allTasksDoneTitle: 'Все задачи на сегодня выполнены.',
+        allTasksDoneHint:
+          'Если менеджер назначит новые задачи на сегодня, они снова появятся в списке.',
         generalTaskLabel: 'Общая задача',
       },
       incident: {
@@ -557,9 +555,8 @@ const MESSAGES: Record<StaffLocale, StaffStrings> = {
         profileTaskStatsLabel: 'All assigned',
         activeListHeading: (count: number) => `List (${count})`,
         completedTasksHeading: (count: number) => `Completed today (${count})`,
-        shiftRecording: 'Recording your shift…',
-        shiftRecordError: 'Could not record shift',
-        shiftRecordRetry: 'Retry',
+        allTasksDoneTitle: 'All tasks for today are done.',
+        allTasksDoneHint: 'If your manager adds more tasks for today, they will show up here again.',
         generalTaskLabel: 'General task',
       },
       incident: {

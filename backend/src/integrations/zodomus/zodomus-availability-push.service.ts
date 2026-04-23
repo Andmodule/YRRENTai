@@ -111,6 +111,18 @@ export class ZodomusAvailabilityPushService implements OnModuleInit, OnModuleDes
   private readonly _pushDebounceTimer = new Map<string, NodeJS.Timeout>();
   private readonly _pushAccumulatedOptions = new Map<string, PushAvailabilityOptions | undefined>();
 
+  /**
+   * Per-property mutex: prevents concurrent availability pushes for the same property.
+   * When a push is already in flight, new callers receive the same promise (coalescing).
+   */
+  private readonly _inFlightPush = new Map<string, Promise<AvailabilityPushSummary>>();
+
+  /**
+   * Sliding-window call timestamps for the inline (no-Redis) rate limiter.
+   * Shared across all properties — mirrors what BullMQ limiter does for the queue worker.
+   */
+  private readonly _inlineCallTimestamps: number[] = [];
+
   /** Circuit breaker for availability push: tracks consecutive failures per property. */
   private readonly _availFailCount = new Map<string, number>();
   private readonly _availFailSince = new Map<string, number>();
@@ -161,7 +173,11 @@ export class ZodomusAvailabilityPushService implements OnModuleInit, OnModuleDes
   async onModuleInit(): Promise<void> {
     const url = this.redisUrl;
     if (!url) {
-      this.logger.warn('REDIS_URL not set — Zodomus availability push will run synchronously (NOT RECOMMENDED).');
+      const maxPerMin = this.config.get<number>('ZODOMUS_AVAILABILITY_MAX_PER_MINUTE') ?? 40;
+      this.logger.warn(
+        `REDIS_URL not set — Zodomus availability push runs synchronously (NOT RECOMMENDED for production). ` +
+          `Inline rate limiter active: max ${maxPerMin} req/min. Configure REDIS_URL for BullMQ queue.`,
+      );
       return;
     }
 
@@ -169,7 +185,7 @@ export class ZodomusAvailabilityPushService implements OnModuleInit, OnModuleDes
     
     this.queue = new Queue<AvailabilitySegment>('zodomus-availability', { connection });
 
-    const maxPerMinute = this.config.get<number>('ZODOMUS_AVAILABILITY_MAX_PER_MINUTE') ?? 60;
+    const maxPerMinute = this.config.get<number>('ZODOMUS_AVAILABILITY_MAX_PER_MINUTE') ?? 40;
 
     this.worker = new Worker<AvailabilitySegment>(
       'zodomus-availability',
@@ -232,12 +248,48 @@ export class ZodomusAvailabilityPushService implements OnModuleInit, OnModuleDes
 
   /** Spreads POST /availability in time (partner logs often show same-second bursts). */
   private async sleepBetweenAvailabilityPosts(): Promise<void> {
-    const ms = Math.max(0, this.config.get<number>('ZODOMUS_AVAILABILITY_POST_GAP_MS') ?? 300);
+    const ms = Math.max(0, this.config.get<number>('ZODOMUS_AVAILABILITY_POST_GAP_MS') ?? 1500);
     if (ms > 0) {
       await new Promise<void>((resolve) => {
         setTimeout(resolve, ms);
       });
     }
+  }
+
+  /**
+   * Sliding-window rate limiter for inline (no-Redis) mode.
+   * Blocks until the current minute has capacity for one more POST /availability call.
+   */
+  private async inlineRateLimit(maxPerMinute: number): Promise<void> {
+    const now = Date.now();
+    const windowStart = now - 60_000;
+
+    // Evict timestamps older than the sliding window
+    let evict = 0;
+    while (evict < this._inlineCallTimestamps.length && this._inlineCallTimestamps[evict]! <= windowStart) {
+      evict++;
+    }
+    if (evict > 0) this._inlineCallTimestamps.splice(0, evict);
+
+    if (this._inlineCallTimestamps.length >= maxPerMinute) {
+      const oldest = this._inlineCallTimestamps[0]!;
+      const waitMs = oldest + 60_000 - Date.now() + 250; // 250 ms safety margin
+      if (waitMs > 0) {
+        this.logger.warn(
+          `Zodomus inline rate limit: ${maxPerMinute} req/min reached — waiting ${Math.ceil(waitMs / 1000)}s`,
+        );
+        await new Promise<void>((r) => setTimeout(r, waitMs));
+        // Re-evict after waiting
+        const after = Date.now() - 60_000;
+        let j = 0;
+        while (j < this._inlineCallTimestamps.length && this._inlineCallTimestamps[j]! <= after) {
+          j++;
+        }
+        if (j > 0) this._inlineCallTimestamps.splice(0, j);
+      }
+    }
+
+    this._inlineCallTimestamps.push(Date.now());
   }
 
   /**
@@ -390,13 +442,33 @@ export class ZodomusAvailabilityPushService implements OnModuleInit, OnModuleDes
   }
 
   /**
-   * Computes segments and enqueues them.
+   * Computes segments and enqueues/sends them to Zodomus.
+   * Per-property mutex: if a push is already in flight for this property, the new caller
+   * receives the same promise (coalescing) instead of firing a second concurrent push.
    */
   async pushAvailabilityNow(propertyId: string, options?: PushAvailabilityOptions): Promise<AvailabilityPushSummary> {
+    const inFlight = this._inFlightPush.get(propertyId);
+    if (inFlight) {
+      this.logger.debug(
+        `Zodomus availability push already in progress for ${propertyId} — coalescing duplicate call`,
+      );
+      return inFlight;
+    }
+
+    const promise = this._doPush(propertyId, options);
+    this._inFlightPush.set(propertyId, promise);
+    try {
+      return await promise;
+    } finally {
+      this._inFlightPush.delete(propertyId);
+    }
+  }
+
+  private async _doPush(propertyId: string, options?: PushAvailabilityOptions): Promise<AvailabilityPushSummary> {
     try {
       const summary = await this.executePush(propertyId, options);
       if (summary.pushed && !this.queue) {
-        // If inline executed successfully, clear dirty flag.
+        // Inline executed successfully — clear dirty flag.
         await this.clearDirty(propertyId);
       }
       return summary;
@@ -606,6 +678,9 @@ export class ZodomusAvailabilityPushService implements OnModuleInit, OnModuleDes
             removeOnFail: { age: 86400 },
           });
         } else {
+          // Inline mode: enforce sliding-window rate limit before each POST /availability.
+          const maxPerMin = this.config.get<number>('ZODOMUS_AVAILABILITY_MAX_PER_MINUTE') ?? 40;
+          await this.inlineRateLimit(maxPerMin);
           await this.zodomus.setAvailability(
             t.channelId,
             t.extProp,

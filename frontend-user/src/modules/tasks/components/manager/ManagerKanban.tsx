@@ -40,13 +40,17 @@ import { usePendingTaskDelete } from '../../hooks/usePendingTaskDelete';
 import { usePendingTaskMarkDone } from '../../hooks/usePendingTaskMarkDone';
 import { usePendingIncidentClose } from '@/modules/incidents/hooks/usePendingIncidentClose';
 import {
+  TASK_DETAIL_FOCUS_QUERY,
+  TASK_DETAIL_FOCUS_STAFF_NOTES,
   TASK_DETAIL_URL_QUERY,
   TASK_INCIDENT_URL_QUERY,
   TASK_MANAGER_PANEL_QUERY,
 } from '../../task-url-params';
-import { ManagerBoardPanelTabs } from './ManagerBoardPanelTabs';
+import { ManagerBoardPanelTabs, parseManagerBoardPanel } from './ManagerBoardPanelTabs';
 import { ManagerSupplyPanel } from './ManagerSupplyPanel';
 import { ManagerSupplyToolbar } from './ManagerSupplyToolbar';
+import { ManagerStaffMessagesPanel } from './ManagerStaffMessagesPanel';
+import { useManagerUnseenStaffNotesCount } from '../../hooks/useManagerStaffNotesFeed';
 
 export function ManagerKanban({ filters }: { filters: TaskFilters }) {
   const t = useTranslations('tasks');
@@ -72,8 +76,8 @@ export function ManagerKanban({ filters }: { filters: TaskFilters }) {
   const taskId = searchParams.get(TASK_DETAIL_URL_QUERY);
   const rawIncidentId = searchParams.get(TASK_INCIDENT_URL_QUERY);
   const incidentId = taskId ? null : rawIncidentId;
-  const managerPanel =
-    searchParams.get(TASK_MANAGER_PANEL_QUERY) === 'supply' ? 'supply' : 'tasks';
+  const managerPanel = parseManagerBoardPanel(searchParams.get(TASK_MANAGER_PANEL_QUERY));
+  const { data: unseenStaffNotesCount = 0 } = useManagerUnseenStaffNotesCount();
 
   const [supplyCatalogOpen, setSupplyCatalogOpen] = useState(false);
   const [supplyCreateOpen, setSupplyCreateOpen] = useState(false);
@@ -126,6 +130,7 @@ export function ManagerKanban({ filters }: { filters: TaskFilters }) {
   const clearTaskFromUrl = useCallback(() => {
     const params = new URLSearchParams(searchParams.toString());
     params.delete(TASK_DETAIL_URL_QUERY);
+    params.delete(TASK_DETAIL_FOCUS_QUERY);
     const q = params.toString();
     router.replace(q ? `${pathname}?${q}` : pathname);
   }, [pathname, router, searchParams]);
@@ -254,19 +259,45 @@ export function ManagerKanban({ filters }: { filters: TaskFilters }) {
   };
 
   const openTask = useCallback(
-    (task: Task) => {
+    (task: Task, opts?: { focusStaffNotes?: boolean }) => {
       const params = new URLSearchParams(searchParams.toString());
       params.delete(TASK_INCIDENT_URL_QUERY);
       params.set(TASK_DETAIL_URL_QUERY, task.uuid);
+      if (opts?.focusStaffNotes) {
+        params.set(TASK_DETAIL_FOCUS_QUERY, TASK_DETAIL_FOCUS_STAFF_NOTES);
+      } else {
+        params.delete(TASK_DETAIL_FOCUS_QUERY);
+      }
       router.push(`${pathname}?${params.toString()}`);
     },
     [pathname, router, searchParams],
+  );
+
+  const openTaskById = useCallback(
+    (taskUuid: string, opts?: { focusStaffNotes?: boolean }) => {
+      const found = data?.tasks?.find((x) => idEquals(x.uuid, taskUuid));
+      if (found) {
+        openTask(found, opts);
+        return;
+      }
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete(TASK_INCIDENT_URL_QUERY);
+      params.set(TASK_DETAIL_URL_QUERY, taskUuid);
+      if (opts?.focusStaffNotes) {
+        params.set(TASK_DETAIL_FOCUS_QUERY, TASK_DETAIL_FOCUS_STAFF_NOTES);
+      } else {
+        params.delete(TASK_DETAIL_FOCUS_QUERY);
+      }
+      router.push(`${pathname}?${params.toString()}`);
+    },
+    [data?.tasks, openTask, pathname, router, searchParams],
   );
 
   const openIncident = useCallback(
     (incident: Incident) => {
       const params = new URLSearchParams(searchParams.toString());
       params.delete(TASK_DETAIL_URL_QUERY);
+      params.delete(TASK_DETAIL_FOCUS_QUERY);
       params.set(TASK_INCIDENT_URL_QUERY, incident.uuid);
       router.push(`${pathname}?${params.toString()}`);
     },
@@ -283,6 +314,7 @@ export function ManagerKanban({ filters }: { filters: TaskFilters }) {
         params.delete(TASK_INCIDENT_URL_QUERY);
         params.set(TASK_DETAIL_URL_QUERY, e.targetId);
       }
+      params.delete(TASK_DETAIL_FOCUS_QUERY);
       router.push(`${pathname}?${params.toString()}`);
     },
     [pathname, router, searchParams],
@@ -308,6 +340,7 @@ export function ManagerKanban({ filters }: { filters: TaskFilters }) {
       <ManagerBoardPanelTabs
         panel={managerPanel}
         supplyBadgeCount={supplyBadgeCount}
+        staffMessagesBadgeCount={unseenStaffNotesCount}
         endContent={
           managerPanel === 'supply' ? (
             <ManagerSupplyToolbar
@@ -404,9 +437,16 @@ export function ManagerKanban({ filters }: { filters: TaskFilters }) {
         </div>
       )}
 
+      {managerPanel === 'staffMessages' && (
+        <ManagerStaffMessagesPanel onOpenTask={openTaskById} />
+      )}
+
       <TaskDetailDrawer
         task={detailTask}
         open={Boolean(taskId && detailTask)}
+        focusStaffNotes={
+          searchParams.get(TASK_DETAIL_FOCUS_QUERY) === TASK_DETAIL_FOCUS_STAFF_NOTES
+        }
         onOpenChange={(o) => {
           if (!o) clearTaskFromUrl();
         }}
@@ -421,6 +461,7 @@ export function ManagerKanban({ filters }: { filters: TaskFilters }) {
           const params = new URLSearchParams(searchParams.toString());
           params.delete(TASK_INCIDENT_URL_QUERY);
           params.set(TASK_DETAIL_URL_QUERY, taskUuid);
+          params.delete(TASK_DETAIL_FOCUS_QUERY);
           router.push(`${pathname}?${params.toString()}`);
         }}
       />

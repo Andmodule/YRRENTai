@@ -1,4 +1,4 @@
-import { addMinutes, format, parseISO, isToday, isBefore, isValid } from 'date-fns';
+import { addMinutes, parseISO, isBefore, isValid } from 'date-fns';
 import type { Task } from '@/hooks/use-tasks';
 
 const MINUTES_PER_TASK = 45;
@@ -71,11 +71,6 @@ export function formatElapsedMs(
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-export function isShiftDoneToday(iso: string | null): boolean {
-  if (!iso) return false;
-  return isToday(parseISO(iso));
-}
-
 /** Sort key for dueTime (HH:mm); nulls last. */
 export function dueTimeSortKey(dueTime: string | null): string {
   return dueTime ?? '99:99';
@@ -92,28 +87,4 @@ export function pickNextTaskByDueTime(tasks: Task[]): Task | null {
     if (byDate !== 0) return byDate;
     return dueTimeSortKey(a.dueTime).localeCompare(dueTimeSortKey(b.dueTime));
   })[0] ?? null;
-}
-
-/**
- * Shift duration: staffShiftCompletedAt − earliest inProgressStartedAt among tasks,
- * or session shift start (ms) if no in-progress timestamps.
- */
-export function formatShiftDurationLabel(
-  tasks: Task[],
-  shiftCompletedAtIso: string | null,
-  sessionShiftStartMs: number | null,
-): string {
-  if (!shiftCompletedAtIso) return '—';
-  const end = parseISO(shiftCompletedAtIso).getTime();
-  const fromTasks = tasks
-    .map((t) => t.inProgressStartedAt)
-    .filter((x): x is string => !!x)
-    .map((s) => parseISO(s).getTime());
-  const earliestProgress = fromTasks.length > 0 ? Math.min(...fromTasks) : null;
-  const startMs = earliestProgress ?? sessionShiftStartMs;
-  if (startMs == null || !Number.isFinite(end) || end <= startMs) return '—';
-  const mins = Math.round((end - startMs) / 60000);
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  return h > 0 ? `${h}ч ${m}мин` : `${m}мин`;
 }

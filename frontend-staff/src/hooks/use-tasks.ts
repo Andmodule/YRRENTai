@@ -2,9 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
-import { useSWRConfig } from 'swr';
 import { apiClient } from '@/lib/api/client';
-import type { StaffUser } from '@/hooks/use-auth';
 
 export interface Task {
   uuid: string;
@@ -332,19 +330,6 @@ export function useAddTaskNote() {
     onSuccess: (_, v) => {
       queryClient.invalidateQueries({ queryKey: ['task-notes', v.uuid] });
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
-    },
-  });
-}
-
-export function useCompleteShift() {
-  const { mutate: swrMutate } = useSWRConfig();
-  return useMutation({
-    mutationFn: async () => {
-      const res = await apiClient.post<{ data: StaffUser }>('/users/me/shift-complete');
-      return res.data.data;
-    },
-    onSuccess: (data) => {
-      void swrMutate('staff-auth/me', data, { revalidate: false });
     },
   });
 }

@@ -23,10 +23,12 @@ export function TasksSocketProvider({ children }: { children: React.ReactNode })
       queryClient.invalidateQueries({ queryKey: ['task'] });
     });
     socket.on('task_note_added', () => {
-      toast.info('Новая заметка по задаче', { description: 'Откройте карточку, чтобы прочитать.' });
+      toast.info(t('newStaffNoteToastTitle'), { description: t('newStaffNoteToastDescription') });
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
       queryClient.invalidateQueries({ queryKey: ['task'] });
       queryClient.invalidateQueries({ queryKey: ['task-notes'] });
+      queryClient.invalidateQueries({ queryKey: ['tasks', 'manager-staff-notes-feed'] });
+      queryClient.invalidateQueries({ queryKey: ['tasks', 'manager-unseen-staff-notes-count'] });
     });
     socket.on('checklist_item_updated', () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });

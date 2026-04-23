@@ -136,6 +136,17 @@ export interface TaskNoteDto {
   createdAt: string;
 }
 
+/** Manager inbox: staff task notes with task/property context (GET /tasks/manager/staff-notes-feed). */
+export interface TaskNoteFeedItemDto extends TaskNoteDto {
+  taskTitle: string;
+  propertyTitle: string;
+  taskStatus: string;
+  /** True if created after task.lastManagerSeenAt (manager has not opened the task since). */
+  isUnseen: boolean;
+  assigneeId: string | null;
+  assigneeName: string | null;
+}
+
 /** Response from POST /tasks/voice-parse (Whisper STT + LLM extraction). */
 export interface VoiceParseResultDto {
   entityType: 'task' | 'incident';
@@ -744,6 +755,94 @@ export class TasksService {
       text: n.text,
       photoUrl: n.photoUrl,
       createdAt: n.createdAt.toISOString(),
+    }));
+  }
+
+  async countUnseenStaffNotesForManager(userId: string, role: string): Promise<number> {
+    if (role !== 'OWNER' && role !== 'MANAGER') {
+      throw new ForbiddenException();
+    }
+    const ownerId = await this.userService.resolveTenantOwnerId(userId, role);
+    const rows = (await this.taskRepo.manager.query(
+      `SELECT COALESCE(SUM(s.cnt), 0)::int AS total
+       FROM (
+         SELECT (
+           SELECT COUNT(*)::int FROM task_notes n
+           WHERE n."taskId" = t.id
+             AND n."createdAt" > COALESCE(t."lastManagerSeenAt", '1970-01-01'::timestamptz)
+         ) AS cnt
+         FROM tasks t
+         INNER JOIN properties p ON p.id = t."propertyId"
+         WHERE p."ownerId" = $1
+       ) s`,
+      [ownerId],
+    )) as { total: number }[];
+    return Number(rows[0]?.total ?? 0);
+  }
+
+  async listStaffNotesFeedForManager(
+    userId: string,
+    role: string,
+    limit: number,
+  ): Promise<TaskNoteFeedItemDto[]> {
+    if (role !== 'OWNER' && role !== 'MANAGER') {
+      throw new ForbiddenException();
+    }
+    const ownerId = await this.userService.resolveTenantOwnerId(userId, role);
+    const lim = Math.min(Math.max(Math.floor(limit) || 150, 1), 500);
+    const rows = (await this.taskRepo.manager.query(
+      `SELECT n.id AS uuid,
+        n."taskId" AS "taskId",
+        n."authorId" AS "authorId",
+        TRIM(CONCAT(u."firstName", ' ', u."lastName")) AS "authorName",
+        n.text AS text,
+        n."photoUrl" AS "photoUrl",
+        n."createdAt" AS "createdAt",
+        t.title AS "taskTitle",
+        t.status AS "taskStatus",
+        p.name AS "propertyTitle",
+        (n."createdAt" > COALESCE(t."lastManagerSeenAt", '1970-01-01'::timestamptz)) AS "isUnseen",
+        t."assigneeId" AS "assigneeId",
+        NULLIF(TRIM(CONCAT(a."firstName", ' ', a."lastName")), '') AS "assigneeName"
+      FROM task_notes n
+      INNER JOIN tasks t ON t.id = n."taskId"
+      INNER JOIN properties p ON p.id = t."propertyId"
+      INNER JOIN users u ON u.id = n."authorId"
+      LEFT JOIN users a ON a.id = t."assigneeId"
+      WHERE p."ownerId" = $1
+      ORDER BY n."createdAt" DESC
+      LIMIT $2`,
+      [ownerId, lim],
+    )) as {
+      uuid: string;
+      taskId: string;
+      authorId: string;
+      authorName: string;
+      text: string;
+      photoUrl: string | null;
+      createdAt: Date | string;
+      taskTitle: string;
+      taskStatus: string;
+      propertyTitle: string;
+      isUnseen: boolean;
+      assigneeId: string | null;
+      assigneeName: string | null;
+    }[];
+    return rows.map((r) => ({
+      uuid: r.uuid,
+      taskId: r.taskId,
+      authorId: r.authorId,
+      authorName: r.authorName,
+      text: r.text,
+      photoUrl: r.photoUrl,
+      createdAt:
+        r.createdAt instanceof Date ? r.createdAt.toISOString() : String(r.createdAt),
+      taskTitle: r.taskTitle,
+      propertyTitle: r.propertyTitle,
+      taskStatus: r.taskStatus,
+      isUnseen: !!r.isUnseen,
+      assigneeId: r.assigneeId ?? null,
+      assigneeName: r.assigneeName ?? null,
     }));
   }
 

@@ -74,6 +74,16 @@ export interface TaskNote {
   createdAt: string;
 }
 
+/** GET /tasks/manager/staff-notes-feed */
+export interface TaskNoteFeedItem extends TaskNote {
+  taskTitle: string;
+  propertyTitle: string;
+  taskStatus: string;
+  isUnseen: boolean;
+  assigneeId: string | null;
+  assigneeName: string | null;
+}
+
 export interface TasksApiResponse {
   tasks: Task[];
 }

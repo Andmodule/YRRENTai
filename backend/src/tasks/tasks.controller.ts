@@ -149,6 +149,30 @@ export class TasksController {
     return { data: result };
   }
 
+  /** Лента заметок персонала по всем задачам тенанта (менеджерский inbox). */
+  @Get('manager/staff-notes-feed')
+  @Roles('OWNER', 'MANAGER')
+  async managerStaffNotesFeed(
+    @CurrentUser() user: JwtPayload,
+    @Query('limit') limitParam?: string,
+  ) {
+    const n = limitParam ? parseInt(limitParam, 10) : 150;
+    const items = await this.tasksService.listStaffNotesFeedForManager(
+      user.sub,
+      user.role,
+      Number.isFinite(n) ? n : 150,
+    );
+    return { data: { items } };
+  }
+
+  /** Сумма «непросмотренных» заметок (как unseenNotesCount по задачам). */
+  @Get('manager/unseen-staff-notes-count')
+  @Roles('OWNER', 'MANAGER')
+  async managerUnseenStaffNotesCount(@CurrentUser() user: JwtPayload) {
+    const count = await this.tasksService.countUnseenStaffNotesForManager(user.sub, user.role);
+    return { data: { count } };
+  }
+
   /** Сводная матрица нехваток по справочнику и объектам. */
   @Get('manager/supply-matrix')
   @Roles('OWNER', 'MANAGER')

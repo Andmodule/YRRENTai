@@ -76,7 +76,11 @@ export function Header() {
     return (
       <header className={cn(headerShell, 'flex flex-col')}>
         <div className="lg:hidden">
-          <MobileTasksHeader title={tTasks('pageTitle')} />
+          <Suspense
+            fallback={<div className="h-14 w-full shrink-0 animate-pulse bg-muted/20" aria-hidden />}
+          >
+            <MobileTasksHeader title={tTasks('pageTitle')} />
+          </Suspense>
         </div>
         <div className="hidden lg:flex lg:flex-col border-b border-border/40">
           <Suspense

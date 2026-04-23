@@ -48,10 +48,20 @@ const zodomusEnvFields = z.object({
   ZODOMUS_AVAILABILITY_HORIZON_DAYS: z.coerce.number().int().min(1).max(730).default(366),
   /** Coalesce rapid booking updates into one push per property (ms). 0 = no debounce. Default: 2000. */
   ZODOMUS_AVAILABILITY_PUSH_DEBOUNCE_MS: z.coerce.number().int().min(0).max(60_000).default(2000),
-  /** Minimum pause after each successful POST /availability (ms; reduces same-second bursts). Default: 300. */
-  ZODOMUS_AVAILABILITY_POST_GAP_MS: z.coerce.number().int().min(0).max(10_000).default(300),
-  /** BullMQ limiter for POST /availability worker: max jobs per minute. Default: 60. */
-  ZODOMUS_AVAILABILITY_MAX_PER_MINUTE: z.coerce.number().int().min(1).max(600).default(60),
+  /**
+   * Minimum pause after each successful POST /availability (ms).
+   * In inline mode (no Redis) this is the primary per-call throttle alongside the sliding-window rate limiter.
+   * Default: 1500 ms — gives ~40 calls/min ceiling even without BullMQ.
+   * In BullMQ mode the queue limiter is the primary control; this gap is an additional cushion.
+   */
+  ZODOMUS_AVAILABILITY_POST_GAP_MS: z.coerce.number().int().min(0).max(10_000).default(1500),
+  /**
+   * Max POST /availability calls per minute.
+   * BullMQ mode: applied as the queue worker rate limiter (concurrency=1).
+   * Inline mode (no Redis): applied as an in-memory sliding-window rate limiter.
+   * Default: 40 (conservative; Zodomus sandbox is more sensitive than production).
+   */
+  ZODOMUS_AVAILABILITY_MAX_PER_MINUTE: z.coerce.number().int().min(1).max(600).default(40),
   /** Retry properties with zodomusAvailabilityDirty on this interval (minutes). Default: 15. */
   ZODOMUS_AVAILABILITY_DIRTY_RETRY_MINUTES: z.coerce.number().int().min(1).max(1440).default(15),
   /** Nightly full availability push for all Zodomus-linked properties (drift guard). Default: true. */

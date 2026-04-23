@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { CalendarRange, Kanban, LayoutList, ListFilter, Search } from 'lucide-react';
 import { addDays, format } from 'date-fns';
 import { useTranslations } from 'next-intl';
@@ -20,7 +21,10 @@ import {
   tasksToolbarIconButtonIdle,
 } from '../../task-toolbar-icon-button-classes';
 import { preventCloseIfAssigneePickerOutside } from '../shared/AssigneePickerField';
+import { TASK_MANAGER_PANEL_QUERY, isStaffMessagesQueryFiltered } from '../../task-url-params';
 import { isTasksListSliceFiltered, TasksStatusPriorityFilterPanel } from './TasksStatusPriorityFilterPanel';
+import { parseManagerBoardPanel } from './ManagerBoardPanelTabs';
+import { StaffMessagesFilterPanel } from './StaffMessagesFilterPanel';
 
 export type TasksHeaderControlsLayout = 'default' | 'headerRow' | 'headerDesktopGrid';
 
@@ -41,6 +45,8 @@ export function TasksHeaderControls({
   desktopPageTitle?: string;
 }) {
   const t = useTranslations('tasks');
+  const searchParams = useSearchParams();
+  const managerPanel = parseManagerBoardPanel(searchParams.get(TASK_MANAGER_PANEL_QUERY));
   const { view, setView } = useTasksViewMode();
   const filters = useTasksFiltersStore((s) => s.filters);
   const setFilters = useTasksFiltersStore((s) => s.setFilters);
@@ -103,7 +109,10 @@ export function TasksHeaderControls({
 
   const searchActive = searchOpen || propertyQuery.trim().length > 0;
   const datesActive = datesOpen || filters.dateRangeEnabled;
-  const listSliceFiltered = isTasksListSliceFiltered(filters);
+  const listSliceFiltered =
+    managerPanel === 'staffMessages'
+      ? isStaffMessagesQueryFiltered(searchParams)
+      : isTasksListSliceFiltered(filters);
 
   const isHeaderRow = layout === 'headerRow';
   const isHeaderDesktopGrid = layout === 'headerDesktopGrid';
@@ -218,7 +227,11 @@ export function TasksHeaderControls({
           onPointerDownOutside={preventCloseIfAssigneePickerOutside}
           onFocusOutside={preventCloseIfAssigneePickerOutside}
         >
-          <TasksStatusPriorityFilterPanel />
+          {managerPanel === 'staffMessages' ? (
+            <StaffMessagesFilterPanel />
+          ) : (
+            <TasksStatusPriorityFilterPanel />
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
