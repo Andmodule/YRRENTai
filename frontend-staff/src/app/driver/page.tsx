@@ -1,13 +1,15 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSWRConfig } from 'swr';
 import { useAuth } from '@/hooks/use-auth';
 import { useStaffDeliveryRoutesList, useStartDeliveryRoute } from '@/hooks/use-staff-delivery-route';
+import { useTasksSocket } from '@/hooks/use-tasks-socket';
 import { resolveStaffAppShell } from '@/lib/staff-app-shell';
 import { parseRouteUuidFromTelegramStartParam, readTelegramWebAppStartParam } from '@/lib/telegram-start-param';
 import { apiClient } from '@/lib/api/client';
+import { staffDriverShortLabel } from '@/lib/staff-driver-display-name';
 import { DriverDashboard } from '@/modules/driver/components/DriverDashboard';
 import { Button } from '@/components/ui/button';
 import { LogOut } from 'lucide-react';
@@ -27,9 +29,12 @@ export default function DriverDashboardPage() {
     refetch: refetchRoute,
   } = useStaffDeliveryRoutesList(Boolean(shellDriver && isAuthenticated));
 
+  useTasksSocket(user?.id);
+
   const startRoute = useStartDeliveryRoute();
   const [startingRouteId, setStartingRouteId] = useState<string | null>(null);
   const routeTgSyncedRef = useRef(false);
+  const driverShortName = useMemo(() => staffDriverShortLabel(user), [user]);
 
   useEffect(() => {
     if (!isAuthenticated || !shellDriver) return;
@@ -112,6 +117,7 @@ export default function DriverDashboardPage() {
       onLogout={handleLogout}
       onStartAssignedRoute={handleStartAssignedRoute}
       startingRouteId={startingRouteId}
+      driverShortName={driverShortName}
     />
   );
 }

@@ -6,6 +6,7 @@ import { apiClient } from '@/lib/api/client';
 export type DeliveryRouteListItem = {
   id: string;
   scheduledDate: string;
+  completeByTime: string | null;
   status: string;
   driverUserId: string | null;
   driverName: string | null;
@@ -18,6 +19,7 @@ export type DeliveryRouteDetail = {
   id: string;
   companyId: string;
   scheduledDate: string;
+  completeByTime: string | null;
   status: string;
   driverUserId: string | null;
   driverName: string | null;
@@ -98,9 +100,10 @@ export function useCreateDeliveryRouteFromPool() {
       supplyItemIds?: string[];
       requestLineIds?: string[];
       scheduledDate?: string;
+      completeByTime?: string | null;
       warehouseLabel?: string | null;
     }) => {
-      const res = await apiClient.post<{ data: { routeId: string } }>(
+      const res = await apiClient.post<{ data: { routeId: string; merged: boolean; mergedInProgress: boolean } }>(
         '/tasks/manager/delivery-routes/from-pool',
         body,
       );

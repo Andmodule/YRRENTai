@@ -28,11 +28,15 @@ export function buildUpstreamApiUrl(request: NextRequest): string {
   return `${backendBase}${pathname}${search}`;
 }
 
-function forwardHeaders(request: NextRequest): Headers {
+function forwardHeaders(
+  request: NextRequest,
+  options?: { stripContentLengthForBufferedBody?: boolean },
+): Headers {
   const out = new Headers();
   request.headers.forEach((value, key) => {
     const k = key.toLowerCase();
     if (k === 'host' || k === 'connection') return;
+    if (options?.stripContentLengthForBufferedBody && k === 'content-length') return;
     out.set(key, value);
   });
   return out;
@@ -84,7 +88,11 @@ function copyUpstreamHeaders(res: Response): Headers {
 export async function proxyApiToNest(request: NextRequest): Promise<NextResponse> {
   const url = buildUpstreamApiUrl(request);
   const method = request.method.toUpperCase();
-  const headers = forwardHeaders(request);
+  const incomingType = (request.headers.get('content-type') || '').toLowerCase();
+  const bufferMultipart = incomingType.includes('multipart/form-data');
+  const headers = forwardHeaders(request, {
+    stripContentLengthForBufferedBody: bufferMultipart,
+  });
   const init: RequestInit = {
     method,
     headers,
@@ -92,8 +100,12 @@ export async function proxyApiToNest(request: NextRequest): Promise<NextResponse
     cache: 'no-store',
   };
   if (method !== 'GET' && method !== 'HEAD') {
-    init.body = request.body;
-    (init as RequestInit & { duplex?: string }).duplex = 'half';
+    if (bufferMultipart) {
+      init.body = await request.arrayBuffer();
+    } else {
+      init.body = request.body;
+      (init as RequestInit & { duplex?: string }).duplex = 'half';
+    }
   }
   try {
     const res = await fetch(url, init);

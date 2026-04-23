@@ -28,8 +28,9 @@ export function DriverOffRouteTasks({ routePropertyIds, onVoiceForTask, onTextFo
 
   const offRouteTasks = useMemo(() => {
     const set = new Set(routePropertyIds);
+    const active = (s: string) => s === 'pending' || s === 'in_progress' || s === 'issue';
     return (data?.tasks ?? [])
-      .filter((t) => t.status !== 'done' && !set.has(t.propertyId))
+      .filter((t) => active(t.status) && !set.has(t.propertyId))
       .sort((a, b) => {
         const pr: Record<string, number> = { urgent: 0, normal: 1 };
         const pa = pr[a.priority] ?? 1;
@@ -61,8 +62,6 @@ export function DriverOffRouteTasks({ routePropertyIds, onVoiceForTask, onTextFo
   );
 
   const { enqueueMarkDoneAfterSwipe } = usePendingTaskMarkDoneStaff({
-    taskMarkedMessage: strings.tasks.checklist.taskMarkedDoneToast,
-    undoLabel: strings.tasks.checklist.undoMarkDone,
     markDoneErrorMessage: strings.tasks.checklist.markDoneError,
     onCommitted: onMarkDoneCommitted,
     onChecklistIncomplete: onMarkDoneChecklistIncomplete,
@@ -119,7 +118,7 @@ export function DriverOffRouteTasks({ routePropertyIds, onVoiceForTask, onTextFo
           title="Задачи вне маршрута"
           bodyClassName="!p-0 px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-3 min-h-[60vh]"
         >
-          <ul className="flex flex-col gap-3">
+          <ul className="flex min-w-0 flex-col gap-3">
             {offRouteTasks.map((task) => (
               <li key={task.uuid} className="list-none">
                 <ChecklistItem
@@ -144,6 +143,9 @@ export function DriverOffRouteTasks({ routePropertyIds, onVoiceForTask, onTextFo
         onMarkDone={handleMarkDoneTask}
         onMarkIssue={handleQuickIssue}
         onOpenDetails={(t) => setDetailTask(t)}
+        onAddVerification={(t) => {
+          setPhotoTaskUuid(t.uuid);
+        }}
         startPending={statusPending}
         readOnlyActions={true}
       />

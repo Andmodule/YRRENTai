@@ -15,6 +15,7 @@ import { IncidentEntity } from '../incidents/entities/incident.entity';
 import { StaffInterpretationEventEntity } from './entities/staff-interpretation-event.entity';
 import { SupplyRequestItemEntity } from './entities/supply-request-item.entity';
 import { SupplyItemEntity } from './entities/supply-item.entity';
+import { CatalogSeedSuppressionEntity } from './entities/catalog-seed-suppression.entity';
 import { SupplyItemAliasEntity } from './entities/supply-item-alias.entity';
 import { DeliveryRouteEntity } from './entities/delivery-route.entity';
 import { DeliveryRouteStopEntity } from './entities/delivery-route-stop.entity';
@@ -49,6 +50,7 @@ import { TelegramModule } from '../telegram/telegram.module';
       StaffInterpretationEventEntity,
       SupplyRequestItemEntity,
       SupplyItemEntity,
+      CatalogSeedSuppressionEntity,
       SupplyItemAliasEntity,
       DeliveryRouteEntity,
       DeliveryRouteStopEntity,

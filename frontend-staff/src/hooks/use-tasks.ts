@@ -1,7 +1,10 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { isAxiosError } from 'axios';
+import { useSWRConfig } from 'swr';
 import { apiClient } from '@/lib/api/client';
+import type { StaffUser } from '@/hooks/use-auth';
 
 export interface Task {
   uuid: string;
@@ -206,13 +209,28 @@ export function useUploadTaskPhotos() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ uuid, files }: { uuid: string; files: File[] }) => {
+      if (!files.length) return [];
       const form = new FormData();
       files.forEach((f) => form.append('files', f));
-      const res = await apiClient.post<{ data: { photoUrls: string[] } }>(
-        `/tasks/${uuid}/photos`,
-        form,
-      );
-      return res.data.data.photoUrls;
+      try {
+        const res = await apiClient.post<{ data: { photoUrls: string[] } }>(
+          `/tasks/${uuid}/photos`,
+          form,
+        );
+        const photoUrls = res.data.data.photoUrls ?? [];
+        if (files.length > 0 && photoUrls.length === 0) {
+          throw new Error('TASK_PHOTO_UPLOAD_EMPTY');
+        }
+        return photoUrls;
+      } catch (e) {
+        if (
+          isAxiosError(e) &&
+          (e.response?.status === 400 || e.response?.status === 413)
+        ) {
+          throw new Error('TASK_PHOTO_UPLOAD_EMPTY');
+        }
+        throw e;
+      }
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tasks'] }),
   });
@@ -272,13 +290,28 @@ export function useAppendStaffIncidentPhotos() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ uuid, files }: { uuid: string; files: File[] }) => {
+      if (!files.length) return [];
       const form = new FormData();
       files.forEach((f) => form.append('files', f));
-      const res = await apiClient.post<{ data: { photoUrls: string[] } }>(
-        `/incidents/staff/${uuid}/photos`,
-        form,
-      );
-      return res.data.data.photoUrls;
+      try {
+        const res = await apiClient.post<{ data: { photoUrls: string[] } }>(
+          `/incidents/staff/${uuid}/photos`,
+          form,
+        );
+        const photoUrls = res.data.data.photoUrls ?? [];
+        if (files.length > 0 && photoUrls.length === 0) {
+          throw new Error('TASK_PHOTO_UPLOAD_EMPTY');
+        }
+        return photoUrls;
+      } catch (e) {
+        if (
+          isAxiosError(e) &&
+          (e.response?.status === 400 || e.response?.status === 413)
+        ) {
+          throw new Error('TASK_PHOTO_UPLOAD_EMPTY');
+        }
+        throw e;
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['incidents', 'staff-history'] });
@@ -304,14 +337,14 @@ export function useAddTaskNote() {
 }
 
 export function useCompleteShift() {
-  const queryClient = useQueryClient();
+  const { mutate: swrMutate } = useSWRConfig();
   return useMutation({
     mutationFn: async () => {
-      const res = await apiClient.post<{ data: Record<string, unknown> }>('/users/me/shift-complete');
+      const res = await apiClient.post<{ data: StaffUser }>('/users/me/shift-complete');
       return res.data.data;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['staff-auth/me'] });
+    onSuccess: (data) => {
+      void swrMutate('staff-auth/me', data, { revalidate: false });
     },
   });
 }

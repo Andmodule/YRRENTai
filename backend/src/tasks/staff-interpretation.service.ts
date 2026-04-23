@@ -111,7 +111,9 @@ export class StaffInterpretationService {
     private readonly tasksGateway: TasksGateway,
     @Inject(forwardRef(() => IncidentsService))
     private readonly incidentsService: IncidentsService,
+    @Inject(forwardRef(() => SupplyCatalogService))
     private readonly supplyCatalog: SupplyCatalogService,
+    @Inject(forwardRef(() => DeliveryRoutesService))
     private readonly deliveryRoutesService: DeliveryRoutesService,
   ) {}
 
@@ -212,8 +214,8 @@ export class StaffInterpretationService {
   }
 
   /**
-   * Менеджер: явная карточка довоза/снабжения по объекту (текст или голос → тот же LLM-пайплайн).
-   * Без автосоздания инцидента — `createForStaff` не подходит для роли OWNER/MANAGER.
+   * Менеджер: карточка довоза/снабжения — текст «как есть» + одна placeholder-строка в пуле.
+   * LLM и нормальные позиции — при передаче водителю (маршрут / handoff), см. `ensureDeferredManagerSupplyLlmForEventIds`.
    */
   async queueManagerSupplyCreate(
     actorUserId: string,
@@ -237,35 +239,131 @@ export class StaffInterpretationService {
     }
 
     const property = await this.propertyService.findOneForUser(pid, actorUserId, role);
+    const lineNames = this.splitManagerSupplyTextIntoLines(raw);
+    if (lineNames.length === 0) {
+      throw new BadRequestException('Text too short');
+    }
 
-    const row = this.eventRepo.create({
-      authorId: actorUserId,
-      entryPoint: 'manager_supply_create',
-      targetType: 'property',
-      targetId: property.id,
-      propertyId: property.id,
-      companyId: property.companyId,
-      textRaw: raw,
-      llmStatus: 'pending',
-      workflowState: 'pending_llm',
-      llmPayload: null,
-      llmError: null,
-      processedAt: null,
-      skipAutoIncident: true,
-      voiceLinkedIncidentId: null,
-      createdIncidentId: null,
+    const saved = await this.dataSource.transaction(async (m) => {
+      const eventRow = m.create(StaffInterpretationEventEntity, {
+        authorId: actorUserId,
+        entryPoint: 'manager_supply_create',
+        targetType: 'property',
+        targetId: property.id,
+        propertyId: property.id,
+        companyId: property.companyId,
+        textRaw: raw,
+        llmStatus: 'deferred',
+        workflowState: 'deferred_raw',
+        llmPayload: null,
+        llmError: null,
+        processedAt: null,
+        skipAutoIncident: true,
+        voiceLinkedIncidentId: null,
+        createdIncidentId: null,
+      });
+      const ev = await m.save(eventRow);
+      const sriIds: string[] = [];
+      for (let i = 0; i < lineNames.length; i++) {
+        const nm = lineNames[i]!;
+        const line = m.create(SupplyRequestItemEntity, {
+          interpretationEventId: ev.id,
+          sortOrder: i,
+          name: nm,
+          llmRawName: nm,
+          supplyItemId: null,
+          quantity: null,
+          unit: null,
+          trafficLight: null,
+          lineStatus: 'pending',
+          deliveryRouteId: null,
+        });
+        const sri = await m.save(line);
+        sriIds.push(sri.id);
+      }
+      return { ev, sriIds };
     });
-    const saved = await this.eventRepo.save(row);
-    this.scheduleProcess(saved.id);
+
+    try {
+      if (saved.sriIds.length) {
+        await this.supplyCatalog.applyResolutionToRequestLines(property.companyId, saved.sriIds);
+      }
+    } catch (err) {
+      this.logger.warn(`applyResolutionToRequestLines on deferred supply line: ${(err as Error).message}`);
+    }
+
+    this.tasksGateway.emitSupplyInterpretationsChanged();
 
     const full = await this.eventRepo.findOne({
-      where: { id: saved.id },
+      where: { id: saved.ev.id },
       relations: ['property', 'author', 'supplyItems'],
     });
     if (!full) {
       throw new NotFoundException('Interpretation event not found after create');
     }
     return this.mapEntityToManagerSupplyListItem(full);
+  }
+
+  /**
+   * Запуск LLM по событиям `manager_supply_create` в состоянии `deferred_raw`
+   * (созданы без разбора; перед передачей водителю).
+   */
+  async ensureDeferredManagerSupplyLlmForEventIds(eventIds: string[]): Promise<void> {
+    const ids = [...new Set((eventIds ?? []).map((x) => x?.trim()).filter(Boolean))];
+    for (const id of ids) {
+      const ev = await this.eventRepo.findOne({ where: { id } });
+      if (!ev) continue;
+      if (ev.entryPoint !== 'manager_supply_create' || ev.workflowState !== 'deferred_raw') {
+        continue;
+      }
+      await this.eventRepo.update(id, { workflowState: 'pending_llm', llmStatus: 'pending' });
+      await this.processEventAsync(id);
+    }
+  }
+
+  /**
+   * События, привязанные к строкам, которые сейчас уходят в handoff; прогон LLM по отложенным.
+   */
+  async ensureDeferredLlmBeforeHandoff(
+    ownerId: string,
+    body: { supplyItemIds: string[]; requestLineIds: string[] },
+  ): Promise<void> {
+    const eventIds: string[] = [];
+    if (body.supplyItemIds.length) {
+      const rows = (await this.dataSource.query(
+        `
+        SELECT DISTINCT e.id AS id
+        FROM supply_request_items sri
+        INNER JOIN staff_interpretation_events e ON e.id = sri."interpretationEventId"
+        INNER JOIN properties p ON p.id = e."propertyId"
+        WHERE p."ownerId" = $1
+          AND sri."supplyItemId" = ANY($2::uuid[])
+          AND sri."lineStatus" = 'pending'
+      `,
+        [ownerId, body.supplyItemIds],
+      )) as { id: string }[];
+      for (const r of rows) {
+        if (r?.id) eventIds.push(r.id);
+      }
+    }
+    if (body.requestLineIds.length) {
+      const rows2 = (await this.dataSource.query(
+        `
+        SELECT DISTINCT e.id AS id
+        FROM supply_request_items sri
+        INNER JOIN staff_interpretation_events e ON e.id = sri."interpretationEventId"
+        INNER JOIN properties p ON p.id = e."propertyId"
+        WHERE p."ownerId" = $1
+          AND sri.id = ANY($2::uuid[])
+          AND sri."lineStatus" = 'pending'
+      `,
+        [ownerId, body.requestLineIds],
+      )) as { id: string }[];
+      for (const r of rows2) {
+        if (r?.id) eventIds.push(r.id);
+      }
+    }
+    await this.ensureDeferredManagerSupplyLlmForEventIds([...new Set(eventIds)]);
   }
 
   /**
@@ -556,6 +654,9 @@ export class StaffInterpretationService {
     if (ev.property.ownerId !== ownerId) {
       throw new ForbiddenException();
     }
+    if (ev.workflowState === 'deferred_raw') {
+      throw new BadRequestException('Event has not been processed by LLM yet — use handoff to driver or retry LLM');
+    }
     if (ev.workflowState !== 'pending_manager' && ev.workflowState !== 'manual_review') {
       throw new BadRequestException('Event is not awaiting manager review');
     }
@@ -583,6 +684,12 @@ export class StaffInterpretationService {
     if (ev.property.ownerId !== ownerId) {
       throw new ForbiddenException();
     }
+    if (ev.workflowState === 'deferred_raw' && ev.entryPoint === 'manager_supply_create') {
+      await this.ensureDeferredManagerSupplyLlmForEventIds([eventId]);
+      const after = await this.eventRepo.findOne({ where: { id: eventId } });
+      return { id: eventId, llmStatus: after?.llmStatus ?? 'done' };
+    }
+
     if (ev.workflowState !== 'manual_review') {
       throw new BadRequestException('Only failed interpretations can be retried');
     }
@@ -744,7 +851,14 @@ export class StaffInterpretationService {
     ev.llmError = llmError;
     ev.createdIncidentId = createdIncidentId;
 
-    const rawItems = parsed.extracted?.items?.filter((x) => x?.name?.trim()) ?? [];
+    const rawItems = this.mergeManagerSupplyItemsWithSourceLines(
+      ev,
+      (parsed.extracted?.items ?? []).filter((x) => x?.name?.trim()) as {
+        name: string;
+        quantity?: number | null;
+        unit?: string | null;
+      }[],
+    );
 
     const savedSupplyLineIds: string[] = [];
     const persistSupplyLines =
@@ -897,13 +1011,18 @@ export class StaffInterpretationService {
     if (ev.entryPoint === 'manager_supply_create') {
       const intentIn = (parsed.intent || 'NOTE_ONLY').trim();
       const intentOut = SUPPLY_INTENTS.has(intentIn) ? intentIn : 'LOGISTICS_HANDOFF';
+      const fromLines = this.splitManagerSupplyTextIntoLines(t);
+      const itemsForEv =
+        fromLines.length > 0
+          ? fromLines.map((name) => ({ name, quantity: null as number | null, unit: null as string | null }))
+          : [fallback];
       return {
         ...parsed,
         intent: intentOut,
         confidence: Math.max(Number(parsed.confidence) || 0, 0.5),
         extracted: {
           ...parsed.extracted,
-          items: [fallback],
+          items: itemsForEv,
           staff_facing_summary: parsed.extracted?.staff_facing_summary?.trim() || t.slice(0, 300),
         },
       };
@@ -931,6 +1050,61 @@ export class StaffInterpretationService {
       .map((l) => l.trim())
       .find((l) => l.length > 0);
     return (firstLine ?? t).slice(0, 500);
+  }
+
+  /** Каждая непустая строка ввода менеджера = отдельная позиция в пуле (до LLM / маршрута). */
+  private splitManagerSupplyTextIntoLines(text: string): string[] {
+    const t = (text ?? '').trim();
+    if (!t) return [];
+    return t
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0)
+      .slice(0, 50)
+      .map((l) => l.slice(0, 500));
+  }
+
+  /**
+   * После LLM имена из каталога/галлюцинации заменяем на строки исходного запроса (1:1 по индексу),
+   * числа/ед. — из ответа модели, если на строку есть сопоставимая ячейка.
+   */
+  private mergeManagerSupplyItemsWithSourceLines(
+    ev: StaffInterpretationEventEntity,
+    items: { name: string; quantity?: number | null; unit?: string | null }[],
+  ): { name: string; quantity: number | null; unit: string | null }[] {
+    if (ev.entryPoint !== 'manager_supply_create') {
+      return (items ?? []).map((i) => ({
+        name: i.name.trim().slice(0, 500),
+        quantity: i.quantity != null && Number.isFinite(Number(i.quantity)) ? Number(i.quantity) : null,
+        unit: i.unit?.trim()?.slice(0, 32) || null,
+      }));
+    }
+    const lines = this.splitManagerSupplyTextIntoLines(ev.textRaw);
+    const src = items ?? [];
+    if (lines.length === 0) {
+      return src.map((i) => ({
+        name: i.name.trim().slice(0, 500),
+        quantity: i.quantity != null && Number.isFinite(Number(i.quantity)) ? Number(i.quantity) : null,
+        unit: i.unit?.trim()?.slice(0, 32) || null,
+      }));
+    }
+    if (src.length === 0) {
+      return lines.map((name) => ({
+        name: name.trim().slice(0, 500),
+        quantity: null,
+        unit: null,
+      }));
+    }
+    const out: { name: string; quantity: number | null; unit: string | null }[] = [];
+    for (let i = 0; i < lines.length; i++) {
+      const fromLlm = src[i] ?? (src.length === 1 ? src[0] : undefined);
+      out.push({
+        name: lines[i]!.trim().slice(0, 500),
+        quantity: fromLlm?.quantity != null && Number.isFinite(Number(fromLlm.quantity)) ? Number(fromLlm.quantity) : null,
+        unit: fromLlm?.unit?.trim()?.slice(0, 32) || null,
+      });
+    }
+    return out;
   }
 
   private getDeepseek(): { client: OpenAI; model: string } | null {
@@ -968,7 +1142,8 @@ Fields:
 Rules:
 - If the message describes broken, shattered, leaking, or damaged property or items → INCIDENT_FOLLOWUP even if they also say "нужна замена" (replacement after damage is still incident follow-up for the manager queue).
 - Use Russian or English in staff_facing_summary matching the input language.
-- Prefer LOGISTICS_HANDOFF over NOTE_ONLY only when the text is clearly about delivery/restock/logistics, not damage.${catalogFragment}`;
+- Prefer LOGISTICS_HANDOFF over NOTE_ONLY only when the text is clearly about delivery/restock/logistics, not damage.
+- If the message has multiple lines, output one "extracted.items[]" per non-empty line; keep each item "name" as close as possible to the wording of that line (do not invent different products).${catalogFragment}`;
 
     const user = `Staff message:\n"""${text.replace(/"""/g, '"')}"""`;
 

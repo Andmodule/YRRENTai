@@ -24,6 +24,20 @@ export interface StaffStrings {
       taskMarkedDoneToast: string;
       undoMarkDone: string;
       markDoneError: string;
+      /** Кнопка в быстрой шторке: закрыть задачу (уборка по объекту). */
+      quickActionMarkDone: string;
+      /** Сводка в профиле: блок статистики по списку назначений. */
+      profileTaskStatsLabel: string;
+      /** Заголовок блока невыполненных задач в чеклисте. */
+      activeListHeading: (count: number) => string;
+      /** Заголовок сворачиваемого блока выполненных задач. */
+      completedTasksHeading: (count: number) => string;
+      /** Смена фиксируется на сервере автоматически — строка в процессе. */
+      shiftRecording: string;
+      /** Смена: ошибка сети / сервера. */
+      shiftRecordError: string;
+      /** Повторить фиксацию смены после ошибки. */
+      shiftRecordRetry: string;
       /** Задача без привязки к объекту (`isGeneralTask`). */
       generalTaskLabel: string;
     };
@@ -71,8 +85,27 @@ export interface StaffStrings {
       hint: string;
       tabTasks: string;
       tabIncidents: string;
+      /** Вкладка водителя — завершённые маршруты (аналог «Задачи» у уборщицы). */
+      tabRoutes: string;
+      /** Подсказка под заголовком для режима водителя. */
+      hintDriver: string;
+      emptyRoutes: string;
+      /** @deprecated Вкладка «Маршруты» вместо подзаголовка. */
+      sectionCompletedRoutes: string;
+      completedRouteLink: string;
+      completedRouteStops: (done: number, total: number) => string;
       emptyTasks: string;
       emptyIncidents: string;
+      /** Когда в «Истории» нет задач за прошлые дни (сегодняшние — на главном экране). */
+      emptyTasksPast: string;
+      emptyIncidentsPast: string;
+      viewMedia: string;
+      detailCompleted: string;
+      detailDue: string;
+      detailAddress: string;
+      detailNotes: string;
+      detailAttachments: string;
+      detailDescription: string;
       addPhoto: string;
       photosCount: (n: number) => string;
       incidentUploadSuccess: string;
@@ -96,6 +129,30 @@ export interface StaffStrings {
       supplementAfterColonHint: string;
       typeLabels: Record<string, string>;
     };
+    /** Фото/видео к завершённой задаче (верификация). */
+    verification: {
+      titleDefault: string;
+      titleSupplement: string;
+      descDefault: string;
+      descSupplement: string;
+      addFromGallery: string;
+      stripHint: string;
+      preparing: string;
+      send: string;
+      skip: string;
+      skipSupplement: string;
+      successDefault: string;
+      successSupplement: string;
+      tooMany: (max: number) => string;
+      videoTooBig: (mb: number) => string;
+      quickActionTitle: string;
+      quickActionHint: string;
+      closeSheet: string;
+      /** Сжатие/обработка файлов */
+      prepareFailed: string;
+      noTaskBinding: string;
+      emptyAfterPrepare: string;
+    };
   };
   /** Оболочка для сотрудников с типом «Водитель» (`staffJobType === driver`). */
   driver: {
@@ -107,6 +164,7 @@ export interface StaffStrings {
       headerTitle: string;
       progress: (done: number, total: number) => string;
       scheduled: (date: string) => string;
+      dueBy: (time: string) => string;
       warehouseTitle: string;
       propertyFallback: string;
       warehouseAddressHint: string;
@@ -126,6 +184,8 @@ export interface StaffStrings {
       actions: {
         completeStop: string;
         completing: string;
+        /** Подсказка на кнопке «Точка выполнена», пока есть невыполненные задачи на объекте */
+        completeStopBlockedHint: string;
         startRoute: string;
         starting: string;
         arrive: string;
@@ -158,13 +218,28 @@ export interface StaffStrings {
         /** Список задач пуст — не к чему привязать отчёт */
         noTasksInListHint: string;
       };
+      /** Задачи на карточке остановки (property) */
+      propertyTasksSectionTitle: string;
+      propertyTasksDoneToggle: (n: number) => string;
+      propertyTasksReopen: string;
+      propertyTasksReopenError: string;
+      /** После закрытия всех остановок */
+      completion: {
+        thankTitle: string;
+        thankBody: string;
+        backOverview: string;
+        tomorrowCta: string;
+        stopsDetails: string;
+        offRouteTasksTitle: string;
+        stopExpandHint: string;
+      };
     };
     /** Главный экран водителя (не только маршрут) */
     dashboard: {
       pageTitle: string;
       routeAssignedTitle: string;
       routeInProgressTitle: string;
-      /** Маршрут за сегодня закрыт — карточка остаётся в списке */
+      /** Маршрут за сегодня закрыт (подписи на детальном экране и т.п.). */
       routeCompletedTitle: string;
       routeLine: (stops: number, date: string) => string;
       progressShort: (done: number, total: number) => string;
@@ -174,7 +249,12 @@ export interface StaffStrings {
       ctaOpenRoute: string;
       emptyTitle: string;
       emptyBody: string;
+      /** Нет активных маршрутов, но есть завершённые за сегодня — уводим их в «Историю». */
+      emptyActiveCompletedTitle: string;
+      emptyActiveCompletedBody: string;
       refresh: string;
+      /** Подзаголовок группы: маршруты с запланированной датой = сегодня. */
+      sectionToday: string;
       sectionTomorrow: string;
       tomorrowPlaceholder: string;
       sectionStats: string;
@@ -189,6 +269,12 @@ export interface StaffStrings {
       sectionHistory: string;
       historyPlaceholder: string;
       backToOverview: string;
+    };
+  };
+  staffShell: {
+    themeToggle: {
+      switchToDarkAria: string;
+      switchToLightAria: string;
     };
   };
 }
@@ -209,6 +295,13 @@ const MESSAGES: Record<StaffLocale, StaffStrings> = {
         taskMarkedDoneToast: 'Задача отмечена выполненной',
         undoMarkDone: 'Отмена',
         markDoneError: 'Не удалось обновить статус',
+        quickActionMarkDone: 'Завершить объект',
+        profileTaskStatsLabel: 'По списку назначений',
+        activeListHeading: (count: number) => `Список (${count})`,
+        completedTasksHeading: (count: number) => `Завершенные за сегодня (${count})`,
+        shiftRecording: 'Фиксируем смену…',
+        shiftRecordError: 'Не удалось зафиксировать смену',
+        shiftRecordRetry: 'Повторить',
         generalTaskLabel: 'Общая задача',
       },
       incident: {
@@ -252,11 +345,27 @@ const MESSAGES: Record<StaffLocale, StaffStrings> = {
       history: {
         fabAria: 'История задач и инцидентов',
         drawerTitle: 'История',
-        hint: 'Завершённые задачи и ваши инциденты. Можно добавить фото, если забыли при закрытии.',
+        hint: 'Прошлые дни: задачи с датой завершения до сегодня. Только просмотр — без правок, комментариев и новых вложений.',
         tabTasks: 'Задачи',
         tabIncidents: 'Инциденты',
+        tabRoutes: 'Маршруты',
+        hintDriver:
+          'Маршруты за сегодня; инциденты за прошлые дни — только просмотр (без правок). Откройте маршрут для остановок.',
+        emptyRoutes: 'Нет завершённых маршрутов в списке.',
+        sectionCompletedRoutes: 'Завершённые маршруты',
+        completedRouteLink: 'Детали',
+        completedRouteStops: (done: number, total: number) => `Выполнено ${done} из ${total} остановок`,
         emptyTasks: 'Нет завершённых задач в списке.',
         emptyIncidents: 'Вы ещё не отправляли инциденты.',
+        emptyTasksPast: 'Нет задач за прошлые дни. Сегодняшние завершённые — в списке на главной.',
+        emptyIncidentsPast: 'Нет инцидентов за прошлые дни.',
+        viewMedia: 'Смотреть',
+        detailCompleted: 'Завершено',
+        detailDue: 'Срок',
+        detailAddress: 'Адрес',
+        detailNotes: 'Примечания',
+        detailAttachments: 'Фото и видео',
+        detailDescription: 'Описание',
         addPhoto: 'Добавить фото',
         photosCount: (n: number) => (n === 1 ? '1 фото' : `${n} фото`),
         incidentUploadSuccess: 'Фото добавлены к инциденту',
@@ -286,6 +395,28 @@ const MESSAGES: Record<StaffLocale, StaffStrings> = {
           task_report: 'По задаче',
         },
       },
+      verification: {
+        titleDefault: 'Проверка: фото или видео',
+        titleSupplement: 'Добавить к задаче',
+        descDefault: 'Снимок или ролик по объекту — у менеджера в одном месте. Можно выбрать несколько за раз (до 10).',
+        descSupplement: 'Прикрепите до 10 файлов — менеджер увидит в карточке задачи.',
+        addFromGallery: 'Снять / из галереи',
+        stripHint: 'Свайпните, чтобы увидеть все',
+        preparing: 'Подготовка…',
+        send: 'Отправить',
+        skip: 'Пропустить',
+        skipSupplement: 'Позже',
+        successDefault: 'Материалы прикреплены',
+        successSupplement: 'Добавлено к задаче',
+        tooMany: (max: number) => `Максимум ${max} файлов — выберите меньше`,
+        videoTooBig: (mb: number) => `Видео больше ${mb} МБ сожмите или выберите короче`,
+        quickActionTitle: 'Фото или видео',
+        quickActionHint: 'Один или несколько — для проверки у менеджера',
+        closeSheet: 'Закрыть',
+        prepareFailed: 'Не удалось подготовить вложения. Попробуйте другой файл.',
+        noTaskBinding: 'Нет привязки к задаче. Закройте окно и откройте снова.',
+        emptyAfterPrepare: 'Файлы не обработались. Попробуйте другое фото или видео.',
+      },
     },
     driver: {
       title: 'Логистика',
@@ -297,6 +428,7 @@ const MESSAGES: Record<StaffLocale, StaffStrings> = {
         headerTitle: 'Текущий маршрут',
         progress: (done: number, total: number) => `Выполнено ${done} из ${total} остановок`,
         scheduled: (date: string) => `Дата: ${date}`,
+        dueBy: (time: string) => `до ${time}`,
         warehouseTitle: 'Склад',
         propertyFallback: 'Объект',
         warehouseAddressHint: 'Погрузка на складе',
@@ -315,6 +447,8 @@ const MESSAGES: Record<StaffLocale, StaffStrings> = {
         actions: {
           completeStop: 'Точка выполнена',
           completing: 'Сохранение…',
+          completeStopBlockedHint:
+            'Сначала отметьте ваши задачи на объекте галочкой «выполнено», затем закройте остановку.',
           startRoute: 'Начать маршрут',
           starting: 'Запуск…',
           arrive: 'На месте',
@@ -347,6 +481,19 @@ const MESSAGES: Record<StaffLocale, StaffStrings> = {
           noTasksInListHint:
             'Нет задач, назначенных вам — отчёты привязаны к задаче. Попросите менеджера назначить задачи по объектам маршрута.',
         },
+        propertyTasksSectionTitle: 'Задачи на объекте',
+        propertyTasksDoneToggle: (n: number) => `Завершённые (${n})`,
+        propertyTasksReopen: 'Вернуть в работу',
+        propertyTasksReopenError: 'Не удалось вернуть задачу в работу',
+        completion: {
+          thankTitle: 'Спасибо, маршрут закрыт',
+          thankBody: 'Все остановки отмечены выполненными. Отдыхайте — до следующей смены.',
+          backOverview: 'На сводку',
+          tomorrowCta: 'План на завтра',
+          stopsDetails: 'Остановки маршрута',
+          offRouteTasksTitle: 'Дела вне маршрута',
+          stopExpandHint: 'Нажмите чтобы развернуть',
+        },
       },
       dashboard: {
         pageTitle: 'Сводка',
@@ -362,7 +509,11 @@ const MESSAGES: Record<StaffLocale, StaffStrings> = {
         emptyTitle: 'Сейчас нет активного маршрута',
         emptyBody:
           'Когда менеджер назначит маршрут, появится карточка выше. Обновите список или откройте задачи — там могут быть поручения вне маршрута.',
+        emptyActiveCompletedTitle: 'На сегодня маршруты закрыты',
+        emptyActiveCompletedBody:
+          'Завершённые маршруты и остановки — в разделе «История» (иконка часов справа вверху).',
         refresh: 'Обновить',
+        sectionToday: 'Сегодня',
         sectionTomorrow: 'План на завтра',
         tomorrowPlaceholder:
           'Предварительный план на следующий день появится здесь, когда менеджер сформирует маршрут. Пока ориентируйтесь на сообщения в чате.',
@@ -378,6 +529,12 @@ const MESSAGES: Record<StaffLocale, StaffStrings> = {
         sectionHistory: 'История и отчёты',
         historyPlaceholder: 'Детальная история доставок и метрики появятся здесь позже. Сейчас отчёты и заметки доступны в разделе задач.',
         backToOverview: 'К сводке',
+      },
+    },
+    staffShell: {
+      themeToggle: {
+        switchToDarkAria: 'Включить тёмную тему',
+        switchToLightAria: 'Включить светлую тему',
       },
     },
   },
@@ -396,6 +553,13 @@ const MESSAGES: Record<StaffLocale, StaffStrings> = {
         taskMarkedDoneToast: 'Task marked as done',
         undoMarkDone: 'Undo',
         markDoneError: 'Could not update status',
+        quickActionMarkDone: 'Complete property',
+        profileTaskStatsLabel: 'All assigned',
+        activeListHeading: (count: number) => `List (${count})`,
+        completedTasksHeading: (count: number) => `Completed today (${count})`,
+        shiftRecording: 'Recording your shift…',
+        shiftRecordError: 'Could not record shift',
+        shiftRecordRetry: 'Retry',
         generalTaskLabel: 'General task',
       },
       incident: {
@@ -439,11 +603,27 @@ const MESSAGES: Record<StaffLocale, StaffStrings> = {
       history: {
         fabAria: 'Task and incident history',
         drawerTitle: 'History',
-        hint: 'Completed tasks and incidents you reported. Add photos if you forgot when closing.',
+        hint: 'Past days: tasks completed before today, read-only — no edits or new attachments.',
         tabTasks: 'Tasks',
         tabIncidents: 'Incidents',
+        tabRoutes: 'Routes',
+        hintDriver:
+          'Today’s routes; past-day incidents are read-only. Open a route for stop details.',
+        emptyRoutes: 'No completed routes in the list.',
+        sectionCompletedRoutes: 'Completed routes',
+        completedRouteLink: 'Details',
+        completedRouteStops: (done: number, total: number) => `${done} of ${total} stops done`,
         emptyTasks: 'No completed tasks in the list.',
         emptyIncidents: 'You have not submitted any incidents yet.',
+        emptyTasksPast: 'No tasks from past days. Today’s completed tasks are on the home list.',
+        emptyIncidentsPast: 'No incidents from past days.',
+        viewMedia: 'View',
+        detailCompleted: 'Completed',
+        detailDue: 'Due',
+        detailAddress: 'Address',
+        detailNotes: 'Notes',
+        detailAttachments: 'Photos and video',
+        detailDescription: 'Description',
         addPhoto: 'Add photo',
         photosCount: (n: number) => (n === 1 ? '1 photo' : `${n} photos`),
         incidentUploadSuccess: 'Photos added to the incident',
@@ -473,6 +653,28 @@ const MESSAGES: Record<StaffLocale, StaffStrings> = {
           task_report: 'Task-related',
         },
       },
+      verification: {
+        titleDefault: 'Photo or video proof',
+        titleSupplement: 'Add to task',
+        descDefault: 'Add photos or short videos from the job — the manager sees them in one place. Up to 10 at once.',
+        descSupplement: 'Attach up to 10 files; they will appear on the task card for your manager.',
+        addFromGallery: 'Camera or gallery',
+        stripHint: 'Swipe the row to see all',
+        preparing: 'Preparing…',
+        send: 'Send',
+        skip: 'Skip',
+        skipSupplement: 'Later',
+        successDefault: 'Media attached',
+        successSupplement: 'Added to the task',
+        tooMany: (max: number) => `Up to ${max} files — pick fewer`,
+        videoTooBig: (mb: number) => `Video is over ${mb} MB — try a shorter clip or compress it`,
+        quickActionTitle: 'Photo or video',
+        quickActionHint: 'One or more for manager review',
+        closeSheet: 'Close',
+        prepareFailed: 'Could not process attachments. Try another file.',
+        noTaskBinding: 'No task context. Close and try again.',
+        emptyAfterPrepare: 'Files were not processed. Try another photo or video.',
+      },
     },
     driver: {
       title: 'Logistics',
@@ -484,6 +686,7 @@ const MESSAGES: Record<StaffLocale, StaffStrings> = {
         headerTitle: 'Current route',
         progress: (done: number, total: number) => `${done} of ${total} stops done`,
         scheduled: (date: string) => `Date: ${date}`,
+        dueBy: (time: string) => `by ${time}`,
         warehouseTitle: 'Warehouse',
         propertyFallback: 'Property',
         warehouseAddressHint: 'Loading at warehouse',
@@ -502,6 +705,8 @@ const MESSAGES: Record<StaffLocale, StaffStrings> = {
         actions: {
           completeStop: 'Stop completed',
           completing: 'Saving…',
+          completeStopBlockedHint:
+            'Mark your tasks at this property as done first, then complete the stop.',
           startRoute: 'Start route',
           starting: 'Starting…',
           arrive: "I'm here",
@@ -534,6 +739,19 @@ const MESSAGES: Record<StaffLocale, StaffStrings> = {
           noTasksInListHint:
             'No tasks assigned to you — reports are tied to a task. Ask your manager to assign tasks for route properties.',
         },
+        propertyTasksSectionTitle: 'Tasks at the property',
+        propertyTasksDoneToggle: (n: number) => `Completed (${n})`,
+        propertyTasksReopen: 'Reopen',
+        propertyTasksReopenError: 'Could not put the task back in progress',
+        completion: {
+          thankTitle: 'Thank you — route finished',
+          thankBody: 'All stops are marked complete. Have a good break until the next shift.',
+          backOverview: 'Back to overview',
+          tomorrowCta: 'Tomorrow’s plan',
+          stopsDetails: 'Route stops',
+          offRouteTasksTitle: 'Off-route tasks',
+          stopExpandHint: 'Tap to expand',
+        },
       },
       dashboard: {
         pageTitle: 'Overview',
@@ -549,7 +767,11 @@ const MESSAGES: Record<StaffLocale, StaffStrings> = {
         emptyTitle: 'No active route right now',
         emptyBody:
           'When a manager assigns a route, a card will appear here. Refresh or open Tasks — there may be work outside the route.',
+        emptyActiveCompletedTitle: 'All today’s routes are finished',
+        emptyActiveCompletedBody:
+          'Completed routes and stops are in History (clock icon, top right).',
         refresh: 'Refresh',
+        sectionToday: 'Today',
         sectionTomorrow: 'Tomorrow',
         tomorrowPlaceholder:
           'A draft plan for the next day will show here once your manager builds a route. Until then, use chat updates.',
@@ -566,6 +788,12 @@ const MESSAGES: Record<StaffLocale, StaffStrings> = {
         historyPlaceholder:
           'Delivery history and metrics will appear here later. Notes and reports are in Tasks for now.',
         backToOverview: 'Back to overview',
+      },
+    },
+    staffShell: {
+      themeToggle: {
+        switchToDarkAria: 'Use dark theme',
+        switchToLightAria: 'Use light theme',
       },
     },
   },

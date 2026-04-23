@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* Явная тёмная тема по классу на <html> — без скачков от системной «тёмной» схемы (переключатель в приложении). */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* Tailwind v4: явно указываем файлы с классами (иначе утилиты могут не попасть в сборку) */
 @source "../**/*.{js,ts,jsx,tsx}";
 
@@ -60,6 +63,15 @@ body {
     radial-gradient(ellipse 120% 80% at 0% -20%, rgb(20 184 166 / 0.12), transparent 50%),
     radial-gradient(ellipse 100% 60% at 100% 0%, rgb(59 130 246 / 0.08), transparent 45%),
     radial-gradient(ellipse 80% 50% at 50% 100%, rgb(20 184 166 / 0.06), transparent 40%);
+}
+
+.dark .staff-app-bg {
+  background-color: #0f172a;
+  color: #e2e8f0;
+  background-image:
+    radial-gradient(ellipse 120% 80% at 0% -20%, rgb(20 184 166 / 0.1), transparent 50%),
+    radial-gradient(ellipse 100% 60% at 100% 0%, rgb(59 130 246 / 0.06), transparent 45%),
+    radial-gradient(ellipse 80% 50% at 50% 100%, rgb(20 184 166 / 0.05), transparent 40%);
 }
 
 .staff-glass-header {

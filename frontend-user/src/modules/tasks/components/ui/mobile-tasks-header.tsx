@@ -26,6 +26,7 @@ import {
   isTasksListSliceFiltered,
   TasksStatusPriorityFilterPanel,
 } from '../manager/TasksStatusPriorityFilterPanel';
+import { preventCloseIfAssigneePickerOutside } from '../shared/AssigneePickerField';
 
 const WIDE = {
   start: new Date('2000-01-01T12:00:00'),
@@ -347,6 +348,9 @@ export function MobileTasksHeader({ title }: MobileTasksHeaderProps) {
               'data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:slide-out-to-bottom-2 data-[state=open]:slide-in-from-bottom-4',
             )}
             onOpenAutoFocus={(e) => e.preventDefault()}
+            onInteractOutside={preventCloseIfAssigneePickerOutside}
+            onPointerDownOutside={preventCloseIfAssigneePickerOutside}
+            onFocusOutside={preventCloseIfAssigneePickerOutside}
           >
             <RadixDialog.Title className="sr-only">{t('filters.listFilterSheetTitle')}</RadixDialog.Title>
             <RadixDialog.Description className="sr-only">{t('filters.listFilterSheetDescription')}</RadixDialog.Description>

@@ -19,21 +19,31 @@ export interface DriverPropertyTasksProps {
   onTextForTask?: (task: Task) => void;
 }
 
+function sortOpenPropertyTasksForDriver(a: Task, b: Task): number {
+  const pr: Record<string, number> = { urgent: 0, normal: 1 };
+  const pa = pr[a.priority] ?? 1;
+  const pb = pr[b.priority] ?? 1;
+  if (pa !== pb) return pa - pb;
+  return (a.dueTime ?? '99:99').localeCompare(b.dueTime ?? '99:99');
+}
+
+/** Сначала невыполненные, затем «готово»; на активной точке готовые не скрываем — зачёркивание, пока не закрыли остановку. */
+function sortPropertyTasksOnRoute(a: Task, b: Task): number {
+  const aDone = a.status === 'done' ? 1 : 0;
+  const bDone = b.status === 'done' ? 1 : 0;
+  if (aDone !== bDone) return aDone - bDone;
+  if (aDone === 0) return sortOpenPropertyTasksForDriver(a, b);
+  return (b.completedAt ?? '').localeCompare(a.completedAt ?? '');
+}
+
 export function DriverPropertyTasks({ propertyId, onVoiceForTask, onTextForTask }: DriverPropertyTasksProps) {
   const strings = useStaffStrings();
+  const tr = strings.driver.route;
   const { data, isLoading } = useTodayTasks();
   const { mutate: updateStatus, isPending: statusPending } = useUpdateTaskStatus();
 
-  const activeTasks = useMemo(() => {
-    return (data?.tasks ?? [])
-      .filter((t) => t.propertyId === propertyId && t.status !== 'done')
-      .sort((a, b) => {
-        const pr: Record<string, number> = { urgent: 0, normal: 1 };
-        const pa = pr[a.priority] ?? 1;
-        const pb = pr[b.priority] ?? 1;
-        if (pa !== pb) return pa - pb;
-        return (a.dueTime ?? '99:99').localeCompare(b.dueTime ?? '99:99');
-      });
+  const displayTasks = useMemo(() => {
+    return (data?.tasks ?? []).filter((t) => t.propertyId === propertyId).sort(sortPropertyTasksOnRoute);
   }, [data?.tasks, propertyId]);
 
   const [quickTask, setQuickTask] = useState<Task | null>(null);
@@ -57,9 +67,7 @@ export function DriverPropertyTasks({ propertyId, onVoiceForTask, onTextForTask 
     [strings.tasks.checklist.completeRequired],
   );
 
-  const { enqueueMarkDoneAfterSwipe } = usePendingTaskMarkDoneStaff({
-    taskMarkedMessage: strings.tasks.checklist.taskMarkedDoneToast,
-    undoLabel: strings.tasks.checklist.undoMarkDone,
+  const { enqueueMarkDoneAfterSwipe, cancelPendingForUuid } = usePendingTaskMarkDoneStaff({
     markDoneErrorMessage: strings.tasks.checklist.markDoneError,
     onCommitted: onMarkDoneCommitted,
     onChecklistIncomplete: onMarkDoneChecklistIncomplete,
@@ -67,10 +75,23 @@ export function DriverPropertyTasks({ propertyId, onVoiceForTask, onTextForTask 
 
   const handleMarkDone = useCallback(
     (uuid: string) => {
-      const t = activeTasks.find((x) => x.uuid === uuid);
+      const t = (data?.tasks ?? []).find(
+        (x) => x.uuid === uuid && x.propertyId === propertyId && x.status !== 'done',
+      );
       if (t) enqueueMarkDoneAfterSwipe(t);
     },
-    [activeTasks, enqueueMarkDoneAfterSwipe],
+    [data?.tasks, propertyId, enqueueMarkDoneAfterSwipe],
+  );
+
+  const handleMarkReopen = useCallback(
+    (uuid: string) => {
+      cancelPendingForUuid(uuid);
+      const t = (data?.tasks ?? []).find((x) => x.uuid === uuid);
+      if (t?.status === 'done') {
+        updateStatus({ uuid, status: 'pending' });
+      }
+    },
+    [data?.tasks, cancelPendingForUuid, updateStatus],
   );
 
   const handleMarkDoneTask = useCallback(
@@ -89,23 +110,27 @@ export function DriverPropertyTasks({ propertyId, onVoiceForTask, onTextForTask 
 
   const handleQuickIssue = (uuid: string) => {
     setQuickTask(null);
-    const t = activeTasks.find((x) => x.uuid === uuid);
+    const t = (data?.tasks ?? []).find(
+      (x) => x.uuid === uuid && x.propertyId === propertyId && x.status !== 'done',
+    );
     if (t) setIssueTask(t);
   };
 
   if (isLoading) return null;
-  if (activeTasks.length === 0) return null;
+  if (displayTasks.length === 0) return null;
 
   return (
     <>
-      <div className="mt-6 flex flex-col gap-3">
-        <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300">Задачи на объекте</h3>
-        {activeTasks.map((task) => (
+      <div className="mt-5 flex w-full min-w-0 max-w-full flex-col gap-2">
+        <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300">{tr.propertyTasksSectionTitle}</h3>
+        {displayTasks.map((task) => (
           <ChecklistItem
             key={task.uuid}
             task={task}
+            variant="driverRoute"
             deadlineUrgency={deadlineUrgency(task)}
             onMarkDone={handleMarkDone}
+            onMarkReopen={handleMarkReopen}
             onQuickOpen={setQuickTask}
             onVoiceForTask={onVoiceForTask}
             onTextForTask={onTextForTask}
@@ -120,8 +145,13 @@ export function DriverPropertyTasks({ propertyId, onVoiceForTask, onTextForTask 
         onStart={handleQuickStart}
         onMarkDone={handleMarkDoneTask}
         onMarkIssue={handleQuickIssue}
+        onMarkReopen={(t) => handleMarkReopen(t.uuid)}
         onOpenDetails={(t) => setDetailTask(t)}
+        onAddVerification={(t) => {
+          setPhotoTaskUuid(t.uuid);
+        }}
         startPending={statusPending}
+        readOnlyActions={true}
       />
 
       <TaskDetailStaff

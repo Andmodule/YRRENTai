@@ -15,6 +15,7 @@ async function fetchWsToken(): Promise<string> {
 
 const STAFF_TASKS_QUERY_KEY = ['tasks', 'staff'] as const;
 const STAFF_DELIVERY_ROUTE_KEY = ['tasks', 'staff-delivery-route'] as const;
+const STAFF_DELIVERY_ROUTES_LIST_KEY = ['tasks', 'staff-delivery-routes'] as const;
 
 export function useTasksSocket(staffUserId?: string) {
   const queryClient = useQueryClient();
@@ -51,9 +52,19 @@ export function useTasksSocket(staffUserId?: string) {
     socket.on('delivery_route_assigned', (payload: { routeId: string; driverUserId: string }) => {
       if (staffUserId && payload.driverUserId !== staffUserId) return;
       void queryClient.invalidateQueries({ queryKey: STAFF_DELIVERY_ROUTE_KEY });
+      void queryClient.invalidateQueries({ queryKey: STAFF_DELIVERY_ROUTES_LIST_KEY });
       void queryClient.invalidateQueries({ queryKey: STAFF_TASKS_QUERY_KEY });
       toast.info('Назначен маршрут доставки', { description: 'Откройте блок «Маршрут».' });
     });
+
+    socket.on(
+      'delivery_route_updated',
+      (payload: { routeId: string; driverUserId: string | null; status: string }) => {
+        if (staffUserId && payload.driverUserId && payload.driverUserId !== staffUserId) return;
+        void queryClient.invalidateQueries({ queryKey: STAFF_DELIVERY_ROUTES_LIST_KEY });
+        void queryClient.invalidateQueries({ queryKey: STAFF_DELIVERY_ROUTE_KEY });
+      },
+    );
 
     socket.on('task_updated', async () => {
       const before = new Set(

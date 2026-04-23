@@ -9,10 +9,15 @@ import {
   UseGuards,
   UseInterceptors,
   UploadedFiles,
+  BadRequestException,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { join } from 'path';
+import {
+  publicUploadFileExtension,
+  STAFF_VERIFICATION_MAX_FILE_BYTES,
+} from '../common/multer-upload-filename.util';
 import { promises as fs } from 'fs';
 import { randomUUID } from 'crypto';
 import { ConfigService } from '@nestjs/config';
@@ -149,7 +154,7 @@ export class IncidentsController {
   @UseInterceptors(
     FilesInterceptor('files', 10, {
       storage: memoryStorage(),
-      limits: { fileSize: 8 * 1024 * 1024 },
+      limits: { fileSize: STAFF_VERIFICATION_MAX_FILE_BYTES },
     }),
   )
   async staffAppendPhotos(
@@ -158,7 +163,7 @@ export class IncidentsController {
     @CurrentUser() user: JwtPayload,
   ) {
     if (!files?.length) {
-      return { data: { photoUrls: [] as string[] } };
+      throw new BadRequestException('No files: multipart part "files" is missing or empty');
     }
 
     const dir = join(process.cwd(), 'uploads', 'incidents', uuid);
@@ -170,7 +175,8 @@ export class IncidentsController {
 
     const urls: string[] = [];
     for (const file of files) {
-      const name = `${randomUUID()}.jpg`;
+      const ext = publicUploadFileExtension(file);
+      const name = `${randomUUID()}.${ext}`;
       const full = join(dir, name);
       await fs.writeFile(full, file.buffer);
       urls.push(`${apiBase}/uploads/incidents/${uuid}/${name}`);

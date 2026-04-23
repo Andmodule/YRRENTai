@@ -2,8 +2,23 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Download, Loader2, Map as MapIcon, MapPin, Mic, Navigation, Package, Pencil, Upload } from 'lucide-react';
-import { IncidentReportDrawer } from '@/components/tasks/incident-report-drawer';
+import { addDays, format } from 'date-fns';
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  Loader2,
+  Map as MapIcon,
+  MapPin,
+  Mic,
+  Navigation,
+  Package,
+  Pencil,
+  Upload,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import type { StaffDeliveryRouteDetail } from '@/hooks/use-staff-delivery-route';
 import type { StaffStrings } from '@/locales/staff-strings';
@@ -13,6 +28,7 @@ import { mapStaffRouteToActiveData } from '@/modules/driver/map-staff-route';
 import type { ActiveRouteData, RouteItem, RouteStop } from '@/modules/driver/types/route.types';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { StaffThemeToggle } from '@/components/staff-theme-toggle';
 import { DriverPropertyTasks } from '@/modules/driver/components/DriverPropertyTasks';
 import { useTodayTasks } from '@/hooks/use-tasks';
 import { DriverOffRouteTasks } from '@/modules/driver/components/DriverOffRouteTasks';
@@ -31,6 +47,12 @@ function openMapsQuery(query: string) {
   if (!q) return;
   const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
   window.open(url, '_blank', 'noopener,noreferrer');
+}
+
+function formatScheduleDate(isoDate: string): string {
+  const d = new Date(`${isoDate}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return isoDate;
+  return d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'long' });
 }
 
 type DriverRouteCopy = StaffStrings['driver']['route'];
@@ -128,6 +150,12 @@ export interface ActiveRouteTimelineProps {
   settingNextStopId?: string | null;
   /** Ссылка на сводку водителя */
   overviewHref?: string;
+  /** Имя и первая буква фамилии для шапки */
+  driverShortName?: string | null;
+  /** Список маршрутов водителя — поиск назначения на завтра для CTA после закрытия сегодняшнего */
+  deliveryRoutesAll?: StaffDeliveryRouteDetail[] | null;
+  /** Текущий пользователь: учитываем только его задачи при закрытии остановки и индикаторах */
+  driverUserId?: string | null;
 }
 
 export function ActiveRouteTimeline({
@@ -144,6 +172,9 @@ export function ActiveRouteTimeline({
   onSetDriverNextStop,
   settingNextStopId,
   overviewHref,
+  driverShortName,
+  deliveryRoutesAll,
+  driverUserId,
 }: ActiveRouteTimelineProps) {
   const strings = useStaffStrings();
   const tr = strings.driver.route;
@@ -151,24 +182,72 @@ export function ActiveRouteTimeline({
 
   const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
   const [expandedStopId, setExpandedStopId] = useState<string | null>(null);
+  const [expandedCompletedStopId, setExpandedCompletedStopId] = useState<string | null>(null);
+  const [offRouteDoneExpanded, setOffRouteDoneExpanded] = useState(false);
 
   const { data: tasksData } = useTodayTasks();
   const allTasks = tasksData?.tasks || [];
 
-  const stopHasUrgentTask = useCallback((propertyId?: string | null) => {
-    if (!propertyId) return false;
-    return allTasks.some((t) => t.propertyId === propertyId && t.status !== 'done' && t.priority === 'urgent');
-  }, [allTasks]);
+  const taskBelongsToDriver = useCallback(
+    (t: (typeof allTasks)[number]) => {
+      if (!driverUserId?.trim()) return true;
+      return t.assigneeId === driverUserId;
+    },
+    [driverUserId],
+  );
 
-  const stopHasIncidentTask = useCallback((propertyId?: string | null) => {
-    if (!propertyId) return false;
-    return allTasks.some((t) => t.propertyId === propertyId && t.status !== 'done' && (t.type === 'incident' || t.type === 'damage' || t.type === 'lost_item'));
-  }, [allTasks]);
+  const stopHasUrgentTask = useCallback(
+    (propertyId?: string | null) => {
+      if (!propertyId) return false;
+      return allTasks.some(
+        (t) =>
+          taskBelongsToDriver(t) &&
+          t.propertyId === propertyId &&
+          t.status !== 'done' &&
+          t.priority === 'urgent',
+      );
+    },
+    [allTasks, taskBelongsToDriver],
+  );
 
-  const stopHasMaintenanceTask = useCallback((propertyId?: string | null) => {
-    if (!propertyId) return false;
-    return allTasks.some((t) => t.propertyId === propertyId && t.status !== 'done' && t.type === 'maintenance');
-  }, [allTasks]);
+  const stopHasIncidentTask = useCallback(
+    (propertyId?: string | null) => {
+      if (!propertyId) return false;
+      return allTasks.some(
+        (t) =>
+          taskBelongsToDriver(t) &&
+          t.propertyId === propertyId &&
+          t.status !== 'done' &&
+          (t.type === 'incident' || t.type === 'damage' || t.type === 'lost_item'),
+      );
+    },
+    [allTasks, taskBelongsToDriver],
+  );
+
+  const stopHasMaintenanceTask = useCallback(
+    (propertyId?: string | null) => {
+      if (!propertyId) return false;
+      return allTasks.some(
+        (t) =>
+          taskBelongsToDriver(t) &&
+          t.propertyId === propertyId &&
+          t.status !== 'done' &&
+          t.type === 'maintenance',
+      );
+    },
+    [allTasks, taskBelongsToDriver],
+  );
+
+  /** Невыполненных задач у этого водителя на объекте не осталось — иначе остановку закрывать нельзя. */
+  const canCompletePropertyStop = useCallback(
+    (propertyId: string | null | undefined) => {
+      if (!propertyId) return true;
+      const list = allTasks.filter((t) => t.propertyId === propertyId && taskBelongsToDriver(t));
+      if (list.length === 0) return true;
+      return list.every((t) => t.status === 'done');
+    },
+    [allTasks, taskBelongsToDriver],
+  );
 
   const data: ActiveRouteData | null = useMemo(
     () => (route ? mapStaffRouteToActiveData(route) : null),
@@ -202,6 +281,22 @@ export function ActiveRouteTimeline({
     return ids;
   }, [data?.stops]);
 
+  const completedOffRouteTasks = useMemo(() => {
+    const set = new Set(routePropertyIds);
+    return allTasks.filter((t) => t.status === 'done' && !set.has(t.propertyId) && taskBelongsToDriver(t));
+  }, [allTasks, routePropertyIds, taskBelongsToDriver]);
+
+  const tomorrowRoute = useMemo(() => {
+    const list = deliveryRoutesAll ?? [];
+    const tomorrowKey = format(addDays(new Date(), 1), 'yyyy-MM-dd');
+    return (
+      list.find(
+        (r) =>
+          r.scheduledDate === tomorrowKey && r.status !== 'completed' && r.status !== 'cancelled',
+      ) ?? null
+    );
+  }, [deliveryRoutesAll]);
+
   useEffect(() => {
     if (!data?.stops.some((s) => s.id === expandedStopId)) setExpandedStopId(null);
   }, [data, expandedStopId]);
@@ -222,7 +317,7 @@ export function ActiveRouteTimeline({
   if (isLoading) {
     return (
       <div
-        className="mx-auto flex min-h-screen w-full max-w-md flex-col bg-slate-50 px-4 pb-8 pt-[max(0.75rem,env(safe-area-inset-top))] dark:bg-slate-950"
+        className="mx-auto flex min-h-screen w-full min-w-0 max-w-md flex-col overflow-x-hidden bg-slate-50 px-4 pb-8 pt-[max(0.75rem,env(safe-area-inset-top))] dark:bg-slate-950"
         aria-busy
       >
         <Skeleton className="mb-8 h-16 w-full rounded-xl" />
@@ -237,7 +332,7 @@ export function ActiveRouteTimeline({
 
   if (isError) {
     return (
-      <div className="mx-auto flex min-h-screen w-full max-w-md flex-col items-center justify-center bg-slate-50 px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] text-center dark:bg-slate-950">
+      <div className="mx-auto flex min-h-screen w-full min-w-0 max-w-md flex-col items-center justify-center overflow-x-hidden bg-slate-50 px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] text-center dark:bg-slate-950">
         <p className="text-sm text-slate-600 dark:text-slate-300">{tr.error.message}</p>
         <Button type="button" className="mt-4 rounded-full" variant="secondary" onClick={() => void onRefetch()}>
           {tr.error.retry}
@@ -248,7 +343,7 @@ export function ActiveRouteTimeline({
 
   if (!route || !data || data.stops.length === 0) {
     return (
-      <div className="mx-auto flex min-h-screen w-full max-w-md flex-col items-center justify-center bg-slate-50 px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] text-center dark:bg-slate-950">
+      <div className="mx-auto flex min-h-screen w-full min-w-0 max-w-md flex-col items-center justify-center overflow-x-hidden bg-slate-50 px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] text-center dark:bg-slate-950">
         <div className="mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-teal-50 dark:bg-teal-950/50">
           <CheckCircle2 size={48} className="text-teal-500" aria-hidden />
         </div>
@@ -263,32 +358,41 @@ export function ActiveRouteTimeline({
 
   const assigned = data.routeStatus === 'assigned';
   const inProgress = data.routeStatus === 'in_progress';
+  const completed = data.routeStatus === 'completed';
+  const co = tr.completion;
 
   return (
     <div
-      className="mx-auto flex min-h-screen w-full max-w-md flex-col bg-slate-50 pb-[max(1.5rem,env(safe-area-inset-bottom))] dark:bg-slate-950"
+      className="mx-auto flex min-h-screen w-full min-w-0 max-w-md flex-col overflow-x-hidden bg-slate-50 pb-[max(1.5rem,env(safe-area-inset-bottom))] dark:bg-slate-950"
       data-driver-route-loaded
     >
-      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/90 px-3 pb-2 pt-[max(0.35rem,env(safe-area-inset-top))] shadow-sm backdrop-blur-md dark:border-slate-800 dark:bg-slate-950/90">
-        <div className="flex items-center gap-2">
+      <header className="sticky top-0 z-30 min-w-0 border-b border-slate-200 bg-white/90 px-3 pb-2 pt-[max(0.35rem,env(safe-area-inset-top))] shadow-sm backdrop-blur-md dark:border-slate-800 dark:bg-slate-950/90">
+        <div className="flex w-full min-w-0 items-start gap-2">
           {overviewHref ? (
             <Link
               href={overviewHref}
               aria-label={dash.backToOverview}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-600 transition-colors hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+              className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-600 transition-colors hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
             >
               <ChevronLeft className="h-6 w-6" aria-hidden />
             </Link>
           ) : null}
-          <div className={cn('min-w-0', overviewHref && 'flex-1')}>
-            <p className="text-sm font-medium text-slate-600 dark:text-slate-300">
+          <div className={cn('min-w-0 flex-1', !overviewHref && 'w-full')}>
+            {driverShortName?.trim() ? (
+              <p className="text-xs font-semibold leading-tight text-slate-900 dark:text-slate-100">{driverShortName.trim()}</p>
+            ) : null}
+            <p className="text-sm font-medium leading-snug text-slate-600 dark:text-slate-300">
               {tr.progress(data.completedStops, data.totalStops)}
             </p>
-            <p className="text-xs text-slate-400 dark:text-slate-500">{tr.scheduled(data.scheduledDate)}</p>
+            <p className="text-xs text-slate-400 dark:text-slate-500">
+              {tr.scheduled(data.scheduledDate)}
+              {data.completeByTime?.trim() ? ` · ${tr.dueBy(data.completeByTime.trim())}` : ''}
+            </p>
           </div>
+          <StaffThemeToggle className="mt-0.5" />
         </div>
 
-        {inProgress ? (
+        {!completed && inProgress ? (
           <div
             className="mt-3 grid grid-cols-2 gap-1 rounded-xl border border-slate-200 bg-slate-100/80 p-1 dark:border-slate-700 dark:bg-slate-900/80"
             role="tablist"
@@ -327,8 +431,125 @@ export function ActiveRouteTimeline({
         ) : null}
       </header>
 
-      {assigned ? (
-        <div className="px-4 pt-4">
+      {completed ? (
+        <div className="flex min-w-0 flex-col gap-3 px-4 pb-10 pt-5">
+          {/* Off-route completed tasks — collapsible at top */}
+          {completedOffRouteTasks.length > 0 ? (
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
+              <button
+                type="button"
+                onClick={() => setOffRouteDoneExpanded((o) => !o)}
+                className="flex w-full items-center justify-between gap-3 px-4 py-4 text-left"
+                aria-expanded={offRouteDoneExpanded}
+              >
+                <div className="flex items-center gap-2.5">
+                  <MapPin className="h-5 w-5 shrink-0 text-slate-500 dark:text-slate-400" aria-hidden />
+                  <span className="text-base font-semibold text-slate-900 dark:text-slate-100">{co.offRouteTasksTitle}</span>
+                  <span className="inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-full bg-teal-100 px-1.5 text-xs font-bold text-teal-800 dark:bg-teal-900/60 dark:text-teal-200">
+                    {completedOffRouteTasks.length}
+                  </span>
+                </div>
+                <ChevronDown
+                  className={cn('h-5 w-5 shrink-0 text-slate-400 transition-transform', offRouteDoneExpanded && 'rotate-180')}
+                  aria-hidden
+                />
+              </button>
+              {offRouteDoneExpanded ? (
+                <ul className="divide-y divide-slate-100 border-t border-slate-100 dark:divide-slate-800 dark:border-slate-800">
+                  {completedOffRouteTasks.map((t) => (
+                    <li key={t.uuid} className="flex items-start gap-3 px-4 py-3">
+                      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-teal-500 dark:text-teal-400" aria-hidden />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium leading-snug text-slate-700 line-through decoration-slate-400 dark:text-slate-300">
+                          {t.title}
+                        </p>
+                        {t.propertyTitle ? (
+                          <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">{t.propertyTitle}</p>
+                        ) : null}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          ) : null}
+
+          {/* Completed stops — expandable cards */}
+          <p className="px-1 text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">{co.stopsDetails}</p>
+          <div className="space-y-2.5">
+            {data.stops.map((stop) => {
+              const isExpanded = expandedCompletedStopId === stop.id;
+              const stopTasks = stop.propertyId
+                ? allTasks.filter((t) => t.propertyId === stop.propertyId && t.status === 'done' && taskBelongsToDriver(t))
+                : [];
+              const hasDetails = stop.items.length > 0 || stopTasks.length > 0;
+              return (
+                <div
+                  key={stop.id}
+                  className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900"
+                >
+                  <button
+                    type="button"
+                    disabled={!hasDetails}
+                    onClick={() => setExpandedCompletedStopId(isExpanded ? null : stop.id)}
+                    className="flex w-full items-center gap-3 px-4 py-4 text-left disabled:cursor-default"
+                    aria-expanded={hasDetails ? isExpanded : undefined}
+                  >
+                    <CheckCircle2 className="h-6 w-6 shrink-0 text-teal-500 dark:text-teal-400" aria-hidden />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-base font-semibold leading-snug text-slate-900 dark:text-slate-100">
+                        {stopHeading(stop, tr)}
+                      </p>
+                      {stop.kind === 'property' && stop.propertyAddress ? (
+                        <p className="mt-0.5 truncate text-sm text-slate-500 dark:text-slate-400">{stop.propertyAddress}</p>
+                      ) : null}
+                    </div>
+                    {hasDetails ? (
+                      <ChevronDown
+                        className={cn('h-5 w-5 shrink-0 text-slate-400 transition-transform', isExpanded && 'rotate-180')}
+                        aria-hidden
+                      />
+                    ) : null}
+                  </button>
+                  {isExpanded && hasDetails ? (
+                    <div className="space-y-3 border-t border-slate-100 px-4 pb-4 pt-3 dark:border-slate-800">
+                      {stop.items.length > 0 ? (
+                        <div className="space-y-2">
+                          {stop.items.map((item) => (
+                            <div key={item.id} className="flex items-center justify-between gap-2 text-sm">
+                              <div className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
+                                <Package className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
+                                <span>{item.name}</span>
+                              </div>
+                              <span className="shrink-0 font-semibold text-slate-900 dark:text-slate-100">
+                                {formatQty(item.quantity)}
+                                {item.unit ? ` ${item.unit}` : ''}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                      {stopTasks.length > 0 ? (
+                        <div className={cn('space-y-2', stop.items.length > 0 && 'border-t border-slate-100 pt-3 dark:border-slate-800')}>
+                          {stopTasks.map((t) => (
+                            <div key={t.uuid} className="flex items-start gap-2 text-sm text-slate-600 dark:text-slate-300">
+                              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-teal-500 dark:text-teal-400" aria-hidden />
+                              <span className="line-through decoration-slate-400">{t.title}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
+      {!completed && assigned ? (
+        <div className="min-w-0 px-4 pt-4">
           <Button
             type="button"
             className="inline-flex h-14 w-full items-center justify-center gap-2 rounded-full bg-slate-900 text-base font-semibold text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
@@ -347,8 +568,8 @@ export function ActiveRouteTimeline({
         </div>
       ) : null}
 
-      {inProgress && viewMode === 'map' ? (
-        <div className="flex flex-col gap-3 px-4 pt-4">
+      {!completed && inProgress && viewMode === 'map' ? (
+        <div className="flex min-w-0 flex-col gap-3 px-4 pt-4">
           <p className="text-sm leading-relaxed text-slate-500 dark:text-slate-400">{tr.mapHint}</p>
           <ul className="flex flex-col gap-2" aria-label={tr.a11y.timelineList}>
             {data.stops.map((stop) => {
@@ -408,20 +629,20 @@ export function ActiveRouteTimeline({
             })}
           </ul>
         </div>
-      ) : (
-      <div className="relative p-4">
+      ) : !completed ? (
+      <div className="relative min-w-0 overflow-x-hidden p-4">
         <div className="absolute bottom-8 left-9 top-8 z-0 w-0.5 bg-slate-200 dark:bg-slate-700" aria-hidden />
 
-        <ol className="relative z-10 space-y-0" aria-label={tr.a11y.timelineList}>
+        <ol className="relative z-10 min-w-0 space-y-0" aria-label={tr.a11y.timelineList}>
           {data.stops.map((stop, index) => (
-            <li key={stop.id} className="relative z-10">
+            <li key={stop.id} className="relative z-10 min-w-0">
               {stop.status === 'completed' ? (
-                <div className="flex gap-4 pb-6 pt-2">
+                <div className="flex min-w-0 gap-4 pb-6 pt-2">
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-4 border-slate-50 bg-slate-200 dark:border-slate-900 dark:bg-slate-700">
                     <CheckCircle2 size={18} className="text-slate-500 dark:text-slate-400" aria-hidden />
                   </div>
-                  <div className="flex flex-1 items-center justify-between gap-2 pt-2">
-                    <h3 className="text-base font-semibold text-slate-600 line-through decoration-slate-500 dark:text-slate-300 dark:decoration-slate-400">
+                  <div className="flex min-w-0 flex-1 items-center justify-between gap-2 pt-2">
+                    <h3 className="min-w-0 flex-1 break-words text-base font-semibold text-slate-600 line-through decoration-slate-500 dark:text-slate-300 dark:decoration-slate-400">
                       {stopHeading(stop, tr)}
                     </h3>
                     {stop.timeTarget ? (
@@ -434,7 +655,7 @@ export function ActiveRouteTimeline({
               ) : null}
 
               {stop.status === 'active' ? (
-                <div className="flex gap-4 pb-6">
+                <div className="flex min-w-0 gap-4 pb-6">
                   <div className={cn(
                     "relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-4",
                     stopHasUrgentTask(stop.propertyId) ? "border-rose-200 bg-rose-500 dark:border-rose-900" :
@@ -452,18 +673,18 @@ export function ActiveRouteTimeline({
                     <MapPin size={18} className="relative text-white" aria-hidden />
                   </div>
 
-                  <div className="flex-1 rounded-2xl border border-slate-100 bg-white p-4 shadow-lg shadow-slate-200/50 dark:border-slate-800 dark:bg-slate-900 dark:shadow-none">
-                    <div className="mb-4 flex items-center justify-between gap-2">
-                      <div className="min-w-0 flex-1">
+                  <div className="min-w-0 w-full max-w-full flex-1 rounded-2xl border border-slate-100 bg-white p-3 shadow-lg shadow-slate-200/50 sm:p-4 dark:border-slate-800 dark:bg-slate-900 dark:shadow-none">
+                    <div className="mb-4 flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-2">
+                      <div className="min-w-0 sm:flex-1">
                         <span className="mb-2 inline-block rounded-full bg-teal-50 px-2.5 py-0.5 text-xs font-semibold text-teal-700 dark:bg-teal-950 dark:text-teal-300">
                           {stop.kind === 'property' ? tr.statusNextStop : tr.statusActive}
                         </span>
-                        <h2 className="text-xl font-bold leading-tight text-slate-900 dark:text-slate-100">
+                        <h2 className="break-words text-xl font-bold leading-tight text-slate-900 dark:text-slate-100">
                           {stopHeading(stop, tr)}
                         </h2>
-                        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{stopAddress(stop, tr)}</p>
+                        <p className="mt-1 break-words text-sm text-slate-500 dark:text-slate-400">{stopAddress(stop, tr)}</p>
                       </div>
-                      <div className="flex shrink-0 items-center gap-1.5">
+                      <div className="flex w-full min-w-0 flex-row items-center justify-end gap-1.5 sm:w-auto sm:justify-end">
                         {(() => {
                           const voicePropertyId =
                             stop.kind === 'property' ? stop.propertyId : firstRoutePropertyId;
@@ -505,6 +726,7 @@ export function ActiveRouteTimeline({
                             </>
                           );
                         })()}
+                        <span className="min-w-0 flex-1 sm:max-w-none" aria-hidden />
                         <Button
                           type="button"
                           aria-label={tr.a11y.navigate}
@@ -556,13 +778,13 @@ export function ActiveRouteTimeline({
                       <Button
                         type="button"
                         disabled={pendingCompleteId === stop.id}
-                        className="group flex h-14 w-full items-center justify-between rounded-full bg-slate-900 px-2 text-base text-white transition-all hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white dark:focus-visible:ring-slate-100"
+                        className="group flex h-14 w-full items-center gap-0 rounded-full bg-slate-900 pl-4 pr-2 text-base text-white transition-all hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white dark:focus-visible:ring-slate-100"
                         onClick={() => void onCompleteStop(stop.id)}
                       >
-                        <span className="pl-4 font-semibold">
+                        <span className="min-w-0 flex-1 text-left font-semibold">
                           {pendingCompleteId === stop.id ? tr.actions.warehouseCompleting : tr.actions.warehouseComplete}
                         </span>
-                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20 transition-colors group-hover:bg-white/30">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/20 transition-colors group-hover:bg-white/30">
                           {pendingCompleteId === stop.id ? (
                             <Loader2 className="h-6 w-6 animate-spin" aria-hidden />
                           ) : (
@@ -575,14 +797,22 @@ export function ActiveRouteTimeline({
                     {stop.kind === 'property' ? (
                       <Button
                         type="button"
-                        disabled={pendingCompleteId === stop.id}
-                        className="group flex mt-6 h-14 w-full items-center justify-between rounded-full bg-slate-900 px-2 text-base text-white transition-all hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+                        disabled={
+                          pendingCompleteId === stop.id ||
+                          !canCompletePropertyStop(stop.propertyId ?? null)
+                        }
+                        title={
+                          !canCompletePropertyStop(stop.propertyId ?? null)
+                            ? tr.actions.completeStopBlockedHint
+                            : undefined
+                        }
+                        className="group mt-6 flex h-14 w-full items-center gap-0 rounded-full bg-slate-900 pl-4 pr-2 text-base text-white transition-all hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 disabled:pointer-events-auto disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
                         onClick={() => void onCompleteStop(stop.id)}
                       >
-                        <span className="pl-4 font-semibold">
+                        <span className="min-w-0 flex-1 text-left font-semibold">
                           {pendingCompleteId === stop.id ? tr.actions.completing : tr.actions.completeStop}
                         </span>
-                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20 transition-colors group-hover:bg-white/30">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/20 transition-colors group-hover:bg-white/30">
                           {pendingCompleteId === stop.id ? (
                             <Loader2 className="h-6 w-6 animate-spin" aria-hidden />
                           ) : (
@@ -596,7 +826,7 @@ export function ActiveRouteTimeline({
               ) : null}
 
               {stop.status === 'pending' ? (
-                <div className="flex gap-4 pb-6 pt-2">
+                <div className="flex min-w-0 gap-4 pb-6 pt-2">
                   <div className={cn(
                     "flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2",
                     stopHasUrgentTask(stop.propertyId) ? "border-rose-300 bg-rose-50 dark:border-rose-700 dark:bg-rose-950/50" :
@@ -670,9 +900,9 @@ export function ActiveRouteTimeline({
           ))}
         </ol>
       </div>
-      )}
+      ) : null}
 
-      {inProgress ? (
+      {!completed ? (
         <DriverOffRouteTasks
           routePropertyIds={routePropertyIds}
           onVoiceForTask={(task) => {

@@ -13,6 +13,7 @@ import { TaskListTypePill } from './TaskListTypePill';
 import { TaskManagerLinkBadges } from './TaskManagerLinkBadges';
 import { TaskStatusBadge } from '../shared/TaskStatusBadge';
 import { formatNameAndLastInitial } from '../../utils/staff-name-short';
+import { isTaskOverdue } from '../../utils/task-deadline';
 import { TaskListRowMobile } from './TaskListRowMobile';
 
 export const TaskListRow = memo(function TaskListRow({
@@ -159,6 +160,8 @@ export const TaskListRow = memo(function TaskListRow({
     onOpen(task);
   }, [onOpen, task]);
 
+  const overdue = isTaskOverdue(task);
+
   const rowClassName = cn(
     'flex w-full min-w-0 origin-top cursor-pointer flex-row items-start gap-2 border-b border-border/40 px-2 py-2 text-left md:px-3',
     'hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
@@ -168,6 +171,8 @@ export const TaskListRow = memo(function TaskListRow({
       : task.priority === 'urgent'
         ? 'bg-destructive/6 hover:bg-destructive/10 dark:bg-rose-950/20 dark:hover:bg-rose-950/40'
         : '',
+    overdue &&
+      'border-l-[3px] border-l-amber-600/30 bg-amber-500/[0.07] hover:bg-amber-500/10 dark:border-l-amber-500/40 dark:bg-amber-500/[0.08] dark:hover:bg-amber-500/12',
   );
 
   const rowInner = (

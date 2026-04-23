@@ -6,6 +6,7 @@ import { Link2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Select } from '@/components/ui/select';
 import type { Task, TaskStatus } from '../../types';
+import { isTaskOverdue } from '../../utils/task-deadline';
 import { TaskTypeBadge } from '../shared/TaskTypeBadge';
 
 const STATUSES: TaskStatus[] = ['pending', 'in_progress', 'done', 'issue'];
@@ -46,9 +47,15 @@ export const TaskTableView = memo(function TaskTableView({
               className={cn(
                 'border-b border-border/80 transition-colors last:border-0',
                 'hover:bg-muted/30',
+                isTaskOverdue(task) && 'bg-amber-500/[0.06] dark:bg-amber-500/[0.07]',
               )}
             >
-              <td className="px-3 py-2 align-middle">
+              <td
+                className={cn(
+                  'px-3 py-2 align-middle',
+                  isTaskOverdue(task) && 'border-l-[3px] border-l-amber-600/30 dark:border-l-amber-500/40',
+                )}
+              >
                 <TaskTypeBadge type={task.type} />
               </td>
               <td className="px-3 py-2 align-middle">

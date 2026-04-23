@@ -13,7 +13,6 @@ import {
   usePatchTaskChecklistItem,
 } from '@/hooks/use-tasks';
 import { useStaffStrings } from '@/locales/staff-strings';
-import { stripStaffSeedTaskMarker } from '@rentai/shared';
 
 interface TaskDetailStaffProps {
   task: Task | null;
@@ -63,8 +62,6 @@ export function TaskDetailStaff({
 
   if (!task) return null;
 
-  const taskNotesForDisplay = stripStaffSeedTaskMarker(task.notes);
-
   const handleStart = () => {
     updateStatus({ uuid: task.uuid, status: 'in_progress' });
     setStartPrompt(false);
@@ -91,7 +88,7 @@ export function TaskDetailStaff({
         <div className="mx-auto mb-2 h-1 w-10 rounded-full bg-slate-200" aria-hidden />
         <div className="mb-4 flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h2 className="text-lg font-bold text-slate-900">{task.propertyTitle}</h2>
+            <h2 className="text-lg font-normal text-slate-900">{task.propertyTitle}</h2>
             <p className="truncate text-sm text-slate-500" title={task.streetAddress || task.propertyAddress}>
               {task.streetAddress || task.propertyAddress}
             </p>
@@ -246,13 +243,6 @@ export function TaskDetailStaff({
             Отправить
           </Button>
         </div>
-
-        {taskNotesForDisplay && (
-          <div className="mb-4">
-            <p className="text-xs font-medium text-slate-500">Примечания</p>
-            <p className="mt-1 text-sm text-slate-800">{taskNotesForDisplay}</p>
-          </div>
-        )}
 
         <Button className="w-full" size="lg" variant="secondary" onClick={onClose}>
           Закрыть

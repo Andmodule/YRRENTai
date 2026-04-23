@@ -11,6 +11,41 @@ import { useInsideModalNestedPortal, useModalNestedPortalContainer } from '@/com
 import type { StaffMember } from '../../types';
 import { formatNameAndLastInitial } from '../../utils/staff-name-short';
 
+/** Root of portaled picker — parent `DropdownMenu` / `Dialog` must not dismiss on clicks here (see `isAssigneePickerPortalTarget`). */
+export const ASSIGNEE_PICKER_PORTAL_SELECTOR = '[data-assignee-picker-portal]';
+
+export function isAssigneePickerPortalTarget(target: EventTarget | null): boolean {
+  return typeof Element !== 'undefined' && target instanceof Element && Boolean(target.closest(ASSIGNEE_PICKER_PORTAL_SELECTOR));
+}
+
+/** True if the pointer/focus interaction originated inside the portaled assignee overlay (uses composedPath for shadow/open shadow roots). */
+export function interactionHitsAssigneePickerPortal(originalEvent: Event): boolean {
+  if (isAssigneePickerPortalTarget(originalEvent.target)) return true;
+  if (typeof originalEvent.composedPath === 'function') {
+    for (const node of originalEvent.composedPath()) {
+      if (node instanceof Element && node.closest(ASSIGNEE_PICKER_PORTAL_SELECTOR)) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Pass to `DropdownMenuContent` / `Dialog.Content` `onInteractOutside` (and optionally pointer/focus outside)
+ * so choosing staff in the portaled sheet does not close the filter menu/dialog.
+ */
+export function preventCloseIfAssigneePickerOutside(
+  event: { preventDefault: () => void; target: EventTarget | null; detail?: { originalEvent?: Event } },
+): void {
+  if (isAssigneePickerPortalTarget(event.target)) {
+    event.preventDefault();
+    return;
+  }
+  const oe = event.detail?.originalEvent;
+  if (oe && interactionHitsAssigneePickerPortal(oe)) {
+    event.preventDefault();
+  }
+}
+
 const assigneePillClass = (disabled?: boolean) =>
   cn(
     'inline-flex h-10 max-w-[min(100%,14rem)] min-w-0 items-center justify-center rounded-full border-2 px-3 text-[10px] font-semibold leading-tight transition-colors',
@@ -51,6 +86,8 @@ export type AssigneePickerFieldProps = {
   showAssigneeModalHint?: boolean;
   /** Include «Unassigned» in the search modal list. */
   allowUnassignedInModal?: boolean;
+  /** Override title/aria for the quick «—» button (e.g. filter «All» instead of unassigned). */
+  noneQuickButtonLabel?: string;
 };
 
 function AssigneeListPanel({
@@ -94,7 +131,10 @@ function AssigneeListPanel({
           <>
             <button
               type="button"
-              onClick={() => onPick(null)}
+              onPointerDown={(e) => {
+                if (e.button !== 0) return;
+                onPick(null);
+              }}
               className={cn(
                 'flex w-full rounded-lg px-3 py-2.5 text-left text-sm transition-colors',
                 currentId == null ? 'bg-muted font-medium' : 'hover:bg-muted/80',
@@ -112,7 +152,10 @@ function AssigneeListPanel({
             <button
               key={s.id}
               type="button"
-              onClick={() => onPick(s.id)}
+              onPointerDown={(e) => {
+                if (e.button !== 0) return;
+                onPick(s.id);
+              }}
               className={cn(
                 'flex w-full rounded-lg px-3 py-2.5 text-left text-sm transition-colors',
                 idEquals(currentId, s.id) ? 'bg-muted font-medium' : 'hover:bg-muted/80',
@@ -183,7 +226,8 @@ function AssigneePickerPortal({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[250] flex flex-col justify-end md:items-center md:justify-center md:p-4"
+      data-assignee-picker-portal=""
+      className="fixed inset-0 z-[300] flex flex-col justify-end md:items-center md:justify-center md:p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="assignee-picker-title"
@@ -231,6 +275,7 @@ export function AssigneePickerField({
   omitUnassignedQuickButton = false,
   showAssigneeModalHint = true,
   allowUnassignedInModal = true,
+  noneQuickButtonLabel,
 }: AssigneePickerFieldProps) {
   const t = useTranslations('tasks.detail');
   const [open, setOpen] = useState(false);
@@ -347,7 +392,8 @@ export function AssigneePickerField({
         {!omitUnassignedQuickButton ? (
           <button
             type="button"
-            title={t('unassigned')}
+            title={noneQuickButtonLabel ?? t('unassigned')}
+            aria-label={noneQuickButtonLabel ?? t('unassigned')}
             disabled={disabled}
             onClick={() => onChange(null)}
             className={cn(

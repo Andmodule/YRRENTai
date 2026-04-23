@@ -10,15 +10,13 @@ import {
   CalendarDays,
   ClipboardList,
   LogOut,
-  PartyPopper,
   Sparkles,
   Wifi,
   WifiOff,
-  Route,
-  Play,
   AlertTriangle,
   Mic,
 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { useTodayTasks } from '@/hooks/use-tasks';
 import { useTasksSocket } from '@/hooks/use-tasks-socket';
 import type { Task } from '@/hooks/use-tasks';
@@ -37,16 +35,11 @@ import {
   type StaffVoiceMode,
   type StaffVoiceReportSheetHandle,
 } from './staff-voice-report-sheet';
-import {
-  StaffHistoryDrawer,
-  StaffHistoryFab,
-  StaffIncidentPhotoAppendDrawer,
-} from './staff-history-drawer';
+import { StaffHistoryDrawer, StaffHistoryFab } from './staff-history-drawer';
 import {
   StaffHistorySupplementSheet,
   type StaffSupplementContext,
 } from './staff-history-supplement-sheet';
-import { StaffDeliveryRoutePanel } from './staff-delivery-route-panel';
 import { useStaffStrings } from '@/locales/staff-strings';
 import { apiClient } from '@/lib/api/client';
 import {
@@ -64,6 +57,7 @@ import {
   pickNextTaskByDueTime,
   formatShiftDurationLabel,
 } from '@/lib/shift-utils';
+import { isTaskCompletedToday } from '@/lib/staff-history-date';
 
 /**
  * Нижние круглые накладные кнопки (инцидент слева + два голосовых справа) скрыты в интерфейсе уборщицы.
@@ -90,6 +84,8 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
   const { data, isLoading, isError, refetch } = useTodayTasks();
   const { mutate: updateStatus, isPending: statusPending } = useUpdateTaskStatus();
   const { mutateAsync: completeShift, isPending: shiftPending } = useCompleteShift();
+  const [shiftAutocompleteFailed, setShiftAutocompleteFailed] = useState(false);
+  const shiftFirstAutoFiredRef = useRef(false);
 
   const onMarkDoneCommitted = useCallback((task: Task) => {
     setQuickTask(null);
@@ -106,9 +102,7 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
     [strings.tasks.checklist.completeRequired],
   );
 
-  const { enqueueMarkDoneAfterSwipe } = usePendingTaskMarkDoneStaff({
-    taskMarkedMessage: strings.tasks.checklist.taskMarkedDoneToast,
-    undoLabel: strings.tasks.checklist.undoMarkDone,
+  const { enqueueMarkDoneAfterSwipe, cancelPendingForUuid } = usePendingTaskMarkDoneStaff({
     markDoneErrorMessage: strings.tasks.checklist.markDoneError,
     onCommitted: onMarkDoneCommitted,
     onChecklistIncomplete: onMarkDoneChecklistIncomplete,
@@ -118,12 +112,9 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
   const [detailTask, setDetailTask] = useState<Task | null>(null);
   const [quickTask, setQuickTask] = useState<Task | null>(null);
   const [photoTaskUuid, setPhotoTaskUuid] = useState<string | null>(null);
-  const [photoSupplement, setPhotoSupplement] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [supplementCtx, setSupplementCtx] = useState<StaffSupplementContext | null>(null);
-  const [incidentPhotoUuid, setIncidentPhotoUuid] = useState<string | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
-  const [routeOpen, setRouteOpen] = useState(false);
   const [incidentOpen, setIncidentOpen] = useState(false);
   const [voiceSheetOpen, setVoiceSheetOpen] = useState(false);
   const [voiceSheetMode, setVoiceSheetMode] = useState<StaffVoiceMode>('TASK');
@@ -153,16 +144,14 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
     }
   }, [todayStr]);
 
-  const todayTasks = useMemo(() => {
-    const list = (data?.tasks ?? []).filter((t) => t.dueDate === todayStr);
-    const pr: Record<string, number> = { urgent: 0, normal: 1 };
-    return [...list].sort((a, b) => {
-      const pa = pr[a.priority] ?? 1;
-      const pb = pr[b.priority] ?? 1;
-      if (pa !== pb) return pa - pb;
-      return (a.dueTime ?? '99:99').localeCompare(b.dueTime ?? '99:99');
-    });
-  }, [data?.tasks, todayStr]);
+  /** Все назначенные задачи из API (широкий диапазон дат) — для поиска и открытого списка. */
+  const allAssigned = useMemo(() => data?.tasks ?? [], [data?.tasks]);
+
+  /** Задачи с `dueDate` = сегодня: прогресс и «все сделаны» по смене. */
+  const todayScopeTasks = useMemo(
+    () => allAssigned.filter((t) => t.dueDate === todayStr),
+    [allAssigned, todayStr],
+  );
 
   /** Как в TMA: невыполненные задачи на любую дату из ответа API (широкий диапазон дат). */
   const activeTasks = useMemo(() => {
@@ -178,13 +167,28 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
     });
   }, [data?.tasks]);
 
+  /**
+   * Невыполненные (любой due) + завершённые **сегодня** (по `completedAt`, не по дедлайну).
+   * Старые `done` не показываем в списке смены — их можно открыть в «Истории».
+   */
+  const orderedAllTasks = useMemo(() => {
+    const pr: Record<string, number> = { urgent: 0, normal: 1 };
+    const list = allAssigned.filter(
+      (t) => t.status !== 'done' || isTaskCompletedToday(t),
+    );
+    return [...list].sort((a, b) => {
+      const dd = a.dueDate.localeCompare(b.dueDate);
+      if (dd !== 0) return dd;
+      const pa = pr[a.priority] ?? 1;
+      const pb = pr[b.priority] ?? 1;
+      if (pa !== pb) return pa - pb;
+      return (a.dueTime ?? '99:99').localeCompare(b.dueTime ?? '99:99');
+    });
+  }, [allAssigned]);
+
   const resolveTaskByUuid = useCallback(
-    (uuid: string) =>
-      activeTasks.find((t) => t.uuid === uuid) ??
-      todayTasks.find((t) => t.uuid === uuid) ??
-      data?.tasks?.find((t) => t.uuid === uuid) ??
-      null,
-    [activeTasks, todayTasks, data?.tasks],
+    (uuid: string) => activeTasks.find((t) => t.uuid === uuid) ?? allAssigned.find((t) => t.uuid === uuid) ?? null,
+    [activeTasks, allAssigned],
   );
 
   /** Telegram `startapp=task_…` → тот же deep link, что в legacy TMA (frontend-user). */
@@ -239,15 +243,17 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
     setDetailTask(null);
   }, [router, searchParams]);
 
-  const doneCount = todayTasks.filter((t) => t.status === 'done').length;
-  const verifiedCount = todayTasks.filter((t) => t.status === 'done' && t.hasVerificationPhoto).length;
-  const total = todayTasks.length;
+  const doneCount = todayScopeTasks.filter((t) => t.status === 'done').length;
+  const verifiedCount = todayScopeTasks.filter((t) => t.status === 'done' && t.hasVerificationPhoto).length;
+  const total = todayScopeTasks.length;
   const allDone = total > 0 && doneCount === total;
-  const shiftEst = estimateShiftEnd(todayTasks);
+  const shiftEst = estimateShiftEnd(todayScopeTasks);
 
-  const nextTask = useMemo(() => pickNextTaskByDueTime(activeTasks), [activeTasks]);
   /** Контекст голосового отчёта с FAB: следующая по времени или первая в списке. */
-  const voiceAnchor = nextTask ?? activeTasks[0] ?? null;
+  const voiceAnchor = useMemo(
+    () => pickNextTaskByDueTime(activeTasks) ?? activeTasks[0] ?? null,
+    [activeTasks],
+  );
 
   const openVoiceForTask = useCallback((task: Task) => {
     flushSync(() => {
@@ -308,12 +314,6 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
 
   const incidentPropertyId = activeTasks[0]?.propertyId ?? null;
 
-  const routeSorted = useMemo(() => {
-    return [...activeTasks].sort((a, b) =>
-      (a.streetAddress || a.propertyAddress).localeCompare(b.streetAddress || b.propertyAddress, 'ru'),
-    );
-  }, [activeTasks]);
-
   const initials = `${user.firstName[0] ?? ''}${user.lastName[0] ?? ''}`.toUpperCase();
 
   const handleMarkDoneTask = useCallback(
@@ -328,15 +328,58 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
     if (t) handleMarkDoneTask(t);
   };
 
+  const handleMarkReopen = useCallback(
+    (uuid: string) => {
+      cancelPendingForUuid(uuid);
+      const t = allAssigned.find((x) => x.uuid === uuid);
+      if (t?.status === 'done') {
+        updateStatus({ uuid, status: 'pending' });
+      }
+    },
+    [allAssigned, cancelPendingForUuid, updateStatus],
+  );
+
   const shiftCompletedDurationLabel = formatShiftDurationLabel(
-    todayTasks,
+    todayScopeTasks,
     user.staffShiftCompletedAt ?? null,
     sessionShiftStartMs,
   );
 
-  const handleFinishShift = async () => {
-    await completeShift();
-  };
+  const shiftAlreadyDoneToday = isShiftDoneToday(user.staffShiftCompletedAt ?? null);
+
+  useEffect(() => {
+    if (isLoading || isError || !allDone) {
+      if (!allDone) {
+        shiftFirstAutoFiredRef.current = false;
+        setShiftAutocompleteFailed(false);
+      }
+      return;
+    }
+    if (shiftAlreadyDoneToday || shiftAutocompleteFailed) return;
+    if (shiftFirstAutoFiredRef.current) return;
+    shiftFirstAutoFiredRef.current = true;
+    void completeShift().catch(() => {
+      setShiftAutocompleteFailed(true);
+      toast.error(strings.tasks.checklist.shiftRecordError);
+    });
+  }, [
+    allDone,
+    completeShift,
+    isError,
+    isLoading,
+    shiftAlreadyDoneToday,
+    shiftAutocompleteFailed,
+    strings.tasks.checklist.shiftRecordError,
+  ]);
+
+  const handleRetryShiftRecord = useCallback(() => {
+    void completeShift()
+      .then(() => setShiftAutocompleteFailed(false))
+      .catch(() => {
+        setShiftAutocompleteFailed(true);
+        toast.error(strings.tasks.checklist.shiftRecordError);
+      });
+  }, [completeShift, strings.tasks.checklist.shiftRecordError]);
 
   const handleQuickStart = (uuid: string) => {
     updateStatus(
@@ -350,13 +393,6 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
     const t = resolveTaskByUuid(uuid);
     if (t) setIssueTask(t);
   };
-
-  const handleStartNextCard = () => {
-    if (!nextTask || nextTask.status !== 'pending') return;
-    updateStatus({ uuid: nextTask.uuid, status: 'in_progress' });
-  };
-
-  const shiftAlreadyDoneToday = isShiftDoneToday(user.staffShiftCompletedAt ?? null);
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -417,13 +453,6 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
           <ProgressBar done={doneCount} total={total} />
         </section>
 
-        <div className="mb-4 flex gap-2">
-          <Button variant="outline" className="flex-1 rounded-xl" onClick={() => setRouteOpen(true)}>
-            <Route className="mr-2 h-4 w-4" />
-            Маршрут
-          </Button>
-        </div>
-
         {isLoading && (
           <div className="flex flex-col gap-3">
             <Skeleton className="h-20 w-full rounded-2xl" />
@@ -445,7 +474,7 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
           </div>
         )}
 
-        {!isLoading && !isError && activeTasks.length === 0 && (
+        {!isLoading && !isError && allAssigned.length === 0 && (
           <div className="staff-card flex flex-col items-center px-6 py-12 text-center">
             <div className="mb-5 flex h-20 w-20 items-center justify-center rounded-3xl bg-gradient-to-br from-slate-100 to-slate-50 ring-1 ring-slate-200/80">
               <ClipboardList className="h-10 w-10 text-teal-600" strokeWidth={1.5} aria-hidden />
@@ -479,58 +508,34 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
 
         {!isLoading && !isError && allDone && !shiftAlreadyDoneToday && (
           <div className="mb-4 space-y-3">
-            <div className="flex items-center gap-3 rounded-2xl border border-emerald-200/80 bg-gradient-to-r from-emerald-50 to-teal-50 px-4 py-3 text-emerald-900 shadow-sm">
-              <PartyPopper className="h-8 w-8 shrink-0 text-emerald-600" aria-hidden />
-              <div className="text-left">
-                <p className="text-sm font-semibold">Все задачи выполнены</p>
-                <p className="text-xs text-emerald-800/90">Можно завершить смену.</p>
+            {shiftAutocompleteFailed ? (
+              <div className="flex flex-col gap-3 rounded-2xl border border-rose-200/80 bg-rose-50/90 px-4 py-3 text-sm text-rose-900">
+                <p>{strings.tasks.checklist.shiftRecordError}</p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full rounded-xl border-rose-300"
+                  disabled={shiftPending}
+                  onClick={() => void handleRetryShiftRecord()}
+                >
+                  {strings.tasks.checklist.shiftRecordRetry}
+                </Button>
               </div>
-            </div>
-            <Button
-              className="w-full rounded-xl"
-              size="lg"
-              disabled={shiftPending}
-              onClick={() => void handleFinishShift()}
-            >
-              Завершить смену
-            </Button>
-          </div>
-        )}
-
-        {!isLoading && !isError && activeTasks.length > 0 && nextTask && !allDone && (
-          <div className="mb-4 rounded-2xl border-2 border-teal-500 bg-gradient-to-br from-teal-50/90 to-white p-4 shadow-sm">
-            <p className="text-xs font-bold uppercase tracking-wide text-teal-800">Следующая задача</p>
-            <p className="mt-2 text-sm font-semibold text-slate-900">
-              {typeLabel(nextTask.type)} ·{' '}
-              {nextTask.isGeneralTask ? strings.tasks.checklist.generalTaskLabel : nextTask.propertyTitle}
-            </p>
-            {nextTask.contextLabel ? (
-              <p className="mt-1 text-sm text-slate-700">{nextTask.contextLabel}</p>
-            ) : null}
-            {nextTask.dueTime ? (
-              <p className="mt-2 text-sm font-medium text-teal-900">До {nextTask.dueTime}</p>
             ) : (
-              <p className="mt-2 text-sm text-slate-500">Без времени дедлайна</p>
-            )}
-            {nextTask.status === 'pending' && (
-              <Button className="mt-4 w-full rounded-xl gap-2" onClick={handleStartNextCard}>
-                <Play className="h-4 w-4" />
-                Начать
-              </Button>
-            )}
-            {nextTask.status === 'in_progress' && (
-              <p className="mt-3 text-sm font-medium text-teal-800">В работе — откройте строку в списке для действий</p>
+              <p className="rounded-2xl border border-teal-200/80 bg-teal-50/80 px-4 py-3 text-sm text-teal-900">
+                {strings.tasks.checklist.shiftRecording}
+              </p>
             )}
           </div>
         )}
 
-        {!isLoading && !isError && activeTasks.length > 0 && (
+        {!isLoading && !isError && orderedAllTasks.length > 0 && (
           <div className="flex flex-col gap-3">
             <h2 className="flex items-center gap-2 px-0.5 text-sm font-semibold text-slate-700">
               <ClipboardList className="h-4 w-4 text-slate-400" aria-hidden />
-              Список ({activeTasks.length})
+              {strings.tasks.checklist.activeListHeading(orderedAllTasks.length)}
             </h2>
-            {activeTasks.map((task) => (
+            {orderedAllTasks.map((task) => (
               <ChecklistItem
                 key={task.uuid}
                 task={task}
@@ -539,8 +544,9 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
                     ? format(parseISO(`${task.dueDate}T12:00:00`), 'd MMMM', { locale: ru })
                     : undefined
                 }
-                deadlineUrgency={deadlineUrgency(task)}
+                deadlineUrgency={task.status === 'done' ? 'teal' : deadlineUrgency(task)}
                 onMarkDone={handleMarkDone}
+                onMarkReopen={handleMarkReopen}
                 onQuickOpen={setQuickTask}
                 onVoiceForTask={openVoiceForTask}
                 onTextForTask={openTextForTask}
@@ -555,6 +561,10 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
           onOpenChange={(o) => !o && setQuickTask(null)}
           onStart={handleQuickStart}
           onMarkDone={handleMarkDoneTask}
+          markDoneLabel={strings.tasks.checklist.quickActionMarkDone}
+          onAddVerification={(t) => {
+            setPhotoTaskUuid(t.uuid);
+          }}
           onMarkIssue={handleQuickIssue}
           onOpenDetails={(t) => {
             const q = searchParams.get(STAFF_TASK_DETAIL_QUERY);
@@ -573,24 +583,7 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
           checklistScrollNonce={checklistScrollNonce}
         />
 
-        <StaffHistoryDrawer
-          open={historyOpen}
-          onOpenChange={setHistoryOpen}
-          tasks={data?.tasks ?? []}
-          onRequestTaskPhoto={(uuid) => {
-            setHistoryOpen(false);
-            setPhotoSupplement(true);
-            setPhotoTaskUuid(uuid);
-          }}
-          onRequestIncidentPhoto={(uuid) => {
-            setHistoryOpen(false);
-            setIncidentPhotoUuid(uuid);
-          }}
-          onRequestSupplement={(ctx) => {
-            setHistoryOpen(false);
-            setSupplementCtx(ctx);
-          }}
-        />
+        <StaffHistoryDrawer open={historyOpen} onOpenChange={setHistoryOpen} tasks={data?.tasks ?? []} />
 
         <StaffHistorySupplementSheet
           open={!!supplementCtx}
@@ -603,20 +596,11 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
         <PhotoVerificationDrawer
           taskUuid={photoTaskUuid}
           open={!!photoTaskUuid}
-          variant={photoSupplement ? 'supplement' : 'default'}
+          variant="default"
           onOpenChange={(o) => {
             if (!o) {
               setPhotoTaskUuid(null);
-              setPhotoSupplement(false);
             }
-          }}
-        />
-
-        <StaffIncidentPhotoAppendDrawer
-          incidentUuid={incidentPhotoUuid ?? ''}
-          open={!!incidentPhotoUuid}
-          onOpenChange={(o) => {
-            if (!o) setIncidentPhotoUuid(null);
           }}
         />
 
@@ -634,7 +618,9 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
               </div>
             </div>
             <div className="mt-4 rounded-xl bg-slate-50 p-4">
-              <p className="text-xs font-semibold uppercase text-slate-500">Сегодня</p>
+              <p className="text-xs font-semibold uppercase text-slate-500">
+                {strings.tasks.checklist.profileTaskStatsLabel}
+              </p>
               <p className="mt-1 text-sm text-slate-800">
                 Выполнено: {doneCount} / {total || '—'}
               </p>
@@ -651,14 +637,6 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
               <LogOut className="mr-2 h-4 w-4" />
               Выйти
             </Button>
-          </DrawerContent>
-        </Drawer>
-
-        <Drawer open={routeOpen} onOpenChange={setRouteOpen}>
-          <DrawerContent title="Маршрут">
-            <div className="px-1 pb-2">
-              <StaffDeliveryRoutePanel tasksForFallback={routeSorted} />
-            </div>
           </DrawerContent>
         </Drawer>
 

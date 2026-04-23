@@ -13,6 +13,7 @@ import {
   UploadedFile,
   BadRequestException,
   forwardRef,
+  HttpCode,
   Inject,
 } from '@nestjs/common';
 import { FilesInterceptor, FileInterceptor } from '@nestjs/platform-express';
@@ -23,6 +24,10 @@ import { ConfigService } from '@nestjs/config';
 import { addDays, format } from 'date-fns';
 import { promises as fs } from 'fs';
 import { join } from 'path';
+import {
+  publicUploadFileExtension,
+  STAFF_VERIFICATION_MAX_FILE_BYTES,
+} from '../common/multer-upload-filename.util';
 import { randomUUID } from 'crypto';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -230,6 +235,15 @@ export class TasksController {
     return { data: { id: item.id, name: item.name } };
   }
 
+  @Delete('manager/supply-catalog/items/:id')
+  @Roles('OWNER', 'MANAGER')
+  @HttpCode(200)
+  async managerSupplyCatalogDelete(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
+    const companyId = await this.supplyCatalogService.resolveActorCompanyId(user.sub);
+    await this.supplyCatalogService.deleteItemForCompany(companyId, id);
+    return { data: { ok: true } };
+  }
+
   /** Маршрут доставки из выбранных pending-строк (как handoff, но с Route + Stop по объектам). */
   @Post('manager/delivery-routes/from-pool')
   @Roles('OWNER', 'MANAGER')
@@ -240,6 +254,7 @@ export class TasksController {
       supplyItemIds?: string[];
       requestLineIds?: string[];
       scheduledDate?: string;
+      completeByTime?: string | null;
       warehouseLabel?: string | null;
     },
   ) {
@@ -749,7 +764,7 @@ export class TasksController {
   @UseInterceptors(
     FilesInterceptor('files', 10, {
       storage: memoryStorage(),
-      limits: { fileSize: 8 * 1024 * 1024 },
+      limits: { fileSize: STAFF_VERIFICATION_MAX_FILE_BYTES },
     }),
   )
   async uploadPhotos(
@@ -758,7 +773,7 @@ export class TasksController {
     @CurrentUser() user: JwtPayload,
   ) {
     if (!files?.length) {
-      return { data: { photoUrls: [] as string[] } };
+      throw new BadRequestException('No files: multipart part "files" is missing or empty');
     }
 
     const dir = join(process.cwd(), 'uploads', 'tasks', uuid);
@@ -770,7 +785,8 @@ export class TasksController {
 
     const urls: string[] = [];
     for (const file of files) {
-      const name = `${randomUUID()}.jpg`;
+      const ext = publicUploadFileExtension(file);
+      const name = `${randomUUID()}.${ext}`;
       const full = join(dir, name);
       await fs.writeFile(full, file.buffer);
       urls.push(`${apiBase}/uploads/tasks/${uuid}/${name}`);

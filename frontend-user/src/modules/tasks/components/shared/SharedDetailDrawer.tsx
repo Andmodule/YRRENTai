@@ -152,6 +152,10 @@ function canonicalDueTimeValue(t: string | null | undefined): string | null {
   return `${hh}:${mm}:${ss}`;
 }
 
+function taskAttachmentUrlIsVideo(url: string): boolean {
+  return /\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(url);
+}
+
 function dueTimesMatch(a: string | null | undefined, b: string | null | undefined): boolean {
   return canonicalDueTimeValue(a) === canonicalDueTimeValue(b);
 }
@@ -954,8 +958,19 @@ function TaskDetailMode({
                         rel="noopener noreferrer"
                         className="relative aspect-square w-full shrink-0 overflow-hidden rounded-md border border-border bg-muted max-md:h-20 max-md:w-20 max-md:max-w-[5rem]"
                       >
-                        {/* eslint-disable-next-line @next/next/no-img-element -- external URLs */}
-                        <img src={url} alt="" className="h-full w-full object-cover" />
+                        {taskAttachmentUrlIsVideo(url) ? (
+                          <video
+                            src={url}
+                            muted
+                            playsInline
+                            preload="metadata"
+                            className="h-full w-full object-cover"
+                            aria-label=""
+                          />
+                        ) : (
+                          /* eslint-disable-next-line @next/next/no-img-element -- external URLs */
+                          <img src={url} alt="" className="h-full w-full object-cover" />
+                        )}
                       </a>
                     ))}
                     {!effectiveStaffView && (
@@ -976,7 +991,14 @@ function TaskDetailMode({
               {(task.hasVerificationPhoto ?? false) && (
                 <p className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400">{t('verifiedPhoto')}</p>
               )}
-              <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={onFiles} />
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*,video/*"
+                multiple
+                className="hidden"
+                onChange={onFiles}
+              />
             </div>
           )}
 

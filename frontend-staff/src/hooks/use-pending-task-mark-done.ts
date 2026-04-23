@@ -3,13 +3,10 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useRef } from 'react';
 import { toast } from 'sonner';
+import { isAxiosError } from 'axios';
 import { apiClient } from '@/lib/api/client';
 import { parseChecklist422 } from '@/lib/is-checklist-422';
-import { STAFF_UNDO_TOAST_CLASSNAMES } from '@/lib/staff-undo-toast';
 import type { Task } from '@/hooks/use-tasks';
-
-/** Менеджер: 4000 ms; staff: +2 с на отмену. */
-const UNDO_MS = 6000;
 
 type StaffTasksCache = { tasks: Task[] };
 
@@ -36,96 +33,103 @@ function restoreTaskSnapshot(queryClient: ReturnType<typeof useQueryClient>, sna
   });
 }
 
+function isAbortLike(e: unknown): boolean {
+  if (isAxiosError(e) && (e.code === 'ERR_CANCELED' || e.name === 'CanceledError')) {
+    return true;
+  }
+  if (e && typeof e === 'object' && 'name' in e && (e as { name: string }).name === 'AbortError') {
+    return true;
+  }
+  return false;
+}
+
 export type PendingMarkDoneStaffOptions = {
-  taskMarkedMessage: string;
-  undoLabel: string;
   markDoneErrorMessage: string;
   onCommitted: (task: Task) => void;
   onChecklistIncomplete: (task: Task) => void;
 };
 
 /**
- * Оптимистично «готово» в списке + Sonner «Отмена»; PATCH после окна, если не отменили.
- * Тайминг дольше, чем у менеджера (4 с → 6 с).
+ * Оптимистично «готово» + сразу PATCH. Без тоста «Отмена» (раньше было ~6 с задержка).
+ * Отмена: до ответа сервера `cancelPendingForUuid` (например, снятие «готово») — abort + откат.
  */
 export function usePendingTaskMarkDoneStaff(options: PendingMarkDoneStaffOptions) {
   const queryClient = useQueryClient();
-  const pendingRef = useRef<{
+  const inFlightRef = useRef<Promise<void> | null>(null);
+  const actRef = useRef<{
     uuid: string;
     snapshot: Task;
-    timeoutId: ReturnType<typeof setTimeout>;
+    ac: AbortController;
   } | null>(null);
   const optRef = useRef(options);
   optRef.current = options;
 
-  const commitMarkDone = useCallback(async (uuid: string, snapshot: Task) => {
-    try {
-      await apiClient.patch<{ data: Task }>(`/tasks/${uuid}`, { status: 'done' });
-      await queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      optRef.current.onCommitted(snapshot);
-    } catch (err: unknown) {
-      const checklistErr = parseChecklist422(err);
-      if (checklistErr) {
+  const runCommit = useCallback(
+    async (uuid: string, snapshot: Task, signal: AbortSignal) => {
+      try {
+        const res = await apiClient.patch<{ data: Task }>(`/tasks/${uuid}`, { status: 'done' }, { signal });
+        const serverTask = res.data.data;
+        await queryClient.invalidateQueries({ queryKey: ['tasks'] });
+        optRef.current.onCommitted({ ...serverTask, status: 'done' });
+      } catch (err: unknown) {
+        if (isAbortLike(err) || (typeof AbortSignal !== 'undefined' && signal.aborted)) {
+          return;
+        }
+        const checklistErr = parseChecklist422(err);
+        if (checklistErr) {
+          restoreTaskSnapshot(queryClient, snapshot);
+          optRef.current.onChecklistIncomplete(snapshot);
+          return;
+        }
         restoreTaskSnapshot(queryClient, snapshot);
-        optRef.current.onChecklistIncomplete(snapshot);
-        return;
+        toast.error(optRef.current.markDoneErrorMessage);
       }
-      restoreTaskSnapshot(queryClient, snapshot);
-      toast.error(optRef.current.markDoneErrorMessage);
-    }
-  }, [queryClient]);
+    },
+    [queryClient],
+  );
 
-  const flushPending = useCallback(() => {
-    const p = pendingRef.current;
-    if (!p) return;
-    clearTimeout(p.timeoutId);
-    pendingRef.current = null;
-    void commitMarkDone(p.uuid, p.snapshot);
-  }, [commitMarkDone]);
+  const flushInFlight = useCallback(async () => {
+    const p = inFlightRef.current;
+    if (p) {
+      await p;
+      inFlightRef.current = null;
+    }
+  }, []);
+
+  const cancelPendingForUuid = useCallback(
+    (uuid: string) => {
+      const cur = actRef.current;
+      if (!cur || cur.uuid !== uuid) return;
+      cur.ac.abort();
+      actRef.current = null;
+      restoreTaskSnapshot(queryClient, cur.snapshot);
+    },
+    [queryClient],
+  );
 
   const enqueueMarkDoneAfterSwipe = useCallback(
     (task: Task) => {
-      flushPending();
+      void (async () => {
+        await flushInFlight();
+        const uuid = task.uuid;
+        const snapshot = { ...task };
+        const ac = new AbortController();
+        setTaskDoneInCaches(queryClient, uuid);
+        actRef.current = { uuid, snapshot, ac };
 
-      const uuid = task.uuid;
-      const snapshot = { ...task };
-
-      setTaskDoneInCaches(queryClient, uuid);
-
-      const timeoutId = setTimeout(() => {
-        const cur = pendingRef.current;
-        if (!cur || cur.uuid !== uuid) return;
-        pendingRef.current = null;
-        void commitMarkDone(uuid, snapshot);
-      }, UNDO_MS);
-
-      pendingRef.current = { uuid, snapshot, timeoutId };
-
-      toast(optRef.current.taskMarkedMessage, {
-        duration: UNDO_MS,
-        position: 'bottom-center',
-        classNames: STAFF_UNDO_TOAST_CLASSNAMES,
-        action: {
-          label: optRef.current.undoLabel,
-          onClick: () => {
-            const cur = pendingRef.current;
-            if (!cur || cur.uuid !== uuid) return;
-            clearTimeout(cur.timeoutId);
-            pendingRef.current = null;
-            restoreTaskSnapshot(queryClient, cur.snapshot);
-          },
-        },
-        onDismiss: () => {
-          const cur = pendingRef.current;
-          if (!cur || cur.uuid !== uuid) return;
-          clearTimeout(cur.timeoutId);
-          pendingRef.current = null;
-          void commitMarkDone(uuid, snapshot);
-        },
-      });
+        const p = runCommit(uuid, snapshot, ac.signal)
+          .finally(() => {
+            inFlightRef.current = null;
+            if (actRef.current?.uuid === uuid) {
+              actRef.current = null;
+            }
+          });
+        inFlightRef.current = p;
+        await p;
+      })();
     },
-    [commitMarkDone, flushPending, queryClient],
+    [flushInFlight, queryClient, runCommit],
   );
 
-  return { enqueueMarkDoneAfterSwipe };
+  return { enqueueMarkDoneAfterSwipe, cancelPendingForUuid };
 }

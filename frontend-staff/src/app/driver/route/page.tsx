@@ -11,9 +11,11 @@ import {
   useStaffDeliveryRoutesList,
   useStartDeliveryRoute,
 } from '@/hooks/use-staff-delivery-route';
+import { useTasksSocket } from '@/hooks/use-tasks-socket';
 import { resolveStaffAppShell } from '@/lib/staff-app-shell';
 import { parseRouteUuidFromTelegramStartParam, readTelegramWebAppStartParam } from '@/lib/telegram-start-param';
 import { apiClient } from '@/lib/api/client';
+import { staffDriverShortLabel } from '@/lib/staff-driver-display-name';
 import { ActiveRouteTimeline } from '@/modules/driver/components/ActiveRouteTimeline';
 import {
   StaffHistorySupplementSheet,
@@ -42,6 +44,8 @@ export default function DriverRoutePage() {
     refetch: refetchRoute,
   } = useStaffDeliveryRoutesList(Boolean(shellDriver && isAuthenticated));
 
+  useTasksSocket(user?.id);
+
   const routeIdParam = searchParams.get('routeId');
   const route = useMemo(() => {
     const list = routes ?? [];
@@ -52,6 +56,8 @@ export default function DriverRoutePage() {
     }
     return list[0] ?? null;
   }, [routes, routeIdParam]);
+
+  const driverShortName = useMemo(() => staffDriverShortLabel(user), [user]);
 
   const start = useStartDeliveryRoute();
   const complete = useCompleteStop();
@@ -131,6 +137,7 @@ export default function DriverRoutePage() {
     setPendingCompleteId(stopId);
     try {
       await complete.mutateAsync(stopId);
+      await refetchRoute();
     } finally {
       setPendingCompleteId(null);
     }
@@ -189,6 +196,9 @@ export default function DriverRoutePage() {
         onSetDriverNextStop={handleSetDriverNextStop}
         settingNextStopId={setNextStop.isPending ? setNextStop.variables?.stopId ?? null : null}
         overviewHref="/driver"
+        driverShortName={driverShortName}
+        deliveryRoutesAll={routes ?? null}
+        driverUserId={user?.id ?? null}
       />
       <StaffHistorySupplementSheet
         open={!!supplementCtx}

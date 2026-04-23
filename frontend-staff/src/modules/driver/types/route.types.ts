@@ -35,4 +35,6 @@ export interface ActiveRouteData {
   stops: RouteStop[];
   routeStatus: string;
   scheduledDate: string;
+  /** Локальное «выполнить до» с маршрута (HH:mm) */
+  completeByTime: string | null;
 }

@@ -70,6 +70,12 @@ export function DeliveryRouteDetailBody({
   }
   return (
     <>
+      {detail.completeByTime?.trim() ? (
+        <p className="mb-2 text-sm text-muted-foreground">
+          <span className="font-medium text-foreground/90">{t('matrixHandoffCompleteByLabel')}</span>{' '}
+          {detail.completeByTime.trim()}
+        </p>
+      ) : null}
       <div className="rounded-lg border border-border/50 bg-muted/20 p-3">
         <p className="text-xs font-semibold uppercase text-muted-foreground">{t('deliveryRoutePicking')}</p>
         <ul className="mt-2 space-y-1 text-sm">

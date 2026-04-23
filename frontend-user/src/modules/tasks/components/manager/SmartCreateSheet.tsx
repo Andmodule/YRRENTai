@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import {
   ArrowDownLeft,
   ArrowUpRight,
+  CalendarDays,
   CheckCircle2,
   Loader2,
   Mic,
@@ -65,17 +66,21 @@ const taskTypeEnum = z.enum([
 ]);
 const priorityEnum = z.enum(['urgent', 'normal']);
 
+const TASK_TITLE_MAX = 255;
+
 /** Task fields optional at parse time — required only when entityTab === 'task' (see superRefine). */
 const smartFormSchema = z
   .object({
     entityTab: z.enum(['task', 'incident']),
-    title: z.string().min(1),
+    /** One UI field: POST /tasks maps to title (max 255) + notes (full, same source for staff LLM queue). */
+    description: z.string().min(1),
     type: taskTypeEnum.optional(),
     assigneeId: z.string().optional(),
     dueDate: z.string().optional(),
+    /** Локальное время «выполнить до» (HH:mm); пусто = без срока по часам. */
+    dueTime: z.string().optional(),
     priority: priorityEnum.optional(),
     propertyIds: z.array(z.string()),
-    notes: z.string(),
     incidentType: z.enum(['damage', 'lost_item', 'rule_violation', 'emergency']),
     estimatedCost: z.string(),
   })
@@ -107,6 +112,10 @@ const pillClass = (active: boolean) =>
 
 const dateFieldClass =
   'h-10 w-full min-w-0 rounded-md border border-input bg-input-fill px-2.5 py-1.5 text-sm shadow-sm outline-none transition-colors [color-scheme:dark] focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary/20';
+
+/** Hide the native date icon so a single explicit control opens the picker (we add CalendarDays). */
+const dateInputHideNativePickerClass =
+  '[&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-y-0 [&::-webkit-calendar-picker-indicator]:right-0 [&::-webkit-calendar-picker-indicator]:w-10 [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-0';
 
 const INCIDENT_TYPE_OPTIONS = [
   { value: 'damage' as const, labelKey: 'typeDamage' as const },
@@ -256,15 +265,22 @@ function VoiceRecordingInfographic({ className }: { className?: string }) {
   );
 }
 
+function mergeVoiceDescription(title: string, transcript: string): string {
+  const a = title.trim();
+  const b = transcript.trim();
+  if (a && b) return `${a}\n\n${b}`;
+  return a || b;
+}
+
 const defaultForm = (): SmartFormValues => ({
   entityTab: 'task',
-  title: '',
-  type: 'maintenance',
+  description: '',
+  type: 'checkout_cleaning',
   assigneeId: '',
   dueDate: format(addDays(new Date(), 1), 'yyyy-MM-dd'),
+  dueTime: '',
   priority: 'normal',
   propertyIds: [],
-  notes: '',
   incidentType: 'damage',
   estimatedCost: '',
 });
@@ -405,11 +421,10 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
           reset({
             ...defaultForm(),
             entityTab: 'incident',
-            title: (data.title ?? '').trim(),
+            description: mergeVoiceDescription(data.title ?? '', data.transcript),
             incidentType: coerceIncidentType(data.incidentType),
             estimatedCost: data.estimatedCost != null ? String(data.estimatedCost) : '',
             propertyIds: pid ? [pid] : [],
-            notes: data.transcript.trim(),
           });
         } else {
           const filteredIds = (data.propertyIds ?? []).filter((id) =>
@@ -418,13 +433,12 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
           reset({
             ...defaultForm(),
             entityTab: 'task',
-            title: data.title ?? '',
+            description: mergeVoiceDescription(data.title ?? '', data.transcript),
             type: data.type ?? 'other',
             assigneeId: data.assigneeId ?? '',
             dueDate: data.dueDate ?? format(addDays(new Date(), 1), 'yyyy-MM-dd'),
             priority: data.priority ?? 'normal',
             propertyIds: data.isGeneralTask ? [] : filteredIds.length > 0 ? filteredIds : contextPropertyId ? [contextPropertyId] : [],
-            notes: data.transcript.trim(),
           });
         }
         setPhase('review');
@@ -485,6 +499,11 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
         : isIncidentDispatch
           ? defaultDispatchTitle
           : base.slice(0, 200);
+      const notesPart = (d?.notes?.trim() || incidentPrefill.notes?.trim() || '').trim();
+      const taskDescription = [taskTitle, notesPart && notesPart !== taskTitle ? notesPart : '']
+        .filter(Boolean)
+        .join('\n\n')
+        .trim();
       const draftType = d?.type;
       const resolvedType =
         draftType && TASK_TYPES.some((x) => x.type === draftType) ? draftType : 'maintenance';
@@ -497,8 +516,7 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
       reset({
         ...defaultForm(),
         entityTab: 'task',
-        title: taskTitle,
-        notes: (d?.notes?.trim() || incidentPrefill.notes?.trim() || '').trim(),
+        description: taskDescription,
         propertyIds: contextPropertyId ? [contextPropertyId] : [],
         type: resolvedType,
         assigneeId: d?.assigneeId?.trim() ? d.assigneeId.trim() : '',
@@ -521,7 +539,7 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
         entityTab: 'task',
         propertyIds: [bookingLink.propertyId],
         type: 'checkout_cleaning',
-        title: tType('checkout_cleaning'),
+        description: tType('checkout_cleaning'),
         dueDate: due,
       });
       setPhase('review');
@@ -588,16 +606,17 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
       if (propertyIds.length === 0 && !resolveGeneralPropertyId()) {
         throw new Error('NO_PROPERTY');
       }
+      const text = values.description.trim();
       const res = await apiClient.post<{ data: { tasks: Task[] } }>('/tasks', {
         propertyIds,
-        title: values.title.trim(),
+        title: text.slice(0, TASK_TITLE_MAX),
         type: values.type!,
         priority: values.priority!,
         assigneeId: values.assigneeId?.trim() ? values.assigneeId : null,
         dueDate: values.dueDate!,
-        dueTime: null,
+        dueTime: values.dueTime?.trim() ? values.dueTime.trim().slice(0, 8) : null,
         reservationId: bookingLink?.reservationUuid?.trim() || null,
-        notes: values.notes.trim() || undefined,
+        notes: text,
         ...(incidentLinkUuid ? { incidentId: incidentLinkUuid } : {}),
       });
       return res.data.data.tasks;
@@ -629,7 +648,7 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
         if (fb) ids = [fb];
       }
       if (ids.length === 0) throw new Error('NO_PROPERTY_INCIDENT');
-      const description = [values.title.trim(), values.notes.trim()].filter(Boolean).join('\n\n');
+      const description = values.description.trim();
       const costRaw = values.estimatedCost.trim().replace(',', '.');
       const estimatedCost = costRaw && !Number.isNaN(Number(costRaw)) ? costRaw : null;
       const incidents: Incident[] = [];
@@ -702,8 +721,25 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
     [createIncidentMutate, createTaskMutate, incidentLinkUuid, resolveGeneralPropertyId, t, tTasks],
   );
 
-  const titleRegister = register('title');
-  const titleValue = watch('title');
+  const descRegister = register('description');
+  const { ref: dueDateRhfRef, ...dueDateFieldRest } = register('dueDate');
+  const { ref: dueTimeRhfRef, ...dueTimeFieldRest } = register('dueTime');
+  const dueDateInputRef = useRef<HTMLInputElement | null>(null);
+  const openDueDatePicker = useCallback(() => {
+    const el = dueDateInputRef.current;
+    if (!el) return;
+    if (typeof el.showPicker === 'function') {
+      void el.showPicker();
+    } else {
+      el.focus();
+      el.click();
+    }
+  }, []);
+
+  const descriptionValue = watch('description');
+  const dueDateValue = watch('dueDate');
+  const todayStr = format(new Date(), 'yyyy-MM-dd');
+  const tomorrowStr = format(addDays(new Date(), 1), 'yyyy-MM-dd');
 
   const showForm = phase === 'review';
 
@@ -717,13 +753,12 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
     });
     setIncidentSuccess(null);
     setPhase('review');
-    const base = incidentSuccess.description.trim().slice(0, 160);
+    const desc = incidentSuccess.description.trim();
     reset({
       ...defaultForm(),
       entityTab: 'task',
       type: 'maintenance',
-      title: `${base} ${tTasks('smartCreate.taskFromIncidentTitleSuffix')}`.trim(),
-      notes: incidentSuccess.description,
+      description: desc,
       propertyIds: [incidentSuccess.propertyId],
       assigneeId: '',
       dueDate: format(addDays(new Date(), 1), 'yyyy-MM-dd'),
@@ -1013,51 +1048,41 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
                     />
                   </div>
 
-                <div className="relative">
-                  <Label htmlFor="voice-task-title" className="sr-only">
-                    {t('titleLabel')}
+                <div className="space-y-1.5">
+                  <Label
+                    htmlFor="voice-task-description"
+                    className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground"
+                  >
+                    {t('descriptionLabel')}
                   </Label>
-                  <div className="relative rounded-lg border border-input bg-input-fill shadow-sm transition-[box-shadow]">
-                    <Input
-                      id="voice-task-title"
-                      {...titleRegister}
+                  <div className="relative">
+                    <Textarea
+                      id="voice-task-description"
+                      rows={4}
                       autoComplete="off"
                       placeholder={
-                        entityTab === 'incident' ? t('titlePlaceholderIncident') : t('titlePlaceholder')
+                        entityTab === 'incident'
+                          ? t('descriptionPlaceholderIncident')
+                          : t('descriptionPlaceholder')
                       }
-                      className={cn(
-                        'h-11 w-full min-w-0 border-0 bg-transparent pr-12 pl-3 text-base font-semibold shadow-none',
-                        'placeholder:text-muted-foreground focus-visible:ring-0 focus-visible:ring-offset-0',
-                      )}
-                      aria-invalid={!!errors.title}
+                      className="min-h-[5.5rem] resize-y pr-12 text-sm"
+                      aria-invalid={!!errors.description}
+                      {...descRegister}
                     />
                     {isReview ? (
                       <button
                         type="button"
                         onClick={onMicInReview}
-                        className="absolute right-1.5 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/70"
+                        className="absolute right-2 top-2 flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/70"
                         aria-label={t('startRecordingAria')}
                       >
                         <Mic className="h-[18px] w-[18px]" strokeWidth={2.25} />
                       </button>
                     ) : null}
                   </div>
-                  {errors.title ? (
-                    <p className="mt-1 text-xs text-destructive">{errors.title.message}</p>
+                  {errors.description ? (
+                    <p className="mt-1 text-xs text-destructive">{errors.description.message}</p>
                   ) : null}
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label htmlFor="voice-task-notes" className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    {t('notesLabel')}
-                  </Label>
-                  <Textarea
-                    id="voice-task-notes"
-                    rows={4}
-                    placeholder={t('notesPlaceholder')}
-                    className="min-h-[5.5rem] resize-y text-sm"
-                    {...register('notes')}
-                  />
                 </div>
 
                 {entityTab === 'task' ? (
@@ -1111,46 +1136,98 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
                   />
                 </div>
 
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="space-y-1">
-                    <Label
-                      htmlFor="voice-due"
-                      className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground"
-                    >
-                      {t('dueLabel')}
-                    </Label>
-                    <div className="w-full min-w-0">
+                <div className="space-y-1.5">
+                  <Label
+                    htmlFor="voice-due"
+                    className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground"
+                  >
+                    {t('dueLabel')}
+                  </Label>
+                  <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
+                    <div className="flex min-w-0 flex-nowrap items-center gap-2">
+                      <div className="relative flex min-w-0 shrink-0">
+                        <Input
+                          id="voice-due"
+                          type="date"
+                          className={cn(
+                            dateFieldClass,
+                            'relative z-[1] w-[10.5rem] min-w-[10.5rem] border-0 bg-background pl-2.5 pr-10 text-sm shadow-none',
+                            'focus-visible:ring-offset-0',
+                            dateInputHideNativePickerClass,
+                          )}
+                          ref={(e) => {
+                            dueDateRhfRef(e);
+                            dueDateInputRef.current = e;
+                          }}
+                          {...dueDateFieldRest}
+                        />
+                        <button
+                          type="button"
+                          onClick={openDueDatePicker}
+                          className="absolute right-0.5 top-1/2 z-[2] flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground"
+                          aria-label={t('dueDatePickerAria')}
+                        >
+                          <CalendarDays className="h-4 w-4" strokeWidth={2} aria-hidden />
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setValue('dueDate', todayStr, { shouldDirty: true, shouldValidate: true })
+                        }
+                        className={pillClass(dueDateValue === todayStr)}
+                      >
+                        {t('dueToday')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setValue('dueDate', tomorrowStr, { shouldDirty: true, shouldValidate: true })
+                        }
+                        className={pillClass(dueDateValue === tomorrowStr)}
+                      >
+                        {t('dueTomorrow')}
+                      </button>
+                    </div>
+                    <div className="flex min-w-[8.5rem] flex-col gap-1 sm:shrink-0">
+                      <Label
+                        htmlFor="voice-due-time"
+                        className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground"
+                      >
+                        {t('completeByTimeLabel')}
+                      </Label>
                       <Input
-                        id="voice-due"
-                        type="date"
-                        className={cn(dateFieldClass, 'relative z-[1] w-full border-0 bg-background shadow-none')}
-                        {...register('dueDate')}
+                        id="voice-due-time"
+                        type="time"
+                        className={cn(dateFieldClass, 'w-full min-w-0 sm:max-w-[9rem]')}
+                        ref={dueTimeRhfRef}
+                        {...dueTimeFieldRest}
                       />
                     </div>
                   </div>
-                  <div className="space-y-1">
-                    <span className="block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                      {t('priorityLabel')}
-                    </span>
-                    <Controller
-                      name="priority"
-                      control={control}
-                      render={({ field }) => (
-                        <div className="flex flex-wrap gap-1">
-                          {PRIORITIES.map((p) => (
-                            <button
-                              key={p}
-                              type="button"
-                              onClick={() => field.onChange(p)}
-                              className={pillClass(field.value === p)}
-                            >
-                              {tPriority(p)}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    />
-                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <span className="block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    {t('priorityLabel')}
+                  </span>
+                  <Controller
+                    name="priority"
+                    control={control}
+                    render={({ field }) => (
+                      <div className="flex flex-wrap gap-1">
+                        {PRIORITIES.map((p) => (
+                          <button
+                            key={p}
+                            type="button"
+                            onClick={() => field.onChange(p)}
+                            className={pillClass(field.value === p)}
+                          >
+                            {tPriority(p)}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  />
                 </div>
                   </>
                 ) : (
@@ -1203,7 +1280,7 @@ export const SmartCreateSheet = forwardRef<SmartCreateSheetHandle, SmartCreateSh
                 <Button
                   type="submit"
                   className="h-12 w-full bg-primary text-primary-foreground shadow-lg shadow-primary/25 hover:bg-primary/90"
-                  disabled={isPending || !titleValue?.trim()}
+                  disabled={isPending || !descriptionValue?.trim()}
                 >
                   {isPending ? t('submitting') : tTasks('smartCreate.create')}
                 </Button>

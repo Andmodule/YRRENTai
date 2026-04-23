@@ -3,15 +3,19 @@
 import { useTranslations } from 'next-intl';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { useStaffUsers } from '@/hooks/use-staff-users';
 import { useTasksFiltersStore } from '@/stores/tasks-filters.store';
 import type { TaskFilters, TaskPriority, TaskStatus } from '../../types';
 import { tasksChipActiveClasses, tasksChipIdleClasses } from '../../tasks-chip-classes';
+import { AssigneePickerField } from '../shared/AssigneePickerField';
 
 const STATUSES: (TaskStatus | 'all')[] = ['all', 'pending', 'in_progress', 'done'];
 const PRIORITIES: (TaskPriority | 'all')[] = ['all', 'urgent', 'normal'];
 
-export function isTasksListSliceFiltered(f: Pick<TaskFilters, 'statusFilter' | 'priorityFilter'>): boolean {
-  return f.statusFilter !== 'all' || f.priorityFilter !== 'all';
+export function isTasksListSliceFiltered(
+  f: Pick<TaskFilters, 'statusFilter' | 'priorityFilter' | 'assigneeId'>,
+): boolean {
+  return f.statusFilter !== 'all' || f.priorityFilter !== 'all' || f.assigneeId !== 'all';
 }
 
 /** Статус и приоритет списка/канбана — общая панель для шапки (десктоп) и sheet (мобайл). */
@@ -21,6 +25,7 @@ export function TasksStatusPriorityFilterPanel({ className }: { className?: stri
   const tPriority = useTranslations('tasks.priority');
   const filters = useTasksFiltersStore((s) => s.filters);
   const setFilters = useTasksFiltersStore((s) => s.setFilters);
+  const { staff, isLoading: staffLoading } = useStaffUsers();
 
   const chipBase =
     'inline-flex shrink-0 items-center justify-center rounded-full border px-2.5 py-0.5 text-[10px] font-medium transition-colors duration-150';
@@ -81,6 +86,23 @@ export function TasksStatusPriorityFilterPanel({ className }: { className?: stri
           })}
         </div>
       </div>
+      <div>
+        <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+          {t('filters.assignee')}
+        </p>
+        <AssigneePickerField
+          variant="full"
+          staff={staff}
+          value={filters.assigneeId === 'all' ? null : filters.assigneeId}
+          onChange={(id) =>
+            setFilters((prev) => ({ ...prev, assigneeId: id == null ? 'all' : id }))
+          }
+          loading={staffLoading}
+          allowUnassignedInModal={false}
+          showAssigneeModalHint={false}
+          noneQuickButtonLabel={t('filters.all')}
+        />
+      </div>
       <Button
         type="button"
         variant="outline"
@@ -91,6 +113,7 @@ export function TasksStatusPriorityFilterPanel({ className }: { className?: stri
             ...prev,
             statusFilter: 'all',
             priorityFilter: 'all',
+            assigneeId: 'all',
           }))
         }
         disabled={!sliceFiltered}

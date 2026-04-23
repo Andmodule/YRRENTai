@@ -13,11 +13,15 @@ function buildTargetUrl(request: NextRequest): string {
   return sub ? `${backendBase}/api/${sub}${search}` : `${backendBase}/api/${search}`;
 }
 
-function forwardHeaders(request: NextRequest): Headers {
+function forwardHeaders(
+  request: NextRequest,
+  options?: { stripContentLengthForBufferedBody?: boolean },
+): Headers {
   const out = new Headers();
   request.headers.forEach((value, key) => {
     const k = key.toLowerCase();
     if (k === 'host' || k === 'connection') return;
+    if (options?.stripContentLengthForBufferedBody && k === 'content-length') return;
     out.set(key, value);
   });
   return out;
@@ -26,15 +30,24 @@ function forwardHeaders(request: NextRequest): Headers {
 async function proxy(request: NextRequest): Promise<NextResponse> {
   const url = buildTargetUrl(request);
   const method = request.method.toUpperCase();
-  const headers = forwardHeaders(request);
+  const incomingType = (request.headers.get('content-type') || '').toLowerCase();
+  /** Buffer multipart bodies: streaming the Request body to fetch+duplex often drops parts (empty Multer `files`, DB unchanged). */
+  const bufferMultipart = incomingType.includes('multipart/form-data');
+  const headers = forwardHeaders(request, {
+    stripContentLengthForBufferedBody: bufferMultipart,
+  });
   const init: RequestInit = {
     method,
     headers,
     redirect: 'manual',
   };
   if (method !== 'GET' && method !== 'HEAD') {
-    init.body = request.body;
-    (init as RequestInit & { duplex?: string }).duplex = 'half';
+    if (bufferMultipart) {
+      init.body = await request.arrayBuffer();
+    } else {
+      init.body = request.body;
+      (init as RequestInit & { duplex?: string }).duplex = 'half';
+    }
   }
   const res = await fetch(url, init);
   /** `new Headers(res.headers)` схлопывает несколько Set-Cookie → пропадает refresh_token после логина. */

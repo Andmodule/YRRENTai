@@ -1,18 +1,33 @@
-import { addMinutes, format, parseISO, isToday, isBefore } from 'date-fns';
+import { addMinutes, format, parseISO, isToday, isBefore, isValid } from 'date-fns';
 import type { Task } from '@/hooks/use-tasks';
 
 const MINUTES_PER_TASK = 45;
 
 export type DeadlineUrgency = 'teal' | 'amber' | 'amber_pulse' | 'red';
 
-/** Parse dueDate (yyyy-MM-dd) + dueTime (HH:mm) as local Date. */
+/** Parse dueDate (yyyy-MM-dd) + optional dueTime (HH:mm) as local Date; no time → end of that calendar day. */
 export function dueDateTime(task: Task): Date | null {
-  if (!task.dueTime) return null;
-  const [h, m] = task.dueTime.split(':').map(Number);
-  if (Number.isNaN(h) || Number.isNaN(m)) return null;
-  const d = parseISO(task.dueDate);
-  d.setHours(h, m, 0, 0);
-  return d;
+  let day: Date;
+  try {
+    day = parseISO(task.dueDate);
+  } catch {
+    return null;
+  }
+  if (!isValid(day)) return null;
+
+  const trimmed = task.dueTime?.trim();
+  if (trimmed) {
+    const [h, m] = trimmed.split(':').map(Number);
+    if (!Number.isNaN(h) && !Number.isNaN(m)) {
+      const d = new Date(day);
+      d.setHours(h, m, 0, 0);
+      return d;
+    }
+  }
+
+  const end = new Date(day);
+  end.setHours(23, 59, 59, 999);
+  return end;
 }
 
 export function deadlineUrgency(task: Task, now: Date = new Date()): DeadlineUrgency {
@@ -34,12 +49,25 @@ export function estimateShiftEnd(tasks: Task[]): { start: Date; end: Date } | nu
   return { start, end };
 }
 
-export function formatElapsedMs(fromIso: string | null): string {
+export function formatElapsedMs(
+  fromIso: string | null,
+  options?: { includeSeconds?: boolean },
+): string {
   if (!fromIso) return '';
   const start = parseISO(fromIso).getTime();
-  const sec = Math.floor((Date.now() - start) / 1000);
-  const m = Math.floor(sec / 60);
+  if (!Number.isFinite(start)) return '';
+  const sec = Math.max(0, Math.floor((Date.now() - start) / 1000));
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
   const s = sec % 60;
+  const includeSeconds = options?.includeSeconds !== false;
+  if (!includeSeconds) {
+    if (h > 0) return `${h}:${m.toString().padStart(2, '0')}`;
+    return `${m} мин`;
+  }
+  if (h > 0) {
+    return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  }
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 

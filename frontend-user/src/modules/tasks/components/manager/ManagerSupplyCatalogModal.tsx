@@ -4,16 +4,21 @@ import { useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
 import { useLocale } from 'next-intl';
-import { Loader2, Plus, Search } from 'lucide-react';
+import { Loader2, Plus, Search, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ResponsiveModal, ResponsiveModalContent } from '@/components/ui/responsive-modal';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
-import { useCreateSupplyCatalogItem, useSupplyCatalogItems } from '../../hooks/useSupplyMatrix';
+import {
+  useCreateSupplyCatalogItem,
+  useDeleteSupplyCatalogItem,
+  useSupplyCatalogItems,
+} from '../../hooks/useSupplyMatrix';
 
 export function ManagerSupplyCatalogModal({
   open,
@@ -27,7 +32,9 @@ export function ManagerSupplyCatalogModal({
   const queryClient = useQueryClient();
   const { data: items, isLoading } = useSupplyCatalogItems(open);
   const { mutateAsync: createItem, isPending: createPending } = useCreateSupplyCatalogItem();
+  const { mutateAsync: deleteItem, isPending: deletePending } = useDeleteSupplyCatalogItem();
 
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [addName, setAddName] = useState('');
   const [addSynonyms, setAddSynonyms] = useState('');
@@ -115,14 +122,27 @@ export function ManagerSupplyCatalogModal({
                 <li
                   key={it.id}
                   className={cn(
-                    'flex flex-wrap items-baseline justify-between gap-2 rounded-xl border border-border/45 bg-muted/25 px-3 py-2.5 text-sm shadow-sm',
+                    'flex items-start gap-2 rounded-xl border border-border/45 bg-muted/25 px-2 py-2 pl-3 text-sm shadow-sm sm:gap-3',
                     'dark:border-border/35 dark:bg-muted/15',
                   )}
                 >
-                  <span className="min-w-0 font-medium leading-snug text-foreground">{it.name}</span>
-                  {it.defaultUnit ? (
-                    <span className="shrink-0 text-xs text-muted-foreground">· {it.defaultUnit}</span>
-                  ) : null}
+                  <div className="min-w-0 flex-1 flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5 pr-1">
+                    <span className="min-w-0 font-medium leading-snug text-foreground">{it.name}</span>
+                    {it.defaultUnit ? (
+                      <span className="shrink-0 text-xs text-muted-foreground">· {it.defaultUnit}</span>
+                    ) : null}
+                  </div>
+                  <button
+                    type="button"
+                    className={cn(
+                      'mt-0.5 shrink-0 rounded-md p-1.5 text-muted-foreground transition-colors',
+                      'hover:bg-muted hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                    )}
+                    aria-label={t('catalogDeleteAria')}
+                    onClick={() => setPendingDelete({ id: it.id, name: it.name })}
+                  >
+                    <Trash2 className="h-4 w-4 opacity-70" strokeWidth={2} aria-hidden />
+                  </button>
                 </li>
               ))}
             </ul>
@@ -215,6 +235,53 @@ export function ManagerSupplyCatalogModal({
           {addForm}
         </ResponsiveModalContent>
       </ResponsiveModal>
+
+      <Dialog open={pendingDelete !== null} onOpenChange={(o) => !o && setPendingDelete(null)}>
+        <DialogContent
+          stackAboveTaskLayer
+          title={t('catalogDeleteTitle')}
+          description={
+            pendingDelete ? t('catalogDeleteDescription', { name: pendingDelete.name }) : undefined
+          }
+          bodyClassName="hidden"
+          footer={
+            <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full sm:w-auto"
+                disabled={deletePending}
+                onClick={() => setPendingDelete(null)}
+              >
+                {t('catalogDeleteCancel')}
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                className="w-full sm:w-auto"
+                disabled={deletePending || !pendingDelete}
+                onClick={() => {
+                  if (!pendingDelete) return;
+                  void (async () => {
+                    try {
+                      await deleteItem(pendingDelete.id);
+                      toast.success(t('catalogDeleteSuccess'));
+                      setPendingDelete(null);
+                    } catch {
+                      toast.error(t('catalogDeleteError'));
+                    }
+                  })();
+                }}
+              >
+                {deletePending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden /> : null}
+                {t('catalogDeleteConfirm')}
+              </Button>
+            </div>
+          }
+        >
+          <span className="sr-only">{pendingDelete ? pendingDelete.name : ''}</span>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

@@ -6,6 +6,7 @@ import { apiClient } from '@/lib/api/client';
 export type StaffDeliveryRouteDetail = {
   id: string;
   scheduledDate: string;
+  completeByTime: string | null;
   status: string;
   driverUserId: string | null;
   warehouseLabel: string | null;
@@ -84,7 +85,10 @@ export function useCompleteStop() {
     mutationFn: async (stopId: string) => {
       await apiClient.post(`/tasks/delivery-routes/stops/${stopId}/complete`, {});
     },
-    onSuccess: () => void qc.invalidateQueries({ queryKey: key }),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: key });
+      await qc.refetchQueries({ queryKey: key, type: 'active' });
+    },
   });
 }
 

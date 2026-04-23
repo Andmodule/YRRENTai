@@ -26,6 +26,10 @@ export class DeliveryRouteEntity {
   @Column({ type: 'date' })
   scheduledDate!: string;
 
+  /** Опционально: «выполнить до» (локальное HH:mm, как у задач). */
+  @Column({ type: 'varchar', length: 8, nullable: true })
+  completeByTime!: string | null;
+
   @Column({ type: 'varchar', length: 32, nullable: true })
   shift!: string | null;
 

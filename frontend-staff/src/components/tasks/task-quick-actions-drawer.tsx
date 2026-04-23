@@ -1,12 +1,20 @@
 'use client';
 
-import { Play, CheckCircle2, AlertCircle, MessageSquareText, MapPin, ClipboardList } from 'lucide-react';
+import {
+  Play,
+  CheckCircle2,
+  AlertCircle,
+  MessageSquareText,
+  MapPin,
+  ClipboardList,
+  RotateCcw,
+  Clapperboard,
+} from 'lucide-react';
 import { Drawer, DrawerContent } from '@/components/ui/drawer';
 import { Button } from '@/components/ui/button';
 import type { Task } from '@/hooks/use-tasks';
 import { useStaffStrings } from '@/locales/staff-strings';
 import { cn } from '@/lib/utils';
-import { stripStaffSeedTaskMarker } from '@rentai/shared';
 
 const typeLabels: Record<string, string> = {
   checkout_cleaning: 'Уборка (выезд)',
@@ -22,11 +30,17 @@ interface TaskQuickActionsDrawerProps {
   onOpenChange: (open: boolean) => void;
   onStart: (uuid: string) => void;
   onMarkDone: (task: Task) => void;
+  /** Вернуть из «готово» в открытые (водитель) */
+  onMarkReopen?: (task: Task) => void;
   onMarkIssue: (uuid: string) => void;
   onOpenDetails: (task: Task) => void;
   startPending?: boolean;
   /** Скрыть кнопки Начать/Готово/Инцидент (например, для водителя) */
   readOnlyActions?: boolean;
+  /** Подпись на завершение задачи (по умолчанию «Готово»). */
+  markDoneLabel?: string;
+  /** Завершённая задача: прикрепить фото/видео (шторка верификации). */
+  onAddVerification?: (task: Task) => void;
 }
 
 export function TaskQuickActionsDrawer({
@@ -35,13 +49,18 @@ export function TaskQuickActionsDrawer({
   onOpenChange,
   onStart,
   onMarkDone,
+  onMarkReopen,
   onMarkIssue,
   onOpenDetails,
   startPending = false,
   readOnlyActions = false,
+  markDoneLabel,
+  onAddVerification,
 }: TaskQuickActionsDrawerProps) {
   const strings = useStaffStrings();
+  const v = strings.tasks.verification;
   const ti = strings.tasks.taskIssue;
+  const tr = strings.driver.route;
   const generalLabel = strings.tasks.checklist.generalTaskLabel;
   if (!task) return null;
 
@@ -56,7 +75,6 @@ export function TaskQuickActionsDrawer({
 
   const placeLabel = isGeneral ? generalLabel : task.propertyTitle;
   const generalTitle = isGeneral ? (task.title?.trim() || '') : '';
-  const notesPreview = stripStaffSeedTaskMarker(task.notes)?.trim();
   const summary = task.checklistSummary;
 
   const cardClass = isIssue
@@ -77,16 +95,16 @@ export function TaskQuickActionsDrawer({
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
               {typeLabels[task.type] ?? task.type}
             </p>
-            <p className="text-xl font-bold leading-snug text-slate-900 dark:text-slate-50">{placeLabel}</p>
+            <p className="text-xl font-normal leading-snug text-slate-900 dark:text-slate-50">{placeLabel}</p>
             {generalTitle ? (
-              <p className="text-sm leading-snug text-slate-700 dark:text-slate-200 whitespace-pre-wrap break-words">
+              <p className="text-sm font-normal leading-snug text-slate-700 dark:text-slate-200 whitespace-pre-wrap break-words">
                 {generalTitle}
               </p>
             ) : null}
             {!isGeneral &&
             task.title?.trim() &&
             task.title.trim() !== (task.propertyTitle ?? '').trim() ? (
-              <p className="text-sm font-medium leading-snug text-slate-800 dark:text-slate-200 whitespace-pre-wrap break-words">
+              <p className="text-sm font-normal leading-snug text-slate-800 dark:text-slate-200 whitespace-pre-wrap break-words">
                 {task.title.trim()}
               </p>
             ) : null}
@@ -115,15 +133,68 @@ export function TaskQuickActionsDrawer({
                 </span>
               </div>
             ) : null}
-            {notesPreview ? (
-              <div>
-                <p className="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Примечания к задаче</p>
-                <p className="mt-1 max-h-36 overflow-y-auto text-sm leading-snug text-slate-800 dark:text-slate-100 whitespace-pre-wrap break-words">
-                  {notesPreview}
-                </p>
-              </div>
+            {isDone && onAddVerification && !readOnlyActions ? (
+              <button
+                type="button"
+                onClick={() => {
+                  onOpenChange(false);
+                  onAddVerification(task);
+                }}
+                className={cn(
+                  'mt-1 flex w-full items-center gap-3 rounded-2xl border p-3.5 text-left transition-transform active:scale-[0.99]',
+                  'border-teal-200/80 bg-gradient-to-r from-teal-50/95 via-white to-cyan-50/90 shadow-sm',
+                  'dark:from-teal-950/50 dark:via-slate-900/80 dark:to-cyan-950/40 dark:border-teal-800/60',
+                )}
+              >
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-teal-500 to-cyan-600 text-white shadow-md shadow-teal-700/20">
+                  <Clapperboard className="h-6 w-6" strokeWidth={1.75} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{v.quickActionTitle}</p>
+                  <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{v.quickActionHint}</p>
+                </div>
+              </button>
             ) : null}
           </div>
+
+          {readOnlyActions && isDone && onMarkReopen ? (
+            <div className="flex flex-col gap-2">
+              {onAddVerification ? (
+                <Button
+                  type="button"
+                  className="h-12 w-full justify-center gap-2 rounded-xl text-base bg-gradient-to-r from-teal-600 to-cyan-600 text-white shadow-md shadow-teal-900/20 hover:from-teal-600 hover:to-cyan-600"
+                  onClick={() => {
+                    onOpenChange(false);
+                    onAddVerification(task);
+                  }}
+                >
+                  <Clapperboard className="h-5 w-5" />
+                  {v.quickActionTitle}
+                </Button>
+              ) : null}
+              <Button
+                type="button"
+                variant="outline"
+                className="h-12 w-full justify-center gap-2 rounded-xl text-base border-teal-200 text-teal-900 hover:bg-teal-50 dark:border-teal-800 dark:text-teal-100 dark:hover:bg-teal-950/50"
+                onClick={() => onMarkReopen(task)}
+              >
+                <RotateCcw className="h-5 w-5" />
+                {tr.propertyTasksReopen}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-11 w-full gap-2 text-slate-700"
+                onClick={() => {
+                  onOpenChange(false);
+                  onOpenDetails(task);
+                }}
+              >
+                <MessageSquareText className="h-4 w-4" />
+                Заметки и детали
+              </Button>
+            </div>
+          ) : null}
 
           {!readOnlyActions && (
             <div className="flex flex-col gap-2">
@@ -143,7 +214,7 @@ export function TaskQuickActionsDrawer({
                   onClick={() => onMarkDone(task)}
                 >
                   <CheckCircle2 className="h-5 w-5" />
-                  Готово
+                  {markDoneLabel ?? 'Готово'}
                 </Button>
               )}
               {!isDone && !isIssue && (

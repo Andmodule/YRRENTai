@@ -1,7 +1,8 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, NotFoundException, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, Repository, DataSource, In } from 'typeorm';
 import { SupplyItemEntity } from './entities/supply-item.entity';
+import { CatalogSeedSuppressionEntity } from './entities/catalog-seed-suppression.entity';
 import { SupplyItemAliasEntity } from './entities/supply-item-alias.entity';
 import { SupplyRequestItemEntity } from './entities/supply-request-item.entity';
 import { StaffInterpretationEventEntity } from './entities/staff-interpretation-event.entity';
@@ -10,6 +11,7 @@ import { IncidentEntity } from '../incidents/entities/incident.entity';
 import { DeliveryRouteStopEntity } from './entities/delivery-route-stop.entity';
 import { UserEntity } from '../user/entities/user.entity';
 import { TasksGateway } from './tasks.gateway';
+import { StaffInterpretationService } from './staff-interpretation.service';
 import { includeLineInSupplyMatrix } from './supply-matrix.util';
 import { levenshteinDistance, maxFuzzyDistanceForLength } from './supply-catalog-fuzzy.util';
 
@@ -158,12 +160,16 @@ export class SupplyCatalogService {
   constructor(
     @InjectRepository(SupplyItemEntity)
     private readonly itemRepo: Repository<SupplyItemEntity>,
+    @InjectRepository(CatalogSeedSuppressionEntity)
+    private readonly seedSuppressionRepo: Repository<CatalogSeedSuppressionEntity>,
     @InjectRepository(SupplyItemAliasEntity)
     private readonly aliasRepo: Repository<SupplyItemAliasEntity>,
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
     private readonly dataSource: DataSource,
     private readonly tasksGateway: TasksGateway,
+    @Inject(forwardRef(() => StaffInterpretationService))
+    private readonly staffInterpretationService: StaffInterpretationService,
   ) {}
 
   static normalizeAlias(s: string): string {
@@ -184,7 +190,13 @@ export class SupplyCatalogService {
       order: { sortOrder: 'ASC', name: 'ASC' },
     });
     const haveName = new Set(existing.map((it) => SupplyCatalogService.normalizeAlias(it.name)));
-    const toInsert = DEFAULT_SEED.filter((row) => !haveName.has(SupplyCatalogService.normalizeAlias(row.name)));
+    const suppressed = new Set(
+      (await this.seedSuppressionRepo.find({ where: { companyId } })).map((r) => r.nameNormalized),
+    );
+    const toInsert = DEFAULT_SEED.filter((row) => {
+      const norm = SupplyCatalogService.normalizeAlias(row.name);
+      return !haveName.has(norm) && !suppressed.has(norm);
+    });
     if (toInsert.length) {
       await this.dataSource.transaction(async (m) => {
         let order = existing.length;
@@ -216,6 +228,68 @@ export class SupplyCatalogService {
     }
     await this.patchExtraAliasesForCompany(companyId);
     await this.mergeTypoCatalogDuplicates(companyId);
+    await this.mergeExactNameCatalogDuplicates(companyId);
+  }
+
+  /**
+   * Несколько строк с одним и тем же нормализованным названием (завели вручную) — в одну: перенос ссылок и алиасов, лишние id удаляются.
+   */
+  private async mergeExactNameCatalogDuplicates(companyId: string): Promise<void> {
+    const items = await this.itemRepo.find({
+      where: { companyId },
+      order: { sortOrder: 'ASC', name: 'ASC' },
+      relations: ['aliases'],
+    });
+    const groups = new Map<string, SupplyItemEntity[]>();
+    for (const it of items) {
+      const n = SupplyCatalogService.normalizeAlias(it.name);
+      if (n.length < 2) continue;
+      if (!groups.has(n)) groups.set(n, []);
+      groups.get(n)!.push(it);
+    }
+    let mergedAny = false;
+    for (const group of groups.values()) {
+      if (group.length < 2) continue;
+      const sorted = [...group].sort((a, b) => {
+        const aNorm = SupplyCatalogService.normalizeAlias(a.name);
+        const bNorm = SupplyCatalogService.normalizeAlias(b.name);
+        const aSeed = SEED_CANONICAL_NAME_NORM.has(aNorm) ? 0 : 1;
+        const bSeed = SEED_CANONICAL_NAME_NORM.has(bNorm) ? 0 : 1;
+        if (aSeed !== bSeed) return aSeed - bSeed;
+        if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
+        return a.id.localeCompare(b.id);
+      });
+      const keep = sorted[0]!;
+      const dups = sorted.slice(1);
+      if (!dups.length) continue;
+      await this.dataSource.transaction(async (m) => {
+        for (const wrong of dups) {
+          await m.query(`UPDATE supply_request_items SET "supplyItemId" = $1 WHERE "supplyItemId" = $2`, [
+            keep.id,
+            wrong.id,
+          ]);
+        }
+        const have = new Set((keep.aliases ?? []).map((a) => a.aliasNormalized));
+        for (const wrong of dups) {
+          const dupAls = await m.find(SupplyItemAliasEntity, { where: { supplyItemId: wrong.id } });
+          for (const al of dupAls) {
+            if (al.aliasNormalized.length < 2 || have.has(al.aliasNormalized)) continue;
+            await m.save(
+              m.create(SupplyItemAliasEntity, {
+                supplyItemId: keep.id,
+                aliasNormalized: al.aliasNormalized,
+              }),
+            );
+            have.add(al.aliasNormalized);
+          }
+          await m.delete(SupplyItemEntity, { id: wrong.id });
+        }
+      });
+      mergedAny = true;
+    }
+    if (mergedAny) {
+      this.tasksGateway.emitSupplyInterpretationsChanged();
+    }
   }
 
   /**
@@ -362,7 +436,18 @@ export class SupplyCatalogService {
       const nameNorm = SupplyCatalogService.normalizeAlias(it.name);
       for (const cand of candidates) {
         if (cand.length < 2) continue;
-        if (normFull === cand || normFull.includes(cand) || cand.includes(normFull)) {
+        if (normFull === cand || cand.includes(normFull)) {
+          exactHits.push({
+            supplyItemId: it.id,
+            canonicalName: it.name,
+            defaultUnit: it.defaultUnit,
+            score: cand.length,
+            nameNorm,
+          });
+          continue;
+        }
+        /** `includes` на коротких синонимах (“белье” → “Постельное бельё” при “и белье”) — запрещаем. */
+        if (normFull.includes(cand) && cand.length >= 8) {
           exactHits.push({
             supplyItemId: it.id,
             canonicalName: it.name,
@@ -474,6 +559,30 @@ export class SupplyCatalogService {
     return saved;
   }
 
+  async deleteItemForCompany(companyId: string, itemId: string): Promise<void> {
+    const item = await this.itemRepo.findOne({ where: { id: itemId, companyId } });
+    if (!item) {
+      throw new NotFoundException('Catalog item not found');
+    }
+    const nameNorm = SupplyCatalogService.normalizeAlias(item.name);
+    const isDefaultSeedName = DEFAULT_SEED.some(
+      (row) => SupplyCatalogService.normalizeAlias(row.name) === nameNorm,
+    );
+    await this.dataSource.transaction(async (m) => {
+      const result = await m.getRepository(SupplyItemEntity).delete({ id: itemId, companyId });
+      if (!result.affected) {
+        throw new NotFoundException('Catalog item not found');
+      }
+      if (isDefaultSeedName) {
+        const sup = m.getRepository(CatalogSeedSuppressionEntity);
+        const exists = await sup.findOne({ where: { companyId, nameNormalized: nameNorm } });
+        if (!exists) {
+          await sup.insert({ companyId, nameNormalized: nameNorm });
+        }
+      }
+    });
+  }
+
   /**
    * После вставки строк supply_request_items — проставить supplyItemId и каноническое имя.
    * @returns число строк, у которых не было каталога и после вызова появился supplyItemId.
@@ -482,9 +591,21 @@ export class SupplyCatalogService {
     if (!lineIds.length) return 0;
     const lines = await this.dataSource.getRepository(SupplyRequestItemEntity).find({
       where: { id: In(lineIds) },
+      relations: ['interpretationEvent'],
     });
     let newlyMapped = 0;
     for (const line of lines) {
+      const ev = line.interpretationEvent;
+      if (
+        ev &&
+        ev.entryPoint === 'manager_supply_create' &&
+        ev.workflowState === 'deferred_raw'
+      ) {
+        line.llmRawName = line.llmRawName ?? line.name?.trim() ?? null;
+        line.lineStatus = line.lineStatus || 'pending';
+        await this.dataSource.getRepository(SupplyRequestItemEntity).save(line);
+        continue;
+      }
       const wasUnmapped = line.supplyItemId == null;
       const raw = line.name?.trim() ?? '';
       line.llmRawName = line.llmRawName ?? raw;
@@ -507,6 +628,41 @@ export class SupplyCatalogService {
     if (q == null || q === '') return null;
     const n = Number(String(q).replace(',', '.'));
     return Number.isFinite(n) ? n : null;
+  }
+
+  /**
+   * Строка из составного поля «Запрос»: «Название N» или «Название N ед.» — отделяем базовое имя и число.
+   * Нужно до LLM/resolution: иначе разный хвост даёт разный ключ матрицы и число теряется при sum += 1.
+   */
+  static parseFormattedCatalogRequestLine(
+    fullLine: string,
+  ): { baseName: string; qty: number | null; unit: string | null } {
+    const s = fullLine.trim();
+    if (!s) return { baseName: '', qty: null, unit: null };
+    const re = /^(.*)\s+(\d+)(?:\s+(\S[\s\S]*))?$/;
+    const m = re.exec(s);
+    if (!m) return { baseName: s, qty: null, unit: null };
+    const baseName = (m[1] ?? '').trimEnd();
+    const rawQ = parseInt(m[2]!, 10);
+    const qty =
+      Number.isFinite(rawQ) && rawQ > 0 ? Math.min(rawQ, 999999) : null;
+    const unitRaw = (m[3] ?? '').trim();
+    const unit = unitRaw ? SupplyCatalogService.normalizeCatalogUnitForDisplay(unitRaw) : null;
+    return { baseName: baseName.length >= 1 ? baseName : s, qty, unit };
+  }
+
+  /** Первая опция из справочника («шт|упак.») для подписей в матрице, маршруте и складе. */
+  static normalizeCatalogUnitForDisplay(raw: string | null | undefined): string | null {
+    const s = (raw ?? '').trim();
+    if (!s) return null;
+    if (s.includes('|')) {
+      const first = s
+        .split('|')
+        .map((p) => p.trim())
+        .find(Boolean);
+      return first ? first.slice(0, 64) : null;
+    }
+    return s.slice(0, 64);
   }
 
   /** Агрегат по строкам группы: всё доставлено → delivered; есть pending → pending; иначе в пути. */
@@ -566,7 +722,7 @@ export class SupplyCatalogService {
       .where('p.ownerId = :oid', { oid: ownerId })
       .andWhere('sri.lineStatus IN (:...lss)', { lss: ['pending', 'handed_to_driver', 'delivered'] })
       .andWhere('e.workflowState IN (:...ws)', {
-        ws: ['pending_manager', 'manual_review', 'manager_acknowledged'],
+        ws: ['pending_manager', 'manual_review', 'manager_acknowledged', 'deferred_raw'],
       })
       .andWhere(
         new Brackets((qb) => {
@@ -581,6 +737,9 @@ export class SupplyCatalogService {
 
     const filtered = lines.filter((sri) => {
       const ev = sri.interpretationEvent as StaffInterpretationEventEntity;
+      if (ev.entryPoint === 'manager_supply_create' && ev.workflowState === 'deferred_raw') {
+        return true;
+      }
       const intent =
         ev.llmPayload && typeof ev.llmPayload['intent'] === 'string'
           ? String(ev.llmPayload['intent']).trim()
@@ -650,7 +809,12 @@ export class SupplyCatalogService {
           ? 'delivered'
           : sri.lineStatus || 'pending';
 
-      const gid = sri.supplyItemId ?? `raw:${SupplyCatalogService.normalizeAlias(sri.name).slice(0, 120)}`;
+      const parsedLine = SupplyCatalogService.parseFormattedCatalogRequestLine((sri.name ?? '').trim());
+      const rawNameBasis =
+        parsedLine.baseName.trim().length >= 2 ? parsedLine.baseName.trim() : (sri.name ?? '').trim();
+      const gid =
+        sri.supplyItemId ??
+        `raw:${SupplyCatalogService.normalizeAlias(rawNameBasis).slice(0, 120)}`;
       const routeId = sri.deliveryRouteId?.trim() || null;
       const bucketSuffix = routeId ? `route:${routeId}` : 'pool';
       const compositeKey = `${gid}@@${bucketSuffix}`;
@@ -659,8 +823,10 @@ export class SupplyCatalogService {
         map.set(compositeKey, {
           groupKey: compositeKey,
           supplyItemId: sri.supplyItemId,
-          displayName: sri.supplyItem?.name ?? sri.name,
-          defaultUnit: sri.supplyItem?.defaultUnit ?? sri.unit,
+          displayName:
+            sri.supplyItem?.name ??
+            (parsedLine.baseName.trim().length >= 1 ? parsedLine.baseName.trim() : (sri.name ?? '')),
+          defaultUnit: sri.supplyItem?.defaultUnit ?? sri.unit ?? parsedLine.unit,
           byProp: new Map(),
           eventIds: new Set(),
           lineStatuses: [],
@@ -670,9 +836,15 @@ export class SupplyCatalogService {
       const agg = map.get(compositeKey)!;
       agg.eventIds.add(ev.id);
       agg.lineStatuses.push(ls);
+      const candRaw = (sri.supplyItem?.defaultUnit ?? sri.unit ?? parsedLine.unit)?.trim();
+      if (candRaw && !(agg.defaultUnit ?? '').trim()) {
+        agg.defaultUnit = candRaw;
+      }
       const pq = SupplyCatalogService.parseQuantity(sri.quantity);
-      const partial = pq == null;
-      const qty = partial ? 0 : pq;
+      const pqFromName = parsedLine.qty;
+      const effectiveQty = pq ?? pqFromName;
+      const partial = effectiveQty == null || !Number.isFinite(Number(effectiveQty));
+      const qty = partial ? 0 : Number(effectiveQty);
       const pid = prop.id;
       if (!agg.byProp.has(pid)) {
         const addr = (prop.address ?? '').trim();
@@ -724,7 +896,7 @@ export class SupplyCatalogService {
         groupKey: agg.groupKey,
         supplyItemId: agg.supplyItemId,
         displayName: agg.displayName,
-        defaultUnit: agg.defaultUnit,
+        defaultUnit: SupplyCatalogService.normalizeCatalogUnitForDisplay(agg.defaultUnit),
         totalQuantity: total,
         quantityIsPartial: anyPartial,
         fulfillmentStatus: SupplyCatalogService.aggregateFulfillment(agg.lineStatuses),
@@ -868,6 +1040,11 @@ export class SupplyCatalogService {
     if (!supplyItemIds.length && !requestLineIds.length) {
       throw new BadRequestException('supplyItemIds or requestLineIds required');
     }
+
+    await this.staffInterpretationService.ensureDeferredLlmBeforeHandoff(ownerId, {
+      supplyItemIds,
+      requestLineIds,
+    });
 
     let updated = 0;
 

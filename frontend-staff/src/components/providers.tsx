@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TelegramStaffGate } from '@/components/auth/telegram-staff-gate';
 import { StaffErrorBoundary } from '@/components/staff-error-boundary';
+import { StaffThemeProvider } from '@/components/staff-theme';
 import { StaffStringsProvider } from '@/locales/staff-strings';
 
 export function Providers({ children }: { children: React.ReactNode }) {
@@ -20,7 +21,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <StaffErrorBoundary>
       <QueryClientProvider client={client}>
         <StaffStringsProvider>
-          <TelegramStaffGate>{children}</TelegramStaffGate>
+          <StaffThemeProvider>
+            <TelegramStaffGate>{children}</TelegramStaffGate>
+          </StaffThemeProvider>
         </StaffStringsProvider>
       </QueryClientProvider>
     </StaffErrorBoundary>

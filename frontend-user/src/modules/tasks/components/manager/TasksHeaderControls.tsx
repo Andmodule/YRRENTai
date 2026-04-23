@@ -19,6 +19,7 @@ import {
   tasksToolbarIconButtonBase,
   tasksToolbarIconButtonIdle,
 } from '../../task-toolbar-icon-button-classes';
+import { preventCloseIfAssigneePickerOutside } from '../shared/AssigneePickerField';
 import { isTasksListSliceFiltered, TasksStatusPriorityFilterPanel } from './TasksStatusPriorityFilterPanel';
 
 export type TasksHeaderControlsLayout = 'default' | 'headerRow' | 'headerDesktopGrid';
@@ -178,6 +179,7 @@ export function TasksHeaderControls({
         <CalendarRange className="h-4 w-4" aria-hidden />
       </Button>
       <DropdownMenu
+        modal={false}
         open={listFiltersOpen}
         onOpenChange={(open) => {
           setListFiltersOpen(open);
@@ -209,7 +211,13 @@ export function TasksHeaderControls({
             ) : null}
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-[min(20rem,calc(100vw-2rem))] p-3">
+        <DropdownMenuContent
+          align="end"
+          className="w-[min(22rem,calc(100vw-2rem))] p-3"
+          onInteractOutside={preventCloseIfAssigneePickerOutside}
+          onPointerDownOutside={preventCloseIfAssigneePickerOutside}
+          onFocusOutside={preventCloseIfAssigneePickerOutside}
+        >
           <TasksStatusPriorityFilterPanel />
         </DropdownMenuContent>
       </DropdownMenu>

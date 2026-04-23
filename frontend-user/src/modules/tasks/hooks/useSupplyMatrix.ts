@@ -19,6 +19,7 @@ export function useSupplyMatrix(enabled = true) {
     enabled,
     staleTime: 60_000,
     refetchOnWindowFocus: false,
+    placeholderData: (previousData) => previousData,
   });
 }
 
@@ -130,6 +131,40 @@ export function useCreateSupplyCatalogItem() {
       return res.data.data;
     },
     onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['tasks', 'manager-supply-catalog'] });
+      void queryClient.invalidateQueries({ queryKey: [...MANAGER_SUPPLY_MATRIX_ROOT, 'rows'] });
+    },
+  });
+}
+
+type SupplyCatalogListItem = {
+  id: string;
+  name: string;
+  category: string;
+  defaultUnit: string | null;
+  aliases: string[];
+};
+
+export function useDeleteSupplyCatalogItem() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (itemId: string) => {
+      await apiClient.delete(`/tasks/manager/supply-catalog/items/${itemId}`);
+    },
+    onMutate: async (itemId) => {
+      await queryClient.cancelQueries({ queryKey: ['tasks', 'manager-supply-catalog'] });
+      const previous = queryClient.getQueryData<SupplyCatalogListItem[]>(['tasks', 'manager-supply-catalog']);
+      queryClient.setQueryData<SupplyCatalogListItem[]>(['tasks', 'manager-supply-catalog'], (old) =>
+        old ? old.filter((it) => it.id !== itemId) : old,
+      );
+      return { previous } as { previous: SupplyCatalogListItem[] | undefined };
+    },
+    onError: (_err, _id, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(['tasks', 'manager-supply-catalog'], context.previous);
+      }
+    },
+    onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: ['tasks', 'manager-supply-catalog'] });
       void queryClient.invalidateQueries({ queryKey: [...MANAGER_SUPPLY_MATRIX_ROOT, 'rows'] });
     },

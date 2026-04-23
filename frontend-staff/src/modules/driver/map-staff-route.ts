@@ -6,6 +6,19 @@ function parseQty(raw: string | null | undefined): number {
   return Number.isFinite(n) ? n : 1;
 }
 
+/** Одна опция ЕИ для бейджа («шт|упак.» из API). */
+function pickingUnitLabel(u: string | null | undefined): string {
+  const s = (u ?? '').trim();
+  if (!s) return '';
+  if (s.includes('|')) {
+    return s
+      .split('|')
+      .map((p) => p.trim())
+      .find(Boolean) ?? '';
+  }
+  return s;
+}
+
 function resolveActiveStopId(
   sorted: StaffDeliveryRouteDetail['stops'],
   routeStatus: string,
@@ -45,7 +58,7 @@ export function mapStaffRouteToActiveData(route: StaffDeliveryRouteDetail): Acti
         id: `wh-pick-${i}-${pl.name}`,
         name: pl.name,
         quantity: parseQty(pl.quantity),
-        unit: pl.unit ?? '',
+        unit: pickingUnitLabel(pl.unit),
         actionType: 'pickup',
       }));
     } else {
@@ -53,7 +66,7 @@ export function mapStaffRouteToActiveData(route: StaffDeliveryRouteDetail): Acti
         id: ln.supplyRequestItemId ?? `ln-${i}-${ln.name}`,
         name: ln.name,
         quantity: parseQty(ln.quantity),
-        unit: ln.unit ?? '',
+        unit: pickingUnitLabel(ln.unit),
         actionType: 'dropoff',
       }));
     }
@@ -88,5 +101,6 @@ export function mapStaffRouteToActiveData(route: StaffDeliveryRouteDetail): Acti
     stops,
     routeStatus: route.status,
     scheduledDate: route.scheduledDate,
+    completeByTime: route.completeByTime ?? null,
   };
 }

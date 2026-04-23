@@ -1,16 +1,18 @@
 'use client';
 
-import { useCallback, useMemo, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
-import { format, parseISO } from 'date-fns';
+import { addDays, format, parseISO } from 'date-fns';
 import { ru, enUS } from 'date-fns/locale';
 import { useLocale } from 'next-intl';
-import { ChevronDown, ChevronRight, Loader2, Plus, Trash2 } from 'lucide-react';
+import { Calendar, ChevronDown, ChevronRight, Loader2, MapPin, Package, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Drawer, DrawerContent } from '@/components/ui/drawer';
@@ -18,6 +20,7 @@ import { ResponsiveModal, ResponsiveModalContent } from '@/components/ui/respons
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { Select } from '@/components/ui/select';
 import { apiClient } from '@/lib/api/client';
+import { useTasksFiltersStore } from '@/stores/tasks-filters.store';
 import { getApiErrorMessage } from '@/lib/api/error-message';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -38,8 +41,19 @@ import {
 import { DeliveryRouteDetailBody } from './delivery-route-detail-body';
 import { ManagerSupplyDeliveryRoutesSection } from './ManagerSupplyDeliveryRoutesSection';
 import { usePendingSupplyInterpretations } from '../../hooks/usePendingSupplyInterpretations';
+import { useTasks } from '../../hooks/useTasks';
 import { AssigneePickerField } from '../shared/AssigneePickerField';
 import type { PendingSupplyInterpretationEvent, StaffMember, SupplyMatrixRow } from '../../types';
+import { matrixQtySuffixRedundant, stripTrailingQtyFromMatrixTitle } from '../../utils/matrix-qty-display';
+import { parseCatalogUnitOptions } from '@/modules/tasks/utils/supply-catalog-units';
+
+/** Первая опция из справочника («шт|упак.») для бейджа количества. */
+function displayMatrixRowUnit(row: Pick<SupplyMatrixRow, 'defaultUnit'>): string | null {
+  const raw = row.defaultUnit?.trim();
+  if (!raw) return null;
+  const opts = parseCatalogUnitOptions(raw);
+  return opts[0] ?? null;
+}
 
 /** Portaled modal — same teal primary as task detail / matrix actions (not global blue). */
 const ROUTE_REASSIGN_PORTAL_STYLE = {
@@ -48,22 +62,13 @@ const ROUTE_REASSIGN_PORTAL_STYLE = {
   '--ring': 'var(--task-detail-accent)',
 } as CSSProperties;
 
-function cellKey(row: SupplyMatrixRow, propertyId: string): string {
-  return `${row.groupKey}|${propertyId}`;
+/** `yyyy-MM-dd` calendar day, local, relative to today. */
+function handoffYmdFromToday(offsetDays: number): string {
+  return format(addDays(new Date(), offsetDays), 'yyyy-MM-dd');
 }
 
-/** Кол-во для бейджа; `null` — не показывать (нет числа / нечего выводить вместо «—»). */
-function qtyBadgeLabel(
-  cell: SupplyMatrixRow['byProperty'][number],
-  row: SupplyMatrixRow,
-  cellFulfillment: string,
-): string | null {
-  if (cellFulfillment === 'delivered' && (cell.quantitySum ?? 0) <= 0 && !cell.quantityIsPartial) {
-    return null;
-  }
-  if (cell.quantityIsPartial) return null;
-  const u = row.defaultUnit?.trim();
-  return u ? `${cell.quantitySum} ${u}` : String(cell.quantitySum);
+function cellKey(row: SupplyMatrixRow, propertyId: string): string {
+  return `${row.groupKey}|${propertyId}`;
 }
 
 type MatrixCellItem = {
@@ -130,6 +135,206 @@ function collectRequestLineIdsFromKeys(keys: Set<string>, rows: SupplyMatrixRow[
     }
   }
   return out;
+}
+
+function collectHandoffSelectedCells(
+  keys: Set<string>,
+  rows: SupplyMatrixRow[],
+): Array<{ row: SupplyMatrixRow; cell: SupplyMatrixRow['byProperty'][number] }> {
+  const out: Array<{ row: SupplyMatrixRow; cell: SupplyMatrixRow['byProperty'][number] }> = [];
+  for (const key of keys) {
+    const pipe = key.indexOf('|');
+    if (pipe < 0) continue;
+    const groupKey = key.slice(0, pipe);
+    const propertyId = key.slice(pipe + 1);
+    const row = rows.find((r) => r.groupKey === groupKey);
+    const cell = row?.byProperty.find((c) => c.propertyId === propertyId);
+    if (row && cell) out.push({ row, cell });
+  }
+  return out;
+}
+
+type HandoffMatrixPreview = {
+  warehouse: Array<{ key: string; name: string; unit: string | null; qtyLabel: string }>;
+  byProperty: Array<{
+    propertyId: string;
+    propertyTitle: string;
+    lines: Array<{ key: string; name: string; qtyLabel: string }>;
+  }>;
+};
+
+/** Одна номенклатура в пуле и на маршруте приходит как две строки матрицы с разным groupKey — для сводно склеиваем по catalog id. */
+function handoffMergeKey(row: SupplyMatrixRow): string {
+  return row.supplyItemId ? `si:${row.supplyItemId}` : row.groupKey;
+}
+
+/** Сумма количества по всем строкам матрицы с тем же слиянием × объект (несколько `groupKey` у одной номенклатуры). */
+function mergedQuantitySumForCell(
+  row: SupplyMatrixRow,
+  cell: SupplyMatrixRow['byProperty'][number],
+  scopeRows: SupplyMatrixRow[],
+): number {
+  const mk = handoffMergeKey(row);
+  const pid = cell.propertyId;
+  let sum = 0;
+  for (const r of scopeRows) {
+    if (handoffMergeKey(r) !== mk) continue;
+    const c = r.byProperty.find((x) => x.propertyId === pid);
+    if (!c) continue;
+    const fs = c.fulfillmentStatus ?? r.fulfillmentStatus ?? 'pending';
+    if (fs === 'delivered') continue;
+    sum += c.quantitySum ?? 0;
+  }
+  return sum;
+}
+
+function mergedSourceEventsCount(
+  row: SupplyMatrixRow,
+  cell: SupplyMatrixRow['byProperty'][number],
+  scopeRows: SupplyMatrixRow[],
+): number {
+  const mk = handoffMergeKey(row);
+  const pid = cell.propertyId;
+  let n = 0;
+  for (const r of scopeRows) {
+    if (handoffMergeKey(r) !== mk) continue;
+    if (!r.byProperty.some((c) => c.propertyId === pid)) continue;
+    n += r.sourceEventCount ?? 1;
+  }
+  return Math.max(n, row.sourceEventCount ?? 1);
+}
+
+/** Кол-во для бейджа; `null` — не показывать. У частичных строк quantitySum всё равно учитывает строки (+1 без числа в БД). */
+function qtyBadgeLabel(
+  cell: SupplyMatrixRow['byProperty'][number],
+  row: SupplyMatrixRow,
+  cellFulfillment: string,
+  scopeRows: SupplyMatrixRow[],
+): string | null {
+  const fromMergedCells = mergedQuantitySumForCell(row, cell, scopeRows);
+  /** Одна колонка-объект на строку: `totalQuantity` с бэка иногда надёжнее рассинхрона ячейки; при дублях строк матрицы суммируем ячейки. */
+  const aggregated =
+    row.byProperty.length === 1
+      ? Math.max(fromMergedCells, row.totalQuantity ?? 0)
+      : fromMergedCells;
+  if (cellFulfillment === 'delivered' && aggregated <= 0 && !cell.quantityIsPartial) {
+    return null;
+  }
+  if (aggregated <= 0) return null;
+  const mk = handoffMergeKey(row);
+  const unitRow =
+    scopeRows.find((r) => handoffMergeKey(r) === mk && displayMatrixRowUnit(r)) ?? row;
+  const u = displayMatrixRowUnit(unitRow);
+  return u ? `${aggregated} ${u}` : String(aggregated);
+}
+
+function handoffDisplayTitle(row: SupplyMatrixRow): string {
+  const raw = row.displayName;
+  return row.supplyItemId != null ? stripTrailingQtyFromMatrixTitle(raw) : raw;
+}
+
+function buildHandoffMatrixPreview(
+  items: Array<{ row: SupplyMatrixRow; cell: SupplyMatrixRow['byProperty'][number] }>,
+  locale: string,
+): HandoffMatrixPreview | null {
+  if (!items.length) return null;
+
+  /** Сводно по складу: суммируем quantitySum по всем выбранным ячейкам группы.
+   * Для строк без распознанного числа бэкенд всё равно кладёт вклад в quantitySum (+1 за строку) и ставит quantityIsPartial —
+   * раньше мы не прибавляли sum при partial, из‑за этого количество пропадало. */
+  const whMap = new Map<string, { name: string; unit: string | null; sum: number }>();
+  for (const { row, cell } of items) {
+    const whKey = handoffMergeKey(row);
+    if (!whMap.has(whKey)) {
+      whMap.set(whKey, {
+        name: handoffDisplayTitle(row),
+        unit: displayMatrixRowUnit(row),
+        sum: 0,
+      });
+    }
+    const agg = whMap.get(whKey)!;
+    agg.sum += cell.quantitySum;
+    const du = displayMatrixRowUnit(row);
+    if (du && !agg.unit?.trim()) {
+      agg.unit = du;
+    }
+  }
+  const warehouse = [...whMap.entries()].map(([key, v]) => {
+    let qtyLabel: string;
+    if (v.sum <= 0 || Number.isNaN(v.sum)) {
+      qtyLabel = '';
+    } else if (v.unit?.trim()) {
+      qtyLabel = `${v.sum} ${v.unit.trim()}`;
+    } else {
+      qtyLabel = String(v.sum);
+    }
+    return { key, name: v.name, unit: v.unit, qtyLabel };
+  });
+  warehouse.sort((a, b) => a.name.localeCompare(b.name, locale, { sensitivity: 'base' }));
+
+  type LineAcc = {
+    key: string;
+    name: string;
+    qtySum: number;
+    partial: boolean;
+    unit: string | null;
+  };
+  const propMap = new Map<
+    string,
+    { propertyId: string; propertyTitle: string; lineMap: Map<string, LineAcc> }
+  >();
+
+  for (const { row, cell } of items) {
+    const pid = cell.propertyId;
+    const mk = handoffMergeKey(row);
+    if (!propMap.has(pid)) {
+      propMap.set(pid, {
+        propertyId: pid,
+        propertyTitle: cell.propertyTitle,
+        lineMap: new Map(),
+      });
+    }
+    const pm = propMap.get(pid)!;
+    if (!pm.lineMap.has(mk)) {
+      pm.lineMap.set(mk, {
+        key: `${mk}|${pid}`,
+        name: handoffDisplayTitle(row),
+        qtySum: 0,
+        partial: false,
+        unit: displayMatrixRowUnit(row),
+      });
+    }
+    const la = pm.lineMap.get(mk)!;
+    la.qtySum += cell.quantitySum;
+    la.partial = la.partial || cell.quantityIsPartial;
+    const duLine = displayMatrixRowUnit(row);
+    if (duLine && !la.unit?.trim()) {
+      la.unit = duLine;
+    }
+  }
+
+  const byProperty = [...propMap.values()].map((p) => {
+    const lines = [...p.lineMap.values()].map((la) => {
+      const qtyLabel =
+        la.qtySum <= 0 && la.partial
+          ? ''
+          : la.unit?.trim()
+            ? `${la.qtySum} ${la.unit.trim()}`
+            : String(la.qtySum);
+      return { key: la.key, name: la.name, qtyLabel };
+    });
+    lines.sort((a, b) => a.name.localeCompare(b.name, locale, { sensitivity: 'base' }));
+    return {
+      propertyId: p.propertyId,
+      propertyTitle: p.propertyTitle,
+      lines,
+    };
+  });
+  byProperty.sort((a, b) =>
+    a.propertyTitle.localeCompare(b.propertyTitle, locale, { sensitivity: 'base' }),
+  );
+
+  return { warehouse, byProperty };
 }
 
 function truncateMatrixText(text: string, maxLen: number): string {
@@ -215,17 +420,35 @@ export function ManagerSupplyMatrixView({
   const dateLocale = locale === 'ru' ? ru : enUS;
 
   const { data: interpretationEvents = [] } = usePendingSupplyInterpretations();
+  const filters = useTasksFiltersStore((s) => s.filters);
+  const assigneeNeedsTasks = filters.assigneeId !== 'all';
+  const { data: tasksForAssigneeFilter, isPending: tasksAssigneePending } = useTasks(filters, {
+    enabled: assigneeNeedsTasks,
+  });
+
+  const interpretationEventsFiltered = useMemo(() => {
+    if (!assigneeNeedsTasks) return interpretationEvents;
+    if (tasksAssigneePending) return interpretationEvents;
+    const ids = new Set((tasksForAssigneeFilter?.tasks ?? []).map((x) => x.uuid));
+    return interpretationEvents.filter((e) => {
+      if (e.targetType !== 'task') return true;
+      const tid = e.targetId?.trim();
+      if (!tid) return false;
+      return ids.has(tid);
+    });
+  }, [interpretationEvents, assigneeNeedsTasks, tasksAssigneePending, tasksForAssigneeFilter?.tasks]);
+
   const llmProcessingSupply = useMemo(
     () =>
-      interpretationEvents.filter(
+      interpretationEventsFiltered.filter(
         (e: PendingSupplyInterpretationEvent) =>
           e.managerBucket === 'supply' &&
           (e.workflowState === 'pending_llm' || e.llmStatus === 'processing'),
       ),
-    [interpretationEvents],
+    [interpretationEventsFiltered],
   );
 
-  const { data: rows, isLoading, isError, refetch } = useSupplyMatrix();
+  const { data: rows, isLoading, isPending, isFetching, isError, refetch } = useSupplyMatrix();
   const createRouteMutation = useCreateDeliveryRouteFromPool();
   const assignDriverMutation = useAssignDeliveryRouteDriver();
   const createRoutePending = createRouteMutation.isPending;
@@ -243,6 +466,9 @@ export function ManagerSupplyMatrixView({
 
   const [handoffOpen, setHandoffOpen] = useState(false);
   const [handoffDriverId, setHandoffDriverId] = useState('');
+  const [handoffScheduledDate, setHandoffScheduledDate] = useState(handoffYmdFromToday(1));
+  const [handoffCompleteByTime, setHandoffCompleteByTime] = useState('');
+  const handoffDateInputRef = useRef<HTMLInputElement>(null);
   const handoffBusy = createRoutePending || assignPending;
 
   const [routeDetailSheetId, setRouteDetailSheetId] = useState<string | null>(null);
@@ -364,12 +590,34 @@ export function ManagerSupplyMatrixView({
   } | null>(null);
   const removePoolLinesMutation = useSupplyMatrixRemovePoolLines();
 
+  const lastNonEmptyRowsRef = useRef<SupplyMatrixRow[]>([]);
+
+  useEffect(() => {
+    const current = rows ?? [];
+    if (current.length > 0) {
+      lastNonEmptyRowsRef.current = current;
+    }
+  }, [rows]);
+
+  /**
+   * Бесшовный UX: если во время фонового refetch API кратко отдаёт пустой список,
+   * не прячем секцию «В пуле», а держим последний стабильный срез до нового ответа.
+   */
+  const rowsForRender = useMemo(() => {
+    const current = rows ?? [];
+    if (current.length > 0) return current;
+    if (isFetching && lastNonEmptyRowsRef.current.length > 0) {
+      return lastNonEmptyRowsRef.current;
+    }
+    return current;
+  }, [rows, isFetching]);
+
   const sortedRows = useMemo(() => {
-    if (!rows?.length) return [];
-    return [...rows].sort((a, b) =>
+    if (!rowsForRender.length) return [];
+    return [...rowsForRender].sort((a, b) =>
       a.displayName.localeCompare(b.displayName, locale, { sensitivity: 'base' }),
     );
-  }, [rows, locale]);
+  }, [rowsForRender, locale]);
 
   const propertyGroups = useMemo(() => buildPropertyGroups(sortedRows, locale), [sortedRows, locale]);
 
@@ -429,9 +677,52 @@ export function ManagerSupplyMatrixView({
     return out;
   }, [selectedCellKeys, sortedRows]);
 
+  const handoffExistingRouteId = useMemo((): string | null => {
+    const routeIds = new Set(
+      handoffSelectedMatrixRows
+        .map((r) => r.deliveryRouteIdForHandoff)
+        .filter((id): id is string => Boolean(id)),
+    );
+    if (routeIds.size !== 1) return null;
+    return [...routeIds][0] ?? null;
+  }, [handoffSelectedMatrixRows]);
+
+  const { data: handoffRouteDetail, isFetching: handoffRouteDetailLoading } = useDeliveryRouteDetail(
+    handoffExistingRouteId,
+    handoffOpen && Boolean(handoffExistingRouteId),
+  );
+
+  const handoffReassignDateDisplay = useMemo(() => {
+    const d = handoffRouteDetail?.scheduledDate;
+    if (!d) return null;
+    try {
+      return format(parseISO(`${d}T12:00:00`), 'd.MM.yyyy', { locale: dateLocale });
+    } catch {
+      return d;
+    }
+  }, [handoffRouteDetail?.scheduledDate, dateLocale]);
+
+  const handoffNewRouteDateDisplay = useMemo(() => {
+    try {
+      return format(parseISO(`${handoffScheduledDate}T12:00:00`), 'd.MM.yyyy', { locale: dateLocale });
+    } catch {
+      return handoffScheduledDate;
+    }
+  }, [handoffScheduledDate, dateLocale]);
+
   const requestLineIdsForSelection = useMemo(
     () => collectRequestLineIdsFromKeys(selectedCellKeys, sortedRows),
     [selectedCellKeys, sortedRows],
+  );
+
+  const handoffSelectedCells = useMemo(
+    () => collectHandoffSelectedCells(selectedCellKeys, sortedRows),
+    [selectedCellKeys, sortedRows],
+  );
+
+  const handoffMatrixPreview = useMemo(
+    () => buildHandoffMatrixPreview(handoffSelectedCells, locale),
+    [handoffSelectedCells, locale],
   );
 
   const toggleCell = (key: string) => {
@@ -472,6 +763,8 @@ export function ManagerSupplyMatrixView({
       return;
     }
     setHandoffDriverId('');
+    setHandoffScheduledDate(handoffYmdFromToday(1));
+    setHandoffCompleteByTime('');
     setHandoffOpen(true);
   };
 
@@ -507,14 +800,25 @@ export function ManagerSupplyMatrixView({
         });
         toast.success(t('matrixHandoffSuccessDriverReassigned'));
       } else {
-        const { routeId } = await createRouteMutation.mutateAsync({
+        const { routeId, merged, mergedInProgress } = await createRouteMutation.mutateAsync({
           requestLineIds: requestLineIdsForSelection,
+          scheduledDate: handoffScheduledDate,
+          completeByTime: handoffCompleteByTime.trim() ? handoffCompleteByTime.trim().slice(0, 8) : null,
         });
-        await assignDriverMutation.mutateAsync({ routeId, driverUserId: handoffDriverId.trim() });
-        toast.success(t('matrixHandoffSuccessWithDriver'));
+        if (!mergedInProgress) {
+          await assignDriverMutation.mutateAsync({ routeId, driverUserId: handoffDriverId.trim() });
+        }
+        if (mergedInProgress) {
+          toast.success(t('matrixHandoffSuccessMergedInProgress'));
+        } else if (merged) {
+          toast.success(t('matrixHandoffSuccessMerged'));
+        } else {
+          toast.success(t('matrixHandoffSuccessWithDriver'));
+        }
       }
       setHandoffOpen(false);
       setHandoffDriverId('');
+      setHandoffCompleteByTime('');
       setSelectedCellKeys(new Set());
     } catch {
       toast.error(t('matrixHandoffError'));
@@ -527,7 +831,11 @@ export function ManagerSupplyMatrixView({
     return t('matrixFulfillmentPending');
   };
 
-  const renderPropertyGroupsBlock = (groups: PropertyGroup[], routeContextId?: string) =>
+  const renderPropertyGroupsBlock = (
+    groups: PropertyGroup[],
+    scopeRows: SupplyMatrixRow[],
+    routeContextId?: string,
+  ) =>
     groups.map((group) => {
       const groupKeys = group.items.map((it) => it.key);
       const selectedInGroup = groupKeys.filter((k) => selectedCellKeys.has(k)).length;
@@ -576,7 +884,10 @@ export function ManagerSupplyMatrixView({
           {group.items.map(({ row, cell, key }) => {
             const fs = cell.fulfillmentStatus ?? row.fulfillmentStatus ?? 'pending';
             const checked = selectedCellKeys.has(key);
-            const qtyLabel = qtyBadgeLabel(cell, row, fs);
+            const mergedEvCount = mergedSourceEventsCount(row, cell, scopeRows);
+            const qtyLabel = qtyBadgeLabel(cell, row, fs, scopeRows);
+            const showQtyBadge =
+              qtyLabel != null && !matrixQtySuffixRedundant(row.displayName, qtyLabel);
             const hideCellCheckbox = fs === 'in_delivery' || fs === 'delivered';
             return (
               <div
@@ -613,10 +924,10 @@ export function ManagerSupplyMatrixView({
                 )}
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
-                    <span className="text-[13px] font-normal leading-snug text-foreground sm:text-sm">
+                    <span className="whitespace-pre-line text-[13px] font-normal leading-snug text-foreground sm:text-sm">
                       {row.displayName}
                     </span>
-                    {qtyLabel != null ? (
+                    {showQtyBadge ? (
                       <Badge
                         variant="secondary"
                         className="border-0 bg-muted px-1 py-0 font-mono text-[10px] font-normal text-foreground sm:px-1.5 sm:text-[11px] dark:bg-muted/60"
@@ -625,9 +936,9 @@ export function ManagerSupplyMatrixView({
                       </Badge>
                     ) : null}
                   </div>
-                  {(row.sourceEventCount ?? 1) > 1 ? (
+                  {mergedEvCount > 1 ? (
                     <p className="mt-0.5 text-[10px] text-muted-foreground sm:text-[11px]">
-                      {t('matrixSourceEvents', { count: row.sourceEventCount })}
+                      {t('matrixSourceEvents', { count: mergedEvCount })}
                     </p>
                   ) : null}
                 </div>
@@ -800,7 +1111,7 @@ export function ManagerSupplyMatrixView({
   }, [matrixCellDetailBodyLoading, detailLines, t, dateLocale, removePoolLinesMutation.isPending]);
 
   /** Пока ИИ обрабатывает запрос, строки уже есть в ленте — не прячем сводку целиком скелетоном. */
-  if (isLoading && llmProcessingSupply.length === 0) {
+  if (isPending && llmProcessingSupply.length === 0) {
     return (
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 pb-4 pt-1">
         <Skeleton className="h-10 w-full rounded-lg" />
@@ -914,7 +1225,7 @@ export function ManagerSupplyMatrixView({
                       </div>
                       <CollapsibleContent>
                         <div className="flex flex-col gap-2 px-2 pb-2 pt-2 sm:gap-4 sm:px-3 sm:pb-3 sm:pt-3">
-                          {renderPropertyGroupsBlock(poolOnlyProcessing)}
+                          {renderPropertyGroupsBlock(poolOnlyProcessing, poolRows)}
                         </div>
                       </CollapsibleContent>
                     </section>
@@ -1002,7 +1313,7 @@ export function ManagerSupplyMatrixView({
                     </div>
                     <CollapsibleContent>
                       <div className="flex flex-col gap-2 px-2 pb-2 pt-2 sm:gap-4 sm:px-3 sm:pb-3 sm:pt-3">
-                        {renderPropertyGroupsBlock(poolGroupsWithProcessing)}
+                        {renderPropertyGroupsBlock(poolGroupsWithProcessing, poolRows)}
                       </div>
                     </CollapsibleContent>
                   </section>
@@ -1054,7 +1365,7 @@ export function ManagerSupplyMatrixView({
                     </div>
                     <CollapsibleContent>
                       <div className="flex flex-col gap-2 px-2 pb-2 pt-2 sm:gap-4 sm:px-3 sm:pb-3 sm:pt-3">
-                        {renderPropertyGroupsBlock(mixedGroups)}
+                        {renderPropertyGroupsBlock(mixedGroups, mixedRows)}
                       </div>
                     </CollapsibleContent>
                   </section>
@@ -1109,6 +1420,223 @@ export function ManagerSupplyMatrixView({
                 showAssigneeModalHint={false}
                 allowUnassignedInModal={false}
               />
+              <div className="border-t border-border/60 pt-3">
+                {handoffExistingRouteId ? (
+                  <p className="text-sm leading-snug text-muted-foreground">
+                    {handoffRouteDetailLoading || !handoffReassignDateDisplay ? (
+                      <span className="inline-flex items-center gap-1.5" aria-hidden>
+                        <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+                        …
+                      </span>
+                    ) : (
+                      t('matrixHandoffDateReassignNote', { date: handoffReassignDateDisplay })
+                    )}
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap items-end justify-between gap-3">
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          {t('matrixHandoffDateLabel')}
+                        </p>
+                        <p className="text-base font-bold tabular-nums text-foreground">{handoffNewRouteDateDisplay}</p>
+                      </div>
+                      <div className="flex shrink-0 items-center">
+                        <input
+                          ref={handoffDateInputRef}
+                          type="date"
+                          className="sr-only"
+                          value={handoffScheduledDate}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            if (v) setHandoffScheduledDate(v);
+                          }}
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          className="h-9 w-9 border-border/80"
+                          onClick={() => {
+                            const el = handoffDateInputRef.current;
+                            if (el) {
+                              if (typeof (el as HTMLInputElement & { showPicker?: () => void }).showPicker === 'function') {
+                                (el as HTMLInputElement & { showPicker: () => void }).showPicker();
+                              } else {
+                                el.click();
+                              }
+                            }
+                          }}
+                          aria-label={t('matrixHandoffDateCalendarAria')}
+                        >
+                          <Calendar className="h-4 w-4" aria-hidden />
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {(
+                        [
+                          { off: 0, labelKey: 'matrixHandoffDateToday' as const },
+                          { off: 1, labelKey: 'matrixHandoffDateTomorrow' as const },
+                          { off: 2, labelKey: 'matrixHandoffDateDayAfter' as const },
+                        ] as const
+                      ).map(({ off, labelKey }) => {
+                        const ymd = handoffYmdFromToday(off);
+                        const active = handoffScheduledDate === ymd;
+                        return (
+                          <Button
+                            key={labelKey}
+                            type="button"
+                            variant="outline"
+                            className={cn(
+                              'h-9 rounded-full px-3 text-sm font-medium',
+                              active
+                                ? 'border-2 border-primary bg-primary/15 text-foreground shadow-sm ring-2 ring-primary/20'
+                                : 'border border-transparent bg-muted/50 text-muted-foreground hover:bg-muted/70',
+                            )}
+                            onClick={() => setHandoffScheduledDate(ymd)}
+                          >
+                            {t(labelKey)}
+                          </Button>
+                        );
+                      })}
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label
+                        htmlFor="handoff-complete-by-time"
+                        className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground"
+                      >
+                        {t('matrixHandoffCompleteByLabel')}
+                      </Label>
+                      <Input
+                        id="handoff-complete-by-time"
+                        type="time"
+                        value={handoffCompleteByTime}
+                        onChange={(e) => setHandoffCompleteByTime(e.target.value)}
+                        className="h-10 w-full max-w-[9rem] rounded-md border border-input bg-input-fill px-2.5 text-sm [color-scheme:dark] focus-visible:ring-2 focus-visible:ring-primary/20"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="border-t border-border/60 pt-3">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  {t('matrixHandoffPreviewTitle')}
+                </p>
+                <p className="mt-1 text-[11px] leading-snug text-muted-foreground">{t('matrixHandoffPreviewHint')}</p>
+                {handoffExistingRouteId ? (
+                  handoffRouteDetailLoading && !handoffRouteDetail ? (
+                    <div className="mt-3 flex justify-center py-4">
+                      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                    </div>
+                  ) : handoffRouteDetail ? (
+                    <div className="mt-3 max-h-[min(40vh,22rem)] space-y-3 overflow-y-auto pr-0.5 text-sm">
+                      <div className="rounded-lg border border-border/60 bg-muted/20 p-2.5">
+                        <p className="text-[10px] font-semibold uppercase text-muted-foreground">
+                          {t('deliveryRoutePicking')}
+                        </p>
+                        {handoffRouteDetail.pickingLines.length ? (
+                          <ul className="mt-1.5 space-y-1">
+                            {handoffRouteDetail.pickingLines.map((pl, i) => (
+                              <li key={`hfp-${i}-${pl.name}`} className="flex gap-2 text-[13px] leading-snug">
+                                <Package className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                                <span>
+                                  {pl.name}{' '}
+                                  <span className="text-muted-foreground">
+                                    {pl.quantity}
+                                    {pl.unit ? ` ${pl.unit}` : ''}
+                                  </span>
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="mt-1.5 text-[13px] text-muted-foreground">—</p>
+                        )}
+                      </div>
+                      {handoffRouteDetail.stops
+                        .filter((s) => s.kind === 'property')
+                        .map((s) => (
+                          <div key={s.id} className="rounded-lg border border-border/60 bg-card/50 p-2.5">
+                            <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase text-muted-foreground">
+                              <MapPin className="h-3 w-3" />
+                              {s.propertyTitle ?? '—'}
+                            </p>
+                            {s.lines.length ? (
+                              <ul className="mt-1.5 space-y-1 pl-0.5">
+                                {s.lines.map((ln, j) => (
+                                  <li key={`${s.id}-ln-${j}`} className="text-[13px] leading-snug">
+                                    {ln.name}{' '}
+                                    <span className="text-muted-foreground">
+                                      {ln.quantity ?? '—'}
+                                      {ln.unit ? ` ${ln.unit}` : ''}
+                                    </span>
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <p className="mt-1.5 text-[13px] text-muted-foreground">—</p>
+                            )}
+                          </div>
+                        ))}
+                    </div>
+                  ) : null
+                ) : !handoffMatrixPreview ? (
+                  <p className="mt-3 text-sm text-muted-foreground">{t('matrixHandoffPreviewEmpty')}</p>
+                ) : (
+                  <div className="mt-3 max-h-[min(40vh,22rem)] space-y-3 overflow-y-auto pr-0.5 text-sm">
+                    <div className="rounded-lg border border-border/60 bg-muted/20 p-2.5">
+                      <p className="text-[10px] font-semibold uppercase text-muted-foreground">
+                        {t('matrixHandoffPreviewWarehouse')}
+                      </p>
+                      <ul className="mt-1.5 space-y-1">
+                        {handoffMatrixPreview.warehouse.map((w) => {
+                          const showQty = w.qtyLabel && !matrixQtySuffixRedundant(w.name, w.qtyLabel);
+                          return (
+                          <li key={w.key} className="flex gap-2 text-[13px] leading-snug">
+                            <Package className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                            <span>
+                              {w.name}
+                              {showQty ? (
+                                <>
+                                  {' '}
+                                  <span className="tabular-nums text-muted-foreground">{w.qtyLabel}</span>
+                                </>
+                              ) : null}
+                            </span>
+                          </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                    {handoffMatrixPreview.byProperty.map((g) => (
+                      <div key={g.propertyId} className="rounded-lg border border-border/60 bg-card/50 p-2.5">
+                        <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase text-muted-foreground">
+                          <MapPin className="h-3 w-3" />
+                          {g.propertyTitle}
+                        </p>
+                        <ul className="mt-1.5 space-y-1 pl-0.5">
+                          {g.lines.map((ln) => {
+                            const showQty = ln.qtyLabel && !matrixQtySuffixRedundant(ln.name, ln.qtyLabel);
+                            return (
+                            <li key={ln.key} className="text-[13px] leading-snug">
+                              {ln.name}
+                              {showQty ? (
+                                <>
+                                  {' '}
+                                  <span className="tabular-nums text-muted-foreground">{ln.qtyLabel}</span>
+                                </>
+                              ) : null}
+                            </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </SheetContent>
         </Sheet>

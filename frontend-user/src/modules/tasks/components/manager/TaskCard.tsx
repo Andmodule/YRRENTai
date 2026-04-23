@@ -7,6 +7,7 @@ import { useTranslations } from 'next-intl';
 import { Clock, User, MessageCircle, BadgeCheck, Link2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Task } from '../../types';
+import { isTaskOverdue } from '../../utils/task-deadline';
 import { TaskTypeBadge } from '../shared/TaskTypeBadge';
 import { TaskManagerLinkBadges } from './TaskManagerLinkBadges';
 
@@ -32,6 +33,7 @@ export const TaskCard = memo(function TaskCard({
     : undefined;
 
   const urgent = task.priority === 'urgent';
+  const overdue = isTaskOverdue(task);
 
   return (
     <div
@@ -45,6 +47,8 @@ export const TaskCard = memo(function TaskCard({
         'rounded-xl border border-border bg-card p-3 text-card-foreground shadow-sm transition-shadow duration-200',
         'cursor-grab active:cursor-grabbing hover:shadow-md dark:shadow-none',
         isDragging && 'opacity-70 ring-2 ring-primary/30',
+        overdue &&
+          'border-l-[3px] border-l-amber-600/30 bg-amber-500/[0.06] dark:border-l-amber-500/40 dark:bg-amber-500/[0.07]',
       )}
       onClick={() => onOpen(task)}
       onKeyDown={(e) => {

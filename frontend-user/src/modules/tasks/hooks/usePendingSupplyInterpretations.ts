@@ -30,6 +30,7 @@ export function usePendingSupplyInterpretations(options?: { enabled?: boolean })
     },
     enabled: options?.enabled ?? true,
     staleTime: 30_000,
+    placeholderData: (previousData) => previousData,
     /**
      * Обновления в реальном времени идут через сокеты.
      * Оставляем редкий фоновый опрос (раз в 5 минут) как fallback.

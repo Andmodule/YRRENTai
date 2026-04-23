@@ -91,6 +91,11 @@ export class TasksGateway implements OnGatewayConnection {
     this.server.emit('delivery_route_assigned', payload);
   }
 
+  /** Остановка закрыта или маршрут завершён — список маршрутов водителя без перезагрузки страницы. */
+  emitDeliveryRouteUpdated(payload: { routeId: string; driverUserId: string | null; status: string }) {
+    this.server.emit('delivery_route_updated', payload);
+  }
+
   /** Manager replied in Telegram (thread on incident alert) — staff app shows toast if reportedBy matches. */
   emitIncidentManagerNote(payload: {
     incidentId: string;

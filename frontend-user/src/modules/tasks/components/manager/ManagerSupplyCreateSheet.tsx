@@ -3,8 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { isAxiosError } from 'axios';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { normalizePendingSupplyEvent } from '../../hooks/usePendingSupplyInterpretations';
-import type { PendingSupplyInterpretationEvent } from '../../types';
 import { useLocale, useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { Loader2, Mic, Plus, Search, X } from 'lucide-react';
@@ -13,7 +11,6 @@ import { cn } from '@/lib/utils';
 import { DrawerOverlay } from '@/components/ui/drawer';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { ResponsiveModal, ResponsiveModalContent } from '@/components/ui/responsive-modal';
 import { useMatchMedia } from '@/hooks/use-match-media';
@@ -21,6 +18,9 @@ import { useProperties } from '@/hooks/use-properties';
 import { apiClient } from '@/lib/api/client';
 import { useVoiceRecorder, type VoiceAutoStopPayload } from '../../hooks/useVoiceRecorder';
 import { parseVoiceTaskAudio } from '../../hooks/useVoiceTaskParse';
+import { MANAGER_SUPPLY_MATRIX_ROOT, useSupplyCatalogItems } from '../../hooks/useSupplyMatrix';
+import { ManagerSupplyRequestComposedField } from './ManagerSupplyRequestComposedField';
+import { formatSupplyCatalogRequestLine, parseCatalogUnitOptions } from '@/modules/tasks/utils/supply-catalog-units';
 import type { Property } from '@/types';
 
 type Phase = 'voice' | 'parsing' | 'review';
@@ -83,6 +83,24 @@ export function ManagerSupplyCreateSheet({
     [properties, propertyId],
   );
 
+  const { data: catalogItems = [], isLoading: catalogLoading } = useSupplyCatalogItems(open && phase === 'review');
+
+  const catalogSorted = useMemo(() => {
+    return [...catalogItems].sort((a, b) =>
+      a.name.localeCompare(b.name, locale, { sensitivity: 'base', numeric: true }),
+    );
+  }, [catalogItems, locale]);
+
+  const appendCatalogLineToRequest = useCallback((item: { name: string; defaultUnit: string | null }) => {
+    const opts = parseCatalogUnitOptions(item.defaultUnit);
+    const unit = opts[0] ?? null;
+    const fragment = formatSupplyCatalogRequestLine(item.name, 1, unit);
+    setText((prev) => {
+      const p = prev.trim();
+      return p ? `${p}\n${fragment}` : fragment;
+    });
+  }, []);
+
   const filteredPickerProperties = useMemo(() => {
     const q = propertySearchQuery.trim().toLowerCase();
     return properties.filter((p) => {
@@ -95,27 +113,24 @@ export function ManagerSupplyCreateSheet({
 
   const { mutate: submitMutate, isPending: isSubmitting } = useMutation({
     mutationFn: async () => {
-      const res = await apiClient.post<{ data: { event: PendingSupplyInterpretationEvent } }>(
-        '/tasks/manager/supply-interpretations',
-        {
-          propertyId: propertyId.trim(),
-          text: text.trim(),
-        },
-      );
-      return res.data.data.event;
+      const res = await apiClient.post('/tasks/manager/supply-interpretations', {
+        propertyId: propertyId.trim(),
+        text: text.trim(),
+      });
+      return res.data;
     },
-    onSuccess: (event) => {
+    onSuccess: async () => {
+      /** Явный refetch до toast: иначе «invalidate» уходит в фон + placeholderData держит старый срез матрицы несколько секунд. */
+      try {
+        await Promise.all([
+          queryClient.refetchQueries({ queryKey: [...MANAGER_SUPPLY_MATRIX_ROOT, 'rows'] }),
+          queryClient.refetchQueries({ queryKey: ['tasks', 'manager-supply-interpretations'] }),
+        ]);
+      } catch {
+        void queryClient.invalidateQueries({ queryKey: [...MANAGER_SUPPLY_MATRIX_ROOT, 'rows'] });
+        void queryClient.invalidateQueries({ queryKey: ['tasks', 'manager-supply-interpretations'] });
+      }
       toast.success(t('success'));
-      const row = normalizePendingSupplyEvent(event);
-      queryClient.setQueryData<PendingSupplyInterpretationEvent[]>(
-        ['tasks', 'manager-supply-interpretations'],
-        (prev) => {
-          const list = prev ?? [];
-          const rest = list.filter((x) => x.id !== row.id);
-          return [row, ...rest];
-        },
-      );
-      void queryClient.invalidateQueries({ queryKey: ['tasks', 'manager-supply-matrix', 'rows'] });
       onOpenChange(false);
     },
     onError: (err: unknown) => {
@@ -366,13 +381,12 @@ export function ManagerSupplyCreateSheet({
               {propertyField}
               <div className="mt-4 space-y-2">
                 <Label htmlFor="supply-text">{t('textLabel')}</Label>
-                <Textarea
+                <ManagerSupplyRequestComposedField
                   id="supply-text"
-                  rows={8}
-                  className="min-h-[140px] resize-y"
-                  placeholder={t('textPlaceholder')}
                   value={text}
-                  onChange={(e) => setText(e.target.value)}
+                  onChange={setText}
+                  placeholder={t('textPlaceholder')}
+                  catalogItems={catalogSorted}
                 />
               </div>
               <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
@@ -398,6 +412,35 @@ export function ManagerSupplyCreateSheet({
                   {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden /> : null}
                   {t('submit')}
                 </Button>
+              </div>
+
+              <div className="mt-5 border-t border-border/60 pb-1 pt-5">
+                <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  {t('nomenclatureSectionTitle')}
+                </p>
+                {catalogLoading ? (
+                  <p className="text-xs font-normal text-muted-foreground">{t('nomenclatureLoading')}</p>
+                ) : catalogSorted.length === 0 ? (
+                  <p className="text-xs font-normal text-muted-foreground">{t('nomenclatureEmpty')}</p>
+                ) : (
+                  <div className="max-h-[min(36dvh,260px)] overflow-y-auto overscroll-contain rounded-lg border border-border/50 bg-muted/15 p-2 [-webkit-overflow-scrolling:touch]">
+                    <div className="flex flex-wrap gap-2">
+                      {catalogSorted.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          className={cn(
+                            'max-w-full shrink-0 rounded-full border border-border/70 bg-background px-3 py-1.5 text-left text-xs font-normal text-foreground',
+                            'transition-colors hover:border-primary/35 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                          )}
+                          onClick={() => appendCatalogLineToRequest(item)}
+                        >
+                          {item.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}

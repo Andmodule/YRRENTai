@@ -15,7 +15,8 @@ export function TasksSocketProvider({ children }: { children: React.ReactNode })
   const t = useTranslations('tasks');
 
   useEffect(() => {
-    let supplyHeavyDebounce: ReturnType<typeof setTimeout> | null = null;
+    /** Только маршруты — тяжёлый список; матрицу и ленту разбора обновляем сразу без «пустого» окна после LLM. */
+    let deliveryRoutesDebounce: ReturnType<typeof setTimeout> | null = null;
     const socket = connectTasksSocket();
     socket.on('task_updated', () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
@@ -44,18 +45,17 @@ export function TasksSocketProvider({ children }: { children: React.ReactNode })
     });
     socket.on('supply_interpretations_changed', () => {
       void queryClient.invalidateQueries({ queryKey: ['tasks', 'manager-supply-interpretations'] });
-      /** Тяжёлые сводки — дебаунс, иначе при частых событиях бэк засыпают повторяющимися запросами. */
-      if (supplyHeavyDebounce) clearTimeout(supplyHeavyDebounce);
-      supplyHeavyDebounce = setTimeout(() => {
-        supplyHeavyDebounce = null;
-        void queryClient.invalidateQueries({ queryKey: ['tasks', 'manager-supply-matrix', 'rows'] });
+      void queryClient.invalidateQueries({ queryKey: ['tasks', 'manager-supply-matrix', 'rows'] });
+      if (deliveryRoutesDebounce) clearTimeout(deliveryRoutesDebounce);
+      deliveryRoutesDebounce = setTimeout(() => {
+        deliveryRoutesDebounce = null;
         void queryClient.invalidateQueries({
           queryKey: ['tasks', 'manager-delivery-routes', 'list'],
         });
       }, 2200);
     });
     return () => {
-      if (supplyHeavyDebounce) clearTimeout(supplyHeavyDebounce);
+      if (deliveryRoutesDebounce) clearTimeout(deliveryRoutesDebounce);
       socket.disconnect();
     };
   }, [queryClient, t]);

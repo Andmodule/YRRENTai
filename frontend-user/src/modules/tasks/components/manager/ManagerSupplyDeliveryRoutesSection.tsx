@@ -48,6 +48,7 @@ function DeliveryRouteRow({
               )}
             >
               {t('deliveryRouteDateLabel', { date: r.scheduledDate })}
+              {r.completeByTime?.trim() ? ` · ${r.completeByTime.trim()}` : ''}
             </span>
             <Badge variant="secondary" className={statusClass(r.status)}>
               {routeStatusLabel(r.status)}
