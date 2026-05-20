@@ -16,6 +16,7 @@ import { AgentModule } from '../agent/agent.module';
 import { PropertyModule } from '../property/property.module';
 import { UserModule } from '../user/user.module';
 import { KnowledgeBaseModule } from '../knowledge-base/knowledge-base.module';
+import { CompanyModule } from '../company/company.module';
 import { TelegramModule } from '../telegram/telegram.module';
 import { MessagingModule } from '../messaging/messaging.module';
 import { StorageModule } from '../modules/storage/storage.module';
@@ -39,6 +40,7 @@ import { ChatRealtimeService } from './chat-realtime.service';
     PropertyModule,
     UserModule,
     KnowledgeBaseModule,
+    CompanyModule,
     forwardRef(() => TelegramModule),
     forwardRef(() => MessagingModule),
     StorageModule,

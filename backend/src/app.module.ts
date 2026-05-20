@@ -13,6 +13,7 @@ import { DatabaseInitModule } from './database/database-init.module';
 import { EmbeddingModule } from './embedding/embedding.module';
 import { AuthModule } from './auth/auth.module';
 import { UserModule } from './user/user.module';
+import { CompanyModule } from './company/company.module';
 import { PropertyModule } from './property/property.module';
 import { BookingModule } from './booking/booking.module';
 import { AgentModule } from './agent/agent.module';
@@ -85,6 +86,7 @@ import { AiChatModule } from './modules/ai-chat/ai-chat.module';
     EmbeddingModule,
     AuthModule,
     UserModule,
+    CompanyModule,
     PropertyModule,
     BookingModule,
     AgentModule,

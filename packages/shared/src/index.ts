@@ -9,6 +9,7 @@ export * from './email-inbound-metadata';
 export * from './whatsapp-chat-metadata';
 export * from './staff-outbound-metadata';
 export * from './schemas/conversation.schema';
+export * from './schemas/company-global-rules.schema';
 
 export * from './constants/roles';
 export * from './constants/booking-states';

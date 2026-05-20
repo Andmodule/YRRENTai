@@ -169,6 +169,103 @@ export function formatKnowledgeBaseEntriesForAgent(
     .join('\n\n---\n\n');
 }
 
+export interface CompanyGlobalQaEntryInput {
+  id: string;
+  question: string;
+  answer: string;
+}
+
+export interface CompanyGlobalRulesInput {
+  globalDescription?: string | null;
+  globalRules?: string | null;
+  globalQaEntries?: CompanyGlobalQaEntryInput[];
+}
+
+export function hasCompanyGlobalRulesContent(rules: CompanyGlobalRulesInput): boolean {
+  const hasQa = (rules.globalQaEntries ?? []).some(
+    (e) => e.question?.trim() && e.answer?.trim(),
+  );
+  return !!(rules.globalDescription?.trim() || rules.globalRules?.trim() || hasQa);
+}
+
+export function formatCompanyGlobalRulesForAgent(rules: CompanyGlobalRulesInput): string {
+  const parts: string[] = [];
+  const desc = rules.globalDescription?.trim();
+  const gr = rules.globalRules?.trim();
+  if (desc) {
+    parts.push('### Company description (all properties)', '', desc);
+  }
+  if (gr) {
+    parts.push('### Company-wide rules (all properties)', '', gr);
+  }
+  const qa = (rules.globalQaEntries ?? []).filter((e) => e.question?.trim() && e.answer?.trim());
+  if (qa.length > 0) {
+    parts.push(
+      '### Company-wide Q&A (all properties)',
+      '',
+      ...qa.map(
+        (e) =>
+          [`**Question:** ${e.question.trim()}`, `**Answer:** ${e.answer.trim()}`].join('\n'),
+      ),
+    );
+  }
+  return parts.join('\n\n');
+}
+
+const KB_WEAK_MATCH_ESCALATE_HINT =
+  '(No sufficiently relevant property-specific knowledge base match for this question — use company-wide rules only if they fully answer the question; otherwise do not invent facts; you MUST escalate: one short message to the guest in the same language as their latest message, then [ESCALATE] on a new line.)';
+
+const KB_EMPTY_HINT =
+  '(No knowledge base entries yet — do not invent facts; you MUST escalate: one short message to the guest in the same language as their latest message, then [ESCALATE] on a new line.)';
+
+/**
+ * Builds the Knowledge Base section for the guest AI agent.
+ * Company-wide rules apply to all properties; property-specific entries override on conflict.
+ */
+export function buildAgentKnowledgeContext(params: {
+  globalRules: CompanyGlobalRulesInput;
+  propertyKbText: string;
+  propertyKbWeakMatch: boolean;
+}): { kbContextForAgent: string; hasAnyKnowledge: boolean } {
+  const globalBlock = formatCompanyGlobalRulesForAgent(params.globalRules);
+  const hasGlobal = !!globalBlock;
+  const hasPropertyKb = !!params.propertyKbText.trim() && !params.propertyKbWeakMatch;
+
+  if (!hasGlobal && !hasPropertyKb) {
+    if (params.propertyKbWeakMatch) {
+      return { kbContextForAgent: KB_WEAK_MATCH_ESCALATE_HINT, hasAnyKnowledge: false };
+    }
+    return { kbContextForAgent: 'No knowledge base entries yet.', hasAnyKnowledge: false };
+  }
+
+  const sections: string[] = [];
+
+  if (hasGlobal) {
+    sections.push(
+      '--- Company-wide rules (all properties; use unless overridden below) ---',
+      globalBlock,
+    );
+  }
+
+  if (hasPropertyKb) {
+    sections.push(
+      '--- Property-specific knowledge (overrides company-wide on the same topic) ---',
+      params.propertyKbText,
+    );
+  } else if (params.propertyKbWeakMatch) {
+    if (hasGlobal) {
+      sections.push(KB_WEAK_MATCH_ESCALATE_HINT);
+    } else {
+      return { kbContextForAgent: KB_WEAK_MATCH_ESCALATE_HINT, hasAnyKnowledge: false };
+    }
+  }
+
+  return {
+    kbContextForAgent: sections.join('\n\n'),
+    hasAnyKnowledge: hasGlobal || hasPropertyKb,
+  };
+}
+
 export function buildSystemPrompt(propertyName: string, knowledgeBase: string): string {
   return [
     `You are a helpful AI assistant for the rental property "${propertyName}".`,
@@ -184,6 +281,7 @@ export function buildSystemPrompt(propertyName: string, knowledgeBase: string): 
     '',
     'PRIMARY RULE — KNOWLEDGE BASE:',
     '- You may ONLY state facts that appear in the "Knowledge Base" section below.',
+    '- The section may include "Company-wide rules" (all properties) and "Property-specific knowledge". If both cover the same topic and disagree, use ONLY the property-specific text.',
     '- If the guest\'s question is NOT fully answered by that text (missing details, different topic, or no matching entry), you MUST escalate — see ESCALATION below.',
     '- Never invent amenities, rules, prices, addresses, or policies.',
     '- Never guess from general world knowledge when the KB is silent on that point.',

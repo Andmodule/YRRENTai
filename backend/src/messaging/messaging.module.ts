@@ -4,6 +4,7 @@ import { AgentModule } from '../agent/agent.module';
 import { BookingModule } from '../booking/booking.module';
 import { ChatModule } from '../chat/chat.module';
 import { KnowledgeBaseModule } from '../knowledge-base/knowledge-base.module';
+import { CompanyModule } from '../company/company.module';
 import { PropertyModule } from '../property/property.module';
 import { UserModule } from '../user/user.module';
 import { TelegramModule } from '../telegram/telegram.module';
@@ -39,6 +40,7 @@ import { StorageModule } from '../modules/storage/storage.module';
     UserModule,
     BookingModule,
     KnowledgeBaseModule,
+    CompanyModule,
     AgentModule,
   ],
   controllers: [

@@ -63,6 +63,7 @@ export function Header() {
     if (pathname.includes('/dashboard/incidents')) return tNav('incidents');
     if (pathname.includes('/kb-improvement')) return tNav('kbImprovement');
     if (pathname.includes('/settings')) return tSettings('title');
+    if (pathname.includes('/properties/global-rules')) return tProperties('globalRules.title');
     if (pathname.includes('/properties')) return tProperties('title');
     if (/\/dashboard\/?$/.test(pathname)) return tDashboard('title');
     return null;

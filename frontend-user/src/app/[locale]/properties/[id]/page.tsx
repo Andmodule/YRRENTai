@@ -316,7 +316,15 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
       {activeTab === 'knowledge-base' && (
         <div className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-sm text-muted-foreground">{tKb('subtitle')}</p>
+            <div className="min-w-0 space-y-1">
+              <p className="text-sm text-muted-foreground">{tKb('subtitle')}</p>
+              <p className="text-xs text-muted-foreground/90">
+                {t('globalRules.kbInheritHint')}{' '}
+                <Link href="/properties/global-rules" className="text-primary underline-offset-2 hover:underline">
+                  {t('globalRules.kbInheritLink')}
+                </Link>
+              </p>
+            </div>
             <div className="flex flex-wrap items-center gap-2">
               {showKbDevTools && (
                 <KbDevClearButton

@@ -22,6 +22,7 @@ import { AgentService } from '../agent/agent.service';
 import {
   assistantReplyIndicatesEscalationWithoutMarker,
   formatKnowledgeBaseEntriesForAgent,
+  buildAgentKnowledgeContext,
   parseAssistantEscalation,
   resolveGuestEscalationFallback,
   shouldForceEscalationGuestReply,
@@ -42,6 +43,7 @@ import type { ChatMessageEntity } from '../chat/entities/chat-message.entity';
 import { BookingService } from '../booking/booking.service';
 
 import { KnowledgeBaseService } from '../knowledge-base/knowledge-base.service';
+import { CompanyGlobalRulesService } from '../company/company-global-rules.service';
 
 import { PropertyService } from '../property/property.service';
 
@@ -131,6 +133,8 @@ export class MessagingService {
     private readonly bookingService: BookingService,
 
     private readonly knowledgeBaseService: KnowledgeBaseService,
+
+    private readonly companyGlobalRulesService: CompanyGlobalRulesService,
 
     @Inject(forwardRef(() => TelegramService))
 
@@ -1082,27 +1086,37 @@ export class MessagingService {
 
         }
 
-        const kbSearch = await this.knowledgeBaseService.searchRelevant(
+        const [kbSearch, globalRulesRow] = await Promise.all([
 
-          freshEarly.propertyId,
+          this.knowledgeBaseService.searchRelevant(freshEarly.propertyId, userText, 8),
 
-          userText,
+          this.companyGlobalRulesService.getForProperty(freshEarly.propertyId),
 
-          8,
-
-        );
-
-        kbEmpty = kbSearch.entries.length === 0;
+        ]);
 
         kbWeakMatch = kbSearch.isWeakMatch;
 
-        const knowledgeBase = kbWeakMatch ? '' : formatKnowledgeBaseEntriesForAgent(kbSearch.entries);
+        const propertyKbText = kbWeakMatch ? '' : formatKnowledgeBaseEntriesForAgent(kbSearch.entries);
 
-        kbContextForAgent = kbWeakMatch
+        const globalRules = globalRulesRow ?? {
+          globalDescription: null,
+          globalRules: null,
+          globalQaEntries: [],
+        };
 
-          ? '(No sufficiently relevant knowledge base match for this question — do not invent facts; you MUST escalate: one short message to the guest in the same language as their latest message, then [ESCALATE] on a new line.)'
+        const built = buildAgentKnowledgeContext({
 
-          : knowledgeBase || 'No knowledge base entries yet.';
+          globalRules,
+
+          propertyKbText,
+
+          propertyKbWeakMatch: kbWeakMatch,
+
+        });
+
+        kbContextForAgent = built.kbContextForAgent;
+
+        kbEmpty = !built.hasAnyKnowledge;
 
       }
 
@@ -1116,10 +1130,12 @@ export class MessagingService {
         assistantReplyIndicatesEscalationWithoutMarker(textWithoutMarker);
 
       /** Same as web chat `chat.gateway` — without this, Telegram stays silent when KB looks strong but the model omits [ESCALATE]. */
+      const kbWeakWithoutCoverage = kbWeakMatch && kbEmpty;
+
       const notifyStaff =
         kbEmpty ||
         forcedByForbidden ||
-        kbWeakMatch ||
+        kbWeakWithoutCoverage ||
         rawEndsEscalate ||
         modelSaysEscalateWithoutMarker;
 
@@ -1127,7 +1143,7 @@ export class MessagingService {
       const guestEscalationUi =
         kbEmpty ||
         forcedByForbidden ||
-        kbWeakMatch ||
+        kbWeakWithoutCoverage ||
         rawEndsEscalate ||
         modelSaysEscalateWithoutMarker;
 

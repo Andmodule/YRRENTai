@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { ArrowDown, ArrowUp, ArrowUpDown, Building2, Search } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, Building2, Search, Settings } from 'lucide-react';
 import { Link } from '@/i18n/navigation';
 import type { Property } from '@/types';
 import { formatPropertyLocation } from '@/lib/format/property-location';
@@ -105,20 +105,33 @@ export function PropertyListTable({ properties }: PropertyListTableProps) {
     );
   }
 
+  const tGlobal = useTranslations('properties.globalRules');
+
   return (
     <div className="space-y-3">
-      <div className="relative w-full max-w-full sm:max-w-xs">
-        <Search
-          className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/55"
-          aria-hidden
-        />
-        <Input
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder={t('searchPlaceholder')}
-          className="h-10 border-slate-200/90 bg-white pl-8 text-sm shadow-none placeholder:text-slate-400 focus-visible:ring-1 focus-visible:ring-slate-300 dark:border-border/50 dark:bg-background/60 dark:placeholder:text-muted-foreground/55 dark:focus-visible:ring-border sm:h-8"
-        />
+      <div className="flex w-full items-center gap-2">
+        <div className="relative min-w-0 flex-1 sm:max-w-xs">
+          <Search
+            className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/55"
+            aria-hidden
+          />
+          <Input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={t('searchPlaceholder')}
+            className="h-10 border-slate-200/90 bg-white pl-8 text-sm shadow-none placeholder:text-slate-400 focus-visible:ring-1 focus-visible:ring-slate-300 dark:border-border/50 dark:bg-background/60 dark:placeholder:text-muted-foreground/55 dark:focus-visible:ring-border sm:h-8"
+          />
+        </div>
+        <Link
+          href="/properties/global-rules"
+          className="inline-flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-slate-200/90 bg-white px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/30 hover:text-foreground dark:border-border/50 dark:bg-background/60 sm:h-8"
+          title={tGlobal('openSettings')}
+          aria-label={tGlobal('openSettings')}
+        >
+          <Settings className="h-4 w-4" strokeWidth={2} />
+          <span className="hidden sm:inline">{tGlobal('settingsShort')}</span>
+        </Link>
       </div>
 
       {/* Десктоп: широкая таблица */}

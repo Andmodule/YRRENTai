@@ -8,3 +8,5 @@ export { PropertyDraftCard } from './property-draft-card';
 export { DeletePropertyDialog } from './delete-property-dialog';
 export { PropertyIntegrationsCard } from './property-integrations-card';
 export { ClearOtaConfirmButton } from './clear-ota-confirm-button';
+export { CompanyGlobalRulesForm } from './company-global-rules-form';
+export { CompanyGlobalQaSection } from './company-global-qa-section';

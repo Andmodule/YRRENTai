@@ -17,10 +17,12 @@ import type { EmailInboundMessageMetadata } from '@rentai/shared';
 import {
   resolveGuestEscalationFallback,
   formatKnowledgeBaseEntriesForAgent,
+  buildAgentKnowledgeContext,
   parseAssistantEscalation,
   shouldForceEscalationGuestReply,
   assistantReplyIndicatesEscalationWithoutMarker,
 } from '../agent/constants/agent-prompts';
+import { CompanyGlobalRulesService } from '../company/company-global-rules.service';
 export interface StreamClientLike {
   emit: (ev: string, data: unknown) => void;
 }
@@ -36,6 +38,7 @@ export class GuestAiPipelineService {
     private readonly chatService: ChatService,
     private readonly conversationService: ConversationService,
     private readonly knowledgeBaseService: KnowledgeBaseService,
+    private readonly companyGlobalRulesService: CompanyGlobalRulesService,
     private readonly agentService: AgentService,
     private readonly telegramService: TelegramService,
     private readonly chatRealtime: ChatRealtimeService,
@@ -60,12 +63,22 @@ export class GuestAiPipelineService {
     const { property, conversation, userMessage, content, listPreview, streamClient, guestReplyChannel } =
       params;
 
-    const kbSearch = await this.knowledgeBaseService.searchRelevant(property.id, content, 8);
+    const [kbSearch, globalRulesRow] = await Promise.all([
+      this.knowledgeBaseService.searchRelevant(property.id, content, 8),
+      this.companyGlobalRulesService.getForProperty(property.id),
+    ]);
     const { entries: kbEntries, isWeakMatch: kbWeakMatch } = kbSearch;
-    const knowledgeBase = kbWeakMatch ? '' : formatKnowledgeBaseEntriesForAgent(kbEntries);
-    const kbContextForAgent = kbWeakMatch
-      ? '(No sufficiently relevant knowledge base match for this question — do not invent facts; you MUST escalate: one short message to the guest in the same language as their latest message, then [ESCALATE] on a new line.)'
-      : knowledgeBase || 'No knowledge base entries yet.';
+    const propertyKbText = kbWeakMatch ? '' : formatKnowledgeBaseEntriesForAgent(kbEntries);
+    const globalRules = globalRulesRow ?? {
+      globalDescription: null,
+      globalRules: null,
+      globalQaEntries: [],
+    };
+    const { kbContextForAgent, hasAnyKnowledge } = buildAgentKnowledgeContext({
+      globalRules,
+      propertyKbText,
+      propertyKbWeakMatch: kbWeakMatch,
+    });
     const history = await this.chatService.getRecentHistory(property.id, 20, conversation.id);
 
     if (streamClient) {
@@ -88,15 +101,17 @@ export class GuestAiPipelineService {
         onDone: async (fullText) => {
           const { rawEndsEscalate, textWithoutMarker } = parseAssistantEscalation(fullText);
 
-          const kbEmpty = kbEntries.length === 0;
+          const kbEmpty = !hasAnyKnowledge;
           const forcedByForbidden = shouldForceEscalationGuestReply(textWithoutMarker);
           const modelSaysEscalateWithoutMarker =
             assistantReplyIndicatesEscalationWithoutMarker(textWithoutMarker);
 
+          const kbWeakWithoutCoverage = kbWeakMatch && !hasAnyKnowledge;
+
           const notifyStaff =
             kbEmpty ||
             forcedByForbidden ||
-            kbWeakMatch ||
+            kbWeakWithoutCoverage ||
             rawEndsEscalate ||
             modelSaysEscalateWithoutMarker;
 
@@ -104,7 +119,7 @@ export class GuestAiPipelineService {
           const guestEscalationUi =
             kbEmpty ||
             forcedByForbidden ||
-            kbWeakMatch ||
+            kbWeakWithoutCoverage ||
             rawEndsEscalate ||
             modelSaysEscalateWithoutMarker;
 
