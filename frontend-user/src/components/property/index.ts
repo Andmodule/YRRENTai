@@ -7,3 +7,4 @@ export { PropertyChannelIntegrationSection } from './property-channel-integratio
 export { PropertyDraftCard } from './property-draft-card';
 export { DeletePropertyDialog } from './delete-property-dialog';
 export { PropertyIntegrationsCard } from './property-integrations-card';
+export { ClearOtaConfirmButton } from './clear-ota-confirm-button';

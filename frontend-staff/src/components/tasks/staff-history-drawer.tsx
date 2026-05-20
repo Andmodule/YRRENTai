@@ -4,8 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { format, parseISO } from 'date-fns';
 import { ru } from 'date-fns/locale';
-import { Clapperboard, Eye, History, Loader2, MapPin } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Clapperboard, History, Loader2, MapPin } from 'lucide-react';
 import { Drawer, DrawerContent } from '@/components/ui/drawer';
 import type { StaffDeliveryRouteDetail } from '@/hooks/use-staff-delivery-route';
 import type { Task } from '@/hooks/use-tasks';
@@ -224,7 +223,7 @@ export function StaffHistoryDrawer({
                   <IncidentHistoryRow
                     key={inc.uuid}
                     item={inc}
-                    onViewMedia={() => setHistoryDetail({ kind: 'incident', item: inc })}
+                    onOpen={() => setHistoryDetail({ kind: 'incident', item: inc })}
                   />
                 ))
               ))}
@@ -244,62 +243,49 @@ export function StaffHistoryDrawer({
 
 function IncidentHistoryRow({
   item,
-  onViewMedia,
+  onOpen,
 }: {
   item: StaffIncidentHistoryItem;
-  onViewMedia: () => void;
+  onOpen: () => void;
 }) {
   const h = useStaffStrings().tasks.history;
   const typeLabel = h.typeLabels[item.type] ?? item.type;
-  const hasMedia = (item.photoUrls?.length ?? 0) > 0;
 
   return (
-    <div className="rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2.5 text-left text-sm dark:border-slate-700/90 dark:bg-slate-800/60">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">{typeLabel}</p>
-          <p className="font-medium text-slate-900 dark:text-slate-100">{item.propertyTitle}</p>
-          <p className="mt-1 line-clamp-3 text-slate-600 dark:text-slate-300">{item.descriptionPreview}</p>
-          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-            {format(parseISO(item.createdAt), 'd MMM yyyy, HH:mm', { locale: ru })} · {h.photosCount(item.photoUrls.length)}
-          </p>
-          {item.photoUrls.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {item.photoUrls.slice(0, 4).map((url) =>
-                isVideoAttachmentUrl(url) ? (
-                  <div
-                    key={url}
-                    className="flex h-12 w-12 items-center justify-center rounded-lg bg-slate-900/90 ring-1 ring-slate-200/80"
-                  >
-                    <Clapperboard className="h-5 w-5 text-white/90" />
-                  </div>
-                ) : (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    key={url}
-                    src={url}
-                    alt=""
-                    className="h-12 w-12 rounded-lg object-cover ring-1 ring-slate-200/80"
-                  />
-                ),
-              )}
-            </div>
+    <button
+      type="button"
+      onClick={onOpen}
+      className="w-full rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2.5 text-left text-sm transition-colors hover:border-teal-200/90 hover:bg-teal-50/40 active:bg-teal-50/60 dark:border-slate-700/90 dark:bg-slate-800/60 dark:hover:border-teal-800/50 dark:hover:bg-slate-800/80"
+    >
+      <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">{typeLabel}</p>
+      <p className="font-medium text-slate-900 dark:text-slate-100">{item.propertyTitle}</p>
+      <p className="mt-1 line-clamp-3 text-slate-600 dark:text-slate-300">{item.descriptionPreview}</p>
+      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+        {format(parseISO(item.createdAt), 'd MMM yyyy, HH:mm', { locale: ru })} · {h.photosCount(item.photoUrls.length)}
+      </p>
+      {item.photoUrls.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {item.photoUrls.slice(0, 4).map((url) =>
+            isVideoAttachmentUrl(url) ? (
+              <div
+                key={url}
+                className="flex h-12 w-12 items-center justify-center rounded-lg bg-slate-900/90 ring-1 ring-slate-200/80"
+              >
+                <Clapperboard className="h-5 w-5 text-white/90" />
+              </div>
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                key={url}
+                src={url}
+                alt=""
+                className="h-12 w-12 rounded-lg object-cover ring-1 ring-slate-200/80"
+              />
+            ),
           )}
         </div>
-        {hasMedia ? (
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            className="shrink-0 gap-1 rounded-lg border-teal-200/90 text-teal-900 dark:border-teal-800 dark:text-teal-100"
-            onClick={onViewMedia}
-          >
-            <Eye className="h-3.5 w-3.5" aria-hidden />
-            {h.viewMedia}
-          </Button>
-        ) : null}
-      </div>
-    </div>
+      )}
+    </button>
   );
 }
 

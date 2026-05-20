@@ -145,6 +145,10 @@ export interface StaffStrings {
       videoTooBig: (mb: number) => string;
       quickActionTitle: string;
       quickActionHint: string;
+      /** Компактная плитка в строке с превью: строка 1. */
+      addMediaTileLine1: string;
+      /** Компактная плитка: строка 2. */
+      addMediaTileLine2: string;
       closeSheet: string;
       /** Сжатие/обработка файлов */
       prepareFailed: string;
@@ -410,6 +414,8 @@ const MESSAGES: Record<StaffLocale, StaffStrings> = {
         videoTooBig: (mb: number) => `Видео больше ${mb} МБ сожмите или выберите короче`,
         quickActionTitle: 'Фото или видео',
         quickActionHint: 'Один или несколько — для проверки у менеджера',
+        addMediaTileLine1: 'Снять / из',
+        addMediaTileLine2: 'галереи',
         closeSheet: 'Закрыть',
         prepareFailed: 'Не удалось подготовить вложения. Попробуйте другой файл.',
         noTaskBinding: 'Нет привязки к задаче. Закройте окно и откройте снова.',
@@ -667,6 +673,8 @@ const MESSAGES: Record<StaffLocale, StaffStrings> = {
         videoTooBig: (mb: number) => `Video is over ${mb} MB — try a shorter clip or compress it`,
         quickActionTitle: 'Photo or video',
         quickActionHint: 'One or more for manager review',
+        addMediaTileLine1: 'Camera /',
+        addMediaTileLine2: 'gallery',
         closeSheet: 'Close',
         prepareFailed: 'Could not process attachments. Try another file.',
         noTaskBinding: 'No task context. Close and try again.',

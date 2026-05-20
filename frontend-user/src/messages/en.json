@@ -337,7 +337,15 @@
       "currency": "Currency",
       "maxGuests": "Max guests",
       "zodomusPropertyId": "Zodomus property id",
-      "notSpecified": "Not specified"
+      "notSpecified": "Not specified",
+      "clearOtaButton": "Remove OTA",
+      "clearOtaTitle": "Remove OTA connection?",
+      "clearOtaDescription": "Zodomus and all channel lines will be removed for this property. You can add them again in edit mode.",
+      "clearOtaConfirm": "Remove",
+      "clearOtaInProgress": "Removing…",
+      "clearOtaSuccess": "OTA connection removed",
+      "clearOtaError": "Could not remove OTA connection",
+      "clearOtaAria": "Remove OTA connection for this property"
     }
   },
   "kb": {
@@ -1759,6 +1767,8 @@
     "bookingComCheckIn": "Check-in",
     "bookingComCheckOut": "Check-out",
     "bookingComProperty": "Property",
+    "bookingComHotelId": "hotel_id",
+    "bookingComHotelIdMissing": "hotel_id not found in email (usually only in extranet HTML links)",
     "bookingComGuestQuestion": "Guest message",
     "dev": {
       "panelSummary": "Dev: guest testing",

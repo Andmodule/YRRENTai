@@ -78,6 +78,17 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
   const { data, isLoading, isError, refetch } = useTodayTasks();
   const { mutate: updateStatus, isPending: statusPending } = useUpdateTaskStatus();
 
+  const [issueTask, setIssueTask] = useState<Task | null>(null);
+  const [detailTask, setDetailTask] = useState<Task | null>(null);
+  const [quickTask, setQuickTask] = useState<Task | null>(null);
+  const [photoTaskUuid, setPhotoTaskUuid] = useState<string | null>(null);
+
+  const allAssigned = useMemo(() => data?.tasks ?? [], [data?.tasks]);
+  const quickTaskForDrawer = useMemo(
+    () => (quickTask ? (allAssigned.find((t) => t.uuid === quickTask.uuid) ?? quickTask) : null),
+    [allAssigned, quickTask],
+  );
+
   const onMarkDoneCommitted = useCallback((task: Task) => {
     setQuickTask(null);
     setPhotoTaskUuid(task.uuid);
@@ -99,10 +110,6 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
     onChecklistIncomplete: onMarkDoneChecklistIncomplete,
   });
 
-  const [issueTask, setIssueTask] = useState<Task | null>(null);
-  const [detailTask, setDetailTask] = useState<Task | null>(null);
-  const [quickTask, setQuickTask] = useState<Task | null>(null);
-  const [photoTaskUuid, setPhotoTaskUuid] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [supplementCtx, setSupplementCtx] = useState<StaffSupplementContext | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -128,8 +135,15 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
     };
   }, []);
 
-  /** Все назначенные задачи из API (широкий диапазон дат) — для поиска и открытого списка. */
-  const allAssigned = useMemo(() => data?.tasks ?? [], [data?.tasks]);
+  useEffect(() => {
+    if (!quickTask) return;
+    const next = allAssigned.find((t) => t.uuid === quickTask.uuid);
+    if (!next) return;
+    const p = quickTask.photoUrls?.filter(Boolean) ?? [];
+    const n = next.photoUrls?.filter(Boolean) ?? [];
+    if (n.length === p.length && n.join() === p.join() && next.status === quickTask.status) return;
+    setQuickTask(next);
+  }, [allAssigned, quickTask]);
 
   /** Задачи с `dueDate` = сегодня: прогресс и «все сделаны» по смене. */
   const todayScopeTasks = useMemo(
@@ -457,15 +471,12 @@ export function StaffChecklist({ user, onLogout }: StaffChecklistProps) {
         )}
 
         <TaskQuickActionsDrawer
-          task={quickTask}
+          task={quickTaskForDrawer}
           open={!!quickTask}
           onOpenChange={(o) => !o && setQuickTask(null)}
           onStart={handleQuickStart}
           onMarkDone={handleMarkDoneTask}
           markDoneLabel={strings.tasks.checklist.quickActionMarkDone}
-          onAddVerification={(t) => {
-            setPhotoTaskUuid(t.uuid);
-          }}
           onMarkIssue={handleQuickIssue}
           onOpenDetails={(t) => {
             const q = searchParams.get(STAFF_TASK_DETAIL_QUERY);

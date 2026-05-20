@@ -337,7 +337,15 @@
       "currency": "Moneda",
       "maxGuests": "Máx. huéspedes",
       "zodomusPropertyId": "ID propiedad Zodomus",
-      "notSpecified": "No especificado"
+      "notSpecified": "No especificado",
+      "clearOtaButton": "Quitar OTA",
+      "clearOtaTitle": "¿Quitar conexión OTA?",
+      "clearOtaDescription": "Se eliminarán Zodomus y todas las líneas de canal. Puedes volver a configurarlas al editar la propiedad.",
+      "clearOtaConfirm": "Quitar",
+      "clearOtaInProgress": "Quitando…",
+      "clearOtaSuccess": "Conexión OTA eliminada",
+      "clearOtaError": "No se pudo quitar la conexión OTA",
+      "clearOtaAria": "Quitar conexión OTA de esta propiedad"
     }
   },
   "kb": {
@@ -1543,6 +1551,8 @@
     "bookingComCheckIn": "Entrada",
     "bookingComCheckOut": "Salida",
     "bookingComProperty": "Alojamiento",
+    "bookingComHotelId": "hotel_id",
+    "bookingComHotelIdMissing": "hotel_id no encontrado en el correo (suele estar solo en enlaces HTML del extranet)",
     "bookingComGuestQuestion": "Mensaje del huésped",
     "dev": {
       "panelSummary": "Dev: prueba de huésped",

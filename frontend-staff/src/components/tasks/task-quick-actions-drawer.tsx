@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Play,
   CheckCircle2,
@@ -9,7 +9,6 @@ import {
   MapPin,
   ClipboardList,
   RotateCcw,
-  Clapperboard,
 } from 'lucide-react';
 import { Drawer, DrawerContent } from '@/components/ui/drawer';
 import { Button } from '@/components/ui/button';
@@ -42,8 +41,6 @@ interface TaskQuickActionsDrawerProps {
   readOnlyActions?: boolean;
   /** Подпись на завершение задачи (по умолчанию «Готово»). */
   markDoneLabel?: string;
-  /** Завершённая задача: прикрепить фото/видео (шторка верификации). */
-  onAddVerification?: (task: Task) => void;
 }
 
 export function TaskQuickActionsDrawer({
@@ -58,23 +55,33 @@ export function TaskQuickActionsDrawer({
   startPending = false,
   readOnlyActions = false,
   markDoneLabel,
-  onAddVerification,
 }: TaskQuickActionsDrawerProps) {
   const strings = useStaffStrings();
-  const v = strings.tasks.verification;
   const h = strings.tasks.history;
   const ti = strings.tasks.taskIssue;
   const tr = strings.driver.route;
   const generalLabel = strings.tasks.checklist.generalTaskLabel;
   const [mediaViewerOpen, setMediaViewerOpen] = useState(false);
-  if (!task) return null;
+  const [mediaViewerUrl, setMediaViewerUrl] = useState<string | null>(null);
 
-  const existingMediaUrls = task.photoUrls?.filter(Boolean) ?? [];
+  const existingMediaUrls = useMemo(
+    () => (task ? ([...new Set((task.photoUrls ?? []).filter(Boolean))] as string[]) : []),
+    [task],
+  );
+
+  useEffect(() => {
+    setMediaViewerOpen(false);
+    setMediaViewerUrl(null);
+  }, [task?.uuid ?? '']);
+
+  if (!task) return null;
 
   const isDone = task.status === 'done';
   const isIssue = task.status === 'issue';
   const isPending = task.status === 'pending';
   const canComplete = !isDone && !isIssue;
+
+  const showMediaBlock = existingMediaUrls.length > 0;
 
   const isGeneral = task.isGeneralTask === true;
   const isIncidentType = task.type === 'incident' || task.type === 'damage' || task.type === 'lost_item';
@@ -141,18 +148,21 @@ export function TaskQuickActionsDrawer({
                 </span>
               </div>
             ) : null}
-            {existingMediaUrls.length > 0 ? (
+            {showMediaBlock ? (
               <div className="space-y-2">
                 <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
                   {h.detailAttachments}
                 </p>
-                <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                <div className="flex flex-wrap items-start gap-2">
                   {existingMediaUrls.map((url) => (
                     <button
                       key={url}
                       type="button"
-                      onClick={() => setMediaViewerOpen(true)}
-                      className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl border border-slate-200/90 bg-slate-100 ring-offset-2 transition hover:opacity-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 dark:border-slate-600 dark:bg-slate-800"
+                      onClick={() => {
+                        setMediaViewerUrl(url);
+                        setMediaViewerOpen(true);
+                      }}
+                      className="relative h-20 w-20 shrink-0 overflow-hidden rounded-xl border border-slate-200/90 bg-slate-100 ring-offset-2 transition hover:opacity-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 dark:border-slate-600 dark:bg-slate-800"
                     >
                       {isVideoAttachmentUrl(url) ? (
                         <video
@@ -169,56 +179,12 @@ export function TaskQuickActionsDrawer({
                     </button>
                   ))}
                 </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="w-full rounded-xl border-teal-200 text-teal-900 hover:bg-teal-50 dark:border-teal-800 dark:text-teal-100"
-                  onClick={() => setMediaViewerOpen(true)}
-                >
-                  {h.viewMedia}
-                </Button>
               </div>
-            ) : null}
-            {isDone && onAddVerification && !readOnlyActions ? (
-              <button
-                type="button"
-                onClick={() => {
-                  onOpenChange(false);
-                  onAddVerification(task);
-                }}
-                className={cn(
-                  'mt-1 flex w-full items-center gap-3 rounded-2xl border p-3.5 text-left transition-transform active:scale-[0.99]',
-                  'border-teal-200/80 bg-gradient-to-r from-teal-50/95 via-white to-cyan-50/90 shadow-sm',
-                  'dark:from-teal-950/50 dark:via-slate-900/80 dark:to-cyan-950/40 dark:border-teal-800/60',
-                )}
-              >
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-teal-500 to-cyan-600 text-white shadow-md shadow-teal-700/20">
-                  <Clapperboard className="h-6 w-6" strokeWidth={1.75} />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{v.quickActionTitle}</p>
-                  <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{v.quickActionHint}</p>
-                </div>
-              </button>
             ) : null}
           </div>
 
           {readOnlyActions && isDone && onMarkReopen ? (
             <div className="flex flex-col gap-2">
-              {onAddVerification ? (
-                <Button
-                  type="button"
-                  className="h-12 w-full justify-center gap-2 rounded-xl text-base bg-gradient-to-r from-teal-600 to-cyan-600 text-white shadow-md shadow-teal-900/20 hover:from-teal-600 hover:to-cyan-600"
-                  onClick={() => {
-                    onOpenChange(false);
-                    onAddVerification(task);
-                  }}
-                >
-                  <Clapperboard className="h-5 w-5" />
-                  {v.quickActionTitle}
-                </Button>
-              ) : null}
               <Button
                 type="button"
                 variant="outline"
@@ -292,9 +258,14 @@ export function TaskQuickActionsDrawer({
     </Drawer>
     <StaffMediaViewerDrawer
       open={mediaViewerOpen}
-      onOpenChange={setMediaViewerOpen}
+      onOpenChange={(o) => {
+        setMediaViewerOpen(o);
+        if (!o) {
+          setMediaViewerUrl(null);
+        }
+      }}
       title={h.detailAttachments}
-      urls={existingMediaUrls}
+      urls={mediaViewerUrl ? [mediaViewerUrl] : []}
     />
     </>
   );

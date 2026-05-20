@@ -1,5 +1,6 @@
 'use client';
 
+import { useMemo } from 'react';
 import { Drawer, DrawerContent } from '@/components/ui/drawer';
 import { isVideoAttachmentUrl } from '@/lib/media-url';
 
@@ -14,13 +15,14 @@ export function StaffMediaViewerDrawer({
   title: string;
   urls: string[];
 }) {
+  const unique = useMemo(() => [...new Set((urls ?? []).filter(Boolean))], [urls]);
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
       <DrawerContent title={title} className="max-h-[min(88svh,720px)]">
         <div className="max-h-[min(70svh,560px)] space-y-3 overflow-y-auto pr-1">
-          {urls.map((url) => (
+          {unique.map((url, i) => (
             <div
-              key={url}
+              key={`${url}#${i}`}
               className="overflow-hidden rounded-2xl border border-slate-200/90 bg-slate-950/5 dark:border-slate-700 dark:bg-slate-900/40"
             >
               {isVideoAttachmentUrl(url) ? (

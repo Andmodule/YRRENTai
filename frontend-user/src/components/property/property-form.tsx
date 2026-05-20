@@ -32,6 +32,11 @@ interface PropertyFormProps {
   collapseAdvancedSection?: boolean;
   /** Compact icon actions (draft card on property list). */
   footerStyle?: 'default' | 'draft-icons';
+  /**
+   * Только у сохранённого объекта: сброс OTA через API (рядом с полем/каналами),
+   * без ожидания «Сохранить».
+   */
+  onClearOta?: () => Promise<unknown>;
 }
 
 export function PropertyForm({
@@ -41,6 +46,7 @@ export function PropertyForm({
   submitLabel,
   collapseAdvancedSection,
   footerStyle = 'default',
+  onClearOta,
 }: PropertyFormProps) {
   const t = useTranslations('properties.form');
   const useCompactAdvanced =
@@ -152,6 +158,8 @@ export function PropertyForm({
         setValue={setValue}
         icalLines={icalLines}
         onIcalLinesChange={setIcalLines}
+        otaServerSnapshot={defaultValues}
+        onClearOta={onClearOta}
       />
 
       <Collapsible open={whatsappOpen} onOpenChange={setWhatsappOpen} className="border-t border-border/60 pt-3">
@@ -230,7 +238,8 @@ export function PropertyForm({
           const { zodomusPropertyId: _z, ...rest } = payload;
           void onSubmit(rest);
         } else {
-          void onSubmit(payload);
+          const { zodomusPropertyId: _z, ...rest } = payload;
+          void onSubmit({ ...rest, zodomusPropertyId: null });
         }
       })}
       className="space-y-3"

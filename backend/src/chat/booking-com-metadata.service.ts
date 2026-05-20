@@ -13,6 +13,7 @@ export class BookingComMetadataService {
   async buildForUserMessage(
     conversationId: string,
     content: string,
+    opts?: { hotelIdFromEmail?: string | null },
   ): Promise<BookingComMessageMetadata | null> {
     const parsed = parseBookingComEmail(content);
     if (!parsed) return null;
@@ -23,6 +24,9 @@ export class BookingComMetadataService {
     );
     const variant: BookingComMessageMetadata['variant'] = prior > 0 ? 'followup' : 'full';
 
+    const hotelIdHint = opts?.hotelIdFromEmail?.trim();
+    const hotelId = hotelIdHint || parsed.hotelId;
+
     return {
       channel: 'booking_com',
       variant,
@@ -32,6 +36,7 @@ export class BookingComMetadataService {
       checkOut: parsed.checkOut,
       propertyName: parsed.propertyName,
       guestQuestion: parsed.guestQuestion,
+      ...(hotelId ? { hotelId } : {}),
     };
   }
 }

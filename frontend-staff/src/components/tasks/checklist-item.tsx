@@ -88,12 +88,24 @@ export const ChecklistItem = memo(function ChecklistItem({
     }
   };
 
-  const street = task.streetAddress || task.propertyAddress;
   const isGeneral = task.isGeneralTask === true;
   const isIncidentType = task.type === 'incident' || task.type === 'damage' || task.type === 'lost_item';
   const isMaintenance = task.type === 'maintenance';
   const placeLabel = isGeneral ? str.tasks.checklist.generalTaskLabel : task.propertyTitle;
-  const secondaryLine = isGeneral ? (task.title?.trim() || '') : street;
+  const propertyTitleNorm = (task.propertyTitle ?? '').trim();
+  const titleTrim = (task.title ?? '').trim();
+  const notesTrim = (task.notes ?? '').trim();
+  /** Состав работ / комментарий: под типом уборки, без дублирования названия объекта, если в title только оно. */
+  const workPreview = (() => {
+    if (isGeneral) {
+      if (titleTrim) return titleTrim;
+      if (notesTrim) return notesTrim;
+      return '';
+    }
+    if (titleTrim && titleTrim !== propertyTitleNorm) return titleTrim;
+    if (notesTrim) return notesTrim;
+    return '';
+  })();
   const showReportActions = !isDone && (onVoiceForTask || onTextForTask);
   const canToggleDoneOff = isDone && Boolean(onMarkReopen);
   const actionBtn = isDriver ? cardActionBtnClassDriver : cardActionBtnClass;
@@ -165,17 +177,6 @@ export const ChecklistItem = memo(function ChecklistItem({
           >
             {placeLabel}
           </p>
-          {secondaryLine ? (
-            <p
-              className={cn(
-                'truncate text-xs',
-                isDone ? 'text-slate-400 line-through dark:text-slate-500' : 'text-slate-500 dark:text-slate-400',
-              )}
-              title={secondaryLine}
-            >
-              {secondaryLine}
-            </p>
-          ) : null}
           <p
             className={cn(
               'flex items-center gap-1.5 truncate text-xs',
@@ -194,6 +195,19 @@ export const ChecklistItem = memo(function ChecklistItem({
               {task.contextLabel ? ` · ${task.contextLabel}` : ''}
             </span>
           </p>
+          {workPreview ? (
+            <p
+              className={cn(
+                'mt-0.5 line-clamp-2 break-words whitespace-pre-line text-xs',
+                isDone
+                  ? 'text-slate-400 line-through dark:text-slate-500'
+                  : 'text-slate-600 dark:text-slate-400',
+              )}
+              title={workPreview}
+            >
+              {workPreview}
+            </p>
+          ) : null}
           {isIssue ? (
             <p className="mt-1">
               <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-950">
@@ -266,7 +280,7 @@ export const ChecklistItem = memo(function ChecklistItem({
                 {task.dueTime.length >= 5 ? task.dueTime.slice(0, 5) : task.dueTime}
               </span>
             ) : null}
-            {task.priority === 'urgent' ? (
+            {task.priority === 'urgent' && !isDone ? (
               <span
                 className="mt-0.5 h-1.5 w-1.5 rounded-full bg-rose-500 ring-1 ring-rose-200/80"
                 title="Срочно"
@@ -333,9 +347,9 @@ export const ChecklistItem = memo(function ChecklistItem({
                   {task.dueTime}
                 </span>
               )}
-              {task.priority === 'urgent' && (
+              {task.priority === 'urgent' && !isDone ? (
                 <span className="h-2 w-2 rounded-full bg-rose-500 ring-2 ring-rose-200/80" title="Срочно" />
-              )}
+              ) : null}
             </div>
           </>
         )}

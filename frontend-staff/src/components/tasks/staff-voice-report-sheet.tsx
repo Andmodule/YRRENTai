@@ -4,6 +4,7 @@ import {
   forwardRef,
   useCallback,
   useEffect,
+  useId,
   useImperativeHandle,
   useLayoutEffect,
   useMemo,
@@ -12,13 +13,16 @@ import {
 } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Drawer as VaulDrawer } from 'vaul';
-import { Loader2, Mic, X, Camera } from 'lucide-react';
+import { Loader2, Mic, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import { useVoiceRecorder } from '@/hooks/use-voice-recorder';
 import { useUploadIncidentPhotos } from '@/hooks/use-tasks';
+import { useStaffStrings } from '@/locales/staff-strings';
+import { VerificationAddMediaTile } from '@/components/tasks/verification-add-media-tile';
+import { prepareStaffVerificationFiles, MAX_STAFF_VERIFICATION_FILES } from '@/lib/staff-prepare-media-files';
 import {
   postStaffVoicePreview,
   postStaffVoiceSubmit,
@@ -89,6 +93,21 @@ function formatSuggestedStatusRu(raw: string | null | undefined): string {
   return map[key] ?? raw;
 }
 
+/** Синхронно с бэкендом: убрать «уборщик сообщил…» — факт в метаданных. */
+function sanitizeIncidentDescriptionClient(s: string): string {
+  if (!s.trim()) return s;
+  return s
+    .replace(
+      /^(Уборщик|Сотрудник|Работник|Исполнитель|Персонал)\s+(сообщил|сообщила|передал|передала|заявил|заявила|написал|написала|сообщает|сообщают|доложил|доложила)([\s,:\-—]+)/iu,
+      '',
+    )
+    .replace(/^(Со\s+слов\s+уборщика|Со\s+слов\s+сотрудника)([,\s]+)/iu, '')
+    .replace(/^(Со\s+слов|По\s+словам)\s+(уборщика|сотрудника|исполнителя)([,\s]+)/iu, '')
+    .trim();
+}
+
+const INCIDENT_VOICE_MAX_PHOTOS = 5;
+
 type Phase = 'voice' | 'parsing' | 'clarify' | 'review';
 
 export type StaffVoiceTaskOption = { uuid: string; label: string };
@@ -111,6 +130,10 @@ export const StaffVoiceReportSheet = forwardRef<StaffVoiceReportSheetHandle, Sta
     ref,
   ) {
   const queryClient = useQueryClient();
+  const strings = useStaffStrings();
+  const v = strings.tasks.verification;
+  const h = strings.tasks.history;
+  const incidentFileInputId = useId();
   const [mode, setMode] = useState<StaffVoiceMode>(initialMode);
   const [phase, setPhase] = useState<Phase>('voice');
   const [preview, setPreview] = useState<StaffVoicePreviewData | null>(null);
@@ -126,8 +149,17 @@ export const StaffVoiceReportSheet = forwardRef<StaffVoiceReportSheetHandle, Sta
   const [clarifyTranscribing, setClarifyTranscribing] = useState(false);
   const [incidentPhotoFiles, setIncidentPhotoFiles] = useState<File[]>([]);
   const [voiceSubmitting, setVoiceSubmitting] = useState(false);
-  const incidentPhotosInputRef = useRef<HTMLInputElement>(null);
   const { mutateAsync: uploadIncidentPhotos } = useUploadIncidentPhotos();
+
+  const incidentPreviewUrls = useMemo(
+    () => incidentPhotoFiles.map((f) => URL.createObjectURL(f)),
+    [incidentPhotoFiles],
+  );
+  useEffect(() => {
+    return () => {
+      incidentPreviewUrls.forEach((u) => URL.revokeObjectURL(u));
+    };
+  }, [incidentPreviewUrls]);
 
   const initialForSession = useMemo(() => {
     return defaultTaskUuid && taskOptions.some((o) => o.uuid === defaultTaskUuid)
@@ -176,8 +208,49 @@ export const StaffVoiceReportSheet = forwardRef<StaffVoiceReportSheetHandle, Sta
     if (!preview) return;
     setEditTaskComment(preview.task.comment);
     setEditIncTitle(preview.incident.title ?? '');
-    setEditIncDesc(preview.incident.description ?? '');
+    setEditIncDesc(sanitizeIncidentDescriptionClient(preview.incident.description ?? ''));
   }, [preview]);
+
+  const handleIncidentPhotoInputChange = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const list = e.target.files;
+      e.target.value = '';
+      if (!list?.length) return;
+      try {
+        const prep = await prepareStaffVerificationFiles(Array.from(list));
+        if (!prep.ok) {
+          if (prep.error === 'too_many') {
+            toast.error(v.tooMany(prep.maxFiles ?? MAX_STAFF_VERIFICATION_FILES));
+          } else {
+            toast.error(v.videoTooBig(prep.maxMb ?? 50));
+          }
+          return;
+        }
+        if (!prep.files.length) {
+          toast.error(v.emptyAfterPrepare);
+          return;
+        }
+        const images = prep.files.filter(
+          (f) => f.type.startsWith('image/') || (!f.type && !/\.(mp4|webm|mov|m4v)$/i.test(f.name)),
+        );
+        if (images.length < prep.files.length) {
+          toast.message('К инциденту сейчас прикрепляются только фото.');
+        }
+        if (!images.length) return;
+        setIncidentPhotoFiles((prev) => {
+          const merged = [...prev, ...images].slice(0, INCIDENT_VOICE_MAX_PHOTOS);
+          if (prev.length + images.length > INCIDENT_VOICE_MAX_PHOTOS) {
+            toast.message(`Не более ${INCIDENT_VOICE_MAX_PHOTOS} фото.`);
+          }
+          return merged;
+        });
+      } catch (err) {
+        console.error('prepareStaffVerificationFiles', err);
+        toast.error(v.prepareFailed);
+      }
+    },
+    [v],
+  );
 
   const processBlob = useCallback(
     async (blob: Blob | null, clarification?: string) => {
@@ -366,7 +439,10 @@ export const StaffVoiceReportSheet = forwardRef<StaffVoiceReportSheetHandle, Sta
           include: preview.incident.include,
           type: preview.incident.type,
           title: editIncTitle.trim() || preview.incident.title,
-          description: editIncDesc.trim() || preview.incident.description,
+          description: (() => {
+            const raw = (editIncDesc.trim() || preview.incident.description || '').trim();
+            return sanitizeIncidentDescriptionClient(raw) || raw;
+          })(),
           risk: preview.incident.risk,
           photoUrls: incidentPhotoUrls,
         },
@@ -682,9 +758,6 @@ export const StaffVoiceReportSheet = forwardRef<StaffVoiceReportSheetHandle, Sta
                         onChange={(e) => setEditIncTitle(e.target.value)}
                         className="mt-0.5 w-full rounded-lg border border-rose-200 bg-white px-3 py-2 text-sm"
                       />
-                      <p className="mt-2 text-xs text-rose-700">
-                        Тип: {preview.incident.type ?? 'damage'} · риск: {preview.incident.risk ?? '—'}
-                      </p>
                       <label className="mt-2 block text-xs text-rose-800" htmlFor="edit-inc-desc">
                         Описание
                       </label>
@@ -693,64 +766,59 @@ export const StaffVoiceReportSheet = forwardRef<StaffVoiceReportSheetHandle, Sta
                         value={editIncDesc}
                         onChange={(e) => setEditIncDesc(e.target.value)}
                         className="mt-0.5 min-h-[80px] rounded-xl border-rose-200 text-sm"
+                        placeholder="Коротко, по факту: что повреждено, где, что нужно"
                       />
                       <div className="mt-3">
-                        <p className="text-xs font-medium text-rose-900">Фото к инциденту</p>
-                        <p className="mt-0.5 text-[11px] text-rose-800/90">
-                          {preview.task.shortages?.trim()
-                            ? 'При довозе и инциденте фото прикрепляются к инциденту.'
-                            : 'До 5 снимков — увидит менеджер в карточке инцидента.'}
-                        </p>
                         <input
-                          ref={incidentPhotosInputRef}
+                          id={incidentFileInputId}
                           type="file"
-                          accept="image/*"
+                          accept="image/*,video/*"
                           multiple
                           className="sr-only"
+                          tabIndex={-1}
+                          aria-label={v.addFromGallery}
                           onChange={(e) => {
-                            const list = e.target.files;
-                            if (!list?.length) return;
-                            setIncidentPhotoFiles((prev) => {
-                              const next = [...prev, ...Array.from(list)].slice(0, 5);
-                              return next;
-                            });
-                            e.target.value = '';
+                            void handleIncidentPhotoInputChange(e);
                           }}
                         />
-                        <div className="mt-2 flex flex-wrap items-center gap-2">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="gap-1.5 border-rose-200 text-rose-900"
-                            onClick={() => incidentPhotosInputRef.current?.click()}
-                          >
-                            <Camera className="h-4 w-4" aria-hidden />
-                            Добавить фото
-                          </Button>
-                          {incidentPhotoFiles.length > 0 ? (
-                            <span className="text-xs text-rose-800">
-                              Выбрано: {incidentPhotoFiles.length}
-                            </span>
-                          ) : null}
-                        </div>
-                        {incidentPhotoFiles.length > 0 ? (
-                          <ul className="mt-2 space-y-1 text-xs text-rose-900">
-                            {incidentPhotoFiles.map((f, i) => (
-                              <li key={`${f.name}-${i}`} className="flex items-center justify-between gap-2">
-                                <span className="truncate">{f.name}</span>
+                        <p className="text-xs font-medium text-rose-900">{h.incidentPhotoTitle}</p>
+                        <p className="mt-0.5 text-[11px] text-rose-800/90">
+                          {preview.task.shortages?.trim() ? h.incidentPhotoHint : v.stripHint}
+                        </p>
+                        <div className="mt-2 flex flex-wrap items-start gap-2">
+                          <VerificationAddMediaTile
+                            line1={v.addMediaTileLine1}
+                            line2={v.addMediaTileLine2}
+                            ariaLabel={v.addFromGallery}
+                            htmlFor={incidentFileInputId}
+                          />
+                          {incidentPhotoFiles.map((f, i) => {
+                            const url = incidentPreviewUrls[i];
+                            return (
+                              <div
+                                key={`${f.name}-${f.size}-${f.lastModified}-${i}`}
+                                className="relative h-20 w-20 shrink-0 overflow-hidden rounded-xl border border-rose-200/90 bg-rose-50/80"
+                              >
+                                {url ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img src={url} alt="" className="h-full w-full object-cover" />
+                                ) : null}
                                 <button
                                   type="button"
-                                  className="shrink-0 text-rose-700 underline"
-                                  onClick={() =>
-                                    setIncidentPhotoFiles((prev) => prev.filter((_, j) => j !== i))
-                                  }
+                                  className="absolute right-0.5 top-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-black/50 text-white shadow-sm"
+                                  aria-label="Убрать"
+                                  onClick={() => setIncidentPhotoFiles((prev) => prev.filter((_, j) => j !== i))}
                                 >
-                                  Убрать
+                                  <X className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden />
                                 </button>
-                              </li>
-                            ))}
-                          </ul>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {incidentPhotoFiles.length > 0 ? (
+                          <p className="mt-1.5 text-center text-xs text-rose-800/90">
+                            {incidentPhotoFiles.length} / {INCIDENT_VOICE_MAX_PHOTOS}
+                          </p>
                         ) : null}
                       </div>
                       {highRisk ? (

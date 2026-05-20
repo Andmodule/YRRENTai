@@ -605,6 +605,7 @@ export class MessagingService {
       thread.reservationId,
       guestMessage.id,
       emailInboundAttachments,
+      bookingHints.bookingHotelId?.trim() ?? null,
     );
 
     const inboundAiAutoReplyEnabled =
@@ -824,6 +825,7 @@ export class MessagingService {
     reservationId: string | null,
     messagingGuestMessageId: string,
     emailAttachments: EmailInboundAttachment[],
+    bookingHotelIdFromEmail: string | null = null,
   ): Promise<{ chatGuestMessageId: string; listPreview: string } | null> {
 
     try {
@@ -896,7 +898,9 @@ export class MessagingService {
 
       let bookingMeta: BookingComMessageMetadata | null = null;
       try {
-        bookingMeta = await this.bookingComMetadataService.buildForUserMessage(conv.id, previewText);
+        bookingMeta = await this.bookingComMetadataService.buildForUserMessage(conv.id, previewText, {
+          hotelIdFromEmail: bookingHotelIdFromEmail,
+        });
       } catch (metaErr) {
         this.logger.warn(
           `Email→chat: booking metadata skipped for conv ${conv.id}: ${(metaErr as Error).message}`,

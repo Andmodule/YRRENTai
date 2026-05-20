@@ -2478,6 +2478,7 @@ Rules:
 - If "shortages" is non-empty (довоз, замена, нехватка): set suggestedStatus to "pending" only — staff does NOT put logistics work "in_progress"; the manager assigns later. Never use "in_progress" when shortages is filled.
 - NEVER set suggestedStatus to "issue" for supply/delivery/replacement only. Reserve "issue" ONLY for real escalations: damage, safety, theft, flood, guest conflict, or when incident.include should be true.
 - If incident.include is true, type/description must be meaningful.
+- incident.description (Russian): state ONLY what happened (facts: object, place, required action). NEVER write "уборщик сообщил", "сотрудник передал", "пользователь сказал" — the system already records the reporter. Good: "В гостиной разбита ваза, требуется замена." Bad: "Уборщик сообщил, что ваза разбита."
 - Use Russian for comment/title/description fields where natural.
 - Always set "mismatchHint" to null (UI no longer shows button/speech warnings).
 - Shortages wording (critical): when the staff needs materials delivered OR something replaced, fill "shortages" using fixed Russian stems with correct declensions:
@@ -2593,12 +2594,16 @@ buttonPressed: ${buttonPressed}`;
         : include
           ? this.deriveVoiceTaskTitle(transcript)
           : null;
-    const desc =
+    let desc =
       typeof incBlock.description === 'string' && incBlock.description.trim()
         ? incBlock.description.trim().slice(0, 8000)
         : include
           ? transcript
           : null;
+    if (include && desc) {
+      const cleaned = this.sanitizeStaffIncidentDescription(desc);
+      desc = cleaned ?? desc;
+    }
     const riskRaw = String(incBlock.risk || 'medium').toLowerCase();
     const risk =
       riskRaw === 'low' || riskRaw === 'medium' || riskRaw === 'high' ? (riskRaw as 'low' | 'medium' | 'high') : 'medium';
@@ -2670,6 +2675,11 @@ buttonPressed: ${buttonPressed}`;
     if (done) suggestedStatus = 'done';
     else if (task.status === 'pending' && t.length > 5) suggestedStatus = 'in_progress';
 
+    const rawIncDesc = includeIncident ? transcript.slice(0, 8000) : null;
+    const heurIncDesc = rawIncDesc
+      ? this.sanitizeStaffIncidentDescription(rawIncDesc) ?? rawIncDesc
+      : null;
+
     return {
       buttonPressed,
       detectedMode,
@@ -2684,13 +2694,33 @@ buttonPressed: ${buttonPressed}`;
         include: includeIncident,
         type: includeIncident ? 'damage' : null,
         title: includeIncident ? this.deriveVoiceTaskTitle(transcript) || 'Инцидент' : null,
-        description: includeIncident ? transcript.slice(0, 8000) : null,
+        description: heurIncDesc,
         risk: /вода|потоп|огонь|травм|скорая/i.test(t) ? 'high' : includeIncident ? 'medium' : null,
       },
       needsClarification: false,
       clarificationQuestions: [],
       mismatchHint: null,
     };
+  }
+
+  /**
+   * Voice preview: keep incident text factual (no "staff reported" — reporter is in metadata).
+   */
+  private sanitizeStaffIncidentDescription(text: string | null | undefined): string | null {
+    if (!text?.trim()) return null;
+    let s = text.trim();
+    s = s.replace(
+      /^(Уборщик|Сотрудник|Работник|Исполнитель|Персонал)\s+(сообщил|сообщила|передал|передала|заявил|заявила|написал|написала|сообщает|сообщают|доложил|доложила)([\s,:\-—]+)/iu,
+      '',
+    );
+    s = s.replace(/^(Со\s+слов\s+уборщика|Со\s+слов\s+сотрудника)([,\s]+)/iu, '');
+    s = s.replace(
+      /^(Со\s+слов|По\s+словам)\s+(уборщика|сотрудника|исполнителя)([,\s]+)/iu,
+      '',
+    );
+    s = s.trim();
+    if (!s) return null;
+    return s.length > 8000 ? s.slice(0, 8000) : s;
   }
 
   /** Until LLM returns a one-line summary, derive a short title from the transcript. */

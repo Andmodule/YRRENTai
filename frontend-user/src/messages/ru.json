@@ -337,7 +337,15 @@
       "currency": "Валюта",
       "maxGuests": "Макс. гостей",
       "zodomusPropertyId": "Zodomus property id",
-      "notSpecified": "Не указано"
+      "notSpecified": "Не указано",
+      "clearOtaButton": "Удалить OTA",
+      "clearOtaTitle": "Удалить подключение OTA?",
+      "clearOtaDescription": "Будут сброшены Zodomus ID и все строки каналов. Потом их можно снова указать в настройках объекта.",
+      "clearOtaConfirm": "Удалить",
+      "clearOtaInProgress": "Удаление…",
+      "clearOtaSuccess": "Подключение OTA удалено",
+      "clearOtaError": "Не удалось удалить OTA",
+      "clearOtaAria": "Удалить OTA у этого объекта"
     }
   },
   "kb": {
@@ -1759,6 +1767,8 @@
     "bookingComCheckIn": "Заезд",
     "bookingComCheckOut": "Отъезд",
     "bookingComProperty": "Объект",
+    "bookingComHotelId": "hotel_id",
+    "bookingComHotelIdMissing": "hotel_id не найден в письме (только в HTML-ссылках extranet)",
     "bookingComGuestQuestion": "Сообщение гостя",
     "dev": {
       "panelSummary": "Dev: тест гостя",

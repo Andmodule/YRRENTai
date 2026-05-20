@@ -1,17 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
-import type { Task, TaskNote } from '@/hooks/use-tasks';
-import {
-  useTaskNotes,
-  useUpdateTaskStatus,
-  useAddTaskNote,
-  useTaskChecklist,
-  usePatchTaskChecklistItem,
-} from '@/hooks/use-tasks';
+import type { Task } from '@/hooks/use-tasks';
+import { useTaskChecklist, usePatchTaskChecklistItem } from '@/hooks/use-tasks';
 import { useStaffStrings } from '@/locales/staff-strings';
 
 interface TaskDetailStaffProps {
@@ -29,25 +22,12 @@ export function TaskDetailStaff({
   checklistScrollNonce = 0,
 }: TaskDetailStaffProps) {
   const strings = useStaffStrings();
-  const { data: notesData } = useTaskNotes(task?.uuid ?? null, open && !!task);
   const { data: checklistData } = useTaskChecklist(task?.uuid ?? null, open && !!task);
   const { mutate: patchChecklist, isPending: checklistPending } = usePatchTaskChecklistItem();
-  const { mutate: updateStatus, isPending: statusPending } = useUpdateTaskStatus();
-  const { mutateAsync: addNote, isPending: notePending } = useAddTaskNote();
-  const [noteText, setNoteText] = useState('');
-  const [startPrompt, setStartPrompt] = useState(false);
 
-  const notes = notesData?.notes ?? [];
   const checklistItems = checklistData?.items ?? [];
   const checklistDone = checklistItems.filter((i) => i.checked).length;
   const checklistTotal = checklistItems.length;
-
-  useEffect(() => {
-    if (!open) {
-      setNoteText('');
-      setStartPrompt(false);
-    }
-  }, [open, task?.uuid]);
 
   useEffect(() => {
     if (!open || !task || checklistScrollNonce <= 0) return;
@@ -61,18 +41,6 @@ export function TaskDetailStaff({
   }, [open, task?.uuid, checklistScrollNonce, checklistItems]);
 
   if (!task) return null;
-
-  const handleStart = () => {
-    updateStatus({ uuid: task.uuid, status: 'in_progress' });
-    setStartPrompt(false);
-    onClose();
-  };
-
-  const submitNote = async () => {
-    if (!noteText.trim()) return;
-    await addNote({ uuid: task.uuid, text: noteText.trim() });
-    setNoteText('');
-  };
 
   return (
     <div
@@ -108,14 +76,6 @@ export function TaskDetailStaff({
             {task.contextLabel}
           </div>
         )}
-
-        <div className="mb-4">
-          <p className="text-xs font-semibold uppercase text-slate-500">{strings.tasks.assigneeLabel}</p>
-          <p className="mt-1 text-sm font-medium text-slate-900">
-            {task.assigneeName?.trim() ? task.assigneeName : strings.tasks.assigneeUnassigned}
-          </p>
-          <p className="mt-1 text-xs leading-snug text-slate-500">{strings.tasks.assigneeReassignHint}</p>
-        </div>
 
         {task.status === 'issue' && (
           <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -185,64 +145,6 @@ export function TaskDetailStaff({
             </ul>
           </div>
         )}
-
-        {task.status === 'pending' && (
-          <div className="mb-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            {!startPrompt ? (
-              <Button className="w-full" onClick={() => setStartPrompt(true)}>
-                Начать задачу
-              </Button>
-            ) : (
-              <div className="flex flex-col gap-2">
-                <p className="text-center text-sm text-slate-700">Начать сейчас?</p>
-                <div className="flex gap-2">
-                  <Button className="flex-1" disabled={statusPending} onClick={handleStart}>
-                    Начать
-                  </Button>
-                  <Button variant="outline" className="flex-1" onClick={() => setStartPrompt(false)}>
-                    Позже
-                  </Button>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        <div className="mb-4">
-          <p className="mb-2 text-xs font-semibold uppercase text-slate-500">Заметки для менеджера</p>
-          <div className="max-h-40 space-y-2 overflow-y-auto rounded-xl border border-slate-100 bg-slate-50/80 p-3">
-            {notes.length === 0 ? (
-              <p className="text-sm text-slate-500">Пока нет заметок</p>
-            ) : (
-              notes.map((n: TaskNote) => (
-                <div key={n.uuid} className="rounded-lg bg-white p-2 text-sm shadow-sm">
-                  <p className="text-xs text-slate-400">{n.authorName}</p>
-                  <p className="text-slate-800">{n.text}</p>
-                  {n.photoUrl && (
-                    <a href={n.photoUrl} target="_blank" rel="noreferrer" className="mt-1 block text-teal-700">
-                      Фото
-                    </a>
-                  )}
-                </div>
-              ))
-            )}
-          </div>
-          <Textarea
-            className="mt-2"
-            rows={2}
-            placeholder="Короткое сообщение менеджеру…"
-            value={noteText}
-            onChange={(e) => setNoteText(e.target.value)}
-          />
-          <Button
-            className="mt-2 w-full"
-            size="sm"
-            disabled={notePending || !noteText.trim()}
-            onClick={() => void submitNote()}
-          >
-            Отправить
-          </Button>
-        </div>
 
         <Button className="w-full" size="lg" variant="secondary" onClick={onClose}>
           Закрыть

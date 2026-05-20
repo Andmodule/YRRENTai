@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { useTodayTasks, useUpdateTaskStatus } from '@/hooks/use-tasks';
 import { usePendingTaskMarkDoneStaff } from '@/hooks/use-pending-task-mark-done';
@@ -45,6 +45,23 @@ export function DriverOffRouteTasks({ routePropertyIds, onVoiceForTask, onTextFo
   const [issueTask, setIssueTask] = useState<Task | null>(null);
   const [photoTaskUuid, setPhotoTaskUuid] = useState<string | null>(null);
   const [checklistScrollNonce, setChecklistScrollNonce] = useState(0);
+
+  const allTasks = useMemo(() => data?.tasks ?? [], [data?.tasks]);
+
+  const quickTaskForDrawer = useMemo(
+    () => (quickTask ? (allTasks.find((t) => t.uuid === quickTask.uuid) ?? quickTask) : null),
+    [allTasks, quickTask],
+  );
+
+  useEffect(() => {
+    if (!quickTask) return;
+    const next = allTasks.find((t) => t.uuid === quickTask.uuid);
+    if (!next) return;
+    const p = quickTask.photoUrls?.filter(Boolean) ?? [];
+    const n = next.photoUrls?.filter(Boolean) ?? [];
+    if (n.length === p.length && n.join() === p.join() && next.status === quickTask.status) return;
+    setQuickTask(next);
+  }, [allTasks, quickTask]);
 
   const onMarkDoneCommitted = useCallback((task: Task) => {
     setQuickTask(null);
@@ -136,16 +153,13 @@ export function DriverOffRouteTasks({ routePropertyIds, onVoiceForTask, onTextFo
       </Drawer>
 
       <TaskQuickActionsDrawer
-        task={quickTask}
+        task={quickTaskForDrawer}
         open={!!quickTask}
         onOpenChange={(o) => !o && setQuickTask(null)}
         onStart={handleQuickStart}
         onMarkDone={handleMarkDoneTask}
         onMarkIssue={handleQuickIssue}
         onOpenDetails={(t) => setDetailTask(t)}
-        onAddVerification={(t) => {
-          setPhotoTaskUuid(t.uuid);
-        }}
         startPending={statusPending}
         readOnlyActions={true}
       />

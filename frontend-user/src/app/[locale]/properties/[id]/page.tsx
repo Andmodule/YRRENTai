@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useLayoutEffect, useState } from 'react';
+import { use, useLayoutEffect, useState, type ComponentType } from 'react';
 import { useTranslations } from 'next-intl';
 import { useRouter } from '@/i18n/navigation';
 import { toast } from 'sonner';
@@ -19,7 +19,12 @@ import {
 } from 'lucide-react';
 import { useProperty, useProperties } from '@/hooks/use-properties';
 import { useKnowledgeBase } from '@/hooks/use-knowledge-base';
-import { PropertyForm, DeletePropertyDialog, PropertyIntegrationsCard } from '@/components/property';
+import {
+  PropertyForm,
+  DeletePropertyDialog,
+  PropertyIntegrationsCard,
+  ClearOtaConfirmButton,
+} from '@/components/property';
 import { KbBoard, KbImportDialog, KbDevClearButton } from '@/components/knowledge-base';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
@@ -100,27 +105,31 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
     process.env.NODE_ENV === 'development' ||
     process.env.NEXT_PUBLIC_KB_DEV_CLEAR === 'true';
 
-  const details = [
+  const hasOtaConnection =
+    (property.channelListings?.length ?? 0) > 0 || Boolean(property.zodomusPropertyId?.trim());
+
+  const channelsDisplayText =
+    property.channelListings && property.channelListings.length > 0
+      ? property.channelListings
+          .map(
+            (c) =>
+              `${c.otaPlatform?.code ?? '?'}: ${c.externalListingId}`,
+          )
+          .join(' · ')
+      : property.zodomusPropertyId?.trim()
+        ? `${property.otaPlatform?.code ?? 'OTA'} · ${property.zodomusPropertyId}`
+        : t('detail.notSpecified');
+
+  const baseDetails: Array<{
+    icon: ComponentType<{ className?: string }>;
+    label: string;
+    value: string;
+  }> = [
     { icon: Globe, label: t('detail.country'), value: loc(property.country) },
     { icon: Building2, label: t('detail.city'), value: loc(property.city) },
     { icon: MapPin, label: t('detail.address'), value: property.address },
     { icon: Clock, label: t('detail.timezone'), value: property.timezone },
     { icon: DollarSign, label: t('detail.currency'), value: property.currency },
-    {
-      icon: Link2,
-      label: t('detail.channels'),
-      value:
-        property.channelListings && property.channelListings.length > 0
-          ? property.channelListings
-              .map(
-                (c) =>
-                  `${c.otaPlatform?.code ?? '?'}: ${c.externalListingId}`,
-              )
-              .join(' · ')
-          : property.zodomusPropertyId?.trim()
-            ? `${property.otaPlatform?.code ?? 'OTA'} · ${property.zodomusPropertyId}`
-            : t('detail.notSpecified'),
-    },
   ];
 
   return (
@@ -205,6 +214,10 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
                 onSubmit={handleInlineSave}
                 onCancel={() => setIsEditingSettings(false)}
                 submitLabel={t('updateSubmit')}
+                onClearOta={async () => {
+                  await updateProperty(id, { channelListings: [], zodomusPropertyId: null });
+                  await mutate();
+                }}
               />
               <div className="mt-6 space-y-2">
                 <p className="text-xs text-muted-foreground">{t('integrations.syncUsesSavedSettings')}</p>
@@ -240,8 +253,8 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
             <>
               <div className="rounded-lg border bg-card shadow-sm">
                 <dl className="divide-y">
-                  {details.map(({ icon: Icon, label, value }) => (
-                    <div key={label} className="flex items-center justify-between px-5 py-4">
+                  {baseDetails.map(({ icon: Icon, label, value }) => (
+                    <div key={label} className="flex items-center justify-between gap-3 px-5 py-4">
                       <dt className="flex items-center gap-2 text-sm text-muted-foreground">
                         <Icon className="h-4 w-4 shrink-0" />
                         {label}
@@ -249,6 +262,31 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
                       <dd className="text-sm font-medium">{value}</dd>
                     </div>
                   ))}
+                  <div className="flex items-center justify-between gap-2 px-5 py-4 sm:gap-3">
+                    <dt className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
+                      <Link2 className="h-4 w-4 shrink-0" />
+                      {t('detail.channels')}
+                    </dt>
+                    <dd className="flex min-w-0 max-w-full flex-1 items-center justify-end gap-1 sm:gap-2">
+                      <span
+                        className="min-w-0 text-right text-sm font-medium [overflow-wrap:anywhere] sm:max-w-[min(100%,20rem)]"
+                        title={channelsDisplayText}
+                      >
+                        {channelsDisplayText}
+                      </span>
+                      {hasOtaConnection && (
+                        <ClearOtaConfirmButton
+                          onClear={async () => {
+                            await updateProperty(id, {
+                              channelListings: [],
+                              zodomusPropertyId: null,
+                            });
+                            await mutate();
+                          }}
+                        />
+                      )}
+                    </dd>
+                  </div>
                 </dl>
               </div>
 

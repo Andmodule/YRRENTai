@@ -21,6 +21,7 @@ import {
   Home,
   Loader2,
   Trash2,
+  Unlink,
 } from 'lucide-react';
 import type { z } from 'zod';
 import type { createPropertySchema } from '@rentai/shared';
@@ -34,7 +35,9 @@ import { cn } from '@/lib/utils';
 import { useOtaPlatforms } from '@/hooks/use-ota-platforms';
 import type { ZodomusPropertyPreview } from '@/hooks/use-zodomus-property-preview';
 import { useZodomusPropertyPreview } from '@/hooks/use-zodomus-property-preview';
+import type { Property } from '@/types';
 import { ZodomusRoomRatesPanel } from './zodomus-room-rates-panel';
+import { ClearOtaConfirmButton } from './clear-ota-confirm-button';
 
 type FormInput = z.input<typeof createPropertySchema>;
 
@@ -69,6 +72,10 @@ interface PropertyChannelIntegrationSectionProps {
   onIcalLinesChange: (value: string) => void;
   /** When true, the iCal block is a collapsible submenu (default: true). */
   icalAsCollapsible?: boolean;
+  /** Снимок сервера (defaultValues) — чтобы кнопка сброса оставалась, пока в БД ещё есть OTA. */
+  otaServerSnapshot?: Partial<Property>;
+  /** PATCH: очистить каналы + legacy OTA, затем refetch. */
+  onClearOta?: () => Promise<unknown>;
 }
 
 function platformIcon(code: string) {
@@ -96,11 +103,21 @@ export function PropertyChannelIntegrationSection({
   icalLines,
   onIcalLinesChange,
   icalAsCollapsible = true,
+  otaServerSnapshot,
+  onClearOta,
 }: PropertyChannelIntegrationSectionProps) {
   const t = useTranslations('properties.form');
+  const tOta = useTranslations('properties.detail');
   const { platforms, isLoading } = useOtaPlatforms();
   const previewMutation = useZodomusPropertyPreview();
   const listingsWatch = watch('channelListings');
+  const zodomusFieldWatch = watch('zodomusPropertyId');
+  const hasFormOta =
+    (listingsWatch?.length ?? 0) > 0 || Boolean(String(zodomusFieldWatch ?? '').trim());
+  const hasServerOta =
+    (otaServerSnapshot?.channelListings?.length ?? 0) > 0 ||
+    Boolean(otaServerSnapshot?.zodomusPropertyId?.trim());
+  const showClearOta = Boolean(onClearOta) && (hasFormOta || hasServerOta);
   const [icalOpen, setIcalOpen] = useState(() => Boolean(icalLines.trim()));
 
   useEffect(() => {
@@ -240,16 +257,35 @@ export function PropertyChannelIntegrationSection({
             <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
               {t('channelListingsHeading')}
             </span>
-            {fields.length > 0 && (
-              <button
-                type="button"
-                disabled={isLoading || platforms.length === 0}
-                onClick={() => addChannelRow()}
-                className="text-[11px] font-normal text-muted-foreground underline decoration-muted-foreground/40 underline-offset-2 transition-colors hover:text-foreground hover:decoration-foreground/50 disabled:cursor-not-allowed disabled:opacity-50 sm:text-xs"
-              >
-                {t('addChannelButton')}
-              </button>
-            )}
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {fields.length > 0 && showClearOta && onClearOta && (
+                <ClearOtaConfirmButton
+                  onClear={() => Promise.resolve(onClearOta())}
+                  trigger={
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-9 border-destructive/30 text-destructive hover:bg-destructive/10"
+                      aria-label={tOta('clearOtaAria')}
+                    >
+                      <Unlink className="mr-1.5 h-3.5 w-3.5" />
+                      {tOta('clearOtaButton')}
+                    </Button>
+                  }
+                />
+              )}
+              {fields.length > 0 && (
+                <button
+                  type="button"
+                  disabled={isLoading || platforms.length === 0}
+                  onClick={() => addChannelRow()}
+                  className="text-[11px] font-normal text-muted-foreground underline decoration-muted-foreground/40 underline-offset-2 transition-colors hover:text-foreground hover:decoration-foreground/50 disabled:cursor-not-allowed disabled:opacity-50 sm:text-xs"
+                >
+                  {t('addChannelButton')}
+                </button>
+              )}
+            </div>
           </div>
 
           {isLoading && (
@@ -261,22 +297,40 @@ export function PropertyChannelIntegrationSection({
           {!isLoading && fields.length === 0 && (
             <div className="space-y-3">
               <div className="rounded-xl border border-border/50 bg-muted/10 p-3 sm:p-4">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-                  <Label
-                    htmlFor="manual-zodomus-property-id"
-                    className="text-xs leading-snug sm:mb-0 sm:max-w-[min(22rem,42%)] sm:shrink-0"
-                  >
+                <div className="space-y-1.5">
+                  <Label htmlFor="manual-zodomus-property-id" className="text-xs leading-snug">
                     {t('manualZodomusStandaloneLabel')}
                   </Label>
-                  <Input
-                    id="manual-zodomus-property-id"
-                    placeholder={t('manualZodomusStandalonePlaceholder')}
-                    autoComplete="off"
-                    className="min-h-11 min-w-0 flex-1 font-mono text-sm tabular-nums sm:mt-0"
-                    aria-invalid={!!errors.zodomusPropertyId}
-                    aria-describedby="manual-zodomus-hint"
-                    {...register('zodomusPropertyId')}
-                  />
+                  <div className="flex flex-col gap-2 min-[450px]:flex-row min-[450px]:items-stretch min-[450px]:gap-2">
+                    <Input
+                      id="manual-zodomus-property-id"
+                      placeholder={t('manualZodomusStandalonePlaceholder')}
+                      autoComplete="off"
+                      className="min-h-11 min-w-0 flex-1 font-mono text-sm tabular-nums"
+                      aria-invalid={!!errors.zodomusPropertyId}
+                      aria-describedby="manual-zodomus-hint"
+                      {...register('zodomusPropertyId')}
+                    />
+                    {showClearOta && onClearOta && (
+                      <div className="w-full min-[450px]:w-auto min-[450px]:shrink-0">
+                        <ClearOtaConfirmButton
+                          onClear={() => Promise.resolve(onClearOta())}
+                          trigger={
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="default"
+                              className="h-11 w-full min-[450px]:h-11 min-[450px]:min-w-[9rem] border-destructive/30 text-destructive hover:bg-destructive/10"
+                              aria-label={tOta('clearOtaAria')}
+                            >
+                              <Unlink className="mr-1.5 h-3.5 w-3.5" />
+                              {tOta('clearOtaButton')}
+                            </Button>
+                          }
+                        />
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <p id="manual-zodomus-hint" className="mt-1.5 text-[11px] leading-snug text-muted-foreground sm:text-[12px]">
                   {t('manualZodomusStandaloneHint')}

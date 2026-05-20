@@ -10,6 +10,8 @@ export const bookingComMessageMetadataSchema = z.object({
   checkOut: z.string().optional(),
   propertyName: z.string().optional(),
   guestQuestion: z.string(),
+  /** Booking extranet Property ID (`hotel_id` in admin links) — debug / routing checks. */
+  hotelId: z.string().optional(),
 });
 
 export type BookingComMessageMetadata = z.infer<typeof bookingComMessageMetadataSchema>;
@@ -35,6 +37,26 @@ export interface BookingComParsed {
   checkOut?: string;
   propertyName?: string;
   guestQuestion: string;
+  hotelId?: string;
+}
+
+/** `hotel_id` in admin.booking.com links — same value as Property ID in OTA listing settings. */
+export function extractBookingHotelIdFromText(source: string): string | null {
+  let s = source.replace(/&amp;/gi, '&');
+  for (let i = 0; i < 8; i++) {
+    const plain = s.match(/[?&]hotel_id=(\d{4,12})\b/i);
+    if (plain?.[1]) return plain[1];
+    const enc = s.match(/hotel_id(?:=|%3[Dd])(\d{4,12})\b/i);
+    if (enc?.[1]) return enc[1];
+    try {
+      const next = decodeURIComponent(s);
+      if (next === s) break;
+      s = next;
+    } catch {
+      break;
+    }
+  }
+  return null;
 }
 
 function matchGroup(re: RegExp, text: string, group = 1): string | undefined {
@@ -219,6 +241,8 @@ export function parseBookingComEmail(text: string): BookingComParsed | null {
     guestQuestion = normalized.slice(0, 2000).trim();
   }
 
+  const hotelId = extractBookingHotelIdFromText(normalized) ?? undefined;
+
   return {
     bookingNumber,
     guestName: guestName ? firstLineOnly(guestName) : undefined,
@@ -226,5 +250,6 @@ export function parseBookingComEmail(text: string): BookingComParsed | null {
     checkOut: checkOutRaw ? firstLineOnly(checkOutRaw) : undefined,
     propertyName: propertyRaw ? firstLineOnly(propertyRaw) : undefined,
     guestQuestion,
+    hotelId,
   };
 }

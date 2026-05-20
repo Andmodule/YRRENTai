@@ -45,7 +45,10 @@ export class PropertyService {
       const saved = await this.propertyRepository.save(property);
       await this.replaceChannelListings(saved.id, channelListings);
       await this.syncLegacyColumnsFromListings(saved.id, {
-        manualZodomusPropertyId: channelListings.length === 0 ? dto.zodomusPropertyId : undefined,
+        manualZodomusPropertyId:
+          channelListings.length === 0
+            ? (dto.zodomusPropertyId !== undefined ? dto.zodomusPropertyId : null)
+            : undefined,
       });
       return this.findOne(saved.id, ownerId);
     } catch (e) {
@@ -267,6 +270,15 @@ export class PropertyService {
     if (dto.channelListings !== undefined) {
       await this.assertChannelListingsPlatformsValid(dto.channelListings);
       await this.replaceChannelListings(id, dto.channelListings);
+      // Не оставляем `channelListings` из findOne (устаревшие) и не ставим `[]`: у TypeORM
+      // persist по родителю пустой OneToMany может снять строки `property_channel_listings` в БД
+      // после replace — тогда Zodomus/доступность не видит каналов, отмена не отражается в OTA.
+      const fresh = await this.channelListingRepository.find({
+        where: { propertyId: id },
+        relations: ['otaPlatform'],
+        order: { sortOrder: 'ASC' },
+      });
+      property.channelListings = fresh;
     }
     const {
       channelListings: _cl,
@@ -283,12 +295,25 @@ export class PropertyService {
     if (waToken !== undefined) {
       property.whatsappAccessToken = waToken?.trim() ? waToken.trim() : null;
     }
+    if (dto.channelListings !== undefined && dto.channelListings.length === 0) {
+      const nextZ =
+        manualZodomus !== undefined
+          ? (manualZodomus?.trim() ? manualZodomus.trim() : null)
+          : null;
+      property.otaPlatformId = null;
+      property.otaPlatform = null;
+      property.zodomusPropertyId = nextZ;
+      property.zodomusRoomId = null;
+    }
     try {
       await this.propertyRepository.save(property);
       if (dto.channelListings !== undefined) {
         await this.syncLegacyColumnsFromListings(id, {
+          /** Пустой массив = явное удаление всех каналов; без поля `zodomusPropertyId` в DTO очищаем legacy, а не оставляем старый id. */
           manualZodomusPropertyId:
-            dto.channelListings.length === 0 ? manualZodomus : undefined,
+            dto.channelListings.length === 0
+              ? (manualZodomus !== undefined ? manualZodomus : null)
+              : undefined,
         });
       } else if (manualZodomus !== undefined) {
         const count = await this.channelListingRepository.count({ where: { propertyId: id } });

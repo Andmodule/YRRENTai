@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Loader2, Plus, Send, Video, Clapperboard } from 'lucide-react';
 import { Drawer, DrawerContent } from '@/components/ui/drawer';
@@ -10,11 +10,16 @@ import { prepareStaffVerificationFiles, MAX_STAFF_VERIFICATION_FILES } from '@/l
 import { useStaffStrings } from '@/locales/staff-strings';
 import { cn } from '@/lib/utils';
 
-interface PhotoVerificationDrawerProps {
+export interface PhotoVerificationDrawerProps {
   taskUuid: string | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   variant?: 'default' | 'supplement';
+  /**
+   * Уже обработанные `prepareStaffVerificationFiles` (флоу плитки: до открытия шторки только OS-пикер).
+   */
+  initialPreparedFiles?: File[] | null;
+  onInitialPreparedFilesConsumed?: () => void;
 }
 
 function isVideoFile(f: File): boolean {
@@ -26,9 +31,13 @@ export function PhotoVerificationDrawer({
   open,
   onOpenChange,
   variant = 'default',
+  initialPreparedFiles = null,
+  onInitialPreparedFilesConsumed,
 }: PhotoVerificationDrawerProps) {
   const v = useStaffStrings().tasks.verification;
+  const fileInputId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
+  const initialBatchAppliedKeyRef = useRef<string | null>(null);
   const stripRef = useRef<HTMLDivElement>(null);
   const prevQueueLength = useRef(0);
   const [queue, setQueue] = useState<File[]>([]);
@@ -47,6 +56,7 @@ export function PhotoVerificationDrawer({
   useEffect(() => {
     if (!open) {
       setQueue([]);
+      initialBatchAppliedKeyRef.current = null;
     }
   }, [open]);
 
@@ -65,20 +75,12 @@ export function PhotoVerificationDrawer({
     prevQueueLength.current = queue.length;
   }, [queue.length]);
 
-  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files?.length) return;
-    
-    // We copy the files into an array so we can clear the input value safely
-    const fileArray = Array.from(files);
-    e.target.value = '';
-    
-    console.debug('[photo-verification] selected files:', fileArray.length);
-    if (!taskUuid) {
-      toast.error(v.noTaskBinding);
-      return;
-    }
-    void (async () => {
+  const ingestFiles = useCallback(
+    async (fileArray: File[]) => {
+      if (!taskUuid) {
+        toast.error(v.noTaskBinding);
+        return;
+      }
       setPreparing(true);
       try {
         const prep = await prepareStaffVerificationFiles(fileArray);
@@ -96,7 +98,6 @@ export function PhotoVerificationDrawer({
         }
         console.debug('[photo-verification] prepared files:', prep.files.length);
         setQueue((q) => {
-          // Слева «+», выбранные файлы слева направо справа от кнопки.
           const merged = [...q, ...prep.files].slice(0, MAX_STAFF_VERIFICATION_FILES);
           if (q.length + prep.files.length > MAX_STAFF_VERIFICATION_FILES) {
             toast.message(v.tooMany(MAX_STAFF_VERIFICATION_FILES));
@@ -109,7 +110,30 @@ export function PhotoVerificationDrawer({
       } finally {
         setPreparing(false);
       }
-    })();
+    },
+    [taskUuid, v],
+  );
+
+  useLayoutEffect(() => {
+    if (!open || !taskUuid || !initialPreparedFiles?.length) {
+      return;
+    }
+    const batchKey = `${taskUuid}|${initialPreparedFiles.map((f) => `${f.name}\0${f.size}\0${f.lastModified}`).join('\n')}`;
+    if (initialBatchAppliedKeyRef.current === batchKey) {
+      return;
+    }
+    initialBatchAppliedKeyRef.current = batchKey;
+    setQueue(initialPreparedFiles.slice(0, MAX_STAFF_VERIFICATION_FILES));
+    onInitialPreparedFilesConsumed?.();
+  }, [open, taskUuid, initialPreparedFiles, onInitialPreparedFilesConsumed]);
+
+  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files?.length) return;
+    const fileArray = Array.from(files);
+    e.target.value = '';
+    console.debug('[photo-verification] selected files:', fileArray.length);
+    void ingestFiles(fileArray);
   };
 
   const send = async () => {
@@ -134,8 +158,21 @@ export function PhotoVerificationDrawer({
   const canSend = queue.length > 0 && !busy;
 
   return (
-    <Drawer open={open} onOpenChange={onOpenChange}>
-      <DrawerContent title={title}>
+    <>
+      <input
+        id={fileInputId}
+        ref={inputRef}
+        type="file"
+        accept="image/*,video/*"
+        multiple
+        disabled={busy}
+        className="sr-only"
+        onChange={handleFileInput}
+        tabIndex={-1}
+        aria-label={v.addFromGallery}
+      />
+      <Drawer open={open} onOpenChange={onOpenChange}>
+        <DrawerContent title={title}>
         <p className="mb-1 text-sm leading-relaxed text-slate-600 dark:text-slate-300">{description}</p>
         <p className="mb-4 text-xs text-slate-400 dark:text-slate-500">{v.stripHint}</p>
 
@@ -147,6 +184,7 @@ export function PhotoVerificationDrawer({
           )}
         >
           <label
+            htmlFor={fileInputId}
             className={cn(
               'group relative flex h-28 w-24 shrink-0 snap-start flex-col items-center justify-center overflow-hidden',
               'rounded-2xl border-2 border-dashed border-teal-300/90 bg-gradient-to-br from-white to-teal-50/80',
@@ -154,15 +192,6 @@ export function PhotoVerificationDrawer({
               busy ? 'pointer-events-none opacity-50' : 'cursor-pointer',
             )}
           >
-            <input
-              ref={inputRef}
-              type="file"
-              accept="image/*,video/*"
-              multiple
-              disabled={busy}
-              className="absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0"
-              onChange={handleFileInput}
-            />
             <div className="relative z-0 mb-0.5 flex h-9 w-9 items-center justify-center rounded-full bg-teal-500/15 text-teal-700 dark:text-teal-300">
               <Plus className="h-5 w-5" strokeWidth={2.5} />
             </div>
@@ -226,7 +255,8 @@ export function PhotoVerificationDrawer({
             {uploadMutationPending ? v.preparing : v.send}
           </Button>
         ) : null}
-      </DrawerContent>
-    </Drawer>
+        </DrawerContent>
+      </Drawer>
+    </>
   );
 }
