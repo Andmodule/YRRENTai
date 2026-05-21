@@ -36,7 +36,7 @@ interface PropertyFormProps {
    * Только у сохранённого объекта: сброс OTA через API (рядом с полем/каналами),
    * без ожидания «Сохранить».
    */
-  onClearOta?: () => Promise<unknown>;
+  onClearOta?: () => Promise<void>;
 }
 
 export function PropertyForm({

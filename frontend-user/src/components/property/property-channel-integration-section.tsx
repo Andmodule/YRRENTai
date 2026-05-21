@@ -75,7 +75,7 @@ interface PropertyChannelIntegrationSectionProps {
   /** Снимок сервера (defaultValues) — чтобы кнопка сброса оставалась, пока в БД ещё есть OTA. */
   otaServerSnapshot?: Partial<Property>;
   /** PATCH: очистить каналы + legacy OTA, затем refetch. */
-  onClearOta?: () => Promise<unknown>;
+  onClearOta?: () => Promise<void>;
 }
 
 function platformIcon(code: string) {
@@ -260,7 +260,7 @@ export function PropertyChannelIntegrationSection({
             <div className="flex flex-wrap items-center justify-end gap-2">
               {fields.length > 0 && showClearOta && onClearOta && (
                 <ClearOtaConfirmButton
-                  onClear={() => Promise.resolve(onClearOta())}
+                  onClear={onClearOta}
                   trigger={
                     <Button
                       type="button"
@@ -314,7 +314,7 @@ export function PropertyChannelIntegrationSection({
                     {showClearOta && onClearOta && (
                       <div className="w-full min-[450px]:w-auto min-[450px]:shrink-0">
                         <ClearOtaConfirmButton
-                          onClear={() => Promise.resolve(onClearOta())}
+                          onClear={onClearOta}
                           trigger={
                             <Button
                               type="button"
