@@ -1560,6 +1560,8 @@
     "searchBackAria": "Zamknij wyszukiwanie",
     "searchNoResults": "Brak wyników",
     "searchNoResultsHint": "Spróbuj innej nazwy, obiektu lub frazy z ostatniej wiadomości.",
+    "noreplyFolderTitle": "Powiadomienia systemowe",
+    "noreplyFolderToggleAria": "E-maile systemowe Booking, {count} rozmów",
     "selectConversation": "Wybierz rozmowę z listy",
     "allProperties": "Wszystkie obiekty",
     "allStatuses": "Wszystkie statusy",

@@ -10,6 +10,13 @@ export interface CompanyGlobalRules {
   updatedAt: string | null;
 }
 
+const EMPTY_COMPANY_GLOBAL_RULES: CompanyGlobalRules = {
+  globalDescription: null,
+  globalRules: null,
+  globalQaEntries: [],
+  updatedAt: null,
+};
+
 export function useCompanyGlobalRules() {
   const { data, error, isLoading, mutate } = useSWR<CompanyGlobalRules>(
     '/company/global-rules',
@@ -30,12 +37,8 @@ export function useCompanyGlobalRules() {
   }
 
   return {
-    rules: data ?? {
-      globalDescription: null,
-      globalRules: null,
-      globalQaEntries: [],
-      updatedAt: null,
-    },
+    data,
+    rules: data ?? EMPTY_COMPANY_GLOBAL_RULES,
     isLoading,
     isError: !!error,
     mutate,

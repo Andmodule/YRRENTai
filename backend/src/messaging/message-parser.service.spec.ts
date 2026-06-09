@@ -52,6 +52,14 @@ Message: "Добрый день!"`;
     expect(h.guestName).toContain('John');
   });
 
+  it('parseBookingStyleInboxHints extracts guest from Booking RU «Имя гостя» block', () => {
+    const body = `Данные бронирования
+Имя гостя: Mariusz Kamiński
+Заезд: пятница, 3 апреля 2026 г.`;
+    const h = service.parseBookingStyleInboxHints(body);
+    expect(h.guestName).toBe('Mariusz Kamiński');
+  });
+
   it('resolveInboundReservationId prefers body hints over subject', () => {
     const hints = {
       reservationId: '4900703',

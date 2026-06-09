@@ -1765,6 +1765,8 @@
     "searchBackAria": "Close search",
     "searchNoResults": "No matching conversations",
     "searchNoResultsHint": "Try a different name, property, or phrase from the last message.",
+    "noreplyFolderTitle": "System notifications",
+    "noreplyFolderToggleAria": "Booking system emails, {count} conversations",
     "selectConversation": "Select a conversation from the list",
     "allProperties": "All properties",
     "allStatuses": "All statuses",

@@ -1765,6 +1765,8 @@
     "searchBackAria": "Закрыть поиск",
     "searchNoResults": "Ничего не найдено",
     "searchNoResultsHint": "Попробуйте другое имя, объект или фразу из последнего сообщения.",
+    "noreplyFolderTitle": "Системные письма",
+    "noreplyFolderToggleAria": "Системные письма Booking, {count} диалогов",
     "selectConversation": "Выберите диалог из списка",
     "allProperties": "Все объекты",
     "allStatuses": "Все статусы",

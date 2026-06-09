@@ -7,6 +7,21 @@ export function emailLikeFromExternalGuestKey(raw: string): string {
   return s;
 }
 
+/** Lowercase mailbox from `externalGuestKey` (`email:…`), or null for non-email threads. */
+export function guestEmailFromExternalGuestKey(raw: string | null | undefined): string | null {
+  const trimmed = raw?.trim();
+  if (!trimmed?.startsWith('email:')) return null;
+  const email = emailLikeFromExternalGuestKey(trimmed).trim().toLowerCase();
+  return email || null;
+}
+
+/** Booking / OTA system senders (noreply@…) — shown in a separate inbox folder. */
+export function isNoreplyInboxConversation(externalGuestKey: string | null | undefined): boolean {
+  const email = guestEmailFromExternalGuestKey(externalGuestKey);
+  if (!email) return false;
+  return /(?:^|[.@])no[-_]?reply@|noreply@|donotreply@|do-not-reply@/i.test(email);
+}
+
 /** Title line without time — guest · property name (Telegram-style metadata). */
 export function formatGuestAndProperty(
   externalGuestKey: string | null,

@@ -399,6 +399,14 @@ export class MessageParserService {
     if (guestMatch?.[1]) {
       guestName = this.trimInboxLabelLine(guestMatch[1]);
     }
+    if (!guestName) {
+      const bookingGuestMatch = t.match(
+        /(?:\*Имя гостя\*|Имя гостя|Guest name)\s*[:\*]?\s*(.+?)(?:\n|$)/i,
+      );
+      if (bookingGuestMatch?.[1]) {
+        guestName = this.trimInboxLabelLine(bookingGuestMatch[1]);
+      }
+    }
     let zodomusPropertyId: string | null = null;
     const zPx = t.match(/zodomus\s+property\s+id[:\s#]*(\d{5,16})\b/i);
     if (zPx?.[1]) {

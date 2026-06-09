@@ -1559,6 +1559,8 @@
     "searchBackAria": "Suche schließen",
     "searchNoResults": "Keine Treffer",
     "searchNoResultsHint": "Anderen Namen, ein anderes Objekt oder Text aus der letzten Nachricht versuchen.",
+    "noreplyFolderTitle": "Systembenachrichtigungen",
+    "noreplyFolderToggleAria": "Booking-System-E-Mails, {count} Konversationen",
     "selectConversation": "Wählen Sie eine Konversation aus der Liste",
     "allProperties": "Alle Objekte",
     "allStatuses": "Alle Status",

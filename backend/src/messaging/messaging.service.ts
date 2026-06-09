@@ -41,6 +41,7 @@ import { ConversationService } from '../chat/conversation.service';
 import type { ChatMessageEntity } from '../chat/entities/chat-message.entity';
 
 import { BookingService } from '../booking/booking.service';
+import type { BookingEntity } from '../booking/entities/booking.entity';
 
 import { KnowledgeBaseService } from '../knowledge-base/knowledge-base.service';
 import { CompanyGlobalRulesService } from '../company/company-global-rules.service';
@@ -362,26 +363,29 @@ export class MessagingService {
 
     const reservationId = this.parser.resolveInboundReservationId(subject, cleanText, bookingHints);
 
+    let aliasBooking: BookingEntity | null = null;
+    if (channel === 'booking') {
+      aliasBooking = await this.bookingService.findByGuestEmailAliasForOwner(
+        ownerId,
+        guestEmail,
+      );
+    }
+
     const guestName =
       this.parser.extractGuestNameFromBookingSubject(subjectTrim) ??
       bookingHints.guestName?.trim() ??
+      aliasBooking?.guestName?.trim() ??
       this.parser.extractGuestName(from);
 
     const propertyIdHint =
       bookingHints.bookingHotelId ?? bookingHints.zodomusPropertyId;
 
     let resolvedPropertyId: string | null = null;
-    if (channel === 'booking') {
-      const aliasBooking = await this.bookingService.findByGuestEmailAliasForOwner(
-        ownerId,
-        guestEmail,
+    if (aliasBooking) {
+      resolvedPropertyId = aliasBooking.propertyId;
+      this.logger.log(
+        `Inbound routing: guest_email_alias → propertyId=${aliasBooking.propertyId} bookingId=${aliasBooking.id}`,
       );
-      if (aliasBooking) {
-        resolvedPropertyId = aliasBooking.propertyId;
-        this.logger.log(
-          `Inbound routing: guest_email_alias → propertyId=${aliasBooking.propertyId} bookingId=${aliasBooking.id}`,
-        );
-      }
     }
     if (resolvedPropertyId == null) {
       resolvedPropertyId = await this.resolveInboundTargetPropertyId(
@@ -944,7 +948,10 @@ export class MessagingService {
 
       await this.conversationService.touch(conv.id, listPreview);
 
-      await this.conversationService.setGuestDisplayName(conv.id, guestDisplayName);
+      await this.conversationService.setGuestDisplayName(
+        conv.id,
+        guestDisplayName?.trim() || bookingMeta?.guestName?.trim() || null,
+      );
 
       this.emitInboxMessageSaved(propertyId, saved);
 

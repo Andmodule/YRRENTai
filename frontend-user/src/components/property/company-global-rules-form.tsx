@@ -14,17 +14,18 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 export function CompanyGlobalRulesForm() {
   const t = useTranslations('properties.globalRules');
-  const { rules, isLoading, isError, mutate, updateRules } = useCompanyGlobalRules();
+  const { data, isLoading, isError, mutate, updateRules } = useCompanyGlobalRules();
   const [description, setDescription] = useState('');
   const [houseRules, setHouseRules] = useState('');
   const [qaEntries, setQaEntries] = useState<CompanyGlobalQaEntry[]>([]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    setDescription(rules.globalDescription ?? '');
-    setHouseRules(rules.globalRules ?? '');
-    setQaEntries(rules.globalQaEntries ?? []);
-  }, [rules.globalDescription, rules.globalRules, rules.globalQaEntries]);
+    if (!data) return;
+    setDescription(data.globalDescription ?? '');
+    setHouseRules(data.globalRules ?? '');
+    setQaEntries(data.globalQaEntries ?? []);
+  }, [data]);
 
   async function handleSave() {
     setSaving(true);

@@ -1560,6 +1560,8 @@
     "searchBackAria": "Cerrar búsqueda",
     "searchNoResults": "Sin resultados",
     "searchNoResultsHint": "Pruebe otro nombre, propiedad o frase del último mensaje.",
+    "noreplyFolderTitle": "Notificaciones del sistema",
+    "noreplyFolderToggleAria": "Correos del sistema de Booking, {count} conversaciones",
     "selectConversation": "Seleccione una conversación de la lista",
     "allProperties": "Todas las propiedades",
     "allStatuses": "Todos los estados",

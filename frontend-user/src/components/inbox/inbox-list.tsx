@@ -7,6 +7,7 @@ import type { ConversationDto } from '@/hooks/use-conversations';
 import { formatGuestAndProperty } from '@/lib/format/conversation-meta';
 import { useInboxSearchStore } from '@/stores/inbox-search.store';
 import { InboxCard } from './inbox-card';
+import { InboxNoreplyFolder, partitionInboxConversations } from './inbox-noreply-folder';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/ui/empty-state';
 
@@ -43,6 +44,11 @@ export function InboxList({ conversations, isLoading, activeId, onSelect }: Inbo
     [conversations, searchQuery],
   );
 
+  const { guest: guestConversations, noreply: noreplyConversations } = useMemo(
+    () => partitionInboxConversations(filtered),
+    [filtered],
+  );
+
   if (isLoading) {
     return (
       <div className="space-y-2 p-3">
@@ -77,7 +83,12 @@ export function InboxList({ conversations, isLoading, activeId, onSelect }: Inbo
 
   return (
     <div className="space-y-1 p-2 overflow-y-auto">
-      {filtered.map((conv) => (
+      <InboxNoreplyFolder
+        conversations={noreplyConversations}
+        activeId={activeId}
+        onSelect={onSelect}
+      />
+      {guestConversations.map((conv) => (
         <InboxCard
           key={conv.id}
           conversation={conv}
