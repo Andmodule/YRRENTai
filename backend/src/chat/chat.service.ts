@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectQueue } from '@nestjs/bullmq';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import type { Queue } from 'bullmq';
@@ -26,6 +27,7 @@ export class ChatService {
     private readonly dataSource: DataSource,
     @InjectQueue('ai-intent-extraction')
     private readonly aiIntentExtractionQueue: Queue,
+    private readonly configService: ConfigService,
   ) {}
 
   /**
@@ -39,6 +41,30 @@ export class ChatService {
       await manager.query(`DELETE FROM "whatsapp_processed_messages"`);
       await manager.query(`DELETE FROM "chat_messages"`);
       await manager.query(`DELETE FROM "conversations"`);
+    });
+  }
+
+  /** DEV only: removes one conversation, its messages, linked email threads, and escalations. */
+  async clearConversationForDev(conversationId: string): Promise<void> {
+    await this.dataSource.transaction(async (manager) => {
+      const threads: { id: string }[] = await manager.query(
+        `SELECT id FROM messaging_threads WHERE conversation_id = $1`,
+        [conversationId],
+      );
+      const threadIds = threads.map((r) => r.id);
+
+      if (threadIds.length > 0) {
+        await manager.query(
+          `DELETE FROM escalations WHERE "conversationId" = $1 OR "messagingThreadId" = ANY($2::uuid[])`,
+          [conversationId, threadIds],
+        );
+        await manager.query(`DELETE FROM messaging_threads WHERE conversation_id = $1`, [conversationId]);
+      } else {
+        await manager.query(`DELETE FROM escalations WHERE "conversationId" = $1`, [conversationId]);
+      }
+
+      await manager.query(`DELETE FROM chat_messages WHERE "conversationId" = $1`, [conversationId]);
+      await manager.query(`DELETE FROM conversations WHERE id = $1`, [conversationId]);
     });
   }
 
@@ -90,6 +116,9 @@ export class ChatService {
       automationSenderRole?: ChatMessageSavedSenderRole | undefined;
     },
   ): Promise<void> {
+    if (!this.configService.get<string>('REDIS_URL')?.trim()) {
+      return;
+    }
     try {
       const payload: ChatMessageSavedEvent = {
         messageId: m.id,

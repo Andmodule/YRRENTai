@@ -10,7 +10,7 @@ import {
 
 export interface StreamCallbacks {
   onChunk: (text: string) => void;
-  onDone: (fullText: string) => void;
+  onDone: (fullText: string) => void | Promise<void>;
   onError: (error: Error) => void;
 }
 
@@ -78,7 +78,7 @@ export class AgentService {
         }
       }
 
-      callbacks.onDone(fullText);
+      await Promise.resolve(callbacks.onDone(fullText));
       this.logger.log(`Agent response complete, ${fullText.length} chars`);
     } catch (error) {
       this.logger.error(`Agent error: ${(error as Error).message}`);

@@ -18,6 +18,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select } from '@/components/ui/select';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import type { Property as CalendarProperty } from '../types';
+import {
+  mapApiBookingToReservation,
+  upsertReservationInCalendarCache,
+  type ApiBooking,
+} from '../lib/calendar-cache';
 
 type InitialStatus = 'PENDING' | 'CONFIRMED';
 
@@ -213,17 +218,22 @@ export function NewBookingSheet({
         ...(gc !== undefined && !Number.isNaN(gc) && gc > 0 ? { guestsCount: gc } : {}),
       };
 
-      const res = await apiClient.post<{ data: { id: string } }>('/bookings', body);
-      const id = res.data.data.id;
+      const res = await apiClient.post<{ data: ApiBooking }>('/bookings', body);
+      let booking = res.data.data;
 
       if (initialStatus === 'CONFIRMED') {
-        await apiClient.patch(`/bookings/${id}/status`, { status: 'CONFIRMED' });
+        const patchRes = await apiClient.patch<{ data: ApiBooking }>(`/bookings/${booking.id}/status`, {
+          status: 'CONFIRMED',
+        });
+        booking = patchRes.data.data;
       }
 
-      return id;
+      return mapApiBookingToReservation(booking);
     },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['calendar'] });
+    onSuccess: (reservation) => {
+      upsertReservationInCalendarCache(queryClient, reservation);
+      void queryClient.invalidateQueries({ queryKey: ['calendar'] });
+      void queryClient.invalidateQueries({ queryKey: ['bookingConflictPreview'] });
       toast.success(t('success'));
       onOpenChange(false);
     },

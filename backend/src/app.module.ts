@@ -71,13 +71,23 @@ import { AiChatModule } from './modules/ai-chat/ai-chat.module';
     ]),
     BullModule.forRootAsync({
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        connection: {
-          url:
-            config.get<string>('REDIS_URL')?.trim() ||
-            'redis://127.0.0.1:6379',
-        },
-      }),
+      useFactory: (config: ConfigService) => {
+        const url = config.get<string>('REDIS_URL')?.trim();
+        if (url) {
+          return { connection: { url } };
+        }
+        return {
+          connection: {
+            host: '127.0.0.1',
+            port: 6379,
+            maxRetriesPerRequest: null,
+            enableOfflineQueue: false,
+            lazyConnect: true,
+            retryStrategy: () => null,
+            reconnectOnError: () => false,
+          },
+        };
+      },
     }),
     EventEmitterModule.forRoot(),
     RedisModule,

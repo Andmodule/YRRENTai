@@ -30,9 +30,15 @@ interface ConversationWindowProps {
   conversation: ConversationDto;
   /** Вызывается после успешного POST /chats/conversations/reply — обновить список без ожидания WS. */
   onStaffReplySuccess?: (conversationId: string, content: string) => void;
+  /** После approve/reject AI-черновика — обновить список диалогов. */
+  onAiDraftResolved?: () => void;
 }
 
-export function ConversationWindow({ conversation, onStaffReplySuccess }: ConversationWindowProps) {
+export function ConversationWindow({
+  conversation,
+  onStaffReplySuccess,
+  onAiDraftResolved,
+}: ConversationWindowProps) {
   const t = useTranslations('inbox');
   const { messages, isHistoryLoading, streamingText, isStreaming, isConnected, error } = useChat(
     conversation.propertyId,
@@ -171,6 +177,7 @@ export function ConversationWindow({ conversation, onStaffReplySuccess }: Conver
               key={msg.id}
               message={msg}
               onRetryStaffDelivery={handleRetryStaffDelivery}
+              onAiDraftResolved={onAiDraftResolved}
             />
           ))}
         {isStreaming && <StreamingBubble text={streamingText} />}

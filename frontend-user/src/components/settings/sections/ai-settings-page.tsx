@@ -1,8 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Label } from '@/components/ui/label';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { apiClient } from '@/lib/api/client';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
@@ -17,10 +19,24 @@ export function AiSettingsPage() {
   const [name, setName] = useState('Анна');
   const [autoReply, setAutoReply] = useState(true);
   const [delaySec, setDelaySec] = useState([3]);
+  const [requiresApproval, setRequiresApproval] = useState(false);
+
+  useEffect(() => {
+    apiClient
+      .get<{ data: { requiresApproval: boolean } }>('/chats/ai-reply-settings')
+      .then((res) => setRequiresApproval(!!res.data.data?.requiresApproval))
+      .catch(() => setRequiresApproval(false));
+  }, []);
 
   return (
     <div className="space-y-4">
       <SettingsPageHeader title={t('pageTitle')} subtitle={t('pageSubtitle')} dev />
+
+      {requiresApproval && (
+        <Alert className="border-amber-400/50 bg-amber-50/80 dark:border-amber-600/40 dark:bg-amber-950/25">
+          <AlertDescription className="text-sm">{t('requiresApprovalBanner')}</AlertDescription>
+        </Alert>
+      )}
 
       <SettingsSectionCard title={t('languageCard')}>
         <div className="grid max-w-xl gap-4 sm:grid-cols-2">

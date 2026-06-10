@@ -13,6 +13,7 @@ import { EmailAttachmentChip } from '@/components/inbox/email-attachment-chip';
 import { StaffOutboundAttachmentChip } from '@/components/inbox/staff-outbound-attachment-chip';
 import { WhatsappInboundAttachmentChip } from '@/components/inbox/whatsapp-inbound-attachment-chip';
 import { BookingComGuestMessage } from './booking-com-guest-message';
+import { AiDraftMessageBubble } from './ai-draft-message-bubble';
 
 function bookingMetaForGuestBubble(
   metadata: ChatMessage['metadata'],
@@ -27,6 +28,8 @@ interface ChatMessageBubbleProps {
   message: ChatMessage;
   /** Inbox: retry failed staff delivery (POST /chats/messages/:id/retry). */
   onRetryStaffDelivery?: (messageId: string) => Promise<void>;
+  /** After AI draft approve/reject — refresh thread + inbox list. */
+  onAiDraftResolved?: () => void;
 }
 
 function channelGlyph(ch: MessageChannelCode | undefined) {
@@ -42,10 +45,23 @@ function channelGlyph(ch: MessageChannelCode | undefined) {
   }
 }
 
-export function ChatMessageBubble({ message, onRetryStaffDelivery }: ChatMessageBubbleProps) {
+export function ChatMessageBubble({
+  message,
+  onRetryStaffDelivery,
+  onAiDraftResolved,
+}: ChatMessageBubbleProps) {
   const locale = useLocale();
   const t = useTranslations('inbox');
+  const [isRetrying, setIsRetrying] = useState(false);
   const isUser = message.role === 'user';
+  const isAiDraft =
+    message.role === 'assistant' &&
+    message.source === 'ai' &&
+    message.deliveryStatus === 'DRAFT';
+
+  if (isAiDraft) {
+    return <AiDraftMessageBubble message={message} onResolved={onAiDraftResolved} />;
+  }
   const bookingMetaForUi = bookingMetaForGuestBubble(message.metadata);
   const emailAttachments =
     message.metadata?.channel === 'email_inbound' && message.metadata.attachments.length > 0
@@ -88,7 +104,6 @@ export function ChatMessageBubble({ message, onRetryStaffDelivery }: ChatMessage
         ? null
         : 'sent'
       : null;
-  const [isRetrying, setIsRetrying] = useState(false);
 
   const handleRetryClick = async () => {
     if (!onRetryStaffDelivery || outboundDeliveryUi !== 'error' || isRetrying) return;

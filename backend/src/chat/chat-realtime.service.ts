@@ -14,18 +14,19 @@ export class ChatRealtimeService {
     this.logger.log('Socket.IO attached for inbox/property realtime');
   }
 
-  private ensure(): Server {
-    if (!this.server) {
-      throw new Error('ChatRealtimeService: server not attached');
-    }
-    return this.server;
-  }
-
   emitToInbox(propertyId: string, event: string, payload: unknown): void {
-    this.ensure().to(`inbox:${propertyId}`).emit(event, payload);
+    if (!this.server) {
+      this.logger.warn(`emitToInbox skipped (${event}) — Socket.IO not attached yet`);
+      return;
+    }
+    this.server.to(`inbox:${propertyId}`).emit(event, payload);
   }
 
   emitToProperty(propertyId: string, event: string, payload: unknown): void {
-    this.ensure().to(`property:${propertyId}`).emit(event, payload);
+    if (!this.server) {
+      this.logger.warn(`emitToProperty skipped (${event}) — Socket.IO not attached yet`);
+      return;
+    }
+    this.server.to(`property:${propertyId}`).emit(event, payload);
   }
 }

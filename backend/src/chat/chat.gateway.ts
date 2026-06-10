@@ -167,15 +167,27 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
     });
 
     const property = await this.propertyService.findOneForUser(propertyId, userId, client.data.role);
-    await this.guestAiPipeline.runAfterGuestUserMessage({
-      property: { id: property.id, name: property.name, ownerId: property.ownerId },
-      conversation,
-      userMessage,
-      content,
-      listPreview,
-      streamClient: client,
-      guestReplyChannel: 'web_socket',
-    });
+    try {
+      await this.guestAiPipeline.runAfterGuestUserMessage({
+        property: { id: property.id, name: property.name, ownerId: property.ownerId },
+        conversation,
+        userMessage,
+        content,
+        listPreview,
+        streamClient: client,
+        guestReplyChannel: 'web_socket',
+      });
+    } catch (err) {
+      this.logger.error(
+        `Guest AI pipeline failed conv=${conversation.id}`,
+        err as Error,
+      );
+      client.emit('agent:error', {
+        propertyId,
+        conversationId: conversation.id,
+        message: (err as Error).message || 'AI reply failed',
+      });
+    }
   }
 
   /**

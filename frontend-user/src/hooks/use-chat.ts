@@ -16,7 +16,7 @@ export type MessageChannelCode =
   | 'TELEGRAM'
   | 'WHATSAPP';
 
-export type MessageDeliveryStatusCode = 'PENDING' | 'SENT' | 'ERROR';
+export type MessageDeliveryStatusCode = 'DRAFT' | 'PENDING' | 'SENT' | 'ERROR';
 
 export interface ChatMessage {
   id: string;
@@ -295,6 +295,16 @@ export function useChat(propertyId: string | null, opts?: UseChatOpts | null): U
           });
         }
 
+        function handleDraftRemoved(data: {
+          propertyId: string;
+          conversationId?: string;
+          messageId: string;
+        }) {
+          if (data.propertyId !== currentPropertyId.current) return;
+          if (!matchesConversation(data)) return;
+          setMessages((prev) => prev.filter((m) => m.id !== data.messageId));
+        }
+
         function handleMessageStatusUpdated(data: {
           propertyId: string;
           messageId: string;
@@ -363,6 +373,7 @@ export function useChat(propertyId: string | null, opts?: UseChatOpts | null): U
         s.on('error', handleError);
         s.on('conversation:updated', handleConversationUpdated);
         s.on('message_status_updated', handleMessageStatusUpdated);
+        s.on('message:draft_removed', handleDraftRemoved);
 
         if (typeof window !== 'undefined') {
           window.addEventListener('focus', onWindowFocus);
@@ -386,6 +397,7 @@ export function useChat(propertyId: string | null, opts?: UseChatOpts | null): U
           s.off('error', handleError);
           s.off('conversation:updated', handleConversationUpdated);
           s.off('message_status_updated', handleMessageStatusUpdated);
+          s.off('message:draft_removed', handleDraftRemoved);
         };
 
         if (s.connected) {

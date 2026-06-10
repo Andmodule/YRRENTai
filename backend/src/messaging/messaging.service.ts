@@ -33,10 +33,12 @@ import { ChatGateway } from '../chat/chat.gateway';
 import { ChatService } from '../chat/chat.service';
 
 import { conversationChannelToMessageChannel } from '../chat/chat-channel.mapper';
+import { MessageDeliveryStatus } from '../chat/enums/message-delivery-status.enum';
 
 import { BookingComMetadataService } from '../chat/booking-com-metadata.service';
 
 import { ConversationService } from '../chat/conversation.service';
+import { AiDraftApprovalService } from '../chat/ai-draft-approval.service';
 
 import type { ChatMessageEntity } from '../chat/entities/chat-message.entity';
 
@@ -150,6 +152,10 @@ export class MessagingService {
     @Inject(forwardRef(() => ChatGateway))
 
     private readonly chatGateway: ChatGateway,
+
+    @Inject(forwardRef(() => AiDraftApprovalService))
+
+    private readonly aiDraftApproval: AiDraftApprovalService,
 
   ) {}
 
@@ -1071,6 +1077,10 @@ export class MessagingService {
 
       const freshEarly = await this.threadRepo.findOne({ where: { id: thread.id } });
 
+      if (freshEarly?.conversationId) {
+        await this.aiDraftApproval.supersedePendingDrafts(freshEarly.conversationId);
+      }
+
       let kbEmpty = true;
 
       let kbWeakMatch = true;
@@ -1213,16 +1223,24 @@ export class MessagingService {
 
       });
 
-      /** Guest email first — do not block on chat sync or Telegram escalation (can be very slow). */
-      try {
-        const toAddr = this.recipientForOutbound(thread);
-        if (toAddr) {
-          await this.replySender.send(toAddr, guestSafe);
-        } else {
-          this.logger.warn(`AI reply email skipped: no recipient for thread ${thread.id}`);
+      const requiresApproval = this.config.get<boolean>('AI_REPLY_REQUIRES_APPROVAL') ?? false;
+
+      /** Guest email — skipped when manager must approve the draft in inbox first. */
+      if (!requiresApproval) {
+        try {
+          const toAddr = this.recipientForOutbound(thread);
+          if (toAddr) {
+            await this.replySender.send(toAddr, guestSafe);
+          } else {
+            this.logger.warn(`AI reply email skipped: no recipient for thread ${thread.id}`);
+          }
+        } catch (sendErr) {
+          this.logger.error(`AI reply email failed for thread ${thread.id}`, sendErr as Error);
         }
-      } catch (sendErr) {
-        this.logger.error(`AI reply email failed for thread ${thread.id}`, sendErr as Error);
+      } else {
+        this.logger.log(
+          `AI reply email held for approval (AI_REPLY_REQUIRES_APPROVAL=true); threadId=${thread.id}`,
+        );
       }
 
       const fresh = await this.threadRepo.findOne({ where: { id: thread.id } });
@@ -1293,9 +1311,11 @@ export class MessagingService {
 
             channel: conversationChannelToMessageChannel(CONVERSATION_CHANNEL.EMAIL),
 
+            deliveryStatus: requiresApproval ? MessageDeliveryStatus.DRAFT : MessageDeliveryStatus.SENT,
+
           });
 
-          const inboxStatus = notifyStaff ? 'needs_human' : 'resolved';
+          const inboxStatus = requiresApproval || notifyStaff ? 'needs_human' : 'resolved';
 
           await this.conversationService.setStatus(fresh.conversationId, inboxStatus);
 

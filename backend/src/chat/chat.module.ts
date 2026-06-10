@@ -26,6 +26,8 @@ import { WhatsappInboundService } from './whatsapp-inbound.service';
 import { WhatsappCloudApiService } from './whatsapp-cloud-api.service';
 import { GuestAiPipelineService } from './guest-ai-pipeline.service';
 import { ChatRealtimeService } from './chat-realtime.service';
+import { AiReplySettingsService } from './ai-reply-settings.service';
+import { AiDraftApprovalService } from './ai-draft-approval.service';
 
 @Module({
   imports: [
@@ -58,6 +60,8 @@ import { ChatRealtimeService } from './chat-realtime.service';
     StaffReplyService,
     StaffOutboundDeliveryService,
     BookingComMetadataService,
+    AiReplySettingsService,
+    AiDraftApprovalService,
   ],
   exports: [
     ChatService,
@@ -68,6 +72,8 @@ import { ChatRealtimeService } from './chat-realtime.service';
     StaffReplyService,
     StaffOutboundDeliveryService,
     BookingComMetadataService,
+    AiReplySettingsService,
+    AiDraftApprovalService,
   ],
 })
 export class ChatModule {}

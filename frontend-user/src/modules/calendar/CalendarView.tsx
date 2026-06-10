@@ -18,6 +18,7 @@ import { useCalendarFilters } from './hooks/useCalendarFilters';
 import { useCalendarReservationSearch } from './hooks/useCalendarReservationSearch';
 import { useZodomusCalendarSync } from './hooks/useZodomusCalendarSync';
 import { useCalendarTimelinePan } from './hooks/use-calendar-timeline-pan';
+import { useContainerSize } from './hooks/useContainerSize';
 import { getPropertyMeta } from './lib/property-meta';
 import { ProgramBlock } from './components/ProgramBlock';
 import { TimelineHeader } from './components/TimelineHeader';
@@ -164,6 +165,7 @@ export function CalendarView({
     [dateRange],
   );
   const dayWidthPx = (isMobile ? 48 : 60) * numDays;
+  const { ref: gridContainerRef, width: gridWidth, height: gridHeight } = useContainerSize();
 
   const channels = useMemo(
     () =>
@@ -204,6 +206,8 @@ export function CalendarView({
     isTimeline: true,
     isSidebar: true,
     theme: planbyTheme,
+    ...(gridWidth != null && gridWidth > 0 ? { width: gridWidth } : {}),
+    ...(gridHeight != null && gridHeight > 0 ? { height: gridHeight } : {}),
   });
 
   const epgProps = getEpgProps();
@@ -402,6 +406,8 @@ export function CalendarView({
   cursor: pointer;
 }
 #cal-${calendarScopeId} .planby {
+  height: 100%;
+  min-height: 0;
   scrollbar-width: thin;
   scrollbar-color: rgb(229 231 235) transparent;
 }
@@ -610,7 +616,7 @@ export function CalendarView({
         />
       </div>
 
-      <div className="min-h-0 flex-1 overflow-hidden">
+      <div ref={gridContainerRef} className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <div
         id={`cal-${calendarScopeId}`}
         className="relative flex min-h-0 w-full min-w-0 max-w-full flex-1 flex-col overflow-hidden rounded-lg border border-border bg-card shadow-sm"
@@ -621,7 +627,7 @@ export function CalendarView({
           <>
             {/* eslint-disable-next-line react/no-danger -- scoped grid overlay for Planby content */}
             <style dangerouslySetInnerHTML={{ __html: calendarGridCss }} />
-            <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
+            <div className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-col">
               <Epg {...epgProps}>
                 <Layout
                   {...layoutProps}

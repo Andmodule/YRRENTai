@@ -37,16 +37,38 @@ export class StaffOutboundDeliveryService {
     private readonly messageRepository: Repository<ChatMessageEntity>,
   ) {}
 
+  /** Delivers a manager-approved AI draft to the guest (email / WhatsApp / etc.). */
+  async deliverApprovedAiDraft(message: ChatMessageEntity): Promise<void> {
+    await this.deliverAssistantOutbound(message, { allowAiSource: true });
+  }
+
   async routeStaffOutbound(
     message: ChatMessageEntity,
     relayOpts?: { messagingThreadId?: string | null },
   ): Promise<void> {
+    await this.deliverAssistantOutbound(message, {
+      allowAiSource: false,
+      messagingThreadId: relayOpts?.messagingThreadId,
+    });
+  }
+
+  private async deliverAssistantOutbound(
+    message: ChatMessageEntity,
+    opts: { allowAiSource: boolean; messagingThreadId?: string | null },
+  ): Promise<void> {
     const fresh = await this.messageRepository.findOne({ where: { id: message.id } });
     if (!fresh) {
-      this.logger.warn(`routeStaffOutbound: message ${message.id} not found`);
+      this.logger.warn(`deliverAssistantOutbound: message ${message.id} not found`);
       return;
     }
-    if (fresh.source !== 'staff' || fresh.role !== 'assistant') {
+    if (fresh.role !== 'assistant') {
+      return;
+    }
+    if (fresh.source === 'staff' && !opts.allowAiSource) {
+      /* staff path */
+    } else if (fresh.source === 'ai' && opts.allowAiSource) {
+      /* approved AI draft */
+    } else {
       return;
     }
 
@@ -73,7 +95,7 @@ export class StaffOutboundDeliveryService {
         case MessageChannel.BOOKING_API:
         case MessageChannel.EMAIL:
           await this.messagingService.relayStaffReplyToEmailGuest(conv.id, fresh.content, {
-            messagingThreadId: relayOpts?.messagingThreadId ?? undefined,
+            messagingThreadId: opts.messagingThreadId ?? undefined,
             staffAttachments: staffAtt
               ?.filter((a): a is typeof a & { storageKey: string } => !!a.storageKey?.trim())
               .map((a) => ({

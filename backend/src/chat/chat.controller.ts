@@ -32,8 +32,11 @@ import { UserService } from '../user/user.service';
 import {
   listConversationsQuerySchema,
   managerReplySchema,
+  aiDraftApproveSchema,
   replyAnalyticsQuerySchema,
 } from '@rentai/shared';
+import { AiReplySettingsService } from './ai-reply-settings.service';
+import { AiDraftApprovalService } from './ai-draft-approval.service';
 import type { ConversationStatus } from '@rentai/shared';
 import { StorageService } from '../modules/storage/storage.service';
 
@@ -51,7 +54,20 @@ export class ChatController {
     private readonly config: ConfigService,
     private readonly userService: UserService,
     private readonly storageService: StorageService,
+    private readonly aiReplySettings: AiReplySettingsService,
+    private readonly aiDraftApproval: AiDraftApprovalService,
   ) {}
+
+  @Get('ai-reply-settings')
+  @Roles('OWNER', 'MANAGER')
+  @ApiOperation({ summary: 'AI reply mode (auto-send vs manager approval)' })
+  getAiReplySettings() {
+    return {
+      data: {
+        requiresApproval: this.aiReplySettings.requiresApproval(),
+      },
+    };
+  }
 
   /** Static paths must be registered before `:propertyId/messages` so they are not captured as UUIDs. */
   @Get('conversations')
@@ -263,6 +279,19 @@ export class ChatController {
     return { data: { ok: true } };
   }
 
+  @Post('dev/conversations/:id/clear')
+  @Roles('OWNER', 'MANAGER')
+  @ApiOperation({ summary: 'DEV: delete one conversation and its messages (linked email threads / escalations)' })
+  async clearConversationDev(@Param('id') id: string, @CurrentUser() user?: JwtPayload) {
+    if (this.config.get<string>('NODE_ENV') === 'production') {
+      throw new ForbiddenException('Chat wipe is disabled in production');
+    }
+    const conv = await this.conversationService.findById(id);
+    await this.propertyService.findOneForUser(conv.propertyId, user!.sub, user!.role);
+    await this.chatService.clearConversationForDev(id);
+    return { data: { ok: true, conversationId: id } };
+  }
+
   @Post('messages/:messageId/retry')
   @Roles('OWNER', 'MANAGER')
   @ApiOperation({ summary: 'Retry delivery for a staff message that failed (ERROR → PENDING → …)' })
@@ -285,6 +314,54 @@ export class ChatController {
         channel: updated.channel,
       },
     };
+  }
+
+  @Post('messages/:messageId/ai-draft/approve')
+  @Roles('OWNER', 'MANAGER')
+  @ApiOperation({ summary: 'Approve (optionally edit) an AI draft and deliver it to the guest' })
+  async approveAiDraft(
+    @Param('messageId') messageId: string,
+    @Body() body: unknown,
+    @CurrentUser() user?: JwtPayload,
+  ) {
+    const parsed = aiDraftApproveSchema.parse(body ?? {});
+    const msg = await this.chatService.findMessageById(messageId);
+    if (!msg?.conversationId) {
+      throw new NotFoundException('Message not found');
+    }
+    const conv = await this.conversationService.findById(msg.conversationId);
+    await this.propertyService.findOneForUser(conv.propertyId, user!.sub, user!.role);
+    const updated = await this.aiDraftApproval.approveDraft({
+      messageId,
+      content: parsed.content,
+      userId: user!.sub,
+    });
+    return {
+      data: {
+        ...this.chatService.toSocketPayload(updated),
+        conversationId: updated.conversationId,
+        metadata: updated.metadata
+          ? this.chatService.sanitizeMetadataForApi(updated.metadata)
+          : undefined,
+      },
+    };
+  }
+
+  @Post('messages/:messageId/ai-draft/reject')
+  @Roles('OWNER', 'MANAGER')
+  @ApiOperation({ summary: 'Reject an AI draft (not sent to the guest)' })
+  async rejectAiDraft(
+    @Param('messageId') messageId: string,
+    @CurrentUser() user?: JwtPayload,
+  ) {
+    const msg = await this.chatService.findMessageById(messageId);
+    if (!msg?.conversationId) {
+      throw new NotFoundException('Message not found');
+    }
+    const conv = await this.conversationService.findById(msg.conversationId);
+    await this.propertyService.findOneForUser(conv.propertyId, user!.sub, user!.role);
+    await this.aiDraftApproval.rejectDraft(messageId);
+    return { data: { ok: true } };
   }
 
   @Post('conversations/reply')

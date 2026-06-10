@@ -239,6 +239,16 @@ export const envSchema = z
     FF_VOICE_ENABLED: z.coerce.boolean().default(false),
     FF_REALTIME_CALLS_ENABLED: z.coerce.boolean().default(false),
 
+    /**
+     * When true: AI generates a reply but does not deliver it to the guest until a manager
+     * approves (or edits and approves) in the inbox. Default false — production auto-send unchanged.
+     * Use explicit true/false strings — z.coerce.boolean() treats "false" as true.
+     */
+    AI_REPLY_REQUIRES_APPROVAL: z
+      .enum(['true', 'false', '1', '0', 'yes', 'no'])
+      .default('false')
+      .transform((v) => v === 'true' || v === '1' || v === 'yes'),
+
     // ─── Inbound Voice (AI call handling) ────────────────────────────────────
     /** Which voice telephony provider to use for inbound calls. */
     INBOUND_VOICE_PROVIDER: z.enum(['retell', 'vapi']).default('retell'),

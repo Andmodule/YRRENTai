@@ -25,6 +25,7 @@ import {
   conversationPublicSchema,
   listConversationsQuerySchema,
   managerReplySchema,
+  aiDraftApproveSchema,
 } from './schemas/conversation.schema';
 
 export type LoginDto = z.infer<typeof loginSchema>;
@@ -107,6 +108,7 @@ export interface ReplyAnalyticsPayload {
 export type ConversationPublicDto = z.infer<typeof conversationPublicSchema>;
 export type ListConversationsQuery = z.infer<typeof listConversationsQuerySchema>;
 export type ManagerReplyDto = z.infer<typeof managerReplySchema>;
+export type AiDraftApproveDto = z.infer<typeof aiDraftApproveSchema>;
 
 export interface PaginatedResponse<T> {
   data: T[];

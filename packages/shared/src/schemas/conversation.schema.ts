@@ -54,3 +54,8 @@ export const managerReplySchema = z
     (d) => d.content.trim().length > 0 || (d.attachments && d.attachments.length > 0),
     { message: 'Either non-empty content or at least one attachment is required', path: ['content'] },
   );
+
+/** Approve (optionally edit) an AI draft before it is delivered to the guest. */
+export const aiDraftApproveSchema = z.object({
+  content: z.string().max(10000).optional(),
+});

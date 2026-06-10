@@ -23,6 +23,9 @@ import {
   assistantReplyIndicatesEscalationWithoutMarker,
 } from '../agent/constants/agent-prompts';
 import { CompanyGlobalRulesService } from '../company/company-global-rules.service';
+import { AiReplySettingsService } from './ai-reply-settings.service';
+import { AiDraftApprovalService } from './ai-draft-approval.service';
+import { MessageDeliveryStatus } from './enums/message-delivery-status.enum';
 export interface StreamClientLike {
   emit: (ev: string, data: unknown) => void;
 }
@@ -43,6 +46,8 @@ export class GuestAiPipelineService {
     private readonly telegramService: TelegramService,
     private readonly chatRealtime: ChatRealtimeService,
     private readonly whatsappCloudApi: WhatsappCloudApiService,
+    private readonly aiReplySettings: AiReplySettingsService,
+    private readonly aiDraftApproval: AiDraftApprovalService,
     @InjectRepository(MessagingAttachmentEntity)
     private readonly messagingAttachmentRepo: Repository<MessagingAttachmentEntity>,
   ) {}
@@ -63,6 +68,16 @@ export class GuestAiPipelineService {
     const { property, conversation, userMessage, content, listPreview, streamClient, guestReplyChannel } =
       params;
 
+    this.logger.log(
+      `AI pipeline start conv=${conversation.id} property=${property.id} approval=${this.aiReplySettings.requiresApproval()}`,
+    );
+
+    await this.aiDraftApproval.supersedePendingDrafts(conversation.id);
+
+    const requiresApproval = this.aiReplySettings.requiresApproval();
+    /** In approval mode do not stream the reply to the guest socket — inbox only until manager approves. */
+    const streamToGuestSocket = streamClient && !requiresApproval;
+
     const [kbSearch, globalRulesRow] = await Promise.all([
       this.knowledgeBaseService.searchRelevant(property.id, content, 8),
       this.companyGlobalRulesService.getForProperty(property.id),
@@ -81,7 +96,7 @@ export class GuestAiPipelineService {
     });
     const history = await this.chatService.getRecentHistory(property.id, 20, conversation.id);
 
-    if (streamClient) {
+    if (streamToGuestSocket) {
       streamClient.emit('agent:streamStart', { propertyId: property.id, conversationId: conversation.id });
     }
 
@@ -92,13 +107,15 @@ export class GuestAiPipelineService {
       history,
       {
         onChunk: (text) => {
-          streamClient?.emit('agent:streamChunk', {
+          if (!streamToGuestSocket) return;
+          streamClient.emit('agent:streamChunk', {
             propertyId: property.id,
             conversationId: conversation.id,
             text,
           });
         },
         onDone: async (fullText) => {
+          try {
           const { rawEndsEscalate, textWithoutMarker } = parseAssistantEscalation(fullText);
 
           const kbEmpty = !hasAnyKnowledge;
@@ -139,6 +156,10 @@ export class GuestAiPipelineService {
 
           cleanText = await this.agentService.ensureReplyMatchesGuestLanguage(content, cleanText);
 
+          const deliveryStatus = requiresApproval
+            ? MessageDeliveryStatus.DRAFT
+            : MessageDeliveryStatus.SENT;
+
           const agentMessage = await this.chatService.saveMessage({
             propertyId: property.id,
             conversationId: conversation.id,
@@ -146,6 +167,7 @@ export class GuestAiPipelineService {
             role: 'assistant',
             source: 'ai',
             channel: conversationChannelToMessageChannel(conversation.channel),
+            deliveryStatus,
           });
 
           await this.conversationService.touch(conversation.id, cleanText);
@@ -155,8 +177,9 @@ export class GuestAiPipelineService {
             conversationId: conversation.id,
           };
           this.chatRealtime.emitToInbox(property.id, 'message:saved', inboxAiPayload);
+          this.chatRealtime.emitToProperty(property.id, 'message:saved', inboxAiPayload);
 
-          if (guestReplyChannel === 'whatsapp') {
+          if (!requiresApproval && guestReplyChannel === 'whatsapp') {
             try {
               await this.whatsappCloudApi.sendAssistantReplyToGuest(
                 property.id,
@@ -169,7 +192,7 @@ export class GuestAiPipelineService {
                 err as Error,
               );
             }
-          } else if (streamClient) {
+          } else if (streamToGuestSocket) {
             streamClient.emit('agent:streamEnd', {
               id: agentMessage.id,
               propertyId: property.id,
@@ -183,14 +206,16 @@ export class GuestAiPipelineService {
             });
           }
 
+          const inboxStatus = requiresApproval || notifyStaff ? 'needs_human' : 'resolved';
+          await this.conversationService.setStatus(conversation.id, inboxStatus);
+          this.chatRealtime.emitToInbox(property.id, 'conversation:updated', {
+            conversationId: conversation.id,
+            status: inboxStatus,
+            lastMessagePreview: cleanText.slice(0, 200),
+            lastActivityAt: agentMessage.createdAt.toISOString(),
+          });
+
           if (notifyStaff) {
-            await this.conversationService.setStatus(conversation.id, 'needs_human');
-            this.chatRealtime.emitToInbox(property.id, 'conversation:updated', {
-              conversationId: conversation.id,
-              status: 'needs_human',
-              lastMessagePreview: cleanText.slice(0, 200),
-              lastActivityAt: agentMessage.createdAt.toISOString(),
-            });
             let escalationAttachments: EscalationAttachmentRef[] | undefined;
             const inboundMeta = userMessage.metadata as EmailInboundMessageMetadata | undefined;
             if (inboundMeta?.channel === 'email_inbound' && inboundMeta.messagingMessageId) {
@@ -214,17 +239,28 @@ export class GuestAiPipelineService {
               conversationId: conversation.id,
               escalationAttachments,
             });
-          } else {
-            await this.conversationService.setStatus(conversation.id, 'resolved');
-            this.chatRealtime.emitToInbox(property.id, 'conversation:updated', {
+          }
+
+          this.logger.log(
+            `AI pipeline done conv=${conversation.id} delivery=${deliveryStatus} chars=${cleanText.length}`,
+          );
+          } catch (err) {
+            this.logger.error(
+              `AI pipeline onDone failed conv=${conversation.id}`,
+              err as Error,
+            );
+            streamClient?.emit('agent:error', {
+              propertyId: property.id,
               conversationId: conversation.id,
-              status: 'resolved',
-              lastMessagePreview: cleanText.slice(0, 200),
-              lastActivityAt: agentMessage.createdAt.toISOString(),
+              message: (err as Error).message || 'Failed to save AI reply',
             });
+            throw err;
           }
         },
         onError: (error) => {
+          this.logger.error(
+            `AI pipeline agent error conv=${conversation.id}: ${error.message}`,
+          );
           streamClient?.emit('agent:error', {
             propertyId: property.id,
             conversationId: conversation.id,
