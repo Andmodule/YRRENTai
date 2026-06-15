@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import OpenAI from 'openai';
 import {
   buildSystemPrompt,
-  guestReplyScriptMismatch,
+  guestReplyLanguageMismatch,
   isLikelyEscalationGuestReply,
   resolveGuestEscalationFallback,
 } from './constants/agent-prompts';
@@ -112,13 +112,13 @@ export class AgentService {
   }
 
   /**
-   * If the model answered in the wrong script vs. the guest (e.g. Russian guest, English reply),
+   * If the model answered in the wrong language vs. the guest (e.g. Russian guest, Ukrainian reply),
    * replace escalation-style lines with the localized canned message or rewrite the full reply.
    */
   async ensureReplyMatchesGuestLanguage(guestMessage: string, reply: string): Promise<string> {
     const t = reply.trim();
     if (!t) return resolveGuestEscalationFallback(guestMessage);
-    if (!guestReplyScriptMismatch(guestMessage, t)) return t;
+    if (!guestReplyLanguageMismatch(guestMessage, t)) return t;
     if (isLikelyEscalationGuestReply(t)) {
       return resolveGuestEscalationFallback(guestMessage);
     }
@@ -135,6 +135,7 @@ export class AgentService {
             role: 'system',
             content:
               'Rewrite the assistant reply so it is entirely in the same natural language as the guest message. ' +
+              'Russian and Ukrainian are different — if the guest wrote in Russian, use Russian only; if Ukrainian, Ukrainian only. ' +
               'Preserve every fact, number, and meaning; do not add or remove information. ' +
               'Output only the rewritten reply, no quotes or preamble.',
           },

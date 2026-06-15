@@ -3,6 +3,7 @@ import {
   GUEST_ESCALATION_FALLBACK_MESSAGE_DE,
   GUEST_ESCALATION_FALLBACK_MESSAGE_EN,
   GUEST_ESCALATION_FALLBACK_MESSAGE_PL,
+  GUEST_ESCALATION_FALLBACK_MESSAGE_UK,
 } from './guest-escalation-messages';
 import { resolveGuestEscalationFallback } from './guest-escalation-locale';
 
@@ -27,5 +28,11 @@ describe('resolveGuestEscalationFallback', () => {
 
   it('uses Russian for Cyrillic without Ukrainian letters', () => {
     expect(resolveGuestEscalationFallback('Есть ли парковка?')).toBe(GUEST_ESCALATION_FALLBACK_MESSAGE);
+  });
+
+  it('uses Ukrainian for clear Ukrainian guest text', () => {
+    expect(resolveGuestEscalationFallback('Де паркування?')).toBe(
+      GUEST_ESCALATION_FALLBACK_MESSAGE_UK,
+    );
   });
 });

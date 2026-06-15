@@ -170,4 +170,78 @@ Reservation: 12345`;
     const tiny = 'OK';
     expect(service.extractBookingGuestInquiryForAgent(tiny)).toBe('OK');
   });
+
+  it('extractBookingGuestInquiryForAgent strips Booking guest-message template junk (PL guest)', () => {
+    const body = `##- Введите ваш ответ над этой линией -##
+
+Номер бронирования: 5778712803
+
+У вас новое сообщение от гостя
+
+Piotr Bańka:
+
+Zleciłem przelew za miejsce parkingowe 60 zł ale PKO BP wykona go
+dopiero 15,06,2026 , i nie mogę wydrukować potwierdzenia , zrobiłem
+foto z ekranu i mam to w PDF. Jak to do Was przesłać , bo tu się nie
+daje załączyć ?
+
+Ответить
+
+-->
+https://admin.booking.com/hotel/hoteladmin/extranet_ng/manage/messaging/inbox.html?product_id=5778712803
+
+Данные бронирования
+
+Имя гостя:
+Piotr Bańka
+
+© Copyright 2026 Booking.com
+[email_opened_tracking_pixel?lang=ru&token=abc]`;
+    const out = service.extractBookingGuestInquiryForAgent(body);
+    expect(out).toContain('Zleciłem przelew za miejsce parkingowe');
+    expect(out).toContain('daje załączyć');
+    expect(out).not.toContain('Данные бронирования');
+    expect(out).not.toContain('admin.booking.com');
+    expect(out).not.toContain('Ответить');
+    expect(out).not.toContain('email_opened_tracking');
+  });
+
+  it('extractBookingGuestInquiryForAgent strips issue-report template with zero-width chars', () => {
+    const zw = '\u200B'.repeat(40);
+    const body = `${zw}
+Booking.com
+
+Здравствуйте!
+
+Гость Pawel Slodnik сообщил о проблеме во время проживания в K22 Large
+Family Apart Komputerowa. Данные бронирования: 5988322688 (воскресенье,
+14 июня 2026 — понедельник, 15 июня 2026).
+
+Пожалуйста, рассмотрите обращение гостей и ответьте на него в течение
+48 hours (17 Jun 2026 - 11:33 Europe/Warsaw).
+
+Review and respond
+
+[email_icon_alert_info_callout_dark.png] Если кнопка выше не работает,
+попробуйте скопировать и вставить эту ссылку в другой браузер:
+https://admin.booking.com/hotel/hoteladmin/extranet_ng/manage/pega_hotel_response.html
+
+Если у вас есть другие вопросы, мы будем рады на них ответить.
+
+Служба поддержки Booking.com
+
+Правила конфиденциальности
+Перейти в Центр помощи`;
+    const out = service.extractBookingGuestInquiryForAgent(body);
+    expect(out).toContain('Pawel Slodnik сообщил о проблеме');
+    expect(out).not.toContain('Review and respond');
+    expect(out).not.toContain('admin.booking.com');
+    expect(out).not.toContain('Правила конфиденциальности');
+    expect(out).not.toMatch(/\u200B/);
+  });
+
+  it('extractBookingGuestInquiryForAgent keeps plain guest text unchanged', () => {
+    const plain = 'Ми заїдемо близько 18 год, а виселення в 3.30 год ночі';
+    expect(service.extractBookingGuestInquiryForAgent(plain)).toBe(plain);
+  });
 });

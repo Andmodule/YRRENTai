@@ -7,18 +7,16 @@ import {
   GUEST_ESCALATION_FALLBACK_MESSAGE_PL,
   GUEST_ESCALATION_FALLBACK_MESSAGE_UK,
 } from './guest-escalation-messages';
+import { detectGuestCyrillicLanguage } from './guest-message-language';
 
 /** ISO 639-3 codes franc uses; keep aligned with {@link MESSAGE_BY_FRANC_CODE}. */
 const FRANC_LATIN_BASE = ['eng', 'pol'] as const;
-const FRANC_CYRILLIC = ['rus', 'ukr'] as const;
 
 const MESSAGE_BY_FRANC_CODE: Record<string, string> = {
   eng: GUEST_ESCALATION_FALLBACK_MESSAGE_EN,
   pol: GUEST_ESCALATION_FALLBACK_MESSAGE_PL,
   deu: GUEST_ESCALATION_FALLBACK_MESSAGE_DE,
   spa: GUEST_ESCALATION_FALLBACK_MESSAGE_ES,
-  rus: GUEST_ESCALATION_FALLBACK_MESSAGE,
-  ukr: GUEST_ESCALATION_FALLBACK_MESSAGE_UK,
 };
 
 /** Common English tokens in guest messages (short-text disambiguation vs Polish in franc). */
@@ -100,15 +98,6 @@ function buildFrancLatinOnlyList(text: string): string[] {
   return [...only];
 }
 
-function pickCyrillicFranc(text: string): 'rus' | 'ukr' {
-  const ranked = francAll(text, { only: [...FRANC_CYRILLIC], minLength: 1 });
-  const code = ranked[0]?.[0];
-  if (code === 'ukr' || code === 'rus') {
-    return code;
-  }
-  return 'rus';
-}
-
 /**
  * Guest-visible escalation line in the same language as the guest message when possible.
  * Uses franc (trigram) with a production-safe whitelist and script/lexical priors — short Latin
@@ -135,8 +124,8 @@ export function resolveGuestEscalationFallback(userMessage: string): string {
   }
 
   if (/[а-яА-ЯёЁ]/.test(t)) {
-    const code = pickCyrillicFranc(t);
-    return MESSAGE_BY_FRANC_CODE[code] ?? GUEST_ESCALATION_FALLBACK_MESSAGE_EN;
+    const lang = detectGuestCyrillicLanguage(t);
+    return lang === 'uk' ? GUEST_ESCALATION_FALLBACK_MESSAGE_UK : GUEST_ESCALATION_FALLBACK_MESSAGE;
   }
 
   const onlyLatin = buildFrancLatinOnlyList(t);

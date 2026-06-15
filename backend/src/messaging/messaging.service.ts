@@ -404,8 +404,13 @@ export class MessagingService {
       );
     }
 
-    /** UI + chat_messages: plain body first; if empty (HTML-only, delayed fetch), show subject — avoids "(empty message)" when subject carries the text. */
-    const guestDisplayBase = cleanText.trim() || subjectTrim || '(empty message)';
+    /** UI + chat_messages: cleaned guest text for Booking; plain body otherwise. */
+    const guestDisplayBase =
+      channel === 'booking'
+        ? this.parser.extractBookingGuestInquiryForAgent(cleanText.trim()) ||
+          subjectTrim ||
+          '(empty message)'
+        : cleanText.trim() || subjectTrim || '(empty message)';
     /** Attachments only in metadata + chips — never append attachment boilerplate to bubble text. */
     const guestDisplayText = guestDisplayBase;
 

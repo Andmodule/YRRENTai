@@ -8,7 +8,9 @@ import {
   GUEST_ESCALATION_FALLBACK_MESSAGE_EN,
   GUEST_ESCALATION_FALLBACK_MESSAGE_ES,
   GUEST_ESCALATION_FALLBACK_MESSAGE_PL,
+  GUEST_ESCALATION_FALLBACK_MESSAGE_UK,
 } from './guest-escalation-messages';
+import { guestCyrillicLanguageMismatch } from './guest-message-language';
 
 export * from './guest-escalation-messages';
 export { resolveGuestEscalationFallback } from './guest-escalation-locale';
@@ -50,6 +52,16 @@ export function guestReplyScriptMismatch(guestMessage: string, reply: string): b
   return false;
 }
 
+/**
+ * True when guest language and reply language differ (Latin↔Cyrillic or Russian↔Ukrainian).
+ */
+export function guestReplyLanguageMismatch(guestMessage: string, reply: string): boolean {
+  if (guestReplyScriptMismatch(guestMessage, reply)) {
+    return true;
+  }
+  return guestCyrillicLanguageMismatch(guestMessage, reply);
+}
+
 /** Short host-check phrases the model often returns in the wrong language. */
 export function isLikelyEscalationGuestReply(reply: string): boolean {
   const t = reply.trim();
@@ -62,6 +74,7 @@ export function isLikelyEscalationGuestReply(reply: string): boolean {
   if (collapsed.includes(GUEST_ESCALATION_FALLBACK_MESSAGE_DE.slice(0, 38).toLowerCase())) return true;
   if (collapsed.includes(GUEST_ESCALATION_FALLBACK_MESSAGE_PL.slice(0, 36).toLowerCase())) return true;
   if (collapsed.includes(GUEST_ESCALATION_FALLBACK_MESSAGE_ES.slice(0, 38).toLowerCase())) return true;
+  if (collapsed.includes(GUEST_ESCALATION_FALLBACK_MESSAGE_UK.slice(0, 32).toLowerCase())) return true;
   return false;
 }
 
@@ -276,6 +289,7 @@ export function buildSystemPrompt(propertyName: string, knowledgeBase: string): 
     '- Identify the language of the guest\'s latest message (the question you are answering).',
     '- Your entire reply to the guest must be in that same language — every sentence, including lists and details.',
     '- If the guest wrote in English, reply only in English; if in Russian, only in Russian; apply the same rule for any other language.',
+    '- Russian and Ukrainian are different languages — never reply in Ukrainian unless the guest clearly wrote in Ukrainian (letters і/ї/є/ґ or unmistakable Ukrainian wording). Cyrillic alone does not mean Ukrainian.',
     '- The Knowledge Base section below may be written in a different language; still convey only those facts, translated faithfully into the guest\'s language. Never answer in the KB\'s language when it differs from the guest\'s.',
     '- If the guest mixes languages, use the language that clearly dominates the question.',
     '',

@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { convert } from 'html-to-text';
+import { extractBookingGuestQuestion } from '@rentai/shared';
 import type { MessagingChannel } from './entities/messaging-thread.entity';
 import { mailHeaderFirst } from './inbound-mail-headers.util';
 
@@ -222,125 +223,10 @@ export class MessageParserService {
 
   /**
    * Booking.com host-notification emails (RU/EN/PL-style): cut reservation summary, action CTAs,
-   * and legal blocks so KB + LLM only receive the guest's inquiry. Used for `bodyForAgent` only;
-   * routing still uses full body + subject + HTML for hints.
-   *
-   * Anchors follow common Booking template sections (extranet "new message from guest").
-   * If nothing matches or extraction would be empty, returns `text` trimmed (safe fallback).
+   * and legal blocks so UI, Telegram, KB + LLM only receive the guest's inquiry.
    */
   extractBookingGuestInquiryForAgent(text: string): string {
-    const raw = text.replace(/\r\n/g, '\n').trim();
-    if (!raw) return raw;
-
-    let t = raw;
-
-    /**
-     * Start of reservation / legal blocks — strip from here to end.
-     * Note: do not use `\\b` after Cyrillic; JS `\\b` is ASCII-word–only and breaks RU anchors.
-     */
-    const footerStart =
-      /(?:^|\n)\s*(?:Данные бронирования|Детали бронирования|Информация о бронировании|Reservation details|Reservation information|Your reservation details|Booking details|Информация о бронировании в объекте)(?:\s|$)[\s\S]*$/i;
-    const m = footerStart.exec(t);
-    if (m && m.index > 0) {
-      t = t.slice(0, m.index).trim();
-    }
-
-    /** Copyright / privacy tail (sometimes before "Данные бронирования" in plain-text quirks). */
-    t = t.split(/\n\s*©\s*Copyright\b/i)[0] ?? t;
-    t = t.split(/\n\s*©\s*\d{4}\s+Booking\.com/i)[0] ?? t;
-    t = t.split(/\n\s*This e-?mail was sent by Booking\.com/i)[0] ?? t;
-    t = t.split(/\n\s*Это письмо отправлено компанией Booking\.com/i)[0] ?? t;
-    t = t.split(/\n\s*Настроить уведомления\s*$/im)[0] ?? t;
-
-    const lines = t.split('\n');
-    const kept: string[] = [];
-    for (const line of lines) {
-      const s = line.trim();
-      if (!s) {
-        if (kept.length > 0) kept.push('');
-        continue;
-      }
-      if (this.isBookingOperationalOrActionLine(s)) {
-        continue;
-      }
-      kept.push(line);
-    }
-
-    let out = kept
-      .join('\n')
-      .replace(/\n{3,}/g, '\n\n')
-      .trim();
-
-    /** Prefer explicit Message: / Сообщение: block when present (EN/RU templates). */
-    const msgBlock = this.tryExtractBookingMessageBlock(out);
-    if (msgBlock) {
-      out = msgBlock;
-    }
-
-    out = this.stripLeadingBookingMarketingNoise(out);
-
-    if (out.length < 3) {
-      return raw;
-    }
-    return out;
-  }
-
-  /** Lines that are CTAs, headers, or navigation — not guest speech. */
-  private isBookingOperationalOrActionLine(s: string): boolean {
-    if (/^принять\s*(?:\(|\s|$)/i.test(s)) return true;
-    if (/^accept\s*(?:\(|\s|$)/i.test(s)) return true;
-    if (/^accept\s+with\s+/i.test(s)) return true;
-    if (/^decline\s*$/i.test(s)) return true;
-    if (/^отклонить\s*$/i.test(s)) return true;
-    if (/^при\s+наличии\s+возможности\s*$/i.test(s)) return true;
-    if (/^not\s+accepted\s*$/i.test(s)) return true;
-    if (/^не\s+принято\s*$/i.test(s)) return true;
-    if (/^reject\s*$/i.test(s)) return true;
-    if (/^номер\s+бронирования\s*:/i.test(s)) return true;
-    if (/^booking\s+number\s*:/i.test(s)) return true;
-    if (/^reservation\s+(?:ID|number)\s*:/i.test(s)) return true;
-    if (/^booking\.com\s*$/i.test(s)) return true;
-    if (/^www\.booking\.com/i.test(s) && s.length < 80) return true;
-    if (/^узнать\s+больше\s+о\s+том,/i.test(s)) return true;
-    if (/^find\s+out\s+more\s+about\s+how\s+Booking\.com/i.test(s)) return true;
-    if (/^get\s+the\s+Booking\.com\s+app/i.test(s)) return true;
-    if (/^скачайте\s+приложение\s+Booking/i.test(s)) return true;
-    return false;
-  }
-
-  /**
-   * "Message:" / localized variants — guest text often after this label (OTA extranet emails).
-   */
-  private tryExtractBookingMessageBlock(t: string): string | null {
-    const re =
-      /(?:^|\n)\s*(?:Message|Сообщение|Сообщение\s+гостя|Текст\s+сообщения)\s*:\s*([\s\S]*?)(?=\n\s*(?:Данные бронирования|Reservation details|©\s*Copyright)|$)/i;
-    const m = re.exec(t);
-    if (!m?.[1]) return null;
-    const inner = m[1].replace(/\r\n/g, '\n').trim();
-    if (inner.length < 3) return null;
-    return inner;
-  }
-
-  private stripLeadingBookingMarketingNoise(t: string): string {
-    let s = t.trim();
-    const dropLead = [
-      /^У вас новое сообщение от гостя\.?\s*\n+/i,
-      /^You have a new message from the guest\.?\s*\n+/i,
-      /^New message from (?:the )?guest\.?\s*\n+/i,
-      /^Booking\.com\s*\n+/i,
-    ];
-    for (const re of dropLead) {
-      s = s.replace(re, '');
-    }
-    /** Guest name line only: "Name Surname:" — drop if next line has the real question */
-    s = s.replace(/^[^\n]{1,120}:\s*\n+/m, (match) => {
-      const namePart = match.replace(/\s*\n+$/, '');
-      if (/^[A-Za-zА-Яа-яЁё\s.'-]+:\s*$/.test(namePart.trim())) {
-        return '';
-      }
-      return match;
-    });
-    return s.trim();
+    return extractBookingGuestQuestion(text);
   }
 
   /**
