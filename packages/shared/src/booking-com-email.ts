@@ -25,7 +25,82 @@ export function listPreviewForInbox(
 ): string {
   const q = bookingMeta?.guestQuestion?.trim();
   if (q) return q;
+  if (looksLikeBookingGuestNotification(content)) {
+    const cleaned = extractBookingGuestQuestion(content);
+    if (cleaned.length >= 3) return cleaned;
+  }
   return content;
+}
+
+/** True when plain/HTML body looks like a Booking.com extranet guest-notification email. */
+export function looksLikeBookingGuestNotification(text: string): boolean {
+  const t = stripInvisibleChars(text).toLowerCase();
+  if (t.length < 40) return false;
+  return (
+    t.includes('booking.com') ||
+    /##-\s*введите\s+ваш\s+ответ/i.test(text) ||
+    /данные бронирования/i.test(text) ||
+    /новое сообщение от гостя/i.test(text) ||
+    /new message from the guest/i.test(text) ||
+    /admin\.booking\.com/i.test(text) ||
+    /\[email_opened_tracking/i.test(text)
+  );
+}
+
+/**
+ * Last-mile cleanup before persisting/sending Telegram alerts (covers any upstream path).
+ */
+export function sanitizeGuestQuestionForAlert(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) return trimmed;
+  if (!looksLikeBookingGuestNotification(trimmed)) return trimmed;
+  const cleaned = extractBookingGuestQuestion(trimmed);
+  return cleaned.length >= 3 ? cleaned : trimmed;
+}
+
+/** Guest bubble + inbox: prefer cleaned speech; never show raw Booking template when extractable. */
+export function resolveBookingGuestDisplayText(
+  rawContent: string,
+  metadata?: BookingComMessageMetadata | null,
+): string {
+  const raw = rawContent.trim();
+  if (!raw) return raw;
+  const extracted = extractBookingGuestQuestion(raw);
+  const metaQ = metadata?.guestQuestion?.trim();
+  if (extracted.length >= 3) return extracted;
+  if (metaQ && metaQ.length >= 3 && !looksLikeBookingGuestNotification(metaQ)) return metaQ;
+  return metaQ || raw;
+}
+
+/** Inbox list one-liner — strip Booking boilerplate from stored previews (incl. legacy rows). */
+export function formatInboxMessagePreview(content: string | null | undefined): string {
+  const c = content?.trim() ?? '';
+  if (!c) return '';
+  if (looksLikeBookingGuestNotification(c)) {
+    const cleaned = extractBookingGuestQuestion(c);
+    if (cleaned.length >= 3) {
+      return cleaned.length > 200 ? `${cleaned.slice(0, 197)}…` : cleaned;
+    }
+  }
+  return c.length > 200 ? `${c.slice(0, 197)}…` : c;
+}
+
+/** Reject reservation fields misparsed from guest message body (e.g. "check-in instructions?"). */
+export function isPlausibleBookingDateLabel(value: string | undefined | null): boolean {
+  const v = value?.trim() ?? '';
+  if (v.length < 4 || v.length > 80) return false;
+  if (/instructions?|specifically|could you|please|lockbox|password|apartment/i.test(v)) return false;
+  if (/##-|введите ваш ответ|booking\.com|admin\.booking/i.test(v)) return false;
+  return /(\d{1,2}[\s./-]\w+[\s./-]\d{2,4})|\d{4}|(?:январ|феврал|март|апрел|ма[йя]|июн|июл|август|сентябр|октябр|ноябр|декабр|mon|tue|wed|thu|fri|sat|sun|january|february|march|april|may|june|july|august|september|october|november|december|понедельник|вторник|сред|четверг|пятниц|суббот|воскресен|poniedziałek|wtorek|środ|czwartek|piątek|sobot|niedziel)/i.test(
+    v,
+  );
+}
+
+export function isPlausibleBookingPropertyName(value: string | undefined | null): boolean {
+  const v = value?.trim() ?? '';
+  if (v.length < 3 || v.length > 120) return false;
+  if (/instructions?|##-|введите ваш ответ|booking\.com/i.test(v)) return false;
+  return true;
 }
 
 export interface BookingComParsed {
@@ -112,7 +187,63 @@ function isBookingOperationalOrActionLine(s: string): boolean {
   if (/^скачать\s+приложение\s+pulse\s*$/i.test(s)) return true;
   if (/^oosterdokskade\s+\d+/i.test(s)) return true;
   if (/^\d{4}\s+[A-Z]{2}\s+/i.test(s) && s.length < 40) return true;
+  if (/^\/inbox\.html/i.test(s)) return true;
+  if (/^\/[a-z_/]+\.(?:html|php)/i.test(s) && /(?:utm_|hotel_id|res_id|message_id)/i.test(s)) return true;
+  if (/^(?:utm_|m_campaign|m_term|ee_text\]|type=to_hotel)/i.test(s)) return true;
+  if (/^[0-9a-f]{16,}$/i.test(s) && s.length >= 16) return true;
+  if (/^&[a-z_]+=/i.test(s)) return true;
+  if (/^письмо отправлено на:/i.test(s)) return true;
+  if (/^сообщение было написано не сотрудниками/i.test(s)) return true;
+  if (/^что их можно настроить/i.test(s)) return true;
+  if (/^некоторые сообщения гостей\?/i.test(s)) return true;
   return false;
+}
+
+/** Cut reservation / legal blocks — run on raw text before sanitize drops anchor lines. */
+function cutBookingEmailFooters(t: string): string {
+  let s = t;
+  const footerPatterns = [
+    /(?:^|\n)\s*Данные бронирования[\s\S]*$/i,
+    /(?:^|\n)\s*Детали бронирования[\s\S]*$/i,
+    /(?:^|\n)\s*Reservation details[\s\S]*$/i,
+    /(?:^|\n)\s*Your reservation details[\s\S]*$/i,
+    /(?:^|\n)\s*©\s*Copyright\b[\s\S]*$/i,
+    /(?:^|\n)\s*Данное электронное сообщение было отправлено[\s\S]*$/i,
+    /(?:^|\n)\s*Вы подписаны на уведомления Booking\.com[\s\S]*$/i,
+    /(?:^|\n)\s*\*Booking\.com будет получать[\s\S]*$/i,
+    /(?:^|\n)\s*\[email_opened_tracking[\s\S]*$/i,
+  ];
+  for (const re of footerPatterns) {
+    const m = re.exec(s);
+    if (m && m.index > 0) s = s.slice(0, m.index).trim();
+  }
+  const actionTail =
+    /(?:^|\n)\s*(?:Review and respond|Если кнопка выше не работает|If the button above doesn|Если у вас есть другие вопросы|If you have any other questions|Правила конфиденциальности|Privacy Policy|Get the Booking\.com app|Скачайте приложение Booking)[\s\S]*$/i;
+  const actionMatch = actionTail.exec(s);
+  if (actionMatch && actionMatch.index > 0) {
+    s = s.slice(0, actionMatch.index).trim();
+  }
+  const replyTail = /(?:^|\n)\s*(?:Ответить|Reply)\s*\n[\s\S]*$/i;
+  const replyMatch = replyTail.exec(s);
+  if (replyMatch && replyMatch.index > 0) {
+    s = s.slice(0, replyMatch.index).trim();
+  }
+  return s;
+}
+
+/**
+ * Booking "new message from guest" template: text between guest name line and Reply / reservation block.
+ */
+function tryExtractGuestSpeechAfterGuestName(text: string): string | null {
+  const marker = /(?:новое сообщение от гостя|new message from the guest|you have a new message from the guest)/i;
+  if (!marker.test(text)) return null;
+  const slice = text.slice(text.search(marker));
+  const re =
+    /(?:^|\n)\s*([^\n:]{1,120}):\s*\n+([\s\S]*?)(?=\n\s*(?:Ответить|Reply|-->|Принять|Accept\s*\(|Не принято|Not accepted|Decline|Данные бронирования|Reservation details|https?:\/\/|©\s*Copyright|\[email_opened|Review and respond)|$)/i;
+  const m = re.exec(slice);
+  const speech = m?.[2]?.replace(/\r\n/g, '\n').trim();
+  if (speech && speech.length >= 3) return speech;
+  return null;
 }
 
 function tryExtractBookingMessageBlock(t: string): string | null {
@@ -128,19 +259,19 @@ function tryExtractBookingMessageBlock(t: string): string | null {
 function stripLeadingBookingMarketingNoise(t: string): string {
   let s = t.trim();
   const dropLead = [
+    /^##-\s*Введите ваш ответ[^\n]*\n+/i,
     /^У вас новое сообщение от гостя\.?\s*\n+/i,
     /^You have a new message from the guest\.?\s*\n+/i,
     /^New message from (?:the )?guest\.?\s*\n+/i,
     /^Booking\.com\s*\n+/i,
     /^Здравствуйте!\s*\n+/i,
-    /^Hello!\s*\n+/i,
   ];
   for (const re of dropLead) {
     s = s.replace(re, '');
   }
   s = s.replace(/^[^\n]{1,120}:\s*\n+/m, (match) => {
     const namePart = match.replace(/\s*\n+$/, '');
-    if (/^[A-Za-zÀ-ÿ\u0400-\u04FF\s.'-]+:\s*$/.test(namePart.trim())) {
+    if (/^[A-Za-zÀ-ÿ\u0400-\u04FF\s.'\u2019-]+:\s*$/.test(namePart.trim())) {
       return '';
     }
     return match;
@@ -156,21 +287,20 @@ export function extractBookingGuestQuestion(text: string): string {
   const raw = stripInvisibleChars(text.replace(/\r\n/g, '\n')).trim();
   if (!raw) return raw;
 
-  let t = sanitizeBookingEmailPlainText(raw);
-  if (!t) t = raw;
+  const speech = tryExtractGuestSpeechAfterGuestName(raw);
+  if (speech) return speech.replace(/\n{3,}/g, '\n\n').trim();
+
+  const msgOnRaw = tryExtractBookingMessageBlock(raw);
+  if (msgOnRaw) return msgOnRaw;
+
+  let t = cutBookingEmailFooters(raw);
+  t = sanitizeBookingEmailPlainText(t) || t;
 
   const footerStart =
     /(?:^|\n)\s*(?:Данные бронирования|Детали бронирования|Информация о бронировании|Reservation details|Reservation information|Your reservation details|Booking details|Информация о бронировании в объекте)(?:\s|$)[\s\S]*$/i;
   const footerMatch = footerStart.exec(t);
   if (footerMatch && footerMatch.index > 0) {
     t = t.slice(0, footerMatch.index).trim();
-  }
-
-  const actionTail =
-    /(?:^|\n)\s*(?:Review and respond|Если кнопка выше не работает|If the button above doesn|Если у вас есть другие вопросы|If you have any other questions|Правила конфиденциальности|Privacy Policy|Get the Booking\.com app|Скачайте приложение Booking)[\s\S]*$/i;
-  const actionMatch = actionTail.exec(t);
-  if (actionMatch && actionMatch.index > 0) {
-    t = t.slice(0, actionMatch.index).trim();
   }
 
   t = t.split(/\n\s*©\s*Copyright\b/i)[0] ?? t;
@@ -191,6 +321,7 @@ export function extractBookingGuestQuestion(text: string): string {
     }
     if (isBookingOperationalOrActionLine(s)) continue;
     if (isJunkBookingLine(s)) continue;
+    if (isBookingReservationLabelLine(s)) continue;
     kept.push(line);
   }
 
@@ -204,8 +335,22 @@ export function extractBookingGuestQuestion(text: string): string {
 
   out = stripLeadingBookingMarketingNoise(out);
 
-  if (out.length < 3) return raw;
-  return out;
+  if (out.length >= 3) return out;
+  if (looksLikeBookingGuestNotification(raw)) {
+    const aggressive = stripLeadingBookingMarketingNoise(cutBookingEmailFooters(raw));
+    if (aggressive.length >= 3) return aggressive;
+  }
+  return raw;
+}
+
+/** Reservation summary labels leaked when footer anchor was stripped early. */
+function isBookingReservationLabelLine(s: string): boolean {
+  if (/^(?:имя гостя|guest name)\s*:?\s*$/i.test(s)) return true;
+  if (/^(?:заезд|отъезд|check-in|check-out)\s*:?\s*$/i.test(s)) return true;
+  if (/^(?:название объекта(?:\s+размещения)?|property name|accommodation)\s*:?\s*$/i.test(s)) return true;
+  if (/^(?:всего гостей|всего номеров|total guests|total rooms)\s*:?\s*$/i.test(s)) return true;
+  if (/^\d{8,12}$/.test(s)) return true;
+  return false;
 }
 
 function firstLineOnly(s: string): string {
@@ -279,6 +424,14 @@ function isJunkBookingLine(line: string): boolean {
   if (/^©\s*copyright/i.test(t)) return true;
   if (/^данное электронное сообщение/i.test(t)) return true;
   if (/^this (e-)?mail was sent/i.test(t)) return true;
+  if (/^(?:имя гостя|guest name)\s*:?\s*$/i.test(t)) return true;
+  if (/^(?:заезд|отъезд|check-in|check-out)\s*:?\s*$/i.test(t)) return true;
+  if (/^(?:название объекта(?:\s+размещения)?|property name)\s*:?\s*$/i.test(t)) return true;
+  if (/^(?:всего гостей|всего номеров)\s*:?\s*$/i.test(t)) return true;
+  if (/^\/inbox\.html/i.test(t)) return true;
+  if (/^(?:utm_|m_campaign|ee_text\])/i.test(t)) return true;
+  if (/^[0-9a-f]{20,}$/i.test(t)) return true;
+  if (/&amp;type=to_hotel/i.test(t)) return true;
   return false;
 }
 
@@ -311,6 +464,25 @@ export function sanitizeBookingEmailPlainText(raw: string): string {
   return dedupeConsecutive(lines).join('\n').trim();
 }
 
+/** «Данные бронирования» / Reservation details block — avoids parsing guest speech as check-in. */
+function extractReservationBlock(text: string): string {
+  const m =
+    /(?:^|\n)\s*(?:Данные бронирования|Reservation details)\s*\n([\s\S]*?)(?=\n\s*©\s*Copyright|\n\s*Данное электронное|\n\s*Вы подписаны на уведомления|$)/i.exec(
+      text,
+    );
+  return m?.[1]?.trim() ?? '';
+}
+
+function matchReservationMultilineField(labels: string[], block: string): string | undefined {
+  if (!block) return undefined;
+  for (const label of labels) {
+    const re = new RegExp(`(?:${label})\\s*:\\s*\\n\\s*([^\\n]+)`, 'i');
+    const m = block.match(re);
+    if (m?.[1]?.trim()) return m[1].trim();
+  }
+  return undefined;
+}
+
 export function parseBookingComEmail(text: string): BookingComParsed | null {
   const normalized = text.replace(/\r\n/g, '\n');
   if (normalized.length < 80) return null;
@@ -333,33 +505,41 @@ export function parseBookingComEmail(text: string): BookingComParsed | null {
   const bookingNumber = fromUrl ?? fromLabel;
   if (!bookingNumber) return null;
 
-  const guestName = matchGroup(
-    /(?:\*Имя гостя\*|Guest name)\s*[:\*]?\s*(.+)/i,
-    normalized,
-  );
-  const checkInRaw = matchGroup(
-    /(?:\*Заезд\*|Check-in(?: date)?)\s*[:\*]?\s*(.+)/i,
-    normalized,
-  );
-  const checkOutRaw = matchGroup(
-    /(?:\*Отъезд\*|Check-out(?: date)?)\s*[:\*]?\s*(.+)/i,
-    normalized,
-  );
-  const propertyRaw = matchGroup(
-    /(?:\*Название объекта размещения\*|Property name|Accommodation)\s*[:\*]?\s*(.+)/i,
-    normalized,
-  );
+  const resBlock = extractReservationBlock(normalized);
+
+  const guestName =
+    matchReservationMultilineField(['Имя гостя', 'Guest name'], resBlock) ??
+    matchGroup(/(?:\*Имя гостя\*|Guest name)\s*[:\*]?\s*(.+)/i, resBlock || normalized);
+  const checkInRaw =
+    matchReservationMultilineField(['Заезд', 'Check-in(?: date)?'], resBlock) ??
+    matchGroup(/(?:\*Заезд\*|Check-in(?: date)?)\s*[:\*]?\s*(.+)/i, resBlock);
+  const checkOutRaw =
+    matchReservationMultilineField(['Отъезд', 'Check-out(?: date)?'], resBlock) ??
+    matchGroup(/(?:\*Отъезд\*|Check-out(?: date)?)\s*[:\*]?\s*(.+)/i, resBlock);
+  const propertyRaw =
+    matchReservationMultilineField(
+      ['Название объекта размещения', 'Property name', 'Accommodation'],
+      resBlock,
+    ) ??
+    matchGroup(
+      /(?:\*Название объекта размещения\*|Property name|Accommodation)\s*[:\*]?\s*(.+)/i,
+      resBlock,
+    );
 
   const guestQuestion = extractBookingGuestQuestion(normalized);
 
   const hotelId = extractBookingHotelIdFromText(normalized) ?? undefined;
 
+  const checkIn = checkInRaw ? firstLineOnly(checkInRaw) : undefined;
+  const checkOut = checkOutRaw ? firstLineOnly(checkOutRaw) : undefined;
+  const propertyName = propertyRaw ? firstLineOnly(propertyRaw) : undefined;
+
   return {
     bookingNumber,
     guestName: guestName ? firstLineOnly(guestName) : undefined,
-    checkIn: checkInRaw ? firstLineOnly(checkInRaw) : undefined,
-    checkOut: checkOutRaw ? firstLineOnly(checkOutRaw) : undefined,
-    propertyName: propertyRaw ? firstLineOnly(propertyRaw) : undefined,
+    checkIn: isPlausibleBookingDateLabel(checkIn) ? checkIn : undefined,
+    checkOut: isPlausibleBookingDateLabel(checkOut) ? checkOut : undefined,
+    propertyName: isPlausibleBookingPropertyName(propertyName) ? propertyName : undefined,
     guestQuestion,
     hotelId,
   };

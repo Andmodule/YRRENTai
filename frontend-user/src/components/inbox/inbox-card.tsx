@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import type { ConversationDto } from '@/hooks/use-conversations';
 import { ConversationStatusDot } from '@/components/inbox/conversation-status-dot';
 import { formatGuestAndProperty, formatTelegramStyleTime } from '@/lib/format/conversation-meta';
+import { formatInboxMessagePreview } from '@rentai/shared';
 import { TruncatedTooltipText } from '@/components/inbox/truncated-tooltip-text';
 import { ConversationChannelBadge } from '@/components/inbox/conversation-channel-badge';
 
@@ -22,6 +23,7 @@ export function InboxCard({ conversation, isActive, onClick }: InboxCardProps) {
     conversation.propertyName,
     conversation.guestDisplayName,
   );
+  const previewLine = formatInboxMessagePreview(conversation.lastMessagePreview);
 
   return (
     <button
@@ -47,9 +49,9 @@ export function InboxCard({ conversation, isActive, onClick }: InboxCardProps) {
             <ConversationChannelBadge channel={conversation.channel} />
             <ConversationStatusDot status={conversation.status} />
           </div>
-          {conversation.lastMessagePreview && (
+          {previewLine && (
             <p className="mt-1 truncate text-xs text-muted-foreground dark:text-slate-500">
-              {conversation.lastMessagePreview}
+              {previewLine}
             </p>
           )}
         </div>

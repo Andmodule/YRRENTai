@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { sanitizeGuestQuestionForAlert } from '@rentai/shared';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Repository } from 'typeorm';
@@ -186,13 +187,14 @@ export class TelegramService {
       );
       return null;
     }
+    const alertQuestion = sanitizeGuestQuestionForAlert(guestQuestion);
     const att =
       escalationAttachments?.filter((a) => a.storageKey?.trim() && a.contentType?.trim()) ?? [];
     const escalation = this.escalationRepository.create({
       propertyId,
       propertyName,
       ...(guestMessageId?.trim() ? { guestMessageId: guestMessageId.trim() } : {}),
-      guestQuestion,
+      guestQuestion: alertQuestion,
       ...(convTrim ? { conversationId: convTrim } : {}),
       ...(threadTrim ? { messagingThreadId: threadTrim } : {}),
       ...(att.length > 0 ? { escalationAttachments: att } : {}),

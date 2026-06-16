@@ -1,3 +1,4 @@
+import { parseBookingComEmail } from '@rentai/shared';
 import { MessageParserService } from './message-parser.service';
 
 describe('MessageParserService', () => {
@@ -243,5 +244,85 @@ https://admin.booking.com/hotel/hoteladmin/extranet_ng/manage/pega_hotel_respons
   it('extractBookingGuestInquiryForAgent keeps plain guest text unchanged', () => {
     const plain = 'Ми заїдемо близько 18 год, а виселення в 3.30 год ночі';
     expect(service.extractBookingGuestInquiryForAgent(plain)).toBe(plain);
+  });
+
+  it('extractBookingGuestInquiryForAgent strips full Booking guest-message template (PL invoice)', () => {
+    const body = `##- Введите ваш ответ над этой линией -##
+
+Номер бронирования: 5117654096
+
+У вас новое сообщение от гостя
+
+Krzysztof Sowa:
+
+Proszę jeszcze o fakturę za parking na kwotę 60 zł
+
+Ответить
+
+Данные бронирования
+
+Имя гостя:
+Krzysztof Sowa
+
+© Copyright 2026 Booking.com`;
+    expect(service.extractBookingGuestInquiryForAgent(body)).toBe(
+      'Proszę jeszcze o fakturę za parking na kwotę 60 zł',
+    );
+  });
+
+  it('parseBookingComEmail does not treat guest check-in question as reservation check-in date', () => {
+    const body = `##- Введите ваш ответ над этой линией -##
+Номер бронирования: 5516227082
+У вас новое сообщение от гостя
+Denys Lyshchuk:
+Hello!
+Could you please send me the exact check-in instructions? Specifically, I need the lockbox code.
+
+Ответить
+
+Данные бронирования
+
+Имя гостя:
+Denys Lyshchuk
+
+Заезд:
+вт, 16 июня 2026
+
+Отъезд:
+ср, 17 июня 2026
+
+© Copyright 2026 Booking.com`;
+    const parsed = parseBookingComEmail(body);
+    expect(parsed?.guestQuestion).toContain('check-in instructions');
+    expect(parsed?.checkIn).toBe('вт, 16 июня 2026');
+    expect(parsed?.checkIn).not.toContain('instructions');
+  });
+
+  it('extractBookingGuestInquiryForAgent strips full Booking guest-message template (EN check-in)', () => {
+    const body = `##- Введите ваш ответ над этой линией -##
+
+                       Номер бронирования: 5516227082
+
+                       У вас новое сообщение от гостя
+
+                               Denys Lyshchuk:
+
+                                   Hello!
+   I am arriving today, June 16th, and my flight lands at 19:05.
+   Could you please send me the exact check-in instructions?
+
+   Ответить
+
+                                     -->
+   https://admin.booking.com/hotel/hoteladmin/extranet_ng/manage/messaging/inbox.html
+
+   Данные бронирования
+
+   © Copyright 2026 Booking.com`;
+    const out = service.extractBookingGuestInquiryForAgent(body);
+    expect(out).toContain('Hello!');
+    expect(out).toContain('check-in instructions');
+    expect(out).not.toContain('Ответить');
+    expect(out).not.toContain('admin.booking.com');
   });
 });

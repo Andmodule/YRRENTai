@@ -11,6 +11,7 @@ import { DataSource, EntityManager, IsNull, Not, QueryFailedError, Repository } 
 import {
   CONVERSATION_CHANNEL,
   listPreviewForInbox,
+  looksLikeBookingGuestNotification,
   stripEscalationForGuestDisplay,
   type BookingComMessageMetadata,
   type EmailInboundAttachment,
@@ -404,19 +405,21 @@ export class MessagingService {
       );
     }
 
-    /** UI + chat_messages: cleaned guest text for Booking; plain body otherwise. */
-    const guestDisplayBase =
-      channel === 'booking'
-        ? this.parser.extractBookingGuestInquiryForAgent(cleanText.trim()) ||
-          subjectTrim ||
-          '(empty message)'
-        : cleanText.trim() || subjectTrim || '(empty message)';
+    const bookingStyleInbound =
+      channel === 'booking' || looksLikeBookingGuestNotification(cleanText);
+
+    /** UI + chat_messages: cleaned guest text for Booking-style bodies; plain body otherwise. */
+    const guestDisplayBase = bookingStyleInbound
+      ? this.parser.extractBookingGuestInquiryForAgent(cleanText.trim()) ||
+        subjectTrim ||
+        '(empty message)'
+      : cleanText.trim() || subjectTrim || '(empty message)';
     /** Attachments only in metadata + chips — never append attachment boilerplate to bubble text. */
     const guestDisplayText = guestDisplayBase;
 
     /** Normalized for LLM / KB (Booking strip + attachment placeholders). Stored as `agent_text`. */
     const guestAgentText = buildGuestAgentText(
-      channel,
+      bookingStyleInbound ? 'booking' : channel,
       cleanText,
       subjectTrim,
       inboundAttachments,

@@ -5,7 +5,11 @@ import { useLocale, useTranslations } from 'next-intl';
 import ReactMarkdown from 'react-markdown';
 import { AlertCircle, Check, Mail, MessageCircle, Send } from 'lucide-react';
 import type { BookingComMessageMetadata } from '@rentai/shared';
-import { stripEscalationForGuestDisplay } from '@rentai/shared';
+import {
+  looksLikeBookingGuestNotification,
+  resolveBookingGuestDisplayText,
+  stripEscalationForGuestDisplay,
+} from '@rentai/shared';
 import { cn } from '@/lib/utils';
 import { formatBubbleTimestamp } from '@/lib/format/conversation-meta';
 import type { ChatMessage, MessageChannelCode } from '@/hooks/use-chat';
@@ -77,6 +81,10 @@ export function ChatMessageBubble({
   const isNonStaffAssistant = message.role === 'assistant' && !isStaffManual;
   const timeLabel = formatBubbleTimestamp(message.createdAt, locale);
   const displayContent = stripEscalationForGuestDisplay(message.content);
+  const userDisplayContent =
+    isUser && !bookingMetaForUi && looksLikeBookingGuestNotification(displayContent)
+      ? resolveBookingGuestDisplayText(displayContent)
+      : displayContent;
   const staffOutboundAttachments =
     !isUser &&
     isStaffManual &&
@@ -133,9 +141,9 @@ export function ChatMessageBubble({
         )}
         <div className="min-w-0">
           {isUser && bookingMetaForUi ? (
-            <BookingComGuestMessage metadata={bookingMetaForUi} rawContent={displayContent} />
+            <BookingComGuestMessage metadata={bookingMetaForUi} rawContent={userDisplayContent} />
           ) : isUser ? (
-            <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{displayContent}</p>
+            <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{userDisplayContent}</p>
           ) : (
             <>
               {!hideSyntheticAttachedLine && (
