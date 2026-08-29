@@ -156,7 +156,7 @@ export class TelegramService {
       await this.sendEscalationAlert(
         propertyId,
         propertyName,
-        guestQuestion,
+        sanitizeGuestQuestionForAlert(guestQuestion),
         guestMessageId,
         chatId,
         convTrim,

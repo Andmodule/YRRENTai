@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { sanitizeGuestQuestionForAlert } from '@rentai/shared';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import axios from 'axios';
@@ -66,7 +67,7 @@ export class TelegramEscalationSenderService {
 
     const propertyId = escalation.propertyId;
     const propertyName = escalation.propertyName;
-    const guestQuestion = escalation.guestQuestion;
+    const guestQuestion = sanitizeGuestQuestionForAlert(escalation.guestQuestion);
 
     const mdText =
       `🔔 *Вопрос гостя*\n` +

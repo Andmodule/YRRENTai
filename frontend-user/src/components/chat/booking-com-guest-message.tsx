@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import {
   isPlausibleBookingDateLabel,
   isPlausibleBookingPropertyName,
+  isPlausibleGuestContactEmail,
   resolveBookingGuestDisplayText,
   type BookingComMessageMetadata,
 } from '@rentai/shared';
@@ -37,8 +38,20 @@ export function BookingComGuestMessage({ metadata, rawContent }: BookingComGuest
   const propertyName = isPlausibleBookingPropertyName(metadata.propertyName)
     ? metadata.propertyName
     : undefined;
+  const guestEmail = isPlausibleGuestContactEmail(metadata.guestEmail)
+    ? metadata.guestEmail
+    : undefined;
+  const totalGuests = metadata.totalGuests?.trim() || undefined;
+  const totalRooms = metadata.totalRooms?.trim() || undefined;
 
-  const hasReservationMeta = !!(checkIn || checkOut || propertyName);
+  const hasReservationMeta = !!(
+    checkIn ||
+    checkOut ||
+    propertyName ||
+    guestEmail ||
+    totalGuests ||
+    totalRooms
+  );
   const hotelId = metadata.hotelId?.trim();
   const showExpand = hasReservationMeta || !!hotelId;
 
@@ -90,6 +103,12 @@ export function BookingComGuestMessage({ metadata, rawContent }: BookingComGuest
         <div className="space-y-2 border-t border-primary-foreground/10 pt-2">
           {hasReservationMeta ? (
             <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-[12px] leading-snug text-primary-foreground/85 [&_dt]:text-primary-foreground/50 [&_dd]:min-w-0 [&_dd]:break-words">
+              {guestEmail ? (
+                <>
+                  <dt>{t('bookingComGuestEmail')}</dt>
+                  <dd className="break-all">{guestEmail}</dd>
+                </>
+              ) : null}
               {checkIn ? (
                 <>
                   <dt>{t('bookingComCheckIn')}</dt>
@@ -106,6 +125,18 @@ export function BookingComGuestMessage({ metadata, rawContent }: BookingComGuest
                 <>
                   <dt>{t('bookingComProperty')}</dt>
                   <dd>{propertyName}</dd>
+                </>
+              ) : null}
+              {totalGuests ? (
+                <>
+                  <dt>{t('bookingComTotalGuests')}</dt>
+                  <dd>{totalGuests}</dd>
+                </>
+              ) : null}
+              {totalRooms ? (
+                <>
+                  <dt>{t('bookingComTotalRooms')}</dt>
+                  <dd>{totalRooms}</dd>
                 </>
               ) : null}
             </dl>

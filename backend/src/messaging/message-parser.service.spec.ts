@@ -1,4 +1,4 @@
-import { parseBookingComEmail } from '@rentai/shared';
+import { parseBookingComEmail, sanitizeGuestQuestionForAlert } from '@rentai/shared';
 import { MessageParserService } from './message-parser.service';
 
 describe('MessageParserService', () => {
@@ -270,6 +270,35 @@ Krzysztof Sowa
     );
   });
 
+  it('parseBookingComEmail parses total guests and rooms from reservation block', () => {
+    const body = `##- Введите ваш ответ над этой линией -##
+Номер бронирования: 5117654096
+У вас новое сообщение от гостя
+Krzysztof Sowa:
+Proszę jeszcze o fakturę za parking na kwotę 60 zł
+Ответить
+Данные бронирования
+Имя гостя:
+Krzysztof Sowa
+Заезд:
+вт, 9 июня 2026
+Отъезд:
+ср, 10 июня 2026
+Название объекта размещения:
+K22 Large Family Apart Komputerowa
+Номер бронирования:
+5117654096
+Всего гостей:
+3
+Всего номеров:
+1
+© Copyright 2026 Booking.com`;
+    const parsed = parseBookingComEmail(body);
+    expect(parsed?.totalGuests).toBe('3');
+    expect(parsed?.totalRooms).toBe('1');
+    expect(parsed?.guestQuestion).toContain('fakturę za parking');
+  });
+
   it('parseBookingComEmail does not treat guest check-in question as reservation check-in date', () => {
     const body = `##- Введите ваш ответ над этой линией -##
 Номер бронирования: 5516227082
@@ -296,6 +325,29 @@ Denys Lyshchuk
     expect(parsed?.guestQuestion).toContain('check-in instructions');
     expect(parsed?.checkIn).toBe('вт, 16 июня 2026');
     expect(parsed?.checkIn).not.toContain('instructions');
+  });
+
+  it('sanitizeGuestQuestionForAlert cleans cancellation and confirmation Booking emails', () => {
+    const cancel = `В целях безопасности убедитесь, что при входе в систему Ваш URL-адрес
+   выглядит так: https://admin.booking.com
+Cancellation — 6380118035
+   Бронирование 6380118035 гостя Likos Bartek было отменено.`;
+    expect(sanitizeGuestQuestionForAlert(cancel)).toContain('Отмена бронирования 6380118035');
+    expect(sanitizeGuestQuestionForAlert(cancel)).not.toContain('admin.booking.com');
+
+    const autoreply = `Номер бронирования: 6366775969
+Гость получил автоответ
+Viktoriia Kononenko:
+Я хочу запросить заезд в 19:00 - 20:00. Это возможно?
+Подтверждено бесплатно`;
+    const ar = sanitizeGuestQuestionForAlert(autoreply);
+    expect(ar).toContain('запросить заезд');
+    expect(ar).not.toContain('Подтверждено бесплатно');
+
+    const confirm = `В целях безопасности убедитесь
+Booking confirmation — 6468651673
+Вы получили новое бронирование от гостя Booking.com.`;
+    expect(sanitizeGuestQuestionForAlert(confirm)).toBe('Новое бронирование 6468651673.');
   });
 
   it('extractBookingGuestInquiryForAgent strips full Booking guest-message template (EN check-in)', () => {

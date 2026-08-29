@@ -12,6 +12,7 @@ import {
   CONVERSATION_CHANNEL,
   listPreviewForInbox,
   looksLikeBookingGuestNotification,
+  sanitizeGuestQuestionForAlert,
   stripEscalationForGuestDisplay,
   type BookingComMessageMetadata,
   type EmailInboundAttachment,
@@ -628,6 +629,9 @@ export class MessagingService {
       guestMessage.id,
       emailInboundAttachments,
       bookingHints.bookingHotelId?.trim() ?? null,
+      aliasBooking?.guestEmail?.trim() ||
+        (replyAddr.includes('@guest.booking.com') ? replyAddr.trim() : null),
+      bookingStyleInbound ? cleanText.trim() : guestDisplayText,
     );
 
     const inboundAiAutoReplyEnabled =
@@ -848,6 +852,8 @@ export class MessagingService {
     messagingGuestMessageId: string,
     emailAttachments: EmailInboundAttachment[],
     bookingHotelIdFromEmail: string | null = null,
+    guestContactEmail: string | null = null,
+    metadataSourceText?: string | null,
   ): Promise<{ chatGuestMessageId: string; listPreview: string } | null> {
 
     try {
@@ -920,9 +926,14 @@ export class MessagingService {
 
       let bookingMeta: BookingComMessageMetadata | null = null;
       try {
-        bookingMeta = await this.bookingComMetadataService.buildForUserMessage(conv.id, previewText, {
-          hotelIdFromEmail: bookingHotelIdFromEmail,
-        });
+        bookingMeta = await this.bookingComMetadataService.buildForUserMessage(
+          conv.id,
+          metadataSourceText?.trim() || previewText,
+          {
+            hotelIdFromEmail: bookingHotelIdFromEmail,
+            guestEmailHint: guestContactEmail,
+          },
+        );
       } catch (metaErr) {
         this.logger.warn(
           `Email→chat: booking metadata skipped for conv ${conv.id}: ${(metaErr as Error).message}`,
@@ -1281,7 +1292,7 @@ export class MessagingService {
 
             propertyName: property.name,
 
-            guestQuestion: guestQuestionForTelegram,
+            guestQuestion: sanitizeGuestQuestionForAlert(guestQuestionForTelegram),
 
             guestMessageId: chatGuestMessageId,
 
