@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
-import { ClipboardList, Copy, Loader2, MessageSquare } from 'lucide-react';
+import { ClipboardList, Copy, Loader2, MessageSquare, XCircle } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { Link } from '@/i18n/navigation';
@@ -46,10 +46,44 @@ export function ReservationDetailPanelFooter({
   onCreateTask: (reservation: Reservation) => void;
 }) {
   const t = useTranslations('calendar');
+  const queryClient = useQueryClient();
   const chatLabel = t('openChatShort');
+  const canCancel = reservation.status !== 'cancelled' && reservation.status !== 'blocked';
+  const cancelMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiClient.patch<{ data: unknown }>(`/bookings/${reservation.uuid}/status`, {
+        status: 'CANCELLED',
+        cancelledBy: 'manager',
+      });
+      return res.data;
+    },
+    onSuccess: async () => {
+      toast.success(t('cancelBookingSuccess'));
+      await queryClient.invalidateQueries({ queryKey: ['calendar'] });
+    },
+    onError: () => {
+      toast.error(t('cancelBookingError'));
+    },
+  });
 
   return (
-    <div className="flex flex-row gap-2">
+    <div className="flex flex-col gap-2 sm:flex-row">
+      {canCancel ? (
+        <Button
+          type="button"
+          variant="destructive"
+          className="min-h-10 min-w-0 flex-1 px-2 text-sm sm:px-4 sm:text-base"
+          disabled={cancelMutation.isPending}
+          onClick={() => cancelMutation.mutate()}
+        >
+          {cancelMutation.isPending ? (
+            <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+          ) : (
+            <XCircle className="h-4 w-4 shrink-0" aria-hidden />
+          )}
+          <span className="truncate">{t('cancelBooking')}</span>
+        </Button>
+      ) : null}
       {reservation.chatThreadId ? (
         <Button asChild className="min-h-10 min-w-0 flex-1 px-2 text-sm sm:px-4 sm:text-base">
           <Link

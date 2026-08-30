@@ -36,6 +36,10 @@ import { parseLocalCalendarDay } from './lib/calendar-api-dates';
 import { isBookingIdPinQuery, normalizeCalendarQuery, reservationMatchesQuery } from './calendarSearch';
 
 const ITEM_HEIGHT_PX = 64;
+const DAY_COLUMN_WIDTH_PX = {
+  mobile: 64,
+  desktop: 96,
+} as const;
 
 export interface CalendarViewProps {
   dateRange: CalendarDateRange;
@@ -164,7 +168,7 @@ export function CalendarView({
     () => eachDayOfInterval({ start: startOfDay(dateRange.start), end: startOfDay(dateRange.end) }).length,
     [dateRange],
   );
-  const dayWidthPx = (isMobile ? 48 : 60) * numDays;
+  const dayWidthPx = (isMobile ? DAY_COLUMN_WIDTH_PX.mobile : DAY_COLUMN_WIDTH_PX.desktop) * numDays;
   const { ref: gridContainerRef, width: gridWidth, height: gridHeight } = useContainerSize();
 
   const channels = useMemo(
@@ -293,6 +297,14 @@ export function CalendarView({
     [onSelectReservation, isMobile],
   );
 
+  const propertyMetaById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const p of filteredProperties) {
+      map.set(p.uuid, getPropertyMeta(p.uuid, filteredReservations, dateRange));
+    }
+    return map;
+  }, [filteredProperties, filteredReservations, dateRange]);
+
   const renderChannel = useCallback(
     ({ channel }: { channel: Channel }) => {
       const { top, height } = channel.position;
@@ -315,13 +327,13 @@ export function CalendarView({
         >
           <SidebarChannel
             channel={channel}
-            meta={getPropertyMeta(channel.uuid, filteredReservations, dateRange)}
+            meta={propertyMetaById.get(channel.uuid) ?? ''}
             isMobile={isMobile}
           />
         </div>
       );
     },
-    [filteredReservations, dateRange, isMobile],
+    [propertyMetaById, isMobile],
   );
 
   const renderTimeline = useCallback(

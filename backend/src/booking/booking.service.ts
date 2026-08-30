@@ -24,7 +24,11 @@ import { PropertyService } from '../property/property.service';
 import { ZodomusAvailabilityPushService } from '../integrations/zodomus/zodomus-availability-push.service';
 import { CalendarGateway } from '../calendar/calendar.gateway';
 import { GuestService } from '../guest/guest.service';
-import { nightsBetweenInPropertyTimezone } from './booking-availability.util';
+import {
+  calendarDayToInstantInTimezone,
+  formatCalendarDayInTimezone,
+  nightsBetweenInPropertyTimezone,
+} from './booking-availability.util';
 
 @Injectable()
 export class BookingService {
@@ -40,10 +44,21 @@ export class BookingService {
     private readonly guestService: GuestService,
   ) {}
 
+  /**
+   * Normalize client datetime to noon-in-property-TZ of the intended calendar day.
+   * Clients should send `${yyyy-MM-dd}T12:00:00.000Z` for the selected day; we still
+   * re-anchor via UTC calendar day so process/browser TZ cannot shift the stay.
+   */
+  private normalizeBookingDay(iso: string, propertyTimezone: string): Date {
+    const raw = new Date(iso);
+    const day = formatCalendarDayInTimezone(raw, 'UTC');
+    return calendarDayToInstantInTimezone(day, propertyTimezone);
+  }
+
   async create(dto: CreateBookingDto, userId: string, role: string): Promise<BookingEntity> {
     const property = await this.propertyService.findOneForUser(dto.propertyId, userId, role);
-    const checkIn = new Date(dto.checkIn);
-    const checkOut = new Date(dto.checkOut);
+    const checkIn = this.normalizeBookingDay(dto.checkIn, property.timezone);
+    const checkOut = this.normalizeBookingDay(dto.checkOut, property.timezone);
 
     const nights = nightsBetweenInPropertyTimezone(checkIn, checkOut, property.timezone);
     if (nights < 1) {
@@ -116,8 +131,8 @@ export class BookingService {
     conflictWith?: { guestName: string; checkIn: string; checkOut: string };
   }> {
     const property = await this.propertyService.findOneForUser(propertyId, userId, role);
-    const checkIn = new Date(checkInIso);
-    const checkOut = new Date(checkOutIso);
+    const checkIn = this.normalizeBookingDay(checkInIso, property.timezone);
+    const checkOut = this.normalizeBookingDay(checkOutIso, property.timezone);
     const nights = nightsBetweenInPropertyTimezone(checkIn, checkOut, property.timezone);
     if (nights < 1) {
       return { available: false, reason: 'MINIMUM_ONE_NIGHT' };
@@ -187,8 +202,14 @@ export class BookingService {
     const property = await this.propertyService.findOneForUser(booking.propertyId, userId, role);
 
     if (dto.checkIn !== undefined || dto.checkOut !== undefined) {
-      const nextCheckIn = dto.checkIn !== undefined ? new Date(dto.checkIn) : booking.checkIn;
-      const nextCheckOut = dto.checkOut !== undefined ? new Date(dto.checkOut) : booking.checkOut;
+      const nextCheckIn =
+        dto.checkIn !== undefined
+          ? this.normalizeBookingDay(dto.checkIn, property.timezone)
+          : booking.checkIn;
+      const nextCheckOut =
+        dto.checkOut !== undefined
+          ? this.normalizeBookingDay(dto.checkOut, property.timezone)
+          : booking.checkOut;
       const nights = nightsBetweenInPropertyTimezone(nextCheckIn, nextCheckOut, property.timezone);
       if (nights < 1) {
         throw new BadRequestException('MINIMUM_ONE_NIGHT');
@@ -223,12 +244,12 @@ export class BookingService {
       booking.guestPhone = dto.guestPhone === null || dto.guestPhone === '' ? undefined : dto.guestPhone;
     }
     if (dto.checkIn !== undefined) {
-      booking.checkIn = new Date(dto.checkIn);
+      booking.checkIn = this.normalizeBookingDay(dto.checkIn, property.timezone);
       if (booking.checkIn < minDate) minDate = booking.checkIn;
       availabilityDirty = true;
     }
     if (dto.checkOut !== undefined) {
-      booking.checkOut = new Date(dto.checkOut);
+      booking.checkOut = this.normalizeBookingDay(dto.checkOut, property.timezone);
       if (booking.checkOut > maxDate) maxDate = booking.checkOut;
       availabilityDirty = true;
     }
@@ -329,6 +350,7 @@ export class BookingService {
     const booking = await this.findOne(id, userId, role);
     const previous = booking.status as BookingStatus;
     const next = newStatus as BookingStatus;
+    const previousCancelledBy = booking.cancelledBy;
 
     if (!isValidTransition(previous, next)) {
       throw new BadRequestException(
@@ -355,10 +377,28 @@ export class BookingService {
       ),
     );
 
-    this.zodomusAvailabilityPush.scheduleAvailabilityPush(saved.propertyId, {
+    const availabilityPushOptions = {
       dateFromISO: saved.checkIn.toISOString(),
       dateToISO: saved.checkOut.toISOString(),
-    });
+    };
+    if (next === BOOKING_STATUS.CANCELLED) {
+      try {
+        await this.zodomusAvailabilityPush.pushAvailabilityNow(saved.propertyId, {
+          ...availabilityPushOptions,
+          ignoreAutoPushDisable: true,
+        });
+      } catch (e) {
+        saved.status = previous;
+        saved.cancelledBy = previousCancelledBy;
+        await this.bookingRepository.save(saved);
+        this.logger.warn(
+          `Rolled back booking ${saved.id} cancellation because Zodomus availability push failed: ${String(e)}`,
+        );
+        throw e;
+      }
+    } else {
+      this.zodomusAvailabilityPush.scheduleAvailabilityPush(saved.propertyId, availabilityPushOptions);
+    }
 
     this.calendarGateway.emitCalendarChanged({ propertyId: saved.propertyId, source: 'booking:transition' });
 

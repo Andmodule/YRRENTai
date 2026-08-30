@@ -15,6 +15,7 @@ import { PropertyChannelListingEntity } from '../../property/entities/property-c
 import { PropertyModule } from '../../property/property.module';
 import { UserModule } from '../../user/user.module';
 import { CalendarModule } from '../../calendar/calendar.module';
+import { GuestModule } from '../../guest/guest.module';
 import { ZodomusAvailabilityPushService } from './zodomus-availability-push.service';
 
 @Module({
@@ -24,6 +25,7 @@ import { ZodomusAvailabilityPushService } from './zodomus-availability-push.serv
     PropertyModule,
     UserModule,
     CalendarModule,
+    GuestModule,
   ],
   controllers: [ZodomusController, ZodomusWebhookController, ZodomusAdminController],
   providers: [

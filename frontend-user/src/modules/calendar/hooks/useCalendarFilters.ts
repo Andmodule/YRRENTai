@@ -33,10 +33,15 @@ export function useCalendarFilters(
     );
   }, [properties, filters.propertyQuery]);
 
+  const filteredPropertyIds = useMemo(
+    () => new Set(filteredProperties.map((p) => p.uuid)),
+    [filteredProperties],
+  );
+
   const filteredReservations = useMemo(() => {
     const q = normalizeCalendarQuery(filters.propertyQuery);
     return reservations.filter((r) => {
-      const propertyOk = filteredProperties.some((p) => p.uuid === r.propertyId);
+      const propertyOk = filteredPropertyIds.has(r.propertyId);
       if (!propertyOk) return false;
       if (!q) {
         const channelOk = filters.channelFilter === 'all' || r.channel === filters.channelFilter;
@@ -58,7 +63,7 @@ export function useCalendarFilters(
     filters.channelFilter,
     filters.statusFilter,
     filters.propertyQuery,
-    filteredProperties,
+    filteredPropertyIds,
     titleMatchedPropertyIds,
   ]);
 
