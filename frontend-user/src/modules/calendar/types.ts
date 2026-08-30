@@ -38,6 +38,9 @@ export interface Reservation {
   checkIn: string;
   checkOut: string;
   chatThreadId: string | null;
+  /** Inbound OTA booking overlaps another blocking booking. */
+  overbookingConflict?: boolean;
+  overbookingConflictWithBookingId?: string | null;
 }
 
 export interface CalendarDateRange {

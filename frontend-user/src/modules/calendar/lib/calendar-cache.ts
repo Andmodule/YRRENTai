@@ -26,6 +26,8 @@ export interface ApiBooking {
   zodomusReservationId?: string | null;
   zodomusChannelId?: number | null;
   paymentStatus?: 'unpaid' | 'partial' | 'paid';
+  overbookingConflict?: boolean;
+  overbookingConflictWithBookingId?: string | null;
 }
 
 function mapApiBookingStatus(status: string): BookingStatus {
@@ -106,6 +108,8 @@ export function mapApiBookingToReservation(
     checkIn: formatCalendarDayFromIso(b.checkIn, preferredDays?.checkIn),
     checkOut: formatCalendarDayFromIso(b.checkOut, preferredDays?.checkOut),
     chatThreadId: null,
+    overbookingConflict: Boolean(b.overbookingConflict),
+    overbookingConflictWithBookingId: b.overbookingConflictWithBookingId ?? null,
   };
 }
 

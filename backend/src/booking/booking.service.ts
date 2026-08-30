@@ -1,6 +1,5 @@
 import {
   Injectable,
-  Logger,
   NotFoundException,
   BadRequestException,
   ConflictException,
@@ -32,8 +31,6 @@ import {
 
 @Injectable()
 export class BookingService {
-  private readonly logger = new Logger(BookingService.name);
-
   constructor(
     @InjectRepository(BookingEntity)
     private readonly bookingRepository: Repository<BookingEntity>,
@@ -350,7 +347,6 @@ export class BookingService {
     const booking = await this.findOne(id, userId, role);
     const previous = booking.status as BookingStatus;
     const next = newStatus as BookingStatus;
-    const previousCancelledBy = booking.cancelledBy;
 
     if (!isValidTransition(previous, next)) {
       throw new BadRequestException(
@@ -358,9 +354,23 @@ export class BookingService {
       );
     }
 
+    /**
+     * OTA reservation lifecycle is Booking → Zodomus → CRM (inbound webhooks/queue).
+     * CRM must not pretend to cancel the channel reservation; managers cancel on the OTA,
+     * then Zodomus delivers status=3. Local cancel is allowed only for direct (non-OTA) bookings.
+     */
+    if (next === BOOKING_STATUS.CANCELLED && booking.zodomusReservationId?.trim()) {
+      throw new BadRequestException('OTA_CANCEL_VIA_CHANNEL');
+    }
+
     booking.status = next;
     if (cancelledBy) {
       booking.cancelledBy = cancelledBy;
+    }
+    if (next === BOOKING_STATUS.CANCELLED) {
+      booking.overbookingConflict = false;
+      booking.overbookingConflictWithBookingId = null;
+      booking.overbookingDetectedAt = null;
     }
 
     const saved = await this.bookingRepository.save(booking);
@@ -377,28 +387,11 @@ export class BookingService {
       ),
     );
 
-    const availabilityPushOptions = {
+    // Inventory only — never treat availability push as OTA reservation cancel authority.
+    this.zodomusAvailabilityPush.scheduleAvailabilityPush(saved.propertyId, {
       dateFromISO: saved.checkIn.toISOString(),
       dateToISO: saved.checkOut.toISOString(),
-    };
-    if (next === BOOKING_STATUS.CANCELLED) {
-      try {
-        await this.zodomusAvailabilityPush.pushAvailabilityNow(saved.propertyId, {
-          ...availabilityPushOptions,
-          ignoreAutoPushDisable: true,
-        });
-      } catch (e) {
-        saved.status = previous;
-        saved.cancelledBy = previousCancelledBy;
-        await this.bookingRepository.save(saved);
-        this.logger.warn(
-          `Rolled back booking ${saved.id} cancellation because Zodomus availability push failed: ${String(e)}`,
-        );
-        throw e;
-      }
-    } else {
-      this.zodomusAvailabilityPush.scheduleAvailabilityPush(saved.propertyId, availabilityPushOptions);
-    }
+    });
 
     this.calendarGateway.emitCalendarChanged({ propertyId: saved.propertyId, source: 'booking:transition' });
 

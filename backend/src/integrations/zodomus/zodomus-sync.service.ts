@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { addDays, isValid, parseISO } from 'date-fns';
-import { BOOKING_STATUS } from '@rentai/shared';
+import { BOOKING_STATUS, BOOKING_STATUSES_BLOCKING_AVAILABILITY } from '@rentai/shared';
 import { BookingEntity } from '../../booking/entities/booking.entity';
 import { calendarDayToInstantInTimezone } from '../../booking/booking-availability.util';
 import { PropertyChannelListingEntity } from '../../property/entities/property-channel-listing.entity';
@@ -18,6 +18,7 @@ import {
   isZodomusPermanentMisconfiguration,
   isZodomusReservationDownloadLimitError,
 } from './zodomus-status.util';
+import { applyOverbookingFlag as markOverbooking, clearOverbookingFlag } from './zodomus-overbooking.util';
 import type { ZodomusReservation, ZodomusReservationQueueItem } from './zodomus.types';
 
 /** Zodomus queue status codes per official docs */
@@ -481,9 +482,43 @@ export class ZodomusSyncService {
     if (row.status === BOOKING_STATUS.CANCELLED) return row; // already cancelled
     row.status = BOOKING_STATUS.CANCELLED;
     row.zodomusSynced = true;
+    clearOverbookingFlag(row);
     await this.bookingRepo.save(row);
     this.logger.log(`Cancelled booking ${row.id} (zodomusReservationId=${rid})`);
     return row;
+  }
+
+  /**
+   * Detect another blocking booking that overlaps the inbound stay.
+   * OTA bookings are still saved; conflict is flagged for the manager (source of truth = channel).
+   */
+  private async findInboundOverlap(
+    propertyId: string,
+    checkIn: Date,
+    checkOut: Date,
+    excludeBookingId?: string,
+  ): Promise<BookingEntity | null> {
+    const qb = this.bookingRepo
+      .createQueryBuilder('b')
+      .where('b.propertyId = :propertyId', { propertyId })
+      .andWhere('b.status IN (:...blocking)', {
+        blocking: [...BOOKING_STATUSES_BLOCKING_AVAILABILITY],
+      })
+      .andWhere('b.checkIn < :checkOut', { checkOut })
+      .andWhere('b.checkOut > :checkIn', { checkIn });
+    if (excludeBookingId) {
+      qb.andWhere('b.id != :excludeId', { excludeId: excludeBookingId });
+    }
+    return qb.getOne();
+  }
+
+  private applyOverbookingFlag(row: BookingEntity, conflictWith: BookingEntity | null): void {
+    markOverbooking(row, conflictWith);
+    if (conflictWith) {
+      this.logger.warn(
+        `Overbooking: OTA reservation ${row.zodomusReservationId} overlaps booking ${conflictWith.id} (${conflictWith.guestName}) on property ${row.propertyId}`,
+      );
+    }
   }
 
   private async upsertBooking(
@@ -600,10 +635,17 @@ export class ZodomusSyncService {
     const hint = typeof raw.otaPaymentHint === 'string' ? raw.otaPaymentHint.trim().slice(0, 512) : '';
     row.otaPaymentHint = hint.length > 0 ? hint : null;
 
+    if (row.status === BOOKING_STATUS.CANCELLED || row.status === BOOKING_STATUS.DECLINED) {
+      this.applyOverbookingFlag(row, null);
+    } else {
+      const conflict = await this.findInboundOverlap(property.id, checkIn, checkOut, existing?.id);
+      this.applyOverbookingFlag(row, conflict);
+    }
+
     await this.bookingRepo.save(row);
 
     this.logger.debug(
-      `Zodomus upsert reservationId=${rid}: email=${Boolean(row.guestEmail?.trim())} phone=${Boolean(row.guestPhone?.trim())} guestsCount=${row.guestsCount ?? '—'} adults=${row.guestsAdults ?? '—'} children=${row.guestsChildren ?? '—'}`,
+      `Zodomus upsert reservationId=${rid}: email=${Boolean(row.guestEmail?.trim())} phone=${Boolean(row.guestPhone?.trim())} guestsCount=${row.guestsCount ?? '—'} adults=${row.guestsAdults ?? '—'} children=${row.guestsChildren ?? '—'} overbooking=${row.overbookingConflict}`,
     );
   }
 }

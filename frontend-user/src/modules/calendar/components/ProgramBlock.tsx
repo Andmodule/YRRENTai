@@ -9,7 +9,11 @@
  */
 
 import { memo, useCallback, useMemo } from 'react';
-import { useProgram } from 'planby';
+import {
+  ProgramBox,
+  ProgramContent,
+  useProgram,
+} from 'planby';
 import type { ProgramItem as PlanbyProgramRow } from 'planby/dist/Epg/helpers/types';
 import { format } from 'date-fns';
 import { useTranslations } from 'next-intl';
@@ -77,16 +81,12 @@ export const ProgramBlock = memo(function ProgramBlock({ program, onSelect, isMo
   const t = useTranslations('calendar');
   const locale = useDateLocale();
   const p = program.program;
-  const {
-    styles: layoutStyles,
-    isMinWidth: _isMinWidth,
-  } = useProgram({
+  const { styles: layoutStyles } = useProgram({
     program: p,
     isRTL: program.isRTL,
     isBaseTimeFormat: program.isBaseTimeFormat,
     minWidth: 48,
   });
-
   const data = p.data as PlanbyProgramRow['data'] & { _reservation?: Reservation };
   const reservation = data._reservation;
   const status: BookingStatus = reservation?.status ?? 'pending';
@@ -109,6 +109,7 @@ export const ProgramBlock = memo(function ProgramBlock({ program, onSelect, isMo
       price,
     ];
     if (reservation.fromOta) lines.push(t('otaSyncedTooltip'));
+    if (reservation.overbookingConflict) lines.push(t('overbookingConflictTooltip'));
     if (status !== 'cancelled' && status !== 'blocked') {
       lines.push('', t('timelineLegendShort'));
     }
@@ -148,7 +149,7 @@ export const ProgramBlock = memo(function ProgramBlock({ program, onSelect, isMo
     );
     return (
       <div
-        className="pointer-events-none absolute z-[2]"
+        className="pointer-events-none absolute z-[20]"
         style={{ ...layoutStyles.position, width: layoutStyles.width }}
       >
         <Tooltip>
@@ -162,12 +163,16 @@ export const ProgramBlock = memo(function ProgramBlock({ program, onSelect, isMo
   }
 
   const blockInner = (
-    <div
+    <ProgramContent
       className={cn(
         'box-border flex h-full min-h-[40px] w-full flex-col overflow-hidden rounded-lg border shadow-sm',
         calendarTimelineCardClasses[status],
+        reservation?.overbookingConflict &&
+          'ring-2 ring-destructive/80 border-destructive dark:ring-red-500/70',
       )}
-      style={{ width: layoutStyles.width }}
+      data-testid="program-content"
+      width={layoutStyles.width}
+      isLive={false}
     >
       {status === 'blocked' ? (
         <div
@@ -181,7 +186,7 @@ export const ProgramBlock = memo(function ProgramBlock({ program, onSelect, isMo
       <button
         type="button"
         className={cn(
-          'flex min-h-0 flex-1 items-center justify-end gap-1 rounded-b-lg px-1.5 py-0.5 text-left text-xs font-medium',
+          'flex min-h-0 flex-1 items-center justify-between gap-1 rounded-b-lg px-1.5 py-0.5 text-left text-xs font-medium',
           'cursor-pointer transition-colors duration-200 hover:brightness-95 dark:hover:brightness-110',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
         )}
@@ -191,19 +196,25 @@ export const ProgramBlock = memo(function ProgramBlock({ program, onSelect, isMo
         onKeyDown={handleKeyDown}
         aria-label={tooltipText ? tooltipText.replace(/\n/g, ', ') : 'booking'}
       >
+        {reservation ? (
+          <span className="min-w-0 flex-1 truncate text-[11px] font-medium leading-tight text-foreground">
+            {reservation.guestName}
+          </span>
+        ) : null}
         {showNights && reservation ? (
           <span className="shrink-0 text-[10px] font-normal text-muted-foreground">
             {nights} {t('nightsShort')}
           </span>
         ) : null}
       </button>
-    </div>
+    </ProgramContent>
   );
 
   return (
-    <div
-      className="pointer-events-auto absolute z-[2]"
-      style={{ ...layoutStyles.position, width: layoutStyles.width }}
+    <ProgramBox
+      width={layoutStyles.width}
+      style={layoutStyles.position}
+      className="z-[20]"
       data-testid="program-item"
       onClick={(e) => e.stopPropagation()}
       onKeyDown={(e) => {
@@ -213,7 +224,7 @@ export const ProgramBlock = memo(function ProgramBlock({ program, onSelect, isMo
       {reservation && tooltipText ? (
         <Tooltip>
           <TooltipTrigger asChild>
-            <div className="w-full">{blockInner}</div>
+            <div className="h-full w-full">{blockInner}</div>
           </TooltipTrigger>
           <TooltipContent side="top" className="max-w-sm whitespace-pre-line">
             {tooltipText}
@@ -222,6 +233,6 @@ export const ProgramBlock = memo(function ProgramBlock({ program, onSelect, isMo
       ) : (
         blockInner
       )}
-    </div>
+    </ProgramBox>
   );
 });

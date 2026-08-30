@@ -47,6 +47,9 @@ export interface CalendarReservationDto {
   checkIn: string;
   checkOut: string;
   chatThreadId: string | null;
+  /** Inbound OTA booking overlaps another blocking booking on the property. */
+  overbookingConflict: boolean;
+  overbookingConflictWithBookingId: string | null;
 }
 
 @Injectable()
@@ -195,6 +198,8 @@ export function mapBookingToCalendarDto(
     checkIn: formatCalendarDayInTimezone(b.checkIn, propertyTimezone),
     checkOut: formatCalendarDayInTimezone(b.checkOut, propertyTimezone),
     chatThreadId: null,
+    overbookingConflict: Boolean(b.overbookingConflict),
+    overbookingConflictWithBookingId: b.overbookingConflictWithBookingId ?? null,
   };
 }
 
