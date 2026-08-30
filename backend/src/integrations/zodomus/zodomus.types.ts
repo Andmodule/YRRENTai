@@ -55,6 +55,8 @@ export interface ZodomusReservation {
   guestEmail?: string;
   /** Merged from `customer.phone` (+ country code when present). */
   guestPhone?: string;
+  /** Booking.com proxy address when present on the payload. */
+  guestEmailAlias?: string;
   /** From first room: adults+children preferred, else `numberOfGuests`. */
   guestsCount?: number;
   /** Set when breakdown comes from room adults+children (not only numberOfGuests). */

@@ -455,6 +455,10 @@ export class ZodomusService {
       guestFirstName: cust.firstName,
       guestLastName: cust.lastName,
       guestEmail: cust.email,
+      guestEmailAlias:
+        typeof cust.email === 'string' && String(cust.email).toLowerCase().includes('guest.booking.com')
+          ? String(cust.email).trim().toLowerCase()
+          : undefined,
       guestPhone,
       guestsCount,
       guestBreakdownFromRoom,

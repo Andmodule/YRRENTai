@@ -1,8 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, Repository } from 'typeorm';
-import { addDays, format, parseISO, startOfDay } from 'date-fns';
+import { addDays, parseISO } from 'date-fns';
 import { BookingEntity } from '../booking/entities/booking.entity';
+import { formatCalendarDayInTimezone } from '../booking/booking-availability.util';
 import { PropertyService } from '../property/property.service';
 import type { BookingStatus as SharedBookingStatus } from '@rentai/shared';
 
@@ -67,8 +68,15 @@ export class CalendarService {
     }
 
     const propertyIds = properties.map((p) => p.id);
-    const rangeStart = startOfDay(parseISO(from));
-    const rangeEndExclusive = addDays(startOfDay(parseISO(to)), 1);
+    const tzByPropertyId = new Map(properties.map((p) => [p.id, p.timezone || 'UTC']));
+    /**
+     * Parse from/to as UTC calendar midnights and widen by ±14h so bookings stored as
+     * noon-in-property-TZ still overlap the requested window regardless of process TZ.
+     */
+    const rangeStart = new Date(parseISO(`${from.trim()}T00:00:00.000Z`).getTime() - 14 * 60 * 60 * 1000);
+    const rangeEndExclusive = new Date(
+      addDays(parseISO(`${to.trim()}T00:00:00.000Z`), 1).getTime() + 14 * 60 * 60 * 1000,
+    );
 
     const bookings = await this.bookingRepository
       .createQueryBuilder('b')
@@ -78,7 +86,9 @@ export class CalendarService {
       .orderBy('b.checkIn', 'ASC')
       .getMany();
 
-    const reservations: CalendarReservationDto[] = bookings.map((b) => mapBookingToCalendarDto(b));
+    const reservations: CalendarReservationDto[] = bookings.map((b) =>
+      mapBookingToCalendarDto(b, tzByPropertyId.get(b.propertyId) ?? 'UTC'),
+    );
 
     const propertyDtos: CalendarPropertyDto[] = properties.map((p) => {
       const zid = p.zodomusPropertyId?.trim() ?? null;
@@ -141,11 +151,17 @@ export class CalendarService {
       .take(100);
 
     const bookings = await qb.getMany();
-    return bookings.map((b) => mapBookingToCalendarDto(b));
+    const tzByPropertyId = new Map(properties.map((p) => [p.id, p.timezone || 'UTC']));
+    return bookings.map((b) =>
+      mapBookingToCalendarDto(b, tzByPropertyId.get(b.propertyId) ?? 'UTC'),
+    );
   }
 }
 
-function mapBookingToCalendarDto(b: BookingEntity): CalendarReservationDto {
+export function mapBookingToCalendarDto(
+  b: BookingEntity,
+  propertyTimezone: string,
+): CalendarReservationDto {
   return {
     uuid: b.id,
     externalId: b.zodomusReservationId?.trim() || b.id,
@@ -176,8 +192,8 @@ function mapBookingToCalendarDto(b: BookingEntity): CalendarReservationDto {
     status: mapBookingStatus(b.status as SharedBookingStatus),
     totalPrice: b.totalPriceMinor / 100,
     currency: b.currency,
-    checkIn: format(b.checkIn, 'yyyy-MM-dd'),
-    checkOut: format(b.checkOut, 'yyyy-MM-dd'),
+    checkIn: formatCalendarDayInTimezone(b.checkIn, propertyTimezone),
+    checkOut: formatCalendarDayInTimezone(b.checkOut, propertyTimezone),
     chatThreadId: null,
   };
 }

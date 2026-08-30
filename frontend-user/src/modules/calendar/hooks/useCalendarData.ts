@@ -29,9 +29,12 @@ export function useCalendarData(dateRange: CalendarDateRange) {
       }
       return { properties: [], reservations: [] };
     },
-    /** Короткий stale + опрос: fallback если WS не доходит (другой origin / токен / прокси). */
-    staleTime: 5_000,
-    refetchInterval: 10_000,
+    /**
+     * WS (`CalendarSocketProvider`) is the primary invalidation path.
+     * Keep a slow poll only as fallback when the socket drops / another origin blocks WS.
+     */
+    staleTime: 30_000,
+    refetchInterval: 60_000,
     refetchOnWindowFocus: true,
     refetchOnReconnect: true,
     placeholderData: (prev) => prev,

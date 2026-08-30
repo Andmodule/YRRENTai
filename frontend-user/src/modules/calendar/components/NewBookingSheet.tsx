@@ -3,7 +3,7 @@
 import type { ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { addDays, differenceInCalendarDays, format, parseISO, startOfDay } from 'date-fns';
+import { addDays, differenceInCalendarDays, format, parseISO } from 'date-fns';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { isAxiosError } from 'axios';
@@ -89,7 +89,7 @@ export function NewBookingSheet({
         setCheckOut(initialGridDates.checkOut);
       } else {
         const today = format(new Date(), 'yyyy-MM-dd');
-        const out = format(addDays(startOfDay(new Date()), 1), 'yyyy-MM-dd');
+        const out = format(addDays(parseISO(`${today}T12:00:00.000Z`), 1), 'yyyy-MM-dd');
         setCheckIn(today);
         setCheckOut(out);
       }
@@ -112,18 +112,18 @@ export function NewBookingSheet({
 
   const checkInIso = useMemo(() => {
     if (!checkIn) return '';
-    return startOfDay(parseISO(`${checkIn}T12:00:00`)).toISOString();
+    return `${checkIn}T12:00:00.000Z`;
   }, [checkIn]);
 
   const checkOutIso = useMemo(() => {
     if (!checkOut) return '';
-    return startOfDay(parseISO(`${checkOut}T12:00:00`)).toISOString();
+    return `${checkOut}T12:00:00.000Z`;
   }, [checkOut]);
 
   const nights = useMemo(() => {
     if (!checkIn || !checkOut) return 0;
-    const ci = parseISO(`${checkIn}T12:00:00`);
-    const co = parseISO(`${checkOut}T12:00:00`);
+    const ci = parseISO(`${checkIn}T12:00:00.000Z`);
+    const co = parseISO(`${checkOut}T12:00:00.000Z`);
     return differenceInCalendarDays(co, ci);
   }, [checkIn, checkOut]);
 
@@ -179,8 +179,8 @@ export function NewBookingSheet({
   const onCheckInChange = useCallback((v: string) => {
     setCheckIn(v);
     if (!v) return;
-    const ci = startOfDay(parseISO(`${v}T12:00:00`));
-    const co = checkOut ? startOfDay(parseISO(`${checkOut}T12:00:00`)) : null;
+    const ci = parseISO(`${v}T12:00:00.000Z`);
+    const co = checkOut ? parseISO(`${checkOut}T12:00:00.000Z`) : null;
     if (!co || co.getTime() <= ci.getTime()) {
       setCheckOut(format(addDays(ci, 1), 'yyyy-MM-dd'));
     }
@@ -192,16 +192,17 @@ export function NewBookingSheet({
       if (!guestName.trim()) throw new Error('VALIDATION');
       if (emailInvalid) throw new Error('EMAIL');
       if (!checkIn || !checkOut) throw new Error('VALIDATION');
-      const ci = startOfDay(parseISO(`${checkIn}T12:00:00`));
-      const co = startOfDay(parseISO(`${checkOut}T12:00:00`));
+      const ci = parseISO(`${checkIn}T12:00:00.000Z`);
+      const co = parseISO(`${checkOut}T12:00:00.000Z`);
       if (differenceInCalendarDays(co, ci) < 1) throw new Error('RANGE');
 
       const major = parseFloat(totalMajor.replace(',', '.'));
       if (Number.isNaN(major) || major < 0) throw new Error('PRICE');
 
       const totalPriceMinor = Math.round(major * 100);
-      const ciIso = ci.toISOString();
-      const coIso = co.toISOString();
+      /** Noon UTC of the selected calendar day — backend re-anchors in property timezone. */
+      const ciIso = `${checkIn}T12:00:00.000Z`;
+      const coIso = `${checkOut}T12:00:00.000Z`;
 
       const gc = guestsCount.trim() ? parseInt(guestsCount, 10) : undefined;
       const body = {
@@ -228,7 +229,7 @@ export function NewBookingSheet({
         booking = patchRes.data.data;
       }
 
-      return mapApiBookingToReservation(booking);
+      return mapApiBookingToReservation(booking, { checkIn, checkOut });
     },
     onSuccess: (reservation) => {
       upsertReservationInCalendarCache(queryClient, reservation);
@@ -242,8 +243,8 @@ export function NewBookingSheet({
         const data = err.response.data as { message?: { conflictWith?: ConflictPreview['conflictWith'] } };
         const cw = data?.message && typeof data.message === 'object' ? data.message.conflictWith : undefined;
         if (cw) {
-          const from = format(parseISO(cw.checkIn), 'd MMM');
-          const to = format(parseISO(cw.checkOut), 'd MMM');
+          const from = format(parseISO(cw.checkIn.slice(0, 10)), 'd MMM');
+          const to = format(parseISO(cw.checkOut.slice(0, 10)), 'd MMM');
           toast.error(t('conflictToast', { guest: cw.guestName, from, to }));
         } else toast.error(t('error'));
         return;
@@ -290,8 +291,8 @@ export function NewBookingSheet({
       body = <p className="text-xs text-amber-700 dark:text-amber-300">{t('availabilityMinNight')}</p>;
     } else if (conflictPreview?.conflictWith) {
       const cw = conflictPreview.conflictWith;
-      const from = format(parseISO(cw.checkIn), 'd MMM');
-      const to = format(parseISO(cw.checkOut), 'd MMM');
+      const from = format(parseISO(cw.checkIn.slice(0, 10)), 'd MMM');
+      const to = format(parseISO(cw.checkOut.slice(0, 10)), 'd MMM');
       body = (
         <p className="text-xs font-medium text-destructive">
           {t('availabilityBlocked', { guest: cw.guestName, from, to })}

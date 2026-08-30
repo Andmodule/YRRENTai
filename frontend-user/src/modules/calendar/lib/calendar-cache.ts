@@ -1,6 +1,7 @@
 import type { QueryClient } from '@tanstack/react-query';
-import { format } from 'date-fns';
 import type { BookingChannel, BookingStatus, Property, Reservation } from '../types';
+import { parseLocalCalendarDay } from './calendar-api-dates';
+import { format } from 'date-fns';
 
 interface CalendarApiResponse {
   properties: Property[];
@@ -51,11 +52,34 @@ function mapApiBookingChannel(b: ApiBooking): BookingChannel {
   return 'other';
 }
 
-function formatCalendarDay(iso: string): string {
-  return format(new Date(iso), 'yyyy-MM-dd');
+/**
+ * Convert booking API ISO to calendar `yyyy-MM-dd`.
+ * Prefer an explicit calendar day (from the form) when provided; otherwise derive from the
+ * ISO instant using UTC date parts when time is midday-ish, else local format.
+ * Avoids bare `format(new Date(iso))` which shifts a day west of UTC for local-midnight storage.
+ */
+export function formatCalendarDayFromIso(iso: string, preferredYmd?: string): string {
+  if (preferredYmd && /^\d{4}-\d{2}-\d{2}$/.test(preferredYmd.trim())) {
+    return preferredYmd.trim();
+  }
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) {
+    return format(parseLocalCalendarDay(new Date().toISOString().slice(0, 10)), 'yyyy-MM-dd');
+  }
+  // Noon-ish UTC (±6h around 12:00) → use UTC calendar day (matches noon-in-TZ storage).
+  const utcHours = d.getUTCHours();
+  if (utcHours >= 6 && utcHours <= 18) {
+    return d.toISOString().slice(0, 10);
+  }
+  // Local-midnight encodings (e.g. 21:00Z for UTC+3): use local calendar day of the browser,
+  // which matches what the manager selected in `<input type="date">`.
+  return format(d, 'yyyy-MM-dd');
 }
 
-export function mapApiBookingToReservation(b: ApiBooking): Reservation {
+export function mapApiBookingToReservation(
+  b: ApiBooking,
+  preferredDays?: { checkIn?: string; checkOut?: string },
+): Reservation {
   return {
     uuid: b.id,
     externalId: b.zodomusReservationId?.trim() || b.id,
@@ -79,8 +103,8 @@ export function mapApiBookingToReservation(b: ApiBooking): Reservation {
     status: mapApiBookingStatus(b.status),
     totalPrice: b.totalPriceMinor / 100,
     currency: b.currency,
-    checkIn: formatCalendarDay(b.checkIn),
-    checkOut: formatCalendarDay(b.checkOut),
+    checkIn: formatCalendarDayFromIso(b.checkIn, preferredDays?.checkIn),
+    checkOut: formatCalendarDayFromIso(b.checkOut, preferredDays?.checkOut),
     chatThreadId: null,
   };
 }

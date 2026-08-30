@@ -238,8 +238,10 @@ export function PropertyForm({
           const { zodomusPropertyId: _z, ...rest } = payload;
           void onSubmit(rest);
         } else {
-          const { zodomusPropertyId: _z, ...rest } = payload;
-          void onSubmit({ ...rest, zodomusPropertyId: null });
+          void onSubmit({
+            ...payload,
+            zodomusPropertyId: payload.zodomusPropertyId?.trim() || null,
+          });
         }
       })}
       className="space-y-3"

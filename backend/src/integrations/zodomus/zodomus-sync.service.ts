@@ -5,10 +5,12 @@ import { Repository } from 'typeorm';
 import { addDays, isValid, parseISO } from 'date-fns';
 import { BOOKING_STATUS } from '@rentai/shared';
 import { BookingEntity } from '../../booking/entities/booking.entity';
+import { calendarDayToInstantInTimezone } from '../../booking/booking-availability.util';
 import { PropertyChannelListingEntity } from '../../property/entities/property-channel-listing.entity';
 import type { PropertyEntity } from '../../property/entities/property.entity';
 import { PropertyService } from '../../property/property.service';
 import { CalendarGateway } from '../../calendar/calendar.gateway';
+import { GuestService } from '../../guest/guest.service';
 import { ZodomusService } from './zodomus.service';
 import { ZodomusAvailabilityPushService } from './zodomus-availability-push.service';
 import {
@@ -35,6 +37,7 @@ export class ZodomusSyncService {
     private readonly config: ConfigService,
     private readonly availabilityPush: ZodomusAvailabilityPushService,
     private readonly calendarGateway: CalendarGateway,
+    private readonly guestService: GuestService,
     @InjectRepository(BookingEntity)
     private readonly bookingRepo: Repository<BookingEntity>,
     @InjectRepository(PropertyChannelListingEntity)
@@ -501,8 +504,8 @@ export class ZodomusSyncService {
       String(raw.guestName ?? '').trim() ||
       'Guest';
 
-    let checkIn = parseZodomusDate(raw.checkIn);
-    let checkOut = parseZodomusDate(raw.checkOut);
+    let checkIn = parseZodomusDate(raw.checkIn, property.timezone);
+    let checkOut = parseZodomusDate(raw.checkOut, property.timezone);
     if (!checkIn) checkIn = new Date();
     if (!checkOut) checkOut = addDays(checkIn, 1);
     if (checkOut.getTime() <= checkIn.getTime()) checkOut = addDays(checkIn, 1);
@@ -530,6 +533,32 @@ export class ZodomusSyncService {
         : undefined;
     if (raw.guestPhone !== undefined) {
       row.guestPhone = phoneStr;
+    }
+
+    // Booking.com guest proxy aliases are used for inbound email routing.
+    const aliasRaw =
+      raw.guestEmailAlias ??
+      (raw as Record<string, unknown>).guest_email_alias ??
+      (typeof raw.guestEmail === 'string' && raw.guestEmail.toLowerCase().includes('guest.booking.com')
+        ? raw.guestEmail
+        : undefined);
+    if (aliasRaw != null) {
+      const alias = String(aliasRaw).trim().toLowerCase();
+      row.guestEmailAlias = alias.length > 0 ? alias.slice(0, 255) : null;
+    }
+
+    if (row.guestEmail?.trim() || row.guestPhone?.trim()) {
+      try {
+        const guest = await this.guestService.resolveOrCreate(
+          property.ownerId,
+          guestName,
+          row.guestPhone,
+          row.guestEmail,
+        );
+        row.guestId = guest.id;
+      } catch (e) {
+        this.logger.debug(`Zodomus upsert: guest CRM skip for ${rid}: ${String(e)}`);
+      }
     }
 
     const gc = raw.guestsCount;
@@ -579,10 +608,20 @@ export class ZodomusSyncService {
   }
 }
 
-function parseZodomusDate(raw: unknown): Date | null {
+function parseZodomusDate(raw: unknown, propertyTimezone: string): Date | null {
   if (raw == null || raw === '') return null;
   if (raw instanceof Date) return isValid(raw) ? raw : null;
-  const d = parseISO(String(raw).trim());
+  const s = String(raw).trim();
+  // Pure calendar day from OTA → noon in property TZ (stable round-trip on calendar).
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    return calendarDayToInstantInTimezone(s, propertyTimezone);
+  }
+  // Date-only with time omitted variants like 2026-08-29T00:00:00 or 2026-08-29 00:00:00
+  const dayOnly = s.match(/^(\d{4}-\d{2}-\d{2})(?:[T\s]00:00:00(?:\.0+)?(?:Z)?)?$/);
+  if (dayOnly?.[1]) {
+    return calendarDayToInstantInTimezone(dayOnly[1], propertyTimezone);
+  }
+  const d = parseISO(s);
   return isValid(d) ? d : null;
 }
 

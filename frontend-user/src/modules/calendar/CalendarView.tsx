@@ -17,7 +17,6 @@ import { useCalendarData } from './hooks/useCalendarData';
 import { useCalendarFilters } from './hooks/useCalendarFilters';
 import { useCalendarReservationSearch } from './hooks/useCalendarReservationSearch';
 import { useZodomusCalendarSync } from './hooks/useZodomusCalendarSync';
-import { useCalendarTimelinePan } from './hooks/use-calendar-timeline-pan';
 import { useContainerSize } from './hooks/useContainerSize';
 import { getPropertyMeta } from './lib/property-meta';
 import { ProgramBlock } from './components/ProgramBlock';
@@ -219,23 +218,6 @@ export function CalendarView({
   } = layoutProps;
   const dayColWidthPx = 24 * layoutHourWidth;
 
-  const timelinePanEnabled = Boolean(
-    data &&
-      !isError &&
-      properties.length > 0 &&
-      filteredProperties.length > 0 &&
-      dayColWidthPx > 0,
-  );
-
-  useCalendarTimelinePan({
-    enabled: timelinePanEnabled,
-    scrollRef: planbyScrollRef,
-    dayColWidthPx,
-    numDays,
-    dateRange,
-    onDateRangeChange,
-  });
-
   useEffect(() => {
     if (filteredProperties.length === 0) return;
     const el = planbyScrollRef.current;
@@ -293,6 +275,14 @@ export function CalendarView({
     [onSelectReservation, isMobile],
   );
 
+  const propertyMetaById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const p of filteredProperties) {
+      map.set(p.uuid, getPropertyMeta(p.uuid, filteredReservations, dateRange));
+    }
+    return map;
+  }, [filteredProperties, filteredReservations, dateRange]);
+
   const renderChannel = useCallback(
     ({ channel }: { channel: Channel }) => {
       const { top, height } = channel.position;
@@ -315,13 +305,13 @@ export function CalendarView({
         >
           <SidebarChannel
             channel={channel}
-            meta={getPropertyMeta(channel.uuid, filteredReservations, dateRange)}
+            meta={propertyMetaById.get(channel.uuid) ?? ''}
             isMobile={isMobile}
           />
         </div>
       );
     },
-    [filteredReservations, dateRange, isMobile],
+    [propertyMetaById, isMobile],
   );
 
   const renderTimeline = useCallback(
