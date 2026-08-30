@@ -350,6 +350,7 @@ export class BookingService {
     const booking = await this.findOne(id, userId, role);
     const previous = booking.status as BookingStatus;
     const next = newStatus as BookingStatus;
+    const previousCancelledBy = booking.cancelledBy;
 
     if (!isValidTransition(previous, next)) {
       throw new BadRequestException(
@@ -376,10 +377,28 @@ export class BookingService {
       ),
     );
 
-    this.zodomusAvailabilityPush.scheduleAvailabilityPush(saved.propertyId, {
+    const availabilityPushOptions = {
       dateFromISO: saved.checkIn.toISOString(),
       dateToISO: saved.checkOut.toISOString(),
-    });
+    };
+    if (next === BOOKING_STATUS.CANCELLED) {
+      try {
+        await this.zodomusAvailabilityPush.pushAvailabilityNow(saved.propertyId, {
+          ...availabilityPushOptions,
+          ignoreAutoPushDisable: true,
+        });
+      } catch (e) {
+        saved.status = previous;
+        saved.cancelledBy = previousCancelledBy;
+        await this.bookingRepository.save(saved);
+        this.logger.warn(
+          `Rolled back booking ${saved.id} cancellation because Zodomus availability push failed: ${String(e)}`,
+        );
+        throw e;
+      }
+    } else {
+      this.zodomusAvailabilityPush.scheduleAvailabilityPush(saved.propertyId, availabilityPushOptions);
+    }
 
     this.calendarGateway.emitCalendarChanged({ propertyId: saved.propertyId, source: 'booking:transition' });
 

@@ -17,6 +17,7 @@ import { useCalendarData } from './hooks/useCalendarData';
 import { useCalendarFilters } from './hooks/useCalendarFilters';
 import { useCalendarReservationSearch } from './hooks/useCalendarReservationSearch';
 import { useZodomusCalendarSync } from './hooks/useZodomusCalendarSync';
+import { useCalendarTimelinePan } from './hooks/use-calendar-timeline-pan';
 import { useContainerSize } from './hooks/useContainerSize';
 import { getPropertyMeta } from './lib/property-meta';
 import { ProgramBlock } from './components/ProgramBlock';
@@ -35,6 +36,10 @@ import { parseLocalCalendarDay } from './lib/calendar-api-dates';
 import { isBookingIdPinQuery, normalizeCalendarQuery, reservationMatchesQuery } from './calendarSearch';
 
 const ITEM_HEIGHT_PX = 64;
+const DAY_COLUMN_WIDTH_PX = {
+  mobile: 64,
+  desktop: 96,
+} as const;
 
 export interface CalendarViewProps {
   dateRange: CalendarDateRange;
@@ -163,7 +168,7 @@ export function CalendarView({
     () => eachDayOfInterval({ start: startOfDay(dateRange.start), end: startOfDay(dateRange.end) }).length,
     [dateRange],
   );
-  const dayWidthPx = (isMobile ? 48 : 60) * numDays;
+  const dayWidthPx = (isMobile ? DAY_COLUMN_WIDTH_PX.mobile : DAY_COLUMN_WIDTH_PX.desktop) * numDays;
   const { ref: gridContainerRef, width: gridWidth, height: gridHeight } = useContainerSize();
 
   const channels = useMemo(
@@ -217,6 +222,23 @@ export function CalendarView({
     ref: planbyScrollRef,
   } = layoutProps;
   const dayColWidthPx = 24 * layoutHourWidth;
+
+  const timelinePanEnabled = Boolean(
+    data &&
+      !isError &&
+      properties.length > 0 &&
+      filteredProperties.length > 0 &&
+      dayColWidthPx > 0,
+  );
+
+  useCalendarTimelinePan({
+    enabled: timelinePanEnabled,
+    scrollRef: planbyScrollRef,
+    dayColWidthPx,
+    numDays,
+    dateRange,
+    onDateRangeChange,
+  });
 
   useEffect(() => {
     if (filteredProperties.length === 0) return;
