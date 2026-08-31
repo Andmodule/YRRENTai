@@ -247,6 +247,70 @@ describe('ZodomusAvailabilityPushService', () => {
       ];
       expect(roomIds[0]!.availability).toBe(1);
     });
+
+    it('after CRM create: occupied nights go as availability 0; after cancel they reopen as 1', async () => {
+      // Simulate CRM direct booking occupying days 5–7
+      const withBooking = buildService({
+        bookings: [makeBooking(5, 8, BOOKING_STATUS.CONFIRMED)],
+        horizonDays: 15,
+      });
+      await withBooking.service.pushAvailabilityNow(PROPERTY_ID);
+      const [, , occupiedSegs] = withBooking.mockSetAvailabilityMultiple.mock.calls[0] as [
+        unknown, unknown, Array<{ availability: number }>
+      ];
+      expect(occupiedSegs.map((s) => s.availability)).toContain(0);
+
+      // Same nights after CRM cancel (no blocking bookings)
+      const afterCancel = buildService({
+        bookings: [makeBooking(5, 8, BOOKING_STATUS.CANCELLED)],
+        horizonDays: 15,
+      });
+      await afterCancel.service.pushAvailabilityNow(PROPERTY_ID);
+      const [, , freeSegs] = afterCancel.mockSetAvailabilityMultiple.mock.calls[0] as [
+        unknown, unknown, Array<{ availability: number }>
+      ];
+      expect(freeSegs.every((s) => s.availability === 1)).toBe(true);
+      expect(freeSegs).toHaveLength(1);
+    });
+
+    it('pushes one availability-multiple call per channel listing (Booking + Airbnb)', async () => {
+      const property = makeProperty({
+        zodomusPropertyId: undefined,
+        otaPlatform: null,
+        channelListings: [
+          {
+            externalListingId: 'booking-listing',
+            zodomusRoomId: 'room-booking',
+            otaPlatform: { zodomusChannelId: 1 },
+          },
+          {
+            externalListingId: 'airbnb-listing',
+            zodomusRoomId: 'room-airbnb',
+            otaPlatform: { zodomusChannelId: 3 },
+          },
+        ] as unknown as PropertyEntity['channelListings'],
+      });
+
+      const { service, mockSetAvailabilityMultiple } = buildService({
+        property,
+        bookings: [makeBooking(2, 4, BOOKING_STATUS.CONFIRMED)],
+        horizonDays: 10,
+      });
+
+      const summary = await service.pushAvailabilityNow(PROPERTY_ID);
+
+      expect(summary.targetCount).toBe(2);
+      expect(mockSetAvailabilityMultiple).toHaveBeenCalledTimes(2);
+      expect(mockSetAvailabilityMultiple.mock.calls[0]![0]).toBe(1);
+      expect(mockSetAvailabilityMultiple.mock.calls[0]![1]).toBe('booking-listing');
+      expect(mockSetAvailabilityMultiple.mock.calls[1]![0]).toBe(3);
+      expect(mockSetAvailabilityMultiple.mock.calls[1]![1]).toBe('airbnb-listing');
+
+      for (const call of mockSetAvailabilityMultiple.mock.calls) {
+        const segs = call[2] as Array<{ availability: number }>;
+        expect(segs.map((s) => s.availability)).toContain(0);
+      }
+    });
   });
 
   // ── 2. Per-property mutex ─────────────────────────────────────────────────

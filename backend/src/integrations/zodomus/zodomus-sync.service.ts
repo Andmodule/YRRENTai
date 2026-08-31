@@ -20,8 +20,9 @@ import {
 } from './zodomus-status.util';
 import { applyOverbookingFlag as markOverbooking, clearOverbookingFlag } from './zodomus-overbooking.util';
 import type { ZodomusReservation, ZodomusReservationQueueItem } from './zodomus.types';
+import { ZODOMUS_BOOKING_FLOW } from './zodomus-booking-flow.constants';
 
-/** Zodomus queue status codes per official docs */
+/** Zodomus queue status codes per official docs (inbound only — see ZODOMUS_BOOKING_FLOW). */
 const QUEUE_STATUS = {
   NEW: 1,
   MODIFIED: 2,
@@ -217,6 +218,7 @@ export class ZodomusSyncService {
     const rid = String(reservationId ?? '').trim();
     if (!rid) return;
 
+    // Inbound cancel only (ZODOMUS_BOOKING_FLOW.INBOUND_CANCEL) — no outbound reservation-write.
     if (reservationStatus === QUEUE_STATUS.CANCELLED) {
       const row = await this.cancelBookingByReservationId(rid);
       if (row) {
@@ -224,7 +226,10 @@ export class ZodomusSyncService {
           dateFromISO: row.checkIn.toISOString(),
           dateToISO: row.checkOut.toISOString(),
         });
-        this.calendarGateway.emitCalendarChanged({ propertyId: property.id, source: 'webhook:cancel' });
+        this.calendarGateway.emitCalendarChanged({
+          propertyId: property.id,
+          source: ZODOMUS_BOOKING_FLOW.INBOUND_CANCEL,
+        });
       }
       return;
     }
@@ -249,7 +254,10 @@ export class ZodomusSyncService {
         dateFromISO: minDate.toISOString(),
         dateToISO: maxDate.toISOString()
       } : undefined);
-      this.calendarGateway.emitCalendarChanged({ propertyId: property.id, source: 'webhook:upsert' });
+      this.calendarGateway.emitCalendarChanged({
+        propertyId: property.id,
+        source: ZODOMUS_BOOKING_FLOW.INBOUND_UPSERT,
+      });
     } catch (e) {
       if (isZodomusReservationDownloadLimitError(e)) {
         const row = await this.bookingRepo.findOne({ where: { zodomusReservationId: rid } });
@@ -386,6 +394,14 @@ export class ZodomusSyncService {
     let failed = 0;
     /** GET /reservations limit path can save `zodomusSynced` without incrementing `processed`. */
     let calendarDirtyFromLimitSave = false;
+    /** Widen delta push window when queue cancels/upserts change stay dates. */
+    let pushMinDate: Date | undefined;
+    let pushMaxDate: Date | undefined;
+
+    const widenPushWindow = (from?: Date | null, to?: Date | null) => {
+      if (from && (!pushMinDate || from < pushMinDate)) pushMinDate = from;
+      if (to && (!pushMaxDate || to > pushMaxDate)) pushMaxDate = to;
+    };
 
     for (const item of queue) {
       const rid = String(item.reservationId ?? item.id ?? '').trim();
@@ -396,8 +412,13 @@ export class ZodomusSyncService {
       // status=3 (cancelled) — cancel immediately without GET /reservations
       if (this.queueItemIsCancelled(item)) {
         try {
-          await this.cancelBookingByReservationId(rid);
-          processed += 1;
+          const cancelled = await this.cancelBookingByReservationId(rid);
+          if (cancelled) {
+            widenPushWindow(cancelled.checkIn, cancelled.checkOut);
+            processed += 1;
+          } else {
+            skipped += 1;
+          }
         } catch (e) {
           failed += 1;
           this.logger.warn(`Cancel failed for ${rid}: ${String(e)}`);
@@ -421,6 +442,8 @@ export class ZodomusSyncService {
         if (row) {
           row.zodomusSynced = true;
           await this.bookingRepo.save(row);
+          widenPushWindow(existing?.checkIn, existing?.checkOut);
+          widenPushWindow(row.checkIn, row.checkOut);
         }
         processed += 1;
       } catch (e) {
@@ -452,7 +475,12 @@ export class ZodomusSyncService {
 
     /** Do not POST /availability on every empty queue poll — only when bookings actually changed (Zodomus / partner rate limits). */
     if (processed > 0 || calendarDirtyFromLimitSave) {
-      this.availabilityPush.scheduleAvailabilityPush(property.id);
+      this.availabilityPush.scheduleAvailabilityPush(
+        property.id,
+        pushMinDate && pushMaxDate
+          ? { dateFromISO: pushMinDate.toISOString(), dateToISO: pushMaxDate.toISOString() }
+          : undefined,
+      );
       this.calendarGateway.emitCalendarChanged({ propertyId: property.id, source: 'sync-queue' });
     }
 

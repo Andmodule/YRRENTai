@@ -36,6 +36,23 @@ function SectionHelp({ text }: { text: string }) {
   return <p className="mt-2 text-xs text-zinc-500 leading-relaxed whitespace-pre-line">{text}</p>;
 }
 
+type UsefulEndpointKind = 'jwt' | 'webhook';
+
+type UsefulEndpointCard = {
+  id: string;
+  method: 'GET' | 'POST';
+  path: string;
+  kind: UsefulEndpointKind;
+  needsProperty: boolean;
+  body?: unknown;
+  sampleResponse: unknown;
+};
+
+function pretty(value: unknown): string {
+  if (value === undefined) return '—';
+  return JSON.stringify(value, null, 2);
+}
+
 export default function ZodomusDebugClient() {
   const t = useTranslations('zodomusDebug');
   const { data: properties = [], isLoading: propsLoading, error: propsError } = useSWR(
@@ -68,6 +85,181 @@ export default function ZodomusDebugClient() {
   const priceModelIdNum = Number(priceModelId);
   const priceModelOk =
     Number.isFinite(priceModelIdNum) && priceModelIdNum >= 1 && priceModelIdNum <= 5;
+
+  const usefulEndpoints = useMemo((): UsefulEndpointCard[] => {
+    const ch = Number(channelId) || 1;
+    const createtestBody = {
+      propertyId: propertyId || '<propertyUuid>',
+      channelId: ch,
+      status: createTestStatus,
+      ...(createTestReservationIdOpt.trim()
+        ? { reservationId: createTestReservationIdOpt.trim() }
+        : {}),
+    };
+    const webhookBody = {
+      webhookKey: webhookKey || undefined,
+      channelId: ch,
+      propertyId: selected?.zodomusPropertyId?.trim() || '<zodomusPropertyId>',
+      reservationId: webhookReservationId,
+      reservationStatus: Number(webhookStatus) || 1,
+    };
+
+    return [
+      {
+        id: 'status',
+        method: 'GET',
+        path: '/integrations/zodomus/status',
+        kind: 'jwt',
+        needsProperty: false,
+        sampleResponse: {
+          data: { status: 'ok', account: { companyName: '…' } },
+        },
+      },
+      {
+        id: 'sync',
+        method: 'POST',
+        path: '/integrations/zodomus/sync',
+        kind: 'jwt',
+        needsProperty: true,
+        body: { channelId: ch, propertyId: propertyId || '<propertyUuid>', force },
+        sampleResponse: { data: { processed: 1, skipped: 0, failed: 0 } },
+      },
+      {
+        id: 'import-summary',
+        method: 'POST',
+        path: '/integrations/zodomus/import-summary',
+        kind: 'jwt',
+        needsProperty: true,
+        body: { channelId: ch, propertyId: propertyId || '<propertyUuid>' },
+        sampleResponse: { data: { imported: 3, failed: 0 } },
+      },
+      {
+        id: 'push-availability',
+        method: 'POST',
+        path: '/integrations/zodomus/push-availability',
+        kind: 'jwt',
+        needsProperty: true,
+        body: { propertyId: propertyId || '<propertyUuid>' },
+        sampleResponse: {
+          data: {
+            ok: true,
+            pushed: true,
+            segmentCount: 3,
+            segmentsDispatched: 3,
+            targetCount: 1,
+            nightsEvaluated: 30,
+            dispatchMode: 'inline',
+          },
+        },
+      },
+      {
+        id: 'availability-push-targets',
+        method: 'GET',
+        path: `/admin/zodomus/availability-push-targets?propertyId=${encodeURIComponent(propertyId || '<propertyUuid>')}`,
+        kind: 'jwt',
+        needsProperty: true,
+        sampleResponse: {
+          data: {
+            propertyId: '<uuid>',
+            targets: [{ channelId: 1, externalListingId: '10322630', resolvedRoomId: '1032263001' }],
+            hint: '…',
+          },
+        },
+      },
+      {
+        id: 'room-rates',
+        method: 'GET',
+        path: `/admin/zodomus/room-rates?channelId=${encodeURIComponent(String(ch))}&propertyId=${encodeURIComponent(propertyId || '<propertyUuid>')}`,
+        kind: 'jwt',
+        needsProperty: true,
+        sampleResponse: {
+          data: [{ id: '1032263001', name: 'Standard', rates: ['10322630991'] }],
+        },
+      },
+      {
+        id: 'availability',
+        method: 'GET',
+        path: `/admin/zodomus/availability?channelId=${encodeURIComponent(String(ch))}&propertyId=${encodeURIComponent(propertyId || '<propertyUuid>')}&dateFrom=${encodeURIComponent(dateFrom)}&dateTo=${encodeURIComponent(dateTo)}`,
+        kind: 'jwt',
+        needsProperty: true,
+        sampleResponse: {
+          data: {
+            rooms: [{ id: '1032263001', dates: [{ date: dateFrom, availability: '1' }] }],
+          },
+        },
+      },
+      {
+        id: 'reservations-queue',
+        method: 'GET',
+        path: `/admin/zodomus/reservations-queue?channelId=${encodeURIComponent(String(ch))}&propertyId=${encodeURIComponent(propertyId || '<propertyUuid>')}`,
+        kind: 'jwt',
+        needsProperty: true,
+        sampleResponse: {
+          data: [{ id: '1234567', status: 1, date: '2026-09-01' }],
+        },
+      },
+      {
+        id: 'create-test-reservation',
+        method: 'POST',
+        path: '/admin/zodomus/create-test-reservation',
+        kind: 'jwt',
+        needsProperty: true,
+        body: createtestBody,
+        sampleResponse: {
+          data: { status: { returnCode: 200, returnMessage: 'OK' } },
+        },
+      },
+      {
+        id: 'property-check',
+        method: 'POST',
+        path: '/admin/zodomus/property-check',
+        kind: 'jwt',
+        needsProperty: true,
+        body: { propertyId: propertyId || '<propertyUuid>', channelId: ch },
+        sampleResponse: {
+          data: { status: { returnCode: 200, returnMessage: 'Ok' } },
+        },
+      },
+      {
+        id: 'channel-mappings',
+        method: 'GET',
+        path: '/admin/zodomus/channel-mappings',
+        kind: 'jwt',
+        needsProperty: false,
+        sampleResponse: {
+          data: [
+            {
+              propertyId: '<uuid>',
+              propertyName: 'zodomus 1test',
+              zodomusChannelId: 1,
+              externalListingId: '10322630',
+            },
+          ],
+        },
+      },
+      {
+        id: 'webhook',
+        method: 'POST',
+        path: '/integrations/zodomus/webhook',
+        kind: 'webhook',
+        needsProperty: true,
+        body: webhookBody,
+        sampleResponse: { ok: true },
+      },
+    ];
+  }, [
+    channelId,
+    propertyId,
+    force,
+    createTestStatus,
+    createTestReservationIdOpt,
+    dateFrom,
+    dateTo,
+    webhookKey,
+    webhookReservationId,
+    webhookStatus,
+    selected?.zodomusPropertyId,
+  ]);
 
   const pushLog = useCallback(
     (
@@ -162,6 +354,25 @@ export default function ZodomusDebugClient() {
       pushLog('POST', '/integrations/zodomus/webhook', 0, Math.round(performance.now() - t0), JSON.stringify(body), String(e));
     }
   }, [selected, channelId, webhookKey, webhookReservationId, webhookStatus, pushLog, t]);
+
+  const runUsefulEndpoint = useCallback(
+    (ep: UsefulEndpointCard) => {
+      if (ep.needsProperty && !propertyId) {
+        alert(t('alertSelectProperty'));
+        return;
+      }
+      if (ep.kind === 'webhook') {
+        if (!selected?.zodomusPropertyId?.trim()) {
+          alert(t('alertSelectProperty'));
+          return;
+        }
+        void runWebhook();
+        return;
+      }
+      void run(ep.method, ep.path, ep.body);
+    },
+    [propertyId, selected?.zodomusPropertyId, run, runWebhook, t],
+  );
 
   const copyCli = useCallback(() => {
     const cmd = 'pnpm zodomus:fetch-samples';
@@ -261,6 +472,53 @@ export default function ZodomusDebugClient() {
             >
               POST push-availability
             </Btn>
+          </div>
+        </section>
+
+        <section className="rounded-xl border border-violet-900/50 bg-violet-950/20 p-4">
+          <h2 className="text-sm font-medium text-violet-300/90">{t('zoneUsefulTitle')}</h2>
+          <SectionHelp text={t('zoneUsefulHelp')} />
+          <div className="mt-3 grid gap-3">
+            {usefulEndpoints.map((ep) => {
+              const disabled =
+                (ep.needsProperty && !propertyId) ||
+                (ep.kind === 'webhook' && !canUseZodomusProperty);
+              return (
+                <div
+                  key={ep.id}
+                  className="rounded-lg border border-violet-900/40 bg-zinc-950/60 p-3"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-mono text-xs text-violet-200">
+                        <span className="text-violet-400">{ep.method}</span> {ep.path}
+                      </p>
+                    </div>
+                    <Btn disabled={disabled} onClick={() => runUsefulEndpoint(ep)}>
+                      {t('btnRun')}
+                    </Btn>
+                  </div>
+                  <div className="mt-2 grid gap-2 md:grid-cols-2">
+                    <div>
+                      <p className="mb-1 text-[10px] uppercase tracking-wide text-zinc-500">
+                        {t('labelPayload')}
+                      </p>
+                      <pre className="max-h-40 overflow-auto rounded border border-zinc-800 bg-zinc-950/80 p-2 font-mono text-[10px] leading-relaxed text-zinc-300">
+                        {ep.method === 'GET' ? '—' : pretty(ep.body)}
+                      </pre>
+                    </div>
+                    <div>
+                      <p className="mb-1 text-[10px] uppercase tracking-wide text-zinc-500">
+                        {t('labelResponse')}
+                      </p>
+                      <pre className="max-h-40 overflow-auto rounded border border-zinc-800 bg-zinc-950/80 p-2 font-mono text-[10px] leading-relaxed text-emerald-100/80">
+                        {pretty(ep.sampleResponse)}
+                      </pre>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </section>
 

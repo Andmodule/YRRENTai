@@ -28,6 +28,7 @@ import {
   formatCalendarDayInTimezone,
   nightsBetweenInPropertyTimezone,
 } from './booking-availability.util';
+import { ZODOMUS_BOOKING_FLOW } from '../integrations/zodomus/zodomus-booking-flow.constants';
 
 @Injectable()
 export class BookingService {
@@ -104,6 +105,8 @@ export class BookingService {
       status: 'PENDING',
       createdBy: userId,
     });
+    // Direct booking only — no Zodomus reservation-create (unsupported in public API).
+    // Occupancy is sent to OTAs via availability push (see doc/zodomus/BOOKING-FLOW.md).
     const saved = await this.bookingRepository.save(booking);
     this.zodomusAvailabilityPush.scheduleAvailabilityPush(saved.propertyId, {
       dateFromISO: saved.checkIn.toISOString(),
@@ -355,12 +358,11 @@ export class BookingService {
     }
 
     /**
-     * OTA reservation lifecycle is Booking → Zodomus → CRM (inbound webhooks/queue).
-     * CRM must not pretend to cancel the channel reservation; managers cancel on the OTA,
-     * then Zodomus delivers status=3. Local cancel is allowed only for direct (non-OTA) bookings.
+     * OTA lifecycle is inbound only (Zodomus → CRM). Public Zodomus APIs have no
+     * production reservation-cancel; CRM must not fake it. See ZODOMUS_BOOKING_FLOW.
      */
     if (next === BOOKING_STATUS.CANCELLED && booking.zodomusReservationId?.trim()) {
-      throw new BadRequestException('OTA_CANCEL_VIA_CHANNEL');
+      throw new BadRequestException(ZODOMUS_BOOKING_FLOW.OTA_CANCEL_VIA_CHANNEL);
     }
 
     booking.status = next;

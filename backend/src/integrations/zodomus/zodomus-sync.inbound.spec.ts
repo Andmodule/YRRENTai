@@ -1,5 +1,6 @@
 import { BOOKING_STATUS } from '@rentai/shared';
 import { ZodomusSyncService } from './zodomus-sync.service';
+import { ZODOMUS_BOOKING_FLOW } from './zodomus-booking-flow.constants';
 import type { BookingEntity } from '../../booking/entities/booking.entity';
 import type { PropertyEntity } from '../../property/entities/property.entity';
 
@@ -52,17 +53,19 @@ describe('ZodomusSyncService inbound webhook', () => {
         status: '1',
         ...opts.reservation,
       }),
+      getReservationQueue: jest.fn().mockResolvedValue([]),
     };
 
     const propertyService = {
       findByZodomusPropertyId: jest.fn().mockResolvedValue(property),
+      getExternalListingIdForZodomusChannel: jest.fn().mockReturnValue('ext-prop'),
     };
     const availabilityPush = { scheduleAvailabilityPush: jest.fn() };
     const calendarGateway = { emitCalendarChanged: jest.fn() };
     const guestService = {
       resolveOrCreate: jest.fn().mockResolvedValue({ id: 'guest-1' }),
     };
-    const config = { get: jest.fn() };
+    const config = { get: jest.fn().mockReturnValue(0) };
     const listingRepo = { update: jest.fn() };
 
     const service = new ZodomusSyncService(
@@ -76,7 +79,7 @@ describe('ZodomusSyncService inbound webhook', () => {
       listingRepo as never,
     );
 
-    return { service, bookingRepo, zodomus, availabilityPush, calendarGateway, saved };
+    return { service, bookingRepo, zodomus, availabilityPush, calendarGateway, saved, propertyService };
   }
 
   it('upserts a new reservation and flags overbooking when overlap exists', async () => {
@@ -100,7 +103,7 @@ describe('ZodomusSyncService inbound webhook', () => {
     expect(row.overbookingConflictWithBookingId).toBe('direct-1');
     expect(availabilityPush.scheduleAvailabilityPush).toHaveBeenCalled();
     expect(calendarGateway.emitCalendarChanged).toHaveBeenCalledWith(
-      expect.objectContaining({ source: 'webhook:upsert' }),
+      expect.objectContaining({ source: ZODOMUS_BOOKING_FLOW.INBOUND_UPSERT }),
     );
   });
 
@@ -127,9 +130,15 @@ describe('ZodomusSyncService inbound webhook', () => {
     expect(saved[0]?.status).toBe(BOOKING_STATUS.CANCELLED);
     expect(saved[0]?.overbookingConflict).toBe(false);
     expect(saved[0]?.overbookingConflictWithBookingId).toBeNull();
-    expect(availabilityPush.scheduleAvailabilityPush).toHaveBeenCalled();
+    expect(availabilityPush.scheduleAvailabilityPush).toHaveBeenCalledWith(
+      'prop-1',
+      expect.objectContaining({
+        dateFromISO: expect.any(String),
+        dateToISO: expect.any(String),
+      }),
+    );
     expect(calendarGateway.emitCalendarChanged).toHaveBeenCalledWith(
-      expect.objectContaining({ source: 'webhook:cancel' }),
+      expect.objectContaining({ source: ZODOMUS_BOOKING_FLOW.INBOUND_CANCEL }),
     );
   });
 
@@ -159,5 +168,47 @@ describe('ZodomusSyncService inbound webhook', () => {
     const row = saved[saved.length - 1]!;
     expect(row.overbookingConflict).toBe(false);
     expect(row.overbookingConflictWithBookingId).toBeNull();
+  });
+
+  it('queue cancel (status 3) cancels locally and schedules delta availability push', async () => {
+    const existing = {
+      id: 'b-ota',
+      propertyId: 'prop-1',
+      status: BOOKING_STATUS.CONFIRMED,
+      zodomusReservationId: 'OTA-200',
+      checkIn: new Date('2026-11-01T12:00:00.000Z'),
+      checkOut: new Date('2026-11-04T12:00:00.000Z'),
+      overbookingConflict: false,
+      overbookingConflictWithBookingId: null,
+      overbookingDetectedAt: null,
+    } as BookingEntity;
+
+    const { service, zodomus, availabilityPush, calendarGateway, saved, propertyService } =
+      buildService({ existing });
+
+    zodomus.getReservationQueue = jest.fn().mockResolvedValue([{ id: 'OTA-200', status: 3 }]);
+
+    const result = await (service as unknown as {
+      syncQueueRaw: (
+        p: PropertyEntity,
+        channelId: number,
+        force: boolean,
+      ) => Promise<{ processed: number; skipped: number; failed: number }>;
+    }).syncQueueRaw(property, 1, false);
+
+    expect(result.processed).toBe(1);
+    expect(zodomus.getReservation).not.toHaveBeenCalled();
+    expect(saved[0]?.status).toBe(BOOKING_STATUS.CANCELLED);
+    expect(availabilityPush.scheduleAvailabilityPush).toHaveBeenCalledWith(
+      'prop-1',
+      expect.objectContaining({
+        dateFromISO: existing.checkIn.toISOString(),
+        dateToISO: existing.checkOut.toISOString(),
+      }),
+    );
+    expect(calendarGateway.emitCalendarChanged).toHaveBeenCalledWith(
+      expect.objectContaining({ source: 'sync-queue' }),
+    );
+    expect(propertyService.getExternalListingIdForZodomusChannel).toHaveBeenCalled();
   });
 });
