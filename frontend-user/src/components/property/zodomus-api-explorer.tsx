@@ -95,7 +95,9 @@ export function ZodomusApiExplorer() {
   useEffect(() => {
     if (!propertyId && properties.length > 0) {
       const linked = properties.find((p) => propertyHasZodomus(p));
-      setPropertyId((linked ?? properties[0]).id);
+      const fallback = properties[0];
+      if (!fallback) return;
+      setPropertyId((linked ?? fallback).id);
     }
   }, [properties, propertyId]);
 
