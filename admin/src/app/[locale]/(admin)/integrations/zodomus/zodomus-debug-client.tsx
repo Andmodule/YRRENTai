@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useCallback, useMemo, useState } from 'react';
 import { addDays, format } from 'date-fns';
@@ -188,7 +188,7 @@ export default function ZodomusDebugClient() {
                 <option value="">{t('selectPlaceholder')}</option>
                 {properties.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.name} {p.zodomusPropertyId ? `· OTA ${p.zodomusPropertyId}` : ''}
+                    {p.name} {p.zodomusPropertyId ? `Â· OTA ${p.zodomusPropertyId}` : ''}
                   </option>
                 ))}
               </select>
@@ -262,6 +262,9 @@ export default function ZodomusDebugClient() {
               POST push-availability
             </Btn>
           </div>
+          <p className="mt-3 text-[11px] leading-snug text-violet-300/70">
+            Useful endpoints + full Zodomus API Reference moved to CRM: property → Calendar & channel sync → «Zodomus: Useful endpoints & API Reference».
+          </p>
         </section>
 
         <section className="rounded-xl border border-indigo-900/50 bg-indigo-950/20 p-4">
@@ -554,7 +557,7 @@ export default function ZodomusDebugClient() {
               </div>
               <pre className="mt-2 max-h-[calc(100vh-12rem)] overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-emerald-100/90">
                 {active.tab === 'response' && active.responsePreview}
-                {active.tab === 'request' && (active.requestPreview || '—')}
+                {active.tab === 'request' && (active.requestPreview || 'â€”')}
                 {active.tab === 'headers' && t('logHeadersHint')}
               </pre>
             </div>

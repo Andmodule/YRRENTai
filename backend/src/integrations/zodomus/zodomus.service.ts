@@ -196,6 +196,9 @@ export class ZodomusService {
   /**
    * POST /reservations-createtest — sandbox-only test reservation; triggers webhook if configured.
    * Upstream body per Zodomus: channelId, propertyId (OTA string), status, optional reservationId.
+   *
+   * NOT a production CRM→OTA reservation write. Public docs expose no create/cancel guest
+   * reservation API; CRM sends inventory via setAvailabilityMultiple instead.
    */
   async createTestReservation(
     channelId: number,
@@ -231,6 +234,16 @@ export class ZodomusService {
       channelId,
       propertyId,
     });
+  }
+
+  /** Allowlisted CRM api-ref explorer — raw GET passthrough. */
+  async upstreamGet(path: string, params?: Record<string, string>): Promise<unknown> {
+    return this.ensureEnabled().get<unknown>(path, params);
+  }
+
+  /** Allowlisted CRM api-ref explorer — raw POST passthrough. */
+  async upstreamPost(path: string, body: unknown): Promise<unknown> {
+    return this.ensureEnabled().post(path, body);
   }
 
   /**

@@ -1,5 +1,9 @@
 # Zodomus — пошаговый runbook (один объект)
 
+**Семантика CRM ↔ Booking ↔ Zodomus:** [BOOKING-FLOW.md](./BOOKING-FLOW.md)
+
+Кратко: CRM создаёт/отменяет **прямые** брони в RentAI и пушит **занятость** (`POST /availability-multiple`). OTA-брони приходят **inbound** (webhook/queue). Публичные доки Zodomus **не** дают production create/cancel guest reservation — только sandbox `reservations-createtest`.
+
 Все ответы RentAI API обёрнуты в `{ "data": ... }`. Учитывайте это в `jq` и при проверках.
 
 ## 1. Переменные в `.env` (корень репозитория)
@@ -138,6 +142,16 @@ curl -s "http://localhost:PORT/api/v1/integrations/zodomus/status" \
 
 Эндпоинты property и Zodomus требуют JWT с ролью **OWNER** или **MANAGER**.
 
+## Ручной чеклист: create / cancel (sandbox)
+
+1. Прямая бронь из CRM: `POST /api/v1/bookings` на свободные даты → локальная запись без `zodomusReservationId`.
+2. `POST /api/v1/integrations/zodomus/push-availability` `{ "propertyId": "RENTAI_UUID" }` → занятые ночи уходят как `availability: 0`.
+3. Отмена прямой брони: `PATCH /api/v1/bookings/:id/status` `{ "status": "CANCELLED" }` → снова push → ночи `availability: 1`.
+4. OTA-бронь: `POST /reservations-createtest` (`status=new`) или webhook → локальный upsert.
+5. OTA-отмена: `createtest` `status=cancelled` / queue `status=3` → локальный `CANCELLED` + availability push.
+6. Попытка отменить OTA-бронь из CRM → `400` с кодом `OTA_CANCEL_VIA_CHANNEL`.
+
 ## Дальше
 
 После успешного синка можно доработать маппинг `upsertBooking` по реальному `response-queue.json` и затем массовый онбординг объектов.
+См. также ограничения публичных Reservation API в [BOOKING-FLOW.md](./BOOKING-FLOW.md).

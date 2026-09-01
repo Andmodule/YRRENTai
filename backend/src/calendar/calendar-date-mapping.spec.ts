@@ -28,6 +28,9 @@ function bookingFixture(partial: Partial<BookingEntity>): BookingEntity {
     zodomusChannelId: null,
     directSource: null,
     zodomusSynced: false,
+    overbookingConflict: false,
+    overbookingConflictWithBookingId: null,
+    overbookingDetectedAt: null,
     createdBy: '33333333-3333-3333-3333-333333333333',
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -54,5 +57,17 @@ describe('mapBookingToCalendarDto', () => {
     );
     expect(dto.checkIn).toBe('2026-08-29');
     expect(dto.checkOut).toBe('2026-08-30');
+  });
+
+  it('exposes overbookingConflict on calendar DTO', () => {
+    const dto = mapBookingToCalendarDto(
+      bookingFixture({
+        overbookingConflict: true,
+        overbookingConflictWithBookingId: '44444444-4444-4444-4444-444444444444',
+      }),
+      'Europe/Moscow',
+    );
+    expect(dto.overbookingConflict).toBe(true);
+    expect(dto.overbookingConflictWithBookingId).toBe('44444444-4444-4444-4444-444444444444');
   });
 });

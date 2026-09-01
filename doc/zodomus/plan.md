@@ -1,12 +1,20 @@
 # Zodomus (Channel Manager) — план и статус
 
-**Пошаговый запуск (env → скрипт → PATCH → mapping):** [RUNBOOK.md](./RUNBOOK.md)
+**Пошаговый запуск (env → скрипт → PATCH → mapping):** [RUNBOOK.md](./RUNBOOK.md)  
+**CRM ↔ Booking flow (create/cancel + availability):** [BOOKING-FLOW.md](./BOOKING-FLOW.md)
 
 Сообщения гостей / чат через Zodomus **в этом документе не описаны** — отдельная задача.
 
 ## Цель
 
 REST-клиент к [Zodomus](https://www.zodomus.com/) (Basic Auth), без утечки секретов на фронт. Интеграция опциональна (`ZODOMUS_ENABLED`).
+
+### Supported booking directions (current)
+
+- **CRM → Booking (direct):** create/cancel in RentAI only.
+- **CRM → Zodomus:** availability / inventory push (`POST /availability-multiple`), not OTA reservation objects.
+- **Zodomus → Booking:** inbound webhook/queue/import-summary for OTA create/modify/cancel.
+- **Not supported without private API spec:** production CRM → Zodomus reservation create/cancel (sandbox `reservations-createtest` only).
 
 ## Архитектура
 
@@ -89,13 +97,15 @@ node doc/zodomus/fetch-samples.mjs
 
 ## Реализовано в репозитории (чеклист)
 
-- Модуль `backend/src/integrations/zodomus/` (`client`, `service`, `sync.service`, `controller`, `module`, `tokens`, `types`, `zodomus-status.util`)
+- Модуль `backend/src/integrations/zodomus/` (`client`, `service`, `sync.service`, `controller`, `module`, `tokens`, `types`, `zodomus-status.util`, `zodomus-booking-flow.constants`)
 - `env.schema.ts`: блок `ZODOMUS_*`
 - Миграция с полями Zodomus у **bookings** / **properties**
 - Shared: `zodomusPropertyId` в схемах property
-- Эндпоинты: **`status`**, **`sync`**, **`sync-all`**
+- Эндпоинты: **`status`**, **`sync`**, **`sync-all`**, **`import-summary`**, **`push-availability`**, webhook
+- Direct CRM create/cancel → availability push; OTA cancel from CRM blocked (`OTA_CANCEL_VIA_CHANNEL`)
 - Календарь: маппинг канала из **`zodomusChannelId`**, **`zodomusLinked`**, кнопка синка OTA
 - `doc/zodomus/fetch-samples.mjs` + примеры JSON для **`rooms-activation`**
+- `doc/zodomus/BOOKING-FLOW.md` — семантика CRM → availability → Zodomus / inbound OTA
 
 ## Статус тестов (чекпоинт 3.5)
 

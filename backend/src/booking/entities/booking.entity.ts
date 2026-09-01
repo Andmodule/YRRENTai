@@ -108,6 +108,19 @@ export class BookingEntity {
   @Column({ type: 'boolean', default: false })
   zodomusSynced!: boolean;
 
+  /**
+   * True when an inbound OTA booking overlaps another blocking booking on the same property.
+   * OTA booking is still saved (source of truth is the channel); manager resolves in CRM.
+   */
+  @Column({ type: 'boolean', default: false })
+  overbookingConflict!: boolean;
+
+  @Column({ type: 'uuid', nullable: true })
+  overbookingConflictWithBookingId!: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  overbookingDetectedAt!: Date | null;
+
   @Column('uuid')
   createdBy!: string;
 
