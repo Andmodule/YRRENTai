@@ -236,6 +236,16 @@ export class ZodomusService {
     });
   }
 
+  /** Allowlisted CRM api-ref explorer — raw GET passthrough. */
+  async upstreamGet(path: string, params?: Record<string, string>): Promise<unknown> {
+    return this.ensureEnabled().get<unknown>(path, params);
+  }
+
+  /** Allowlisted CRM api-ref explorer — raw POST passthrough. */
+  async upstreamPost(path: string, body: unknown): Promise<unknown> {
+    return this.ensureEnabled().post(path, body);
+  }
+
   /**
    * Normalizes any Zodomus list response to a typed array.
    * Handles: plain array, { channels[] }, { items[] }, { reservations[] }, { rooms[] }.

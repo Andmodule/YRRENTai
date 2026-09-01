@@ -9,6 +9,7 @@ import { ZodomusCronService } from './zodomus-cron.service';
 import { ZodomusController } from './zodomus.controller';
 import { ZodomusWebhookController } from './zodomus-webhook.controller';
 import { ZodomusAdminController } from './zodomus-admin.controller';
+import { ZodomusApiRefController } from './zodomus-api-ref.controller';
 import { BookingEntity } from '../../booking/entities/booking.entity';
 import { PropertyEntity } from '../../property/entities/property.entity';
 import { PropertyChannelListingEntity } from '../../property/entities/property-channel-listing.entity';
@@ -27,7 +28,12 @@ import { ZodomusAvailabilityPushService } from './zodomus-availability-push.serv
     CalendarModule,
     GuestModule,
   ],
-  controllers: [ZodomusController, ZodomusWebhookController, ZodomusAdminController],
+  controllers: [
+    ZodomusController,
+    ZodomusWebhookController,
+    ZodomusAdminController,
+    ZodomusApiRefController,
+  ],
   providers: [
     {
       provide: ZODOMUS_CLIENT,

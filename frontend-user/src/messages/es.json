@@ -527,7 +527,8 @@
     "unmappedInboxBadgeHint": "Mensajes del personal sin asignar",
     "signOut": "Salir",
     "collapseSidebar": "Contraer barra lateral",
-    "expandSidebar": "Expandir barra lateral"
+    "expandSidebar": "Expandir barra lateral",
+    "zodomusApi": "Zodomus API"
   },
   "automations": {
     "nav": {
@@ -1856,5 +1857,48 @@
     "taskMarkDoneError": "No se pudo actualizar la tarea",
     "incidentClosedToast": "Incidencia marcada como resuelta",
     "incidentCloseError": "No se pudo cerrar la incidencia"
+  },
+  "zodomusApiRef": {
+    "pageTitle": "Zodomus API Reference",
+    "pageSubtitle": "Referencia general: endpoints útiles de RentAI y el API Reference público de Zodomus. La propiedad solo hace falta para llamadas property-scoped.",
+    "contextTitle": "Contexto de la solicitud",
+    "property": "Propiedad (property-scoped)",
+    "propertyPlaceholder": "Selecciona una propiedad",
+    "noZodomus": "sin Zodomus id",
+    "excludedNote": "Excluido: {paths}. {reason}",
+    "channelId": "ID de canal",
+    "dateFrom": "dateFrom",
+    "dateTo": "dateTo",
+    "reservationId": "reservationId",
+    "priceModelId": "priceModelId",
+    "createTestStatus": "createtest status",
+    "force": "force (sync)",
+    "run": "Ejecutar",
+    "runError": "La solicitud falló — mira el log abajo",
+    "needProperty": "Selecciona una propiedad",
+    "needZodomus": "La propiedad no tiene Zodomus / OTA id guardado",
+    "invalidJsonQuery": "JSON de query inválido",
+    "invalidJsonBody": "JSON de body inválido",
+    "queryJson": "Query (JSON)",
+    "bodyJson": "Body (JSON)",
+    "loadingCatalog": "Cargando catálogo API…",
+    "catalogError": "No se pudo cargar el catálogo API Reference",
+    "logTitle": "Log de respuestas",
+    "clearLog": "Limpiar",
+    "groups": {
+      "rentai": "RentAI CRM ↔ Zodomus",
+      "account": "Account",
+      "mapping": "Mapping",
+      "airbnb": "Airbnb mapping",
+      "rates": "Rates & availability",
+      "reservations": "Reservations",
+      "content": "Content",
+      "booking-tables": "Booking content tables",
+      "expedia-tables": "Expedia content tables",
+      "opportunities": "Opportunities",
+      "reviews": "Guest reviews",
+      "reporting": "Reporting",
+      "promotions": "Promotions"
+    }
   }
 }

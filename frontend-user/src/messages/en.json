@@ -527,7 +527,8 @@
     "unmappedInboxBadgeHint": "Unmapped staff messages awaiting review",
     "signOut": "Sign out",
     "collapseSidebar": "Collapse sidebar",
-    "expandSidebar": "Expand sidebar"
+    "expandSidebar": "Expand sidebar",
+    "zodomusApi": "Zodomus API"
   },
   "automations": {
     "nav": {
@@ -2080,5 +2081,48 @@
     "taskMarkDoneError": "Could not update task",
     "incidentClosedToast": "Incident marked as resolved",
     "incidentCloseError": "Could not close incident"
+  },
+  "zodomusApiRef": {
+    "pageTitle": "Zodomus API Reference",
+    "pageSubtitle": "General reference: RentAI useful endpoints and the full public Zodomus API Reference. A property is only needed for property-scoped calls.",
+    "contextTitle": "Request context",
+    "property": "Property (for property-scoped)",
+    "propertyPlaceholder": "Select a property",
+    "noZodomus": "no Zodomus id",
+    "excludedNote": "Excluded: {paths}. {reason}",
+    "channelId": "Channel ID",
+    "dateFrom": "dateFrom",
+    "dateTo": "dateTo",
+    "reservationId": "reservationId",
+    "priceModelId": "priceModelId",
+    "createTestStatus": "createtest status",
+    "force": "force (sync)",
+    "run": "Run",
+    "runError": "Request failed — see log below",
+    "needProperty": "Select a property",
+    "needZodomus": "Selected property has no saved Zodomus / OTA id",
+    "invalidJsonQuery": "Invalid query JSON",
+    "invalidJsonBody": "Invalid body JSON",
+    "queryJson": "Query (JSON)",
+    "bodyJson": "Body (JSON)",
+    "loadingCatalog": "Loading API catalog…",
+    "catalogError": "Failed to load API Reference catalog",
+    "logTitle": "Response log",
+    "clearLog": "Clear",
+    "groups": {
+      "rentai": "RentAI CRM ↔ Zodomus",
+      "account": "Account",
+      "mapping": "Mapping",
+      "airbnb": "Airbnb mapping",
+      "rates": "Rates & availability",
+      "reservations": "Reservations",
+      "content": "Content",
+      "booking-tables": "Booking content tables",
+      "expedia-tables": "Expedia content tables",
+      "opportunities": "Opportunities",
+      "reviews": "Guest reviews",
+      "reporting": "Reporting",
+      "promotions": "Promotions"
+    }
   }
 }
