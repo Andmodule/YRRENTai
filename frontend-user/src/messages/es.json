@@ -167,7 +167,8 @@
       "colTimezone": "Zona horaria",
       "colOta": "OTA",
       "colGuests": "Huéspedes",
-      "noSearchResults": "Sin resultados"
+      "noSearchResults": "Sin resultados",
+      "colZodomus": "Zodomus"
     },
     "globalRules": {
       "title": "Reglas generales",
@@ -301,7 +302,7 @@
       "previewLoadButton": "Cargar desde Zodomus",
       "previewNeedPlatform": "Seleccione primero Booking o Airbnb.",
       "previewNeedId": "Primero introduzca el ID de listado OTA en el campo superior.",
-      "previewToastOk": "Datos del listado tomados de Zodomus.",
+      "previewToastOk": "Listado encontrado en Zodomus. Nombre y dirección del objeto sin cambios.",
       "previewToastMultiRoom": "{count} tipos de habitación — elija el correcto abajo.",
       "previewRoomsTitle": "Tipos de habitación en Zodomus",
       "previewRoomsSubtitle": "El que coincida con este listado en RentAI.",
@@ -309,7 +310,7 @@
       "previewToastRoomsLoaded": "{count} tipos cargados — elija abajo.",
       "previewToastError": "No se pudo cargar: {message}",
       "previewToastInvalidPropertyId": "Zodomus rechazó este ID. En el primer campo va el ID externo OTA, no un ID de habitación de la lista.",
-      "zodomusPropertyIdHintLoad": "«Cargar» llama a room-rates de Zodomus con el ID OTA. Rellena aquí el ID de habitación Zodomus; puede actualizar el nombre — suele faltar la dirección completa.",
+      "zodomusPropertyIdHintLoad": "«Cargar» valida el ID OTA con room-rates de Zodomus. No cambia nombre, dirección ni moneda; el ID de habitación no hace falta para apartamentos enteros.",
       "zodomusPreviewNoAddressHint": "«room-rates» suele devolver solo habitaciones y tarifas — no la dirección del hotel. País/ciudad/dirección manualmente o desde el extranet.",
       "previewRoomRatesTitle": "Tarifas por habitación (Zodomus room-rates)",
       "previewRoomRatesIntro": "Planes tarifarios por habitación — esos IDs usará después para precios y disponibilidad.",
@@ -358,7 +359,12 @@
       "zodomusQueueEmpty": "Cola Zodomus vacía — nada que procesar.",
       "zodomusQueueAllSkipped": "Nada nuevo: {skipped} omitidas (ya sinc.). Active forzar para volver a descargar.",
       "zodomusQueueError": "Fallo de cola — revise Zodomus y logs del servidor.",
-      "syncUsesSavedSettings": "Las acciones de sync usan la propiedad tal como está guardada. Si cambió canales o URLs iCal — guarde primero el formulario superior."
+      "syncUsesSavedSettings": "Las acciones de sync usan la propiedad tal como está guardada. Si cambió canales o URLs iCal — guarde primero el formulario superior.",
+      "zodomusStatusLabel": "Estado en Zodomus",
+      "zodomusStatusHint": "Comprueba si la cola de reservas está disponible para este listing.",
+      "zodomusStatusRefresh": "Actualizar estado",
+      "zodomusStatusRefreshed": "Estado de Zodomus actualizado",
+      "zodomusStatusRefreshError": "No se pudo actualizar el estado de Zodomus"
     },
     "detail": {
       "channels": "Canales de venta",
@@ -380,6 +386,22 @@
       "clearOtaSuccess": "Conexión OTA eliminada",
       "clearOtaError": "No se pudo quitar la conexión OTA",
       "clearOtaAria": "Quitar conexión OTA de esta propiedad"
+    },
+    "zodomusStatus": {
+      "unlinked": "—",
+      "unlinkedHint": "No vinculado a Zodomus",
+      "active": "Active",
+      "activeHint": "Listing Active — cola disponible",
+      "evaluation": "Evaluation",
+      "evaluationHint": "Listing en Evaluation — esperando aprobación",
+      "not_active": "Not Active",
+      "not_activeHint": "Not Active — cola no disponible",
+      "invalid": "Invalid id",
+      "invalidHint": "ID de propiedad externo inválido",
+      "error": "Error",
+      "errorHint": "Error al comprobar el estado",
+      "unknown": "Unknown",
+      "unknownHint": "Estado aún no comprobado"
     }
   },
   "kb": {

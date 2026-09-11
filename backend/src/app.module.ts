@@ -1,14 +1,16 @@
 import { join } from 'path';
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ScheduleModule } from '@nestjs/schedule';
-import { APP_PIPE } from '@nestjs/core';
+import { APP_FILTER, APP_PIPE } from '@nestjs/core';
 import { ZodValidationPipe } from 'nestjs-zod';
 import { envSchema } from './config/env.schema';
+import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
+import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
 import { DatabaseInitModule } from './database/database-init.module';
 import { EmbeddingModule } from './embedding/embedding.module';
 import { AuthModule } from './auth/auth.module';
@@ -124,6 +126,14 @@ import { AiChatModule } from './modules/ai-chat/ai-chat.module';
       provide: APP_PIPE,
       useClass: ZodValidationPipe,
     },
+    {
+      provide: APP_FILTER,
+      useClass: AllExceptionsFilter,
+    },
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer): void {
+    consumer.apply(RequestIdMiddleware).forRoutes('*');
+  }
+}

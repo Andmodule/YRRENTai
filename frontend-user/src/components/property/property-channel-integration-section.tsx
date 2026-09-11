@@ -14,7 +14,6 @@ import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-  BedDouble,
   Building2,
   ChevronDown,
   Download,
@@ -183,15 +182,13 @@ export function PropertyChannelIntegrationSection({
     }
     try {
       const p = await previewMutation.mutateAsync({ channelId, externalPropertyId: ext });
-      setValue('name', p.displayName, { shouldDirty: true, shouldValidate: true });
-      setValue('country', p.country?.trim() ? p.country : '-', { shouldDirty: true, shouldValidate: true });
-      setValue('city', p.city?.trim() ? p.city : '-', { shouldDirty: true, shouldValidate: true });
-      setValue('address', p.address?.trim() ? p.address : '-', { shouldDirty: true, shouldValidate: true });
+      // Do not overwrite name/address/city/country/currency — room-rates has no hotel metadata.
+      // Whole apartment listings: leave zodomusRoomId null; availability resolves via GET room-rates.
       setValue(`channelListings.${index}.externalListingId`, p.externalPropertyId.trim(), {
         shouldDirty: true,
         shouldValidate: true,
       });
-      setValue(`channelListings.${index}.zodomusRoomId`, p.externalPropertyId.trim() || null, {
+      setValue(`channelListings.${index}.zodomusRoomId`, null, {
         shouldDirty: true,
         shouldValidate: true,
       });
@@ -200,9 +197,7 @@ export function PropertyChannelIntegrationSection({
         rooms: p.rooms,
         key: `${channelId}:${p.externalPropertyId.trim()}`,
       });
-      toast.success(
-        p.rooms.length > 1 ? t('previewToastRoomsLoaded', { count: p.rooms.length }) : t('previewToastOk'),
-      );
+      toast.success(t('previewToastOk'));
     } catch (e: unknown) {
       const msg = extractAxiosErrorMessage(e);
       const lower = msg.toLowerCase();
@@ -368,7 +363,6 @@ export function PropertyChannelIntegrationSection({
               const selectedCode = selectedPlatform?.code ?? '';
               const channelId = selectedPlatform?.zodomusChannelId;
               const hasOtaZodomus = Boolean(channelId);
-              const zodomusRoomIdValue = watch(`channelListings.${index}.zodomusRoomId`);
               const zodomusHint =
                 selectedCode === 'booking'
                   ? t('zodomusPropertyIdHintBooking')
@@ -440,39 +434,15 @@ export function PropertyChannelIntegrationSection({
                           <Label htmlFor={`ext-${field.id}`} className="text-xs">
                             {t('objectIdExternal')} *
                           </Label>
-                          <Input
-                            id={`ext-${field.id}`}
-                            placeholder={t('objectIdExternalPlaceholder')}
-                            autoComplete="off"
-                            className="min-h-11 w-full font-mono text-sm tabular-nums"
-                            aria-invalid={!!rowErrors?.externalListingId}
-                            aria-describedby={`zodomus-hint-${field.id}`}
-                            {...register(`channelListings.${index}.externalListingId`)}
-                          />
-                          <p id={`zodomus-hint-${field.id}`} className="text-[11px] leading-snug text-muted-foreground sm:text-[12px]">
-                            {zodomusHint}
-                          </p>
-                          <p className="text-[11px] leading-snug text-muted-foreground/90 sm:text-[12px]">
-                            {t('zodomusPreviewNoAddressHint')}
-                          </p>
-                          {rowErrors?.externalListingId && (
-                            <p className="text-xs text-destructive">{String(rowErrors.externalListingId.message)}</p>
-                          )}
-                        </div>
-
-                        <div className="space-y-1.5 sm:col-span-2">
-                          <Label htmlFor={`room-${field.id}`} className="text-xs">
-                            {t('zodomusObjectIdLabel')}
-                          </Label>
                           <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
                             <Input
-                              id={`room-${field.id}`}
-                              placeholder={t('zodomusObjectIdPlaceholder')}
+                              id={`ext-${field.id}`}
+                              placeholder={t('objectIdExternalPlaceholder')}
                               autoComplete="off"
                               className="min-h-11 min-w-0 flex-1 font-mono text-sm tabular-nums"
-                              aria-invalid={!!rowErrors?.zodomusRoomId}
-                              aria-describedby={`zodomus-room-hint-${field.id} zodomus-load-hint-${field.id}`}
-                              {...register(`channelListings.${index}.zodomusRoomId`)}
+                              aria-invalid={!!rowErrors?.externalListingId}
+                              aria-describedby={`zodomus-hint-${field.id} zodomus-load-hint-${field.id}`}
+                              {...register(`channelListings.${index}.externalListingId`)}
                             />
                             <Button
                               type="button"
@@ -494,70 +464,19 @@ export function PropertyChannelIntegrationSection({
                               {t('previewLoadButton')}
                             </Button>
                           </div>
-                          <p id={`zodomus-room-hint-${field.id}`} className="text-[11px] leading-snug text-muted-foreground sm:text-[12px]">
-                            {t('zodomusObjectIdHint')}
+                          <p id={`zodomus-hint-${field.id}`} className="text-[11px] leading-snug text-muted-foreground sm:text-[12px]">
+                            {zodomusHint}
                           </p>
                           <p
                             id={`zodomus-load-hint-${field.id}`}
-                            className="text-[11px] leading-snug text-amber-600/90 dark:text-amber-400/90 sm:text-[12px]"
+                            className="text-[11px] leading-snug text-muted-foreground/90 sm:text-[12px]"
                           >
                             {t('zodomusPropertyIdHintLoad')}
                           </p>
-                          {rowErrors?.zodomusRoomId && (
-                            <p className="text-xs text-destructive">{String(rowErrors.zodomusRoomId.message)}</p>
+                          {rowErrors?.externalListingId && (
+                            <p className="text-xs text-destructive">{String(rowErrors.externalListingId.message)}</p>
                           )}
                         </div>
-
-                        {lr && lr.rooms.length > 0 && (
-                          <div
-                            className="space-y-2 rounded-xl border border-border/50 bg-background/40 p-3 sm:col-span-2 sm:p-3.5"
-                            role="group"
-                            aria-label={t('previewRoomsTitle')}
-                          >
-                            <div className="flex items-start gap-2">
-                              <BedDouble className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden />
-                              <div>
-                                <p className="text-xs font-semibold text-foreground">{t('previewRoomsTitle')}</p>
-                                <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground sm:text-[12px]">
-                                  {lr.rooms.length > 1 ? t('previewRoomsSubtitle') : t('previewRoomsSingle')}
-                                </p>
-                              </div>
-                            </div>
-                            <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                              {lr.rooms.map((room) => {
-                                const selected =
-                                  String(zodomusRoomIdValue ?? '').trim() === String(room.id).trim();
-                                const label = room.name?.trim() || room.id;
-                                return (
-                                  <li key={room.id}>
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        setValue(`channelListings.${index}.zodomusRoomId`, room.id, {
-                                          shouldDirty: true,
-                                          shouldValidate: true,
-                                        })
-                                      }
-                                      aria-pressed={selected}
-                                      className={cn(
-                                        'flex w-full min-h-[3.25rem] flex-col items-start justify-center gap-0.5 rounded-xl border px-3 py-2.5 text-left text-sm transition-colors',
-                                        'hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                                        selected
-                                          ? 'border-primary/60 bg-primary/[0.1] ring-1 ring-inset ring-primary/25'
-                                          : 'border-border/70 bg-background/60',
-                                      )}
-                                    >
-                                      <span className="font-medium leading-tight text-foreground">{label}</span>
-                                      <span className="font-mono text-[11px] tabular-nums text-muted-foreground sm:text-xs">
-                                        {room.id}
-                                      </span>
-                                    </button>
-                                  </li>
-                                );
-                              })}
-                            </ul>
-                          </div>
-                        )}
 
                         {lr && <ZodomusRoomRatesPanel rooms={lr.rooms} className="sm:col-span-2" />}
                       </>

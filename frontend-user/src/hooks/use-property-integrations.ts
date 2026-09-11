@@ -56,6 +56,7 @@ export function useZodomusImportSummary() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['calendar'] });
+      queryClient.invalidateQueries({ queryKey: ['properties'] });
     },
   });
 }
@@ -81,6 +82,33 @@ export function useZodomusQueueSync() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['calendar'] });
+      queryClient.invalidateQueries({ queryKey: ['properties'] });
+    },
+  });
+}
+
+export interface ZodomusRefreshStatusResponse {
+  checked: number;
+  results: Array<{ propertyId: string; status: string | null; detail: string | null }>;
+  status?: 'disabled';
+}
+
+/** POST /integrations/zodomus/refresh-status — probe listing status without importing bookings. */
+export function useZodomusRefreshStatus() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (vars?: { propertyId?: string; channelId?: number }) => {
+      const res = await apiClient.post<{ data: ZodomusRefreshStatusResponse }>(
+        '/integrations/zodomus/refresh-status',
+        {
+          propertyId: vars?.propertyId,
+          channelId: vars?.channelId ?? 1,
+        },
+      );
+      return res.data?.data ?? { checked: 0, results: [] };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['properties'] });
     },
   });
 }

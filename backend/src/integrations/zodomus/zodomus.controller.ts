@@ -125,6 +125,45 @@ export class ZodomusController {
   }
 
   /**
+   * Refresh persisted Zodomus listing status for one property or all owner-linked properties.
+   * Probes GET /reservations-queue without importing bookings.
+   */
+  @Post('refresh-status')
+  @Roles('OWNER', 'MANAGER', 'SUPERADMIN')
+  async refreshStatus(
+    @CurrentUser() user: JwtPayload,
+    @Body() body: { channelId?: number; propertyId?: string },
+  ) {
+    if (!this.zodomus.isEnabled) {
+      return { data: { status: 'disabled' as const, checked: 0, results: [] } };
+    }
+    const channelId = Number(body?.channelId ?? 1);
+    if (!Number.isFinite(channelId)) {
+      throw new BadRequestException('channelId must be a number');
+    }
+    const propertyId = body?.propertyId?.trim();
+    let properties;
+    if (propertyId) {
+      const one =
+        user.role === 'SUPERADMIN'
+          ? await this.propertyService.findByIdForAdmin(propertyId)
+          : await this.propertyService.findOneForUser(propertyId, user.sub, user.role);
+      properties = [one];
+    } else if (user.role === 'SUPERADMIN') {
+      properties = await this.propertyService.findAllWithZodomus();
+    } else {
+      const ownerId = await this.userService.resolveTenantOwnerId(user.sub, user.role);
+      properties = (await this.propertyService.findAllByOwner(ownerId)).filter(
+        (p) =>
+          Boolean(p.zodomusPropertyId?.trim()) ||
+          Boolean(p.channelListings?.some((c) => c.externalListingId?.trim())),
+      );
+    }
+    const result = await this.zodomusSync.refreshPropertyStatuses({ channelId, properties });
+    return { data: result };
+  }
+
+  /**
    * GET /reservations-summary — импорт всех активных броней при онбординге объекта.
    * Не зависит от очереди; полезен при первом подключении объекта к Zodomus.
    */

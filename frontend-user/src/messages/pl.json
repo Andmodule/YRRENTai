@@ -167,7 +167,8 @@
       "colTimezone": "Strefa czasowa",
       "colOta": "OTA",
       "colGuests": "Goście",
-      "noSearchResults": "Brak wyników"
+      "noSearchResults": "Brak wyników",
+      "colZodomus": "Zodomus"
     },
     "globalRules": {
       "title": "Zasady ogólne",
@@ -301,7 +302,7 @@
       "previewLoadButton": "Załaduj z Zodomus",
       "previewNeedPlatform": "Najpierw wybierz Booking lub Airbnb.",
       "previewNeedId": "Najpierw wpisz ID ogłoszenia OTA w polu powyżej.",
-      "previewToastOk": "Dane ogłoszenia uzupełnione z Zodomus.",
+      "previewToastOk": "Ogłoszenie znalezione w Zodomus. Nazwa i adres obiektu bez zmian.",
       "previewToastMultiRoom": "Znaleziono {count} typów pokoi — wybierz właściwy poniżej.",
       "previewRoomsTitle": "Typy pokoi w Zodomus",
       "previewRoomsSubtitle": "Ten, który odpowiada temu ogłoszeniu w RentAI.",
@@ -309,7 +310,7 @@
       "previewToastRoomsLoaded": "Załadowano {count} typów — wybierz poniżej.",
       "previewToastError": "Nie udało się załadować: {message}",
       "previewToastInvalidPropertyId": "Zodomus odrzucił to ID. W pierwszym polu — zewnętrzne ID OTA, nie ID pokoju z listy.",
-      "zodomusPropertyIdHintLoad": "„Załaduj” wywołuje room-rates w Zodomus po ID ogłoszenia OTA. Tu trafia ID pokoju Zodomus; nazwa może się zaktualizować — pełny adres rzadko.",
+      "zodomusPropertyIdHintLoad": "„Załaduj” sprawdza ID ogłoszenia OTA przez room-rates w Zodomus. Nie zmienia nazwy, adresu ani waluty; ID pokoju nie jest potrzebne dla całych apartamentów.",
       "zodomusPreviewNoAddressHint": "Odpowiedź „room-rates” zwykle zawiera tylko pokoje i stawki — bez adresu obiektu. Kraj/miasto/adres uzupełnij ręcznie lub z extranetu.",
       "previewRoomRatesTitle": "Stawki wg pokoi (Zodomus room-rates)",
       "previewRoomRatesIntro": "Plany cenowe przypisane do pokoi — te ID posłużą później do cen i dostępności.",
@@ -358,7 +359,12 @@
       "zodomusQueueEmpty": "Kolejka Zodomus pusta — brak danych.",
       "zodomusQueueAllSkipped": "Brak nowych: {skipped} pominięto (już zsynchronizowane). Włącz wymusz, aby pobrać ponownie.",
       "zodomusQueueError": "Błąd kolejki — sprawdź Zodomus i logi backendu.",
-      "syncUsesSavedSettings": "Akcje synchronizacji używają obiektu w ostatnio zapisanej postaci. Zmieniłeś kanały lub URL-e iCal — najpierw zapisz formularz powyżej."
+      "syncUsesSavedSettings": "Akcje synchronizacji używają obiektu w ostatnio zapisanej postaci. Zmieniłeś kanały lub URL-e iCal — najpierw zapisz formularz powyżej.",
+      "zodomusStatusLabel": "Status w Zodomus",
+      "zodomusStatusHint": "Sprawdza dostępność kolejki rezerwacji dla tego listingu.",
+      "zodomusStatusRefresh": "Odśwież status",
+      "zodomusStatusRefreshed": "Status Zodomus zaktualizowany",
+      "zodomusStatusRefreshError": "Nie udało się odświeżyć statusu Zodomus"
     },
     "detail": {
       "channels": "Kanały sprzedaży",
@@ -380,6 +386,22 @@
       "clearOtaSuccess": "Połączenie OTA usunięte",
       "clearOtaError": "Nie udało się usunąć OTA",
       "clearOtaAria": "Usuń OTA tej nieruchomości"
+    },
+    "zodomusStatus": {
+      "unlinked": "—",
+      "unlinkedHint": "Brak powiązania z Zodomus",
+      "active": "Active",
+      "activeHint": "Listing Active — kolejka dostępna",
+      "evaluation": "Evaluation",
+      "evaluationHint": "Listing w Evaluation — czekaj na akceptację",
+      "not_active": "Not Active",
+      "not_activeHint": "Not Active — kolejka niedostępna",
+      "invalid": "Invalid id",
+      "invalidHint": "Nieprawidłowy external property id",
+      "error": "Error",
+      "errorHint": "Błąd sprawdzania statusu",
+      "unknown": "Unknown",
+      "unknownHint": "Status jeszcze nie sprawdzony"
     }
   },
   "kb": {

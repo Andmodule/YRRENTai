@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, DataSource, QueryFailedError, Repository } from 'typeorm';
 import { PropertyEntity } from './entities/property.entity';
 import { PropertyChannelListingEntity } from './entities/property-channel-listing.entity';
-import type { CreatePropertyDto, UpdatePropertyDto } from '@rentai/shared';
+import type { CreatePropertyDto, UpdatePropertyDto, ZodomusPropertyStatus } from '@rentai/shared';
 import { OtaPlatformService } from './ota-platform.service';
 import { UserService } from '../user/user.service';
 
@@ -115,6 +115,19 @@ export class PropertyService {
         ),
       )
       .getMany();
+  }
+
+  /** Persist last known Zodomus listing status (CRM badge / diagnostics). */
+  async setZodomusStatus(
+    propertyId: string,
+    status: ZodomusPropertyStatus | null,
+    detail: string | null = null,
+  ): Promise<void> {
+    await this.propertyRepository.update(propertyId, {
+      zodomusStatus: status,
+      zodomusStatusDetail: detail?.trim() ? detail.trim().slice(0, 2000) : null,
+      zodomusStatusCheckedAt: status == null ? null : new Date(),
+    });
   }
 
   /** Найти объект по внешнему id в Zodomus (webhook). */
@@ -396,6 +409,13 @@ export class PropertyService {
         otaPlatformId: null,
         zodomusPropertyId: nextZ,
         zodomusRoomId: null,
+        ...(nextZ
+          ? {}
+          : {
+              zodomusStatus: null,
+              zodomusStatusDetail: null,
+              zodomusStatusCheckedAt: null,
+            }),
       });
       return;
     }
@@ -408,10 +428,21 @@ export class PropertyService {
 
   private rethrowIfDuplicateExternalListingId(e: unknown): void {
     if (e instanceof QueryFailedError) {
-      const err = e.driverError as { code?: string; constraint?: string } | undefined;
+      const err = e.driverError as {
+        code?: string;
+        constraint?: string;
+        detail?: string;
+        message?: string;
+      } | undefined;
       if (err?.code === '23505') {
-        const c = String(err?.constraint ?? '');
-        if (c.includes('externalListingId') || c.includes('zodomus')) {
+        const hay = `${err.constraint ?? ''} ${err.detail ?? ''} ${err.message ?? ''}`.toLowerCase();
+        if (
+          hay.includes('externallistingid') ||
+          hay.includes('zodomuspropertyid') ||
+          hay.includes('zodomus') ||
+          hay.includes('uq_property_channel_listings') ||
+          hay.includes('uq_properties_zodomus')
+        ) {
           throw new BadRequestException(
             'This external listing id is already linked to another property in RentAI.',
           );

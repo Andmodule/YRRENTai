@@ -14,6 +14,7 @@ import { GuestService } from '../../guest/guest.service';
 import { ZodomusService } from './zodomus.service';
 import { ZodomusAvailabilityPushService } from './zodomus-availability-push.service';
 import {
+  deriveZodomusPropertyStatus,
   formatZodomusHttpException,
   isZodomusPermanentMisconfiguration,
   isZodomusReservationDownloadLimitError,
@@ -169,7 +170,19 @@ export class ZodomusSyncService {
     const extId = this.propertyService.getExternalListingIdForZodomusChannel(property, channelId);
     if (!extId) throw new BadRequestException('Set an external listing id for this channel on the property');
 
-    const reservations = await this.zodomus.getReservationSummary(channelId, extId);
+    let reservations;
+    try {
+      reservations = await this.zodomus.getReservationSummary(channelId, extId);
+      await this.propertyService.setZodomusStatus(property.id, 'active', null);
+    } catch (e) {
+      const detail = formatZodomusHttpException(e);
+      await this.propertyService.setZodomusStatus(
+        property.id,
+        deriveZodomusPropertyStatus(detail),
+        detail,
+      );
+      throw e;
+    }
     let imported = 0;
     let failed = 0;
 
@@ -197,6 +210,46 @@ export class ZodomusSyncService {
     }
 
     return { imported, failed };
+  }
+
+  /**
+   * Probe Zodomus for one or more linked properties and persist `zodomusStatus`
+   * (does not process the reservation queue).
+   */
+  async refreshPropertyStatuses(opts: {
+    channelId: number;
+    properties: PropertyEntity[];
+  }): Promise<{
+    checked: number;
+    results: Array<{
+      propertyId: string;
+      status: string | null;
+      detail: string | null;
+    }>;
+  }> {
+    if (!this.zodomus.isEnabled) {
+      throw new BadRequestException('Zodomus is disabled');
+    }
+    const results: Array<{ propertyId: string; status: string | null; detail: string | null }> = [];
+    for (const p of opts.properties) {
+      const extId = this.propertyService.getExternalListingIdForZodomusChannel(p, opts.channelId);
+      if (!extId) {
+        await this.propertyService.setZodomusStatus(p.id, null, null);
+        results.push({ propertyId: p.id, status: null, detail: null });
+        continue;
+      }
+      try {
+        await this.zodomus.getReservationQueue(opts.channelId, extId);
+        await this.propertyService.setZodomusStatus(p.id, 'active', null);
+        results.push({ propertyId: p.id, status: 'active', detail: null });
+      } catch (e) {
+        const detail = formatZodomusHttpException(e);
+        const status = deriveZodomusPropertyStatus(detail);
+        await this.propertyService.setZodomusStatus(p.id, status, detail);
+        results.push({ propertyId: p.id, status, detail });
+      }
+    }
+    return { checked: results.length, results };
   }
 
   /**
@@ -293,7 +346,19 @@ export class ZodomusSyncService {
     const extId = this.propertyService.getExternalListingIdForZodomusChannel(property, channelId);
     if (!extId) throw new BadRequestException('Set an external listing id for this channel on the property');
 
-    const reservations = await this.zodomus.getReservationSummary(channelId, extId);
+    let reservations;
+    try {
+      reservations = await this.zodomus.getReservationSummary(channelId, extId);
+      await this.propertyService.setZodomusStatus(property.id, 'active', null);
+    } catch (e) {
+      const detail = formatZodomusHttpException(e);
+      await this.propertyService.setZodomusStatus(
+        property.id,
+        deriveZodomusPropertyStatus(detail),
+        detail,
+      );
+      throw e;
+    }
     let imported = 0;
     let failed = 0;
 
@@ -352,22 +417,23 @@ export class ZodomusSyncService {
         }
       } catch (e) {
         failed += 1;
+        const detail = formatZodomusHttpException(e);
         const permanent = isZodomusPermanentMisconfiguration(e);
         if (listing) {
           const state = await this.markListingFailure(listing, e, permanent);
           if (state.blockedUntil) {
             const mode = permanent ? 'PERMANENT' : 'BACKOFF';
             this.logger.warn(
-              `syncAllProperties: listing ${listing.id} ${mode} until ${state.blockedUntil.toISOString()} (property ${p.id}, channel ${channelId}): ${formatZodomusHttpException(e)}`,
+              `syncAllProperties: listing ${listing.id} ${mode} until ${state.blockedUntil.toISOString()} (property ${p.id}, channel ${channelId}): ${detail}`,
             );
           } else {
             this.logger.warn(
-              `syncAllProperties: listing ${listing.id} failed x${state.failCount} (property ${p.id}, channel ${channelId}): ${formatZodomusHttpException(e)}`,
+              `syncAllProperties: listing ${listing.id} failed x${state.failCount} (property ${p.id}, channel ${channelId}): ${detail}`,
             );
           }
         } else {
           this.logger.warn(
-            `syncAllProperties: legacy property ${p.id} failed on channel ${channelId}: ${formatZodomusHttpException(e)}`,
+            `syncAllProperties: legacy property ${p.id} failed on channel ${channelId}: ${detail}`,
           );
         }
       }
@@ -388,7 +454,19 @@ export class ZodomusSyncService {
       );
     }
 
-    const queue = await this.zodomus.getReservationQueue(channelId, extId);
+    let queue;
+    try {
+      queue = await this.zodomus.getReservationQueue(channelId, extId);
+    } catch (e) {
+      const detail = formatZodomusHttpException(e);
+      await this.propertyService.setZodomusStatus(
+        property.id,
+        deriveZodomusPropertyStatus(detail),
+        detail,
+      );
+      throw e;
+    }
+    await this.propertyService.setZodomusStatus(property.id, 'active', null);
     let processed = 0;
     let skipped = 0;
     let failed = 0;

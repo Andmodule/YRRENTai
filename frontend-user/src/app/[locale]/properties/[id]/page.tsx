@@ -224,6 +224,8 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
                 <PropertyIntegrationsCard
                   propertyId={property.id}
                   zodomusPropertyId={property.zodomusPropertyId}
+                  zodomusStatus={property.zodomusStatus}
+                  zodomusStatusDetail={property.zodomusStatusDetail}
                   channelListings={property.channelListings}
                   otaPlatform={property.otaPlatform ?? null}
                   onSynced={async () => {
@@ -302,6 +304,8 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
               <PropertyIntegrationsCard
                 propertyId={property.id}
                 zodomusPropertyId={property.zodomusPropertyId}
+                zodomusStatus={property.zodomusStatus}
+                zodomusStatusDetail={property.zodomusStatusDetail}
                 channelListings={property.channelListings}
                 otaPlatform={property.otaPlatform ?? null}
                 onSynced={async () => {

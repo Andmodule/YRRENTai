@@ -27,6 +27,7 @@ import {
   managerReplySchema,
   aiDraftApproveSchema,
 } from './schemas/conversation.schema';
+import type { ZodomusPropertyStatus } from './constants/zodomus-property-status';
 
 export type LoginDto = z.infer<typeof loginSchema>;
 export type RegisterDto = z.infer<typeof registerSchema>;
@@ -71,6 +72,15 @@ export interface Property {
   /** Legacy: внешний id Zodomus для первого канала. */
   zodomusPropertyId?: string | null;
   zodomusRoomId?: string | null;
+  /**
+   * Last known Zodomus listing status (`active` / `evaluation` / …).
+   * Null when no external id is linked.
+   */
+  zodomusStatus?: ZodomusPropertyStatus | null;
+  /** Raw upstream message for the last status probe. */
+  zodomusStatusDetail?: string | null;
+  /** When `zodomusStatus` was last refreshed from Zodomus. */
+  zodomusStatusCheckedAt?: string | null;
   /** External iCal feed URLs for calendar import. */
   icalImportUrls?: string[];
   /** Meta WhatsApp Cloud API phone number id (routing inbound webhooks). */

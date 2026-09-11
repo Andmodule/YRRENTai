@@ -58,6 +58,21 @@ export class PropertyEntity {
   zodomusAvailabilityDirty!: boolean;
 
   /**
+   * Last known Zodomus listing status for the linked external id
+   * (`active` | `evaluation` | `not_active` | `invalid` | `error` | `unknown`).
+   * Null when no `zodomusPropertyId` is set.
+   */
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  zodomusStatus!: string | null;
+
+  /** Raw upstream message from the last status probe / sync failure. */
+  @Column({ type: 'text', nullable: true })
+  zodomusStatusDetail!: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  zodomusStatusCheckedAt!: Date | null;
+
+  /**
    * List of external iCal feed URLs to import (Airbnb, VRBO, etc.).
    * Stored as jsonb array of strings.
    */

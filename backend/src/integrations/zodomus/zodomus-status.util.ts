@@ -89,6 +89,25 @@ const ZODOMUS_PERMANENT_MISCONFIG_SUBSTRINGS = [
   'invalid listing',
 ] as const;
 
+export type DerivedZodomusPropertyStatus =
+  | 'active'
+  | 'evaluation'
+  | 'not_active'
+  | 'invalid'
+  | 'error'
+  | 'unknown';
+
+/** Map upstream error / status text to a coarse property status for CRM display. */
+export function deriveZodomusPropertyStatus(raw: string): DerivedZodomusPropertyStatus {
+  const t = raw.toLowerCase();
+  if (t.includes('evaluation')) return 'evaluation';
+  if (t.includes('invalid property') || t.includes('invalid listing')) return 'invalid';
+  if (t.includes('property status not active') || t.includes('not active')) return 'not_active';
+  if (t.includes('awaiting approval')) return 'evaluation';
+  if (!t.trim()) return 'unknown';
+  return 'error';
+}
+
 /** Lowercase fingerprint for matching permanent upstream errors (HTTP body or Error.message). */
 export function zodomusErrorFingerprint(e: unknown): string {
   if (e instanceof HttpException) {
