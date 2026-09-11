@@ -1,19 +1,19 @@
-# CRM ↔ Zodomus ↔ Booking — supported flow
+# CRM ↔ Zodomus ↔ Booking — поддерживаемый поток
 
-This document is the source of truth for what RentAI supports today.
-Public Zodomus docs: https://www.zodomus.com/developers  
-Full API reference requires Zodomus backoffice registration.
+Документ — источник правды по тому, что RentAI поддерживает сейчас.  
+Публичные доки Zodomus: https://www.zodomus.com/developers  
+Полный API Reference — после регистрации в backoffice Zodomus.
 
-## Supported semantics
+## Семантика
 
-| Direction | What happens | Mechanism |
-|-----------|--------------|-----------|
-| **CRM → Booking** | Manager creates a **direct** booking in RentAI | `POST /api/v1/bookings` → `BookingEntity` (no `zodomusReservationId`) |
-| **CRM → Zodomus** | Occupancy is pushed so OTAs close dates | `ZodomusAvailabilityPushService` → `POST /availability-multiple` |
-| **CRM cancel (direct)** | Local status → `CANCELLED`, then reopen dates on OTAs | `PATCH /bookings/:id/status` + availability push |
-| **CRM cancel (OTA)** | **Blocked** | Error `OTA_CANCEL_VIA_CHANNEL` — cancel on the OTA; Zodomus delivers status `3` |
-| **Zodomus → Booking (new/modified)** | OTA reservation upserted locally | Webhook / queue / import-summary → `upsertBooking` |
-| **Zodomus → Booking (cancel)** | Local status → `CANCELLED`, then availability push | Webhook/queue `reservationStatus=3` |
+| Направление | Что происходит | Механизм |
+|-------------|----------------|----------|
+| **CRM → Booking** | Менеджер создаёт **прямую** бронь в RentAI | `POST /api/v1/bookings` → `BookingEntity` (без `zodomusReservationId`) |
+| **CRM → Zodomus** | Уходит занятость, чтобы OTA закрыли даты | `ZodomusAvailabilityPushService` → `POST /availability-multiple` |
+| **CRM отмена (прямая)** | Локальный статус → `CANCELLED`, затем снова открыть даты на OTA | `PATCH /bookings/:id/status` + availability push |
+| **CRM отмена (OTA)** | **Заблокировано** | Ошибка `OTA_CANCEL_VIA_CHANNEL` — отменять на OTA; Zodomus пришлёт статус `3` |
+| **Zodomus → Booking (new/modified)** | OTA-бронь upsert в CRM | Webhook / очередь / import-summary → `upsertBooking` |
+| **Zodomus → Booking (cancel)** | Локальный статус → `CANCELLED`, затем availability push | Webhook/queue `reservationStatus=3` |
 
 ```mermaid
 flowchart LR
@@ -25,36 +25,36 @@ flowchart LR
   Sync -->|"upsert or cancel"| BookingDB
 ```
 
-## What “send booking to Zodomus” means
+## Что значит «отправить бронь в Zodomus»
 
-**Today it means inventory sync (availability), not creating an OTA reservation object.**
+**Сейчас это синхронизация инвентаря (availability), а не создание объекта гостевой брони на OTA.**
 
-- Direct CRM booking → RentAI is source of truth → Zodomus gets `availability: 0` for occupied nights.
-- Direct CRM cancel → RentAI marks `CANCELLED` → Zodomus gets `availability: 1` again.
-- OTA booking/cancel → Zodomus is source of truth → RentAI mirrors via webhook/queue.
+- Прямая бронь в CRM → источник правды RentAI → в Zodomus уходит `availability: 0` на занятые ночи.
+- Отмена прямой брони → локально `CANCELLED` → Zodomus снова получает `availability: 1`.
+- OTA-бронь / отмена → источник правды Zodomus → RentAI зеркалит через webhook/очередь.
 
-## Not supported (public docs)
+## Не поддерживается (публичные доки)
 
-Public Reservation APIs expose only:
+Публичные Reservation API дают только:
 
 - `GET /reservations-queue`
 - `GET /reservations`
 - `GET /reservations-summary`
 - `GET /reservations-cc`
-- `POST /reservations-createtest` (**sandbox only**)
+- `POST /reservations-createtest` (**только sandbox**)
 
-There is **no confirmed production endpoint** to create or cancel a guest reservation from CRM through Zodomus.
-Do **not** call `reservations-createtest` in production or pretend CRM cancel writes to the channel.
+**Нет подтверждённого production-эндпоинта**, чтобы из CRM создать или отменить гостевую бронь через Zodomus.  
+**Не** вызывайте `reservations-createtest` в production и не делайте вид, что отмена из CRM пишет в канал.
 
-If Zodomus later documents a private reservation-write API, add a gated `ZodomusReservationWriteService` behind a feature flag — do not invent request shapes.
+Если Zodomus позже задокументирует private reservation-write API — добавьте gated `ZodomusReservationWriteService` за feature flag; не выдумывайте формы запросов.
 
-## Manual checklist (sandbox)
+## Ручной чеклист (sandbox)
 
-1. Env: `ZODOMUS_ENABLED=true`, credentials, optional `ZODOMUS_WEBHOOK_KEY`.
-2. Map property: `externalListingId` / `zodomusPropertyId` + `zodomusRoomId` on channel listing.
-3. `POST /reservations-createtest` with `status=new` → webhook or `POST .../sync` → local booking appears.
-4. `createtest` with `status=cancelled` (or queue status `3`) → local booking `CANCELLED`.
-5. CRM: create direct booking on free dates → `POST .../push-availability` (or auto-push) → nights closed on channel.
-6. CRM: cancel that **direct** booking → availability reopens.
-7. CRM: try cancel OTA booking → expect `OTA_CANCEL_VIA_CHANNEL`.
-8. Optional: `POST .../import-summary` on first connect to pull future reservations.
+1. Env: `ZODOMUS_ENABLED=true`, credentials, `ZODOMUS_WEBHOOK_KEY` (тот же ключ в backoffice Zodomus; URL webhook `…/api/v1/integrations/zodomus/webhook`).
+2. Привязать объект: `externalListingId` / `zodomusPropertyId` + при необходимости `zodomusRoomId` на channel listing.
+3. `POST /reservations-createtest` со `status=new` → webhook или `POST .../sync` → локальная бронь.
+4. `createtest` со `status=cancelled` (или queue status `3`) → локально `CANCELLED`.
+5. CRM: прямая бронь на свободные даты → `POST .../push-availability` (или auto-push) → ночи закрыты на канале.
+6. CRM: отмена этой **прямой** брони → даты снова открыты.
+7. CRM: попытка отменить OTA-бронь → ожидать `OTA_CANCEL_VIA_CHANNEL`.
+8. Опционально: `POST .../import-summary` при первом подключении — подтянуть будущие брони.
