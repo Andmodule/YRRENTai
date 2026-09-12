@@ -175,8 +175,8 @@ export class ZodomusSyncService {
   }
 
   /**
-   * Probe Zodomus for one or more linked properties and persist `zodomusStatus`
-   * (does not process the reservation queue).
+   * Probe Zodomus via POST /property-check and persist `zodomusStatus`.
+   * Do not infer Active from queue/summary success alone (queue can lag or mislead).
    */
   async refreshPropertyStatuses(opts: {
     channelId: number;
@@ -200,18 +200,34 @@ export class ZodomusSyncService {
         results.push({ propertyId: p.id, status: null, detail: null });
         continue;
       }
-      try {
-        await this.zodomus.getReservationQueue(opts.channelId, extId);
-        await this.propertyService.setZodomusStatus(p.id, 'active', null);
-        results.push({ propertyId: p.id, status: 'active', detail: null });
-      } catch (e) {
-        const detail = formatZodomusHttpException(e);
-        const status = deriveZodomusPropertyStatus(detail);
-        await this.propertyService.setZodomusStatus(p.id, status, detail);
-        results.push({ propertyId: p.id, status, detail });
-      }
+      const { status, detail } = await this.persistStatusFromPropertyCheck(
+        p.id,
+        opts.channelId,
+        extId,
+      );
+      results.push({ propertyId: p.id, status, detail });
     }
     return { checked: results.length, results };
+  }
+
+  /**
+   * Source of truth for CRM `zodomusStatus`: POST /property-check (not reservations-queue).
+   */
+  private async persistStatusFromPropertyCheck(
+    propertyId: string,
+    channelId: number,
+    extId: string,
+  ): Promise<{ status: string; detail: string | null }> {
+    try {
+      await this.zodomus.checkProperty(channelId, extId);
+      await this.propertyService.setZodomusStatus(propertyId, 'active', null);
+      return { status: 'active', detail: null };
+    } catch (e) {
+      const detail = formatZodomusHttpException(e);
+      const status = deriveZodomusPropertyStatus(detail);
+      await this.propertyService.setZodomusStatus(propertyId, status, detail);
+      return { status, detail };
+    }
   }
 
   /**
@@ -415,7 +431,7 @@ export class ZodomusSyncService {
     let reservations;
     try {
       reservations = await this.zodomus.getReservationSummary(channelId, extId);
-      await this.propertyService.setZodomusStatus(property.id, 'active', null);
+      await this.persistStatusFromPropertyCheck(property.id, channelId, extId);
     } catch (e) {
       const detail = formatZodomusHttpException(e);
       await this.propertyService.setZodomusStatus(
@@ -533,7 +549,7 @@ export class ZodomusSyncService {
       );
       throw e;
     }
-    await this.propertyService.setZodomusStatus(property.id, 'active', null);
+    await this.persistStatusFromPropertyCheck(property.id, channelId, extId);
     let processed = 0;
     let skipped = 0;
     let failed = 0;

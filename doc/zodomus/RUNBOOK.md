@@ -158,3 +158,8 @@ curl -s "http://localhost:PORT/api/v1/integrations/zodomus/status" \
 
 После успешного синка можно доработать маппинг `upsertBooking` по реальному `response-queue.json` и затем массовый онбординг объектов.
 См. также ограничения публичных Reservation API в [BOOKING-FLOW.md](./BOOKING-FLOW.md).
+
+### Инцидент prod `10322630` (Evaluation OTA / not Active)
+
+См. [INCIDENT-10322630-2026-09-12.md](./INCIDENT-10322630-2026-09-12.md) и письмо [ESCALATION-10322630.md](./ESCALATION-10322630.md).  
+После Active: `node doc/zodomus/post-active-reopen-10322630.mjs`.
