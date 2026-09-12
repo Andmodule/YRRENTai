@@ -1,10 +1,11 @@
 import { HttpException } from '@nestjs/common';
 
-type ZodomusStatusBlock = { returnCode?: unknown; returnMessage?: string };
+type ZodomusStatusBlock = { returnCode?: unknown; returnMessage?: unknown };
 
 /**
  * Zodomus often returns HTTP 200 with success/failure in `body.status.returnCode`
  * (0 и 200 — успех; 400+ — ошибка). Иногда `status` лежит внутри `body.data`.
+ * `returnMessage` may be a string OR an object (property-check breakdown).
  */
 function extractStatusBlock(b: Record<string, unknown>): ZodomusStatusBlock | undefined {
   if (b.status && typeof b.status === 'object') {
@@ -25,6 +26,20 @@ function isSuccessReturnCode(rc: unknown): boolean {
   const n = Number(rc);
   if (!Number.isFinite(n)) return true;
   return n < 400;
+}
+
+/** Normalize Zodomus returnMessage (string | object) for logs and status derivation. */
+export function formatZodomusReturnMessage(msg: unknown): string {
+  if (msg == null) return '';
+  if (typeof msg === 'string') return msg;
+  if (typeof msg === 'object') {
+    try {
+      return JSON.stringify(msg);
+    } catch {
+      return String(msg);
+    }
+  }
+  return String(msg);
 }
 
 export function isZodomusSuccessBody(body: unknown): boolean {
@@ -51,7 +66,7 @@ export function assertZodomusSuccess(label: string, body: unknown): void {
   const b = body as Record<string, unknown>;
   const st = extractStatusBlock(b);
   const rc = st?.returnCode ?? b.returnCode;
-  const msg = st?.returnMessage ?? JSON.stringify(body);
+  const msg = formatZodomusReturnMessage(st?.returnMessage ?? body);
   throw new HttpException(
     {
       message: `Zodomus API error (${label}): returnCode=${String(rc)} — ${msg}`,
@@ -74,7 +89,7 @@ export function isZodomusReservationDownloadLimitError(e: unknown): boolean {
   const r = e.getResponse();
   if (typeof r !== 'object' || r === null) return false;
   const o = r as Record<string, unknown>;
-  const text = `${String(o.detail ?? '')} ${String(o.message ?? '')}`.toLowerCase();
+  const text = `${formatZodomusReturnMessage(o.detail)} ${String(o.message ?? '')}`.toLowerCase();
   return (
     text.includes('already downloaded') ||
     text.includes('limit was reached') ||
@@ -87,6 +102,10 @@ const ZODOMUS_PERMANENT_MISCONFIG_SUBSTRINGS = [
   'invalid property id',
   'property status not active',
   'invalid listing',
+  'hotel_access_denied',
+  'access denied of hotel',
+  'waiting to access channel data',
+  'evaluation ota',
 ] as const;
 
 export type DerivedZodomusPropertyStatus =
@@ -100,10 +119,11 @@ export type DerivedZodomusPropertyStatus =
 /** Map upstream error / status text to a coarse property status for CRM display. */
 export function deriveZodomusPropertyStatus(raw: string): DerivedZodomusPropertyStatus {
   const t = raw.toLowerCase();
-  if (t.includes('evaluation')) return 'evaluation';
+  if (t.includes('evaluation') || t.includes('awaiting approval')) return 'evaluation';
+  if (t.includes('waiting to access channel data')) return 'evaluation';
+  if (t.includes('hotel_access_denied') || t.includes('access denied of hotel')) return 'evaluation';
   if (t.includes('invalid property') || t.includes('invalid listing')) return 'invalid';
   if (t.includes('property status not active') || t.includes('not active')) return 'not_active';
-  if (t.includes('awaiting approval')) return 'evaluation';
   if (!t.trim()) return 'unknown';
   return 'error';
 }
@@ -132,7 +152,9 @@ export function formatZodomusHttpException(e: unknown): string {
     if (typeof r === 'string') return r;
     if (r && typeof r === 'object') {
       const o = r as Record<string, unknown>;
-      const parts = [o.message, o.detail, o.label].filter((x) => typeof x === 'string');
+      const parts = [o.message, o.detail, o.label]
+        .map((x) => (typeof x === 'string' ? x : x != null ? formatZodomusReturnMessage(x) : ''))
+        .filter((x) => x.length > 0);
       if (parts.length) return parts.join(' | ');
       return JSON.stringify(r);
     }

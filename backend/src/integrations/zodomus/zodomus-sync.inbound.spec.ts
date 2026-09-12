@@ -54,6 +54,7 @@ describe('ZodomusSyncService inbound webhook', () => {
         ...opts.reservation,
       }),
       getReservationQueue: jest.fn().mockResolvedValue([]),
+      checkProperty: jest.fn().mockResolvedValue({ status: { returnCode: 200 } }),
     };
 
     const propertyService = {
