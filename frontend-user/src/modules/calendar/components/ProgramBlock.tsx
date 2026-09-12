@@ -149,7 +149,7 @@ export const ProgramBlock = memo(function ProgramBlock({ program, onSelect, isMo
     );
     return (
       <div
-        className="pointer-events-none absolute z-[20]"
+        className="pointer-events-none absolute z-[5]"
         style={{ ...layoutStyles.position, width: layoutStyles.width }}
       >
         <Tooltip>
@@ -214,7 +214,7 @@ export const ProgramBlock = memo(function ProgramBlock({ program, onSelect, isMo
     <ProgramBox
       width={layoutStyles.width}
       style={layoutStyles.position}
-      className="z-[20]"
+      className="z-[5]"
       data-testid="program-item"
       onClick={(e) => e.stopPropagation()}
       onKeyDown={(e) => {

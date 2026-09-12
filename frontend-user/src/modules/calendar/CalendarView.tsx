@@ -5,7 +5,6 @@ import { useTheme } from 'next-themes';
 import { Epg, Layout, useEpg } from 'planby';
 import type { Channel } from 'planby';
 import { addDays, addHours, eachDayOfInterval, format, startOfDay } from 'date-fns';
-import { differenceInCalendarDays } from 'date-fns';
 import { toast } from 'sonner';
 import { useTranslations } from 'next-intl';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -38,7 +37,6 @@ import { hitTestCalendarCell } from './lib/hit-test-calendar-cell';
 import { isBookingIdPinQuery, normalizeCalendarQuery, reservationMatchesQuery } from './calendarSearch';
 
 const ITEM_HEIGHT_PX = 64;
-const TIMELINE_HEADER_HEIGHT_PX = 60;
 const DAY_COLUMN_WIDTH_PX = {
   mobile: 64,
   desktop: 96,
@@ -222,31 +220,6 @@ export function CalendarView({
     ref: planbyScrollRef,
   } = layoutProps;
   const dayColWidthPx = 24 * layoutHourWidth;
-
-  const fallbackReservationOverlays = useMemo(() => {
-    const propertyRowIndex = new Map(filteredProperties.map((p, index) => [p.uuid, index]));
-    const rangeStart = startOfDay(dateRange.start);
-    const sidebarWidth = isMobile ? 56 : 240;
-
-    return filteredReservations
-      .map((reservation) => {
-        const rowIndex = propertyRowIndex.get(reservation.propertyId);
-        if (rowIndex == null) return null;
-
-        const checkIn = startOfDay(parseLocalCalendarDay(reservation.checkIn));
-        const checkOut = startOfDay(parseLocalCalendarDay(reservation.checkOut));
-        const offsetDays = differenceInCalendarDays(checkIn, rangeStart);
-        const nights = Math.max(1, differenceInCalendarDays(checkOut, checkIn));
-
-        return {
-          reservation,
-          left: sidebarWidth + (offsetDays + 0.5) * dayColWidthPx,
-          top: TIMELINE_HEADER_HEIGHT_PX + rowIndex * ITEM_HEIGHT_PX + 36,
-          width: Math.max(48, nights * dayColWidthPx),
-        };
-      })
-      .filter((item): item is NonNullable<typeof item> => item != null);
-  }, [dateRange.start, dayColWidthPx, filteredProperties, filteredReservations, isMobile]);
 
   const timelinePanEnabled = Boolean(
     data &&
@@ -457,23 +430,34 @@ export function CalendarView({
 #cal-${calendarScopeId} .planby [data-testid="sidebar"] {
   border-right: 1px solid var(--border);
   box-sizing: border-box;
+  /* Above scrolling day cells; below timeline corner (z-20) */
+  z-index: 18 !important;
 }
 .dark #cal-${calendarScopeId} .planby [data-testid="sidebar"] {
   background-color: var(--card) !important;
 }
-/* Высоту/позицию строк задаёт renderChannel (как ChannelBox Planby); фон подстраховываем под сетку */
 #cal-${calendarScopeId} .planby [data-testid="sidebar-item"] {
   box-sizing: border-box;
 }
 /* Не добавлять border на sidebar-item: Planby задаёт ровно itemHeight px; лишний border ломает стык с горизонталями контента */
+/* Planby corner box unused — our TimelineHeader corner is sticky instead */
 #cal-${calendarScopeId} .planby[data-testid="container"] > div:first-child > div:first-child {
   display: none !important;
 }
+#cal-${calendarScopeId} .planby [data-testid="calendar-timeline-header"] {
+  isolation: isolate;
+  /* Above program bars so sticky dates are never covered by row-0 ribbons */
+  z-index: 15 !important;
+}
 #cal-${calendarScopeId} .planby [data-testid="content"] {
   cursor: crosshair;
+  /* Keep programs under sticky header / sidebar */
+  z-index: 1;
 }
 #cal-${calendarScopeId} .planby [data-testid="program-item"] {
   cursor: pointer;
+  /* Must stay below sticky timeline header (z-15) and sidebar (z-18) */
+  z-index: 5 !important;
 }
 #cal-${calendarScopeId} .planby {
   height: 100%;
@@ -706,23 +690,6 @@ export function CalendarView({
                   renderTimeline={renderTimeline}
                 />
               </Epg>
-              <div className="pointer-events-none absolute inset-0 z-30 overflow-hidden">
-                {fallbackReservationOverlays.map(({ reservation, left, top, width }) => (
-                  <button
-                    key={reservation.uuid}
-                    type="button"
-                    className="pointer-events-auto absolute h-9 truncate rounded-md border border-sky-400/70 bg-sky-500/90 px-2 text-left text-xs font-semibold text-white shadow-sm transition-colors duration-200 hover:bg-sky-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                    style={{ left, top, width }}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onSelectReservation(reservation);
-                    }}
-                    aria-label={`${reservation.guestName}, ${reservation.checkIn} - ${reservation.checkOut}`}
-                  >
-                    {reservation.guestName}
-                  </button>
-                ))}
-              </div>
             </div>
           </>
         )}

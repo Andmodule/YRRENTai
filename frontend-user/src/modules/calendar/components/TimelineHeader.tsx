@@ -16,6 +16,11 @@ interface TimelineHeaderProps {
   locale: Locale;
 }
 
+/**
+ * Sticky date row inside Planby ScrollBox.
+ * - `sticky top` keeps dates visible on vertical scroll.
+ * - Left corner is `sticky left` with solid bg so day cells never slide over property names.
+ */
 export const TimelineHeader = memo(function TimelineHeader({
   hourWidth,
   dayWidth,
@@ -34,11 +39,21 @@ export const TimelineHeader = memo(function TimelineHeader({
   return (
     <div
       data-testid="calendar-timeline-header"
-      className="relative z-[5] flex h-[60px] min-h-[60px] shrink-0 border-b border-border bg-card"
+      className="sticky top-0 z-[15] flex h-[60px] min-h-[60px] shrink-0 border-b border-border bg-card"
       style={{ width: rowWidth, minWidth: rowWidth }}
     >
-      {isSidebar ? <div style={{ width: sidebarWidth, minWidth: sidebarWidth }} className="shrink-0" aria-hidden /> : null}
-      <div className="flex shrink-0 overflow-hidden" style={{ width: dayWidth, minWidth: dayWidth }}>
+      {isSidebar ? (
+        <div
+          data-testid="calendar-timeline-corner"
+          className="sticky left-0 z-[20] box-border shrink-0 border-r border-border bg-card"
+          style={{ width: sidebarWidth, minWidth: sidebarWidth }}
+          aria-hidden
+        />
+      ) : null}
+      <div
+        className="relative z-[10] flex shrink-0 overflow-hidden bg-card"
+        style={{ width: dayWidth, minWidth: dayWidth }}
+      >
         {days.map((day) => {
           const weekend = isSaturday(day) || isSunday(day);
           const today = isToday(day);
@@ -47,8 +62,8 @@ export const TimelineHeader = memo(function TimelineHeader({
             <div
               key={day.getTime()}
               className={cn(
-                'flex shrink-0 flex-col items-center justify-center border-r border-border py-2 text-center text-xs font-medium text-foreground',
-                weekend && 'bg-gray-50/40 dark:bg-muted/35',
+                'flex shrink-0 flex-col items-center justify-center border-r border-border bg-card py-2 text-center text-xs font-medium text-foreground',
+                weekend && 'bg-gray-50 dark:bg-muted/40',
                 today && 'border-l-2 border-l-primary bg-primary/10 dark:bg-primary/15',
                 past && 'opacity-60',
               )}
