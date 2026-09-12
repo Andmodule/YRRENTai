@@ -4,7 +4,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useTheme } from 'next-themes';
 import { Epg, Layout, useEpg } from 'planby';
 import type { Channel } from 'planby';
-import { addDays, addHours, eachDayOfInterval, format, startOfDay, subDays } from 'date-fns';
+import { addDays, addHours, eachDayOfInterval, format, startOfDay } from 'date-fns';
 import { differenceInCalendarDays } from 'date-fns';
 import { toast } from 'sonner';
 import { useTranslations } from 'next-intl';
@@ -28,12 +28,13 @@ import { CalendarSkeleton } from './components/CalendarSkeleton';
 import { CalendarEmptyNoProperties, CalendarEmptyNoReservations } from './components/CalendarEmpty';
 import { CalendarError } from './components/CalendarError';
 import { FilterBar } from './components/FilterBar';
-import { TimelineNavBar } from './components/TimelineNavBar';
+import { TimelineNavBar, buildCalendarWindowAround } from './components/TimelineNavBar';
 import { SmartCreateSheet } from '@/modules/tasks/components/manager/SmartCreateSheet';
 import { NewBookingSheet } from './components/NewBookingSheet';
 import { ReservationDetailPanel, ReservationDetailPanelFooter } from './components/ReservationDetailPanel';
 import { getCalendarPlanbyTheme } from './lib/planby-app-theme';
 import { parseLocalCalendarDay } from './lib/calendar-api-dates';
+import { hitTestCalendarCell } from './lib/hit-test-calendar-cell';
 import { isBookingIdPinQuery, normalizeCalendarQuery, reservationMatchesQuery } from './calendarSearch';
 
 const ITEM_HEIGHT_PX = 64;
@@ -117,10 +118,7 @@ export function CalendarView({
     const re = startOfDay(dateRange.end);
     const inWindow = ci >= rs && ci <= re;
     if (!inWindow) {
-      onDateRangeChange({
-        start: startOfDay(subDays(checkIn, 3)),
-        end: startOfDay(addDays(checkIn, 18)),
-      });
+      onDateRangeChange(buildCalendarWindowAround(checkIn));
     }
     setSelectedId(hit.uuid);
     lastAutopanKeyRef.current = key;
@@ -279,20 +277,51 @@ export function CalendarView({
       if (t.closest('[data-testid="calendar-timeline-header"]')) return;
       const content = t.closest('[data-testid="content"]') as HTMLElement | null;
       if (!content) return;
+      if (dayColWidthPx <= 0 || numDays <= 0) return;
+
       const contentRect = content.getBoundingClientRect();
-      const y = e.clientY - contentRect.top + el.scrollTop;
-      const rowIndex = Math.floor(Math.max(0, y) / ITEM_HEIGHT_PX);
-      const prop = filteredProperties[rowIndex];
-      setNewBookingPropertyId(prop?.uuid ?? null);
-      /** X in timeline: same origin as Planby programs — relative to [data-testid="content"] + horizontal scroll. */
-      const xTimeline = e.clientX - contentRect.left + el.scrollLeft;
-      const w = dayColWidthPx > 0 ? dayColWidthPx : 1;
-      const dayIndex =
-        numDays > 0 ? Math.min(numDays - 1, Math.max(0, Math.floor(Math.max(0, xTimeline) / w))) : 0;
+      /**
+       * Content-relative coords from getBoundingClientRect already include scroll.
+       * Adding scrollLeft/scrollTop double-counts and shifts day/row (e.g. 3.11 → 11.11).
+       * Timeline header is a sibling above content → headerHeightPx = 0.
+       */
+      const yInContent = e.clientY - contentRect.top;
+      const xInContent = e.clientX - contentRect.left;
+      const rowHeight = layoutItemHeight > 0 ? layoutItemHeight : ITEM_HEIGHT_PX;
+
+      const hit = hitTestCalendarCell({
+        yInContent,
+        xInContent,
+        headerHeightPx: 0,
+        itemHeightPx: rowHeight,
+        dayColWidthPx,
+        numDays,
+        numRows: filteredProperties.length,
+      });
+      if (hit.kind !== 'cell') return;
+
+      /** Prefer Planby sidebar row under the same client Y when present. */
+      let propertyId: string | null = null;
+      const sidebarItems = el.querySelectorAll('[data-testid="sidebar-item"]');
+      for (let i = 0; i < sidebarItems.length; i++) {
+        const item = sidebarItems[i];
+        if (!(item instanceof HTMLElement)) continue;
+        const rect = item.getBoundingClientRect();
+        if (e.clientY >= rect.top && e.clientY < rect.bottom) {
+          propertyId = item.getAttribute('data-property-id');
+          break;
+        }
+      }
+      if (!propertyId) {
+        propertyId = filteredProperties[hit.rowIndex]?.uuid ?? null;
+      }
+      if (!propertyId) return;
+
       const rangeStart = startOfDay(dateRange.start);
+      setNewBookingPropertyId(propertyId);
       setNewBookingGridDates({
-        checkIn: format(addDays(rangeStart, dayIndex), 'yyyy-MM-dd'),
-        checkOut: format(addDays(rangeStart, dayIndex + 1), 'yyyy-MM-dd'),
+        checkIn: format(addDays(rangeStart, hit.dayIndex), 'yyyy-MM-dd'),
+        checkOut: format(addDays(rangeStart, hit.dayIndex + 1), 'yyyy-MM-dd'),
       });
       setNewBookingOpen(true);
     };
@@ -304,6 +333,7 @@ export function CalendarView({
     dayColWidthPx,
     numDays,
     dateRange.start,
+    layoutItemHeight,
   ]);
 
   const onSelectReservation = useCallback((r: Reservation) => setSelectedId(r.uuid), []);
@@ -339,6 +369,7 @@ export function CalendarView({
         <div
           key={channel.uuid}
           data-testid="sidebar-item"
+          data-property-id={channel.uuid}
           className="bg-[#f8fafc] dark:bg-card"
           style={{
             position: 'absolute',
@@ -707,7 +738,14 @@ export function CalendarView({
           <ResponsiveModalContent
             title={selected.guestName}
             footer={
-              <ReservationDetailPanelFooter reservation={selected} onCreateTask={openTaskCreateFromBooking} />
+              <ReservationDetailPanelFooter
+                reservation={selected}
+                onCreateTask={openTaskCreateFromBooking}
+                zodomusLinked={Boolean(
+                  properties.find((p) => p.uuid === selected.propertyId)?.zodomusLinked ||
+                    properties.find((p) => p.uuid === selected.propertyId)?.zodomusPropertyId?.trim(),
+                )}
+              />
             }
           >
             <ReservationDetailPanel reservation={selected} onCopy={() => toast.success(t('copied'))} />

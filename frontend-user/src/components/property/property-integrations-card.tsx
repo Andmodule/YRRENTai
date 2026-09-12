@@ -149,6 +149,18 @@ export function PropertyIntegrationsCard({
       <h2 className="mb-1 text-sm font-semibold">{t('title')}</h2>
       <p className="mb-4 text-xs text-muted-foreground">{t('subtitle')}</p>
 
+      <div className="mb-5 space-y-2 rounded-md border border-border/60 bg-muted/30 px-3 py-3">
+        <p className="text-xs font-medium text-foreground">{t('howItWorksTitle')}</p>
+        <p className="text-[11px] leading-relaxed text-muted-foreground">{t('howItWorksLead')}</p>
+        <ul className="list-disc space-y-1.5 pl-4 text-[11px] leading-relaxed text-muted-foreground">
+          <li>{t('howItWorksInbound')}</li>
+          <li>{t('howItWorksOutbound')}</li>
+          <li>{t('howItWorksDirectCancel')}</li>
+          <li>{t('howItWorksOtaCancel')}</li>
+          <li>{t('howItWorksImportVsQueue')}</li>
+        </ul>
+      </div>
+
       <div className="space-y-6">
         <div className="space-y-2">
           <Label className="text-xs">{t('exportLabel')}</Label>

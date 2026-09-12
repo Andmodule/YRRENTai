@@ -92,6 +92,11 @@ export class BookingController {
       dto.cancelledBy,
       user.role,
     );
-    return { data: booking };
+    /** Direct cancel always schedules ARI reopen; UI uses this for channel-linked toast copy. */
+    const availabilityPushScheduled = dto.status === 'CANCELLED';
+    return {
+      data: booking,
+      meta: { availabilityPushScheduled },
+    };
   }
 }

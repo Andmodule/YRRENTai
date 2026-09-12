@@ -233,6 +233,9 @@ export function PropertyChannelIntegrationSection({
       />
 
       <div className="relative space-y-4 p-4 sm:p-5">
+        <p className="max-w-prose text-[12px] leading-relaxed text-muted-foreground sm:text-[13px]">
+          {t('zodomusFlowLead')}
+        </p>
         {fields.length > 0 && (
           <header className="space-y-2">
             <p className="max-w-prose text-[12px] leading-relaxed text-muted-foreground sm:text-[13px]">

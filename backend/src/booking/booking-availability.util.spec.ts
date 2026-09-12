@@ -29,4 +29,13 @@ describe('booking-availability.util calendar days', () => {
     expect(formatCalendarDayInTimezone(checkIn, tz)).toBe('2026-08-29');
     expect(formatCalendarDayInTimezone(checkOut, tz)).toBe('2026-08-30');
   });
+
+  it('Nov 3–4 in Europe/Warsaw is 1 exclusive night (ARI closes only 2026-11-03)', () => {
+    const tz = 'Europe/Warsaw';
+    const checkIn = calendarDayToInstantInTimezone('2026-11-03', tz);
+    const checkOut = calendarDayToInstantInTimezone('2026-11-04', tz);
+    expect(nightsBetweenInPropertyTimezone(checkIn, checkOut, tz)).toBe(1);
+    expect(formatCalendarDayInTimezone(checkIn, tz)).toBe('2026-11-03');
+    expect(formatCalendarDayInTimezone(checkOut, tz)).toBe('2026-11-04');
+  });
 });

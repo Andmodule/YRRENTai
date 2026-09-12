@@ -21,6 +21,7 @@ import {
 import type { z } from 'zod';
 import { PropertyService } from '../property/property.service';
 import { ZodomusAvailabilityPushService } from '../integrations/zodomus/zodomus-availability-push.service';
+import { ZodomusSyncService } from '../integrations/zodomus/zodomus-sync.service';
 import { CalendarGateway } from '../calendar/calendar.gateway';
 import { GuestService } from '../guest/guest.service';
 import {
@@ -38,6 +39,7 @@ export class BookingService {
     private readonly eventEmitter: EventEmitter2,
     private readonly propertyService: PropertyService,
     private readonly zodomusAvailabilityPush: ZodomusAvailabilityPushService,
+    private readonly zodomusSync: ZodomusSyncService,
     private readonly calendarGateway: CalendarGateway,
     private readonly guestService: GuestService,
   ) {}
@@ -62,6 +64,9 @@ export class BookingService {
     if (nights < 1) {
       throw new BadRequestException('MINIMUM_ONE_NIGHT');
     }
+
+    // Pull live OTA reservations (Booking via Zodomus) into local DB before conflict check.
+    await this.zodomusSync.pullLiveOtaBookingsForDirectBooking(property);
 
     const overlap = await this.findBlockingOverlap(property.id, checkIn, checkOut);
     if (overlap) {
@@ -118,6 +123,7 @@ export class BookingService {
 
   /**
    * For UI: same overlap + min-night rules as create, without persisting.
+   * Also refreshes live OTA bookings when the property is linked to Zodomus.
    */
   async previewConflict(
     propertyId: string,
@@ -129,6 +135,7 @@ export class BookingService {
     available: boolean;
     reason?: 'MINIMUM_ONE_NIGHT';
     conflictWith?: { guestName: string; checkIn: string; checkOut: string };
+    otaRefreshed?: boolean;
   }> {
     const property = await this.propertyService.findOneForUser(propertyId, userId, role);
     const checkIn = this.normalizeBookingDay(checkInIso, property.timezone);
@@ -137,6 +144,9 @@ export class BookingService {
     if (nights < 1) {
       return { available: false, reason: 'MINIMUM_ONE_NIGHT' };
     }
+
+    const live = await this.zodomusSync.pullLiveOtaBookingsForDirectBooking(property);
+
     const overlap = await this.findBlockingOverlap(property.id, checkIn, checkOut);
     if (overlap) {
       return {
@@ -146,9 +156,10 @@ export class BookingService {
           checkIn: overlap.checkIn.toISOString(),
           checkOut: overlap.checkOut.toISOString(),
         },
+        otaRefreshed: live.attempted,
       };
     }
-    return { available: true };
+    return { available: true, otaRefreshed: live.attempted };
   }
 
   private async findBlockingOverlap(

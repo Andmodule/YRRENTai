@@ -59,6 +59,8 @@ describe('ZodomusSyncService inbound webhook', () => {
     const propertyService = {
       findByZodomusPropertyId: jest.fn().mockResolvedValue(property),
       getExternalListingIdForZodomusChannel: jest.fn().mockReturnValue('ext-prop'),
+      setZodomusStatus: jest.fn().mockResolvedValue(undefined),
+      findByIdForOwner: jest.fn().mockResolvedValue(property),
     };
     const availabilityPush = { scheduleAvailabilityPush: jest.fn() };
     const calendarGateway = { emitCalendarChanged: jest.fn() };

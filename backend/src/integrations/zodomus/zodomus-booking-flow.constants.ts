@@ -9,6 +9,8 @@
 export const ZODOMUS_BOOKING_FLOW = {
   /** Direct CRM booking lives only in RentAI; Zodomus receives occupancy via availability push. */
   CRM_DIRECT_CREATE: 'crm-direct-create',
+  /** Before direct create/preview: pull live OTA via summary+queue into local DB for conflict checks. */
+  CRM_DIRECT_LIVE_OTA_PULL: 'crm-direct-live-ota-pull',
   /** Direct CRM cancel updates local status then pushes availability:1 for freed nights. */
   CRM_DIRECT_CANCEL: 'crm-direct-cancel',
   /**
