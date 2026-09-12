@@ -167,49 +167,11 @@ export class ZodomusSyncService {
     if (!this.zodomus.isEnabled) throw new BadRequestException('Zodomus is disabled');
 
     const property = await this.propertyService.findByIdForAdmin(internalPropertyId);
-    const extId = this.propertyService.getExternalListingIdForZodomusChannel(property, channelId);
-    if (!extId) throw new BadRequestException('Set an external listing id for this channel on the property');
-
-    let reservations;
-    try {
-      reservations = await this.zodomus.getReservationSummary(channelId, extId);
-      await this.propertyService.setZodomusStatus(property.id, 'active', null);
-    } catch (e) {
-      const detail = formatZodomusHttpException(e);
-      await this.propertyService.setZodomusStatus(
-        property.id,
-        deriveZodomusPropertyStatus(detail),
-        detail,
-      );
-      throw e;
-    }
-    let imported = 0;
-    let failed = 0;
-
-    for (const res of reservations) {
-      const rid = String(res.reservationId ?? res.id ?? '').trim();
-      if (!rid) continue;
-      try {
-        const existing = await this.bookingRepo.findOne({ where: { zodomusReservationId: rid } });
-        await this.upsertBooking(property, channelId, res, existing, rid);
-        const row = await this.bookingRepo.findOne({ where: { zodomusReservationId: rid } });
-        if (row) {
-          row.zodomusSynced = true;
-          await this.bookingRepo.save(row);
-        }
-        imported += 1;
-      } catch (e) {
-        failed += 1;
-        this.logger.warn(`importSummary failed for ${rid}: ${String(e)}`);
-      }
-    }
-
-    this.availabilityPush.scheduleAvailabilityPush(property.id);
-    if (imported > 0 || failed > 0) {
+    const result = await this.importSummaryRaw(property, channelId, { skipAvailabilityPush: false });
+    if (result.imported > 0 || result.failed > 0) {
       this.calendarGateway.emitCalendarChanged({ propertyId: property.id, source: 'import-summary:admin' });
     }
-
-    return { imported, failed };
+    return { imported: result.imported, failed: result.failed };
   }
 
   /**
@@ -343,8 +305,112 @@ export class ZodomusSyncService {
     if (!this.zodomus.isEnabled) throw new BadRequestException('Zodomus is disabled');
 
     const property = await this.propertyService.findOne(internalPropertyId, ownerUserId);
+    const result = await this.importSummaryRaw(property, channelId, { skipAvailabilityPush: false });
+    if (result.imported > 0 || result.failed > 0) {
+      this.calendarGateway.emitCalendarChanged({ propertyId: property.id, source: 'import-summary' });
+    }
+    return { imported: result.imported, failed: result.failed };
+  }
+
+  /**
+   * Before CRM direct create / conflict-preview: pull live OTA reservations into local DB
+   * (queue + reservations-summary) so overlap checks see Booking.com occupancy.
+   * Soft no-op when Zodomus is off or property has no external listing; soft-fail on API errors.
+   */
+  async pullLiveOtaBookingsForDirectBooking(
+    property: PropertyEntity,
+  ): Promise<{
+    attempted: boolean;
+    channels: number[];
+    imported: number;
+    queueProcessed: number;
+    errors: string[];
+  }> {
+    if (!this.zodomus.isEnabled) {
+      return { attempted: false, channels: [], imported: 0, queueProcessed: 0, errors: [] };
+    }
+
+    const channelIds = this.resolveLinkedZodomusChannelIds(property);
+    if (channelIds.length === 0) {
+      return { attempted: false, channels: [], imported: 0, queueProcessed: 0, errors: [] };
+    }
+
+    let imported = 0;
+    let queueProcessed = 0;
+    const errors: string[] = [];
+
+    for (const channelId of channelIds) {
+      try {
+        const summary = await this.importSummaryRaw(property, channelId, {
+          skipAvailabilityPush: true,
+        });
+        imported += summary.imported;
+      } catch (e) {
+        const detail = formatZodomusHttpException(e);
+        errors.push(`summary ch=${channelId}: ${detail}`);
+        this.logger.warn(
+          `pullLiveOta (create/preview) summary failed property=${property.id} channel=${channelId}: ${detail}`,
+        );
+      }
+
+      try {
+        const queue = await this.syncQueueRaw(property, channelId, true);
+        queueProcessed += queue.processed;
+      } catch (e) {
+        const detail = formatZodomusHttpException(e);
+        errors.push(`queue ch=${channelId}: ${detail}`);
+        this.logger.warn(
+          `pullLiveOta (create/preview) queue failed property=${property.id} channel=${channelId}: ${detail}`,
+        );
+      }
+    }
+
+    if (imported > 0 || queueProcessed > 0) {
+      this.calendarGateway.emitCalendarChanged({
+        propertyId: property.id,
+        source: 'pull-live-before-direct',
+      });
+    }
+
+    this.logger.log(
+      `pullLiveOta before direct booking property=${property.id} channels=${channelIds.join(',')} imported=${imported} queueProcessed=${queueProcessed} errors=${errors.length}`,
+    );
+
+    return {
+      attempted: true,
+      channels: channelIds,
+      imported,
+      queueProcessed,
+      errors,
+    };
+  }
+
+  // ── private helpers ──────────────────────────────────────────────────────────
+
+  private resolveLinkedZodomusChannelIds(property: PropertyEntity): number[] {
+    const ids = new Set<number>();
+    for (const row of property.channelListings ?? []) {
+      const ch = row.otaPlatform?.zodomusChannelId;
+      if (typeof ch !== 'number' || !Number.isFinite(ch)) continue;
+      if (this.propertyService.getExternalListingIdForZodomusChannel(property, ch)) {
+        ids.add(ch);
+      }
+    }
+    if (ids.size === 0 && property.zodomusPropertyId?.trim()) {
+      ids.add(1);
+    }
+    return [...ids].sort((a, b) => a - b);
+  }
+
+  private async importSummaryRaw(
+    property: PropertyEntity,
+    channelId: number,
+    opts: { skipAvailabilityPush: boolean },
+  ): Promise<{ imported: number; failed: number }> {
     const extId = this.propertyService.getExternalListingIdForZodomusChannel(property, channelId);
-    if (!extId) throw new BadRequestException('Set an external listing id for this channel on the property');
+    if (!extId) {
+      throw new BadRequestException('Set an external listing id for this channel on the property');
+    }
 
     let reservations;
     try {
@@ -359,6 +425,7 @@ export class ZodomusSyncService {
       );
       throw e;
     }
+
     let imported = 0;
     let failed = 0;
 
@@ -369,7 +436,10 @@ export class ZodomusSyncService {
         const existing = await this.bookingRepo.findOne({ where: { zodomusReservationId: rid } });
         await this.upsertBooking(property, channelId, res, existing, rid);
         const row = await this.bookingRepo.findOne({ where: { zodomusReservationId: rid } });
-        if (row) { row.zodomusSynced = true; await this.bookingRepo.save(row); }
+        if (row) {
+          row.zodomusSynced = true;
+          await this.bookingRepo.save(row);
+        }
         imported += 1;
       } catch (e) {
         failed += 1;
@@ -377,15 +447,12 @@ export class ZodomusSyncService {
       }
     }
 
-    this.availabilityPush.scheduleAvailabilityPush(property.id);
-    if (imported > 0 || failed > 0) {
-      this.calendarGateway.emitCalendarChanged({ propertyId: property.id, source: 'import-summary' });
+    if (!opts.skipAvailabilityPush) {
+      this.availabilityPush.scheduleAvailabilityPush(property.id);
     }
 
     return { imported, failed };
   }
-
-  // ── private helpers ──────────────────────────────────────────────────────────
 
   private async aggregateSync(
     list: PropertyEntity[],

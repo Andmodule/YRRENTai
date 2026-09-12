@@ -15,6 +15,9 @@ ZODOMUS_ENABLED=true
 ZODOMUS_API_USER=your_user
 ZODOMUS_API_PASSWORD=your_password
 ZODOMUS_BASE_URL=https://api.zodomus.com
+# Webhook (optional, realtime). Same key in Zodomus backoffice → Webhook Key.
+# URL: https://<public-api-host>/api/v1/integrations/zodomus/webhook
+ZODOMUS_WEBHOOK_KEY=your_random_webhook_key
 # Для скрипта образцов (шаг 3 — очередь): id объекта в кабинете Zodomus
 ZODOMUS_SAMPLE_PROPERTY_ID=your_zodomus_property_id
 ```

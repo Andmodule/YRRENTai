@@ -8,7 +8,7 @@
 
 | Направление | Что происходит | Механизм |
 |-------------|----------------|----------|
-| **CRM → Booking** | Менеджер создаёт **прямую** бронь в RentAI | `POST /api/v1/bookings` → `BookingEntity` (без `zodomusReservationId`) |
+    | **CRM → Booking** | Менеджер создаёт **прямую** бронь в RentAI | `POST /api/v1/bookings` → перед конфликтом **pull live OTA** (`reservations-summary` + queue) → `BookingEntity` (без `zodomusReservationId`) |
 | **CRM → Zodomus** | Уходит занятость, чтобы OTA закрыли даты | `ZodomusAvailabilityPushService` → `POST /availability-multiple` |
 | **CRM отмена (прямая)** | Локальный статус → `CANCELLED`, затем снова открыть даты на OTA | `PATCH /bookings/:id/status` + availability push |
 | **CRM отмена (OTA)** | **Заблокировано** | Ошибка `OTA_CANCEL_VIA_CHANNEL` — отменять на OTA; Zodomus пришлёт статус `3` |
@@ -17,13 +17,23 @@
 
 ```mermaid
 flowchart LR
-  CRM[RentAI_CRM] -->|"create/cancel direct"| BookingDB[(BookingEntity)]
+  CRM[RentAI_CRM] -->|"create: pull live OTA then save"| BookingDB[(BookingEntity)]
+  CRM -->|"cancel direct"| BookingDB
   BookingDB -->|"recompute occupancy"| AvailabilityPush[AvailabilityPush]
   AvailabilityPush -->|"POST availability-multiple"| Zodomus[Zodomus]
   OTA[OTA] --> Zodomus
-  Zodomus -->|"webhook or queue"| Sync[ZodomusSync]
+  Zodomus -->|"webhook or queue or summary"| Sync[ZodomusSync]
   Sync -->|"upsert or cancel"| BookingDB
+  CRM -->|"before create/preview"| Sync
 ```
+
+## Live OTA перед прямой бронью
+
+Перед `findBlockingOverlap` при `POST /bookings` и `GET …/conflict-preview`:
+
+1. Если Zodomus выключен или у объекта нет external listing — no-op.
+2. Иначе для каждого привязанного канала: `GET /reservations-summary` + `GET /reservations-queue` (force) → upsert/cancel в локальную БД.
+3. Ошибки канала логируются, create не блокируется (soft-fail); после успешного pull конфликт с OTA виден локально.
 
 ## Что значит «отправить бронь в Zodomus»
 

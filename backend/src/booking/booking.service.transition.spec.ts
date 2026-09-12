@@ -16,6 +16,7 @@ describe('BookingService.transition OTA cancel guard', () => {
       scheduleAvailabilityPush: jest.fn(),
       pushAvailabilityNow: jest.fn(),
     };
+    const zodomusSync = { pullLiveOtaBookingsForDirectBooking: jest.fn() };
     const calendarGateway = {
       emitCalendarChanged: jest.fn(),
     };
@@ -27,6 +28,7 @@ describe('BookingService.transition OTA cancel guard', () => {
       eventEmitter as never,
       propertyService as never,
       zodomusAvailabilityPush as never,
+      zodomusSync as never,
       calendarGateway as never,
       guestService as never,
     );

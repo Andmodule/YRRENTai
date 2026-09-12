@@ -1,14 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { addDays, subDays } from 'date-fns';
 import { CalendarView } from '@/modules/calendar/CalendarView';
+import { buildCalendarWindowAround } from '@/modules/calendar/components/TimelineNavBar';
 import type { CalendarDateRange, CalendarFilters } from '@/modules/calendar/types';
 
-const DEFAULT_RANGE: CalendarDateRange = {
-  start: subDays(new Date(), 3),
-  end: addDays(new Date(), 18),
-};
+const DEFAULT_RANGE: CalendarDateRange = buildCalendarWindowAround(new Date());
 
 const DEFAULT_FILTERS: CalendarFilters = {
   propertyQuery: '',

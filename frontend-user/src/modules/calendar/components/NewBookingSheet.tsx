@@ -30,6 +30,7 @@ type ConflictPreview = {
   available: boolean;
   reason?: 'MINIMUM_ONE_NIGHT';
   conflictWith?: { guestName: string; checkIn: string; checkOut: string };
+  otaRefreshed?: boolean;
 };
 
 interface NewBookingSheetProps {
@@ -149,6 +150,12 @@ export function NewBookingSheet({
     enabled: conflictEnabled,
     staleTime: 15_000,
   });
+
+  useEffect(() => {
+    if (conflictPreview?.otaRefreshed) {
+      void queryClient.invalidateQueries({ queryKey: ['calendar'] });
+    }
+  }, [conflictPreview?.otaRefreshed, queryClient]);
 
   const emailInvalid = useMemo(() => {
     const e = guestEmail.trim();
@@ -300,9 +307,14 @@ export function NewBookingSheet({
       );
     } else if (conflictPreview?.available) {
       body = (
-        <p className="text-xs font-medium text-emerald-700 dark:text-emerald-300">
-          {t('availabilityFree', { count: nights })}
-        </p>
+        <div className="space-y-1">
+          <p className="text-xs font-medium text-emerald-700 dark:text-emerald-300">
+            {t('availabilityFree', { count: nights })}
+          </p>
+          {conflictPreview.otaRefreshed ? (
+            <p className="text-[11px] text-muted-foreground">{t('availabilityOtaRefreshed')}</p>
+          ) : null}
+        </div>
       );
     }
 
@@ -409,6 +421,9 @@ export function NewBookingSheet({
             />
           </div>
         </div>
+        {checkIn && checkOut ? (
+          <p className="text-[11px] leading-snug text-muted-foreground">{t('checkoutExclusiveHint')}</p>
+        ) : null}
 
         {availabilityCard}
 

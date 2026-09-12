@@ -40,10 +40,13 @@ const channelLabelKeys: Record<Reservation['channel'], string> = {
 export function ReservationDetailPanelFooter({
   reservation,
   onCreateTask,
+  zodomusLinked = false,
 }: {
   reservation: Reservation;
   /** Открыть тот же сценарий, что «+» у объекта на доске задач (SmartCreateSheet), с привязкой к брони. */
   onCreateTask: (reservation: Reservation) => void;
+  /** Property linked to Zodomus — cancel schedules channel inventory reopen. */
+  zodomusLinked?: boolean;
 }) {
   const t = useTranslations('calendar');
   const queryClient = useQueryClient();
@@ -55,14 +58,17 @@ export function ReservationDetailPanelFooter({
     reservation.status !== 'blocked';
   const cancelMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiClient.patch<{ data: unknown }>(`/bookings/${reservation.uuid}/status`, {
+      const res = await apiClient.patch<{
+        data: unknown;
+        meta?: { availabilityPushScheduled?: boolean };
+      }>(`/bookings/${reservation.uuid}/status`, {
         status: 'CANCELLED',
         cancelledBy: 'manager',
       });
       return res.data;
     },
     onSuccess: async () => {
-      toast.success(t('cancelBookingSuccess'));
+      toast.success(zodomusLinked ? t('cancelBookingSuccessChannel') : t('cancelBookingSuccess'));
       await queryClient.invalidateQueries({ queryKey: ['calendar'] });
     },
     onError: () => {

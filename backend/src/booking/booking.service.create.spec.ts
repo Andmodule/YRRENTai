@@ -36,6 +36,15 @@ describe('BookingService.create → Zodomus availability', () => {
       scheduleAvailabilityPush: jest.fn(),
       pushAvailabilityNow: jest.fn(),
     };
+    const zodomusSync = {
+      pullLiveOtaBookingsForDirectBooking: jest.fn().mockResolvedValue({
+        attempted: false,
+        channels: [],
+        imported: 0,
+        queueProcessed: 0,
+        errors: [],
+      }),
+    };
     const calendarGateway = { emitCalendarChanged: jest.fn() };
     const eventEmitter = { emit: jest.fn() };
     const guestService = {
@@ -47,14 +56,15 @@ describe('BookingService.create → Zodomus availability', () => {
       eventEmitter as never,
       propertyService as never,
       zodomusAvailabilityPush as never,
+      zodomusSync as never,
       calendarGateway as never,
       guestService as never,
     );
-    return { service, bookingRepository, zodomusAvailabilityPush, calendarGateway, saved };
+    return { service, bookingRepository, zodomusAvailabilityPush, zodomusSync, calendarGateway, saved };
   }
 
   it('creates a direct booking and schedules availability push (CRM → Zodomus inventory)', async () => {
-    const { service, zodomusAvailabilityPush, calendarGateway, saved } = buildService();
+    const { service, zodomusAvailabilityPush, zodomusSync, calendarGateway, saved } = buildService();
 
     const result = await service.create(
       {
@@ -76,6 +86,7 @@ describe('BookingService.create → Zodomus availability', () => {
     expect(result.status).toBe('PENDING');
     expect(result.zodomusReservationId).toBeUndefined();
     expect(saved).toHaveLength(1);
+    expect(zodomusSync.pullLiveOtaBookingsForDirectBooking).toHaveBeenCalled();
     expect(zodomusAvailabilityPush.scheduleAvailabilityPush).toHaveBeenCalledWith(
       'p1',
       expect.objectContaining({
@@ -88,16 +99,23 @@ describe('BookingService.create → Zodomus availability', () => {
     );
   });
 
-  it('rejects overlapping direct create without pushing availability', async () => {
+  it('pulls live OTA before conflict check and still rejects overlap', async () => {
     const overlap = {
-      id: 'other',
-      guestName: 'Taken',
+      id: 'ota-row',
+      guestName: 'OTA Guest',
       checkIn: new Date('2026-09-10T12:00:00.000Z'),
       checkOut: new Date('2026-09-12T12:00:00.000Z'),
       status: BOOKING_STATUS.CONFIRMED,
     } as BookingEntity;
 
-    const { service, zodomusAvailabilityPush } = buildService({ overlap });
+    const { service, zodomusAvailabilityPush, zodomusSync } = buildService({ overlap });
+    zodomusSync.pullLiveOtaBookingsForDirectBooking.mockResolvedValue({
+      attempted: true,
+      channels: [1],
+      imported: 1,
+      queueProcessed: 0,
+      errors: [],
+    });
 
     await expect(
       service.create(
@@ -114,6 +132,7 @@ describe('BookingService.create → Zodomus availability', () => {
       ),
     ).rejects.toBeInstanceOf(ConflictException);
 
+    expect(zodomusSync.pullLiveOtaBookingsForDirectBooking).toHaveBeenCalled();
     expect(zodomusAvailabilityPush.scheduleAvailabilityPush).not.toHaveBeenCalled();
   });
 });
@@ -140,6 +159,7 @@ describe('BookingService.transition OTA cancel guard (constants)', () => {
       findOneForUser: jest.fn().mockResolvedValue({ id: booking.propertyId, timezone: 'UTC' }),
     };
     const zodomusAvailabilityPush = { scheduleAvailabilityPush: jest.fn() };
+    const zodomusSync = { pullLiveOtaBookingsForDirectBooking: jest.fn() };
     const calendarGateway = { emitCalendarChanged: jest.fn() };
     const eventEmitter = { emit: jest.fn() };
 
@@ -148,6 +168,7 @@ describe('BookingService.transition OTA cancel guard (constants)', () => {
       eventEmitter as never,
       propertyService as never,
       zodomusAvailabilityPush as never,
+      zodomusSync as never,
       calendarGateway as never,
       {} as never,
     );
