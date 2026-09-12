@@ -149,12 +149,10 @@ export function mapRoomRatesToPropertyPreview(
     rooms.push(row);
   }
 
-  if (!displayName?.trim() && rooms.length > 0) {
-    const names = rooms.map((x) => x.name).filter((n): n is string => Boolean(n && n.trim()));
-    if (names.length > 0) {
-      const uniq = [...new Set(names)];
-      displayName = uniq.slice(0, 4).join(', ') + (uniq.length > 4 ? '…' : '');
-    }
+  if (!displayName?.trim()) {
+    // GET /room-rates has no hotel name — do not invent one from room type labels
+    // (e.g. "Single room, Double room, Suite"), which overwrote CRM property titles.
+    displayName = null;
   }
 
   const fallbackTitle = `Listing ${ext}`;

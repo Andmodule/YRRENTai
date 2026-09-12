@@ -17,6 +17,7 @@ export * from './constants/direct-booking-source';
 export * from './constants/conversation';
 export * from './constants/escalation';
 export * from './constants/staff-job-type';
+export * from './constants/zodomus-property-status';
 
 export * from './utils/booking.utils';
 export * from './utils/guest';

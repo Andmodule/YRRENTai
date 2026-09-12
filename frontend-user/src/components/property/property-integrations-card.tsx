@@ -12,7 +12,10 @@ import {
   useIcalSyncProperty,
   useZodomusImportSummary,
   useZodomusQueueSync,
+  useZodomusRefreshStatus,
 } from '@/hooks/use-property-integrations';
+import { ZodomusStatusBadge } from '@/components/property/zodomus-status-badge';
+import type { ZodomusPropertyStatus } from '@rentai/shared';
 
 function buildPublicIcsUrl(propertyId: string): string {
   if (typeof window === 'undefined') return '';
@@ -24,6 +27,8 @@ interface PropertyIntegrationsCardProps {
   propertyId: string;
   /** When set, Zodomus “import summary” is available. */
   zodomusPropertyId?: string | null;
+  zodomusStatus?: ZodomusPropertyStatus | null;
+  zodomusStatusDetail?: string | null;
   /** Per-channel external ids (preferred over legacy single fields). */
   channelListings?: Array<{ externalListingId: string; otaPlatform?: { zodomusChannelId: number } | null }>;
   /** From property.otaPlatform — default channel for Zodomus import. */
@@ -35,6 +40,8 @@ interface PropertyIntegrationsCardProps {
 export function PropertyIntegrationsCard({
   propertyId,
   zodomusPropertyId,
+  zodomusStatus,
+  zodomusStatusDetail,
   channelListings,
   otaPlatform,
   onSynced,
@@ -52,6 +59,7 @@ export function PropertyIntegrationsCard({
   const icalSync = useIcalSyncProperty();
   const zImport = useZodomusImportSummary();
   const zQueue = useZodomusQueueSync();
+  const zRefresh = useZodomusRefreshStatus();
   const hasZodomus =
     Boolean(zodomusPropertyId?.trim()) ||
     Boolean(channelListings?.some((c) => c.externalListingId?.trim()));
@@ -120,6 +128,22 @@ export function PropertyIntegrationsCard({
     }
   }
 
+  async function runZodomusStatusRefresh() {
+    const ch = Number(channelId);
+    if (!Number.isFinite(ch) || ch < 1) {
+      toast.error(t('channelInvalid'));
+      return;
+    }
+    try {
+      await zRefresh.mutateAsync({ propertyId, channelId: ch });
+      toast.success(t('zodomusStatusRefreshed'));
+      await onSynced?.();
+    } catch (e) {
+      toast.error(t('zodomusStatusRefreshError'));
+      console.error(e);
+    }
+  }
+
   return (
     <div className="rounded-lg border bg-card p-5 shadow-sm">
       <h2 className="mb-1 text-sm font-semibold">{t('title')}</h2>
@@ -157,6 +181,36 @@ export function PropertyIntegrationsCard({
             )}
             {t('icalSyncButton')}
           </Button>
+        </div>
+
+        <div className="space-y-3 border-t border-border pt-4">
+          <Label className="text-xs">{t('zodomusStatusLabel')}</Label>
+          <p className="text-[11px] text-muted-foreground">{t('zodomusStatusHint')}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <ZodomusStatusBadge
+              linked={hasZodomus}
+              status={zodomusStatus}
+              detail={zodomusStatusDetail}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={!hasZodomus || zRefresh.isPending}
+              onClick={() => void runZodomusStatusRefresh()}
+              title={!hasZodomus ? t('zodomusImportDisabledHint') : undefined}
+            >
+              {zRefresh.isPending ? (
+                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+              )}
+              {t('zodomusStatusRefresh')}
+            </Button>
+          </div>
+          {zodomusStatusDetail?.trim() ? (
+            <p className="text-[11px] leading-snug text-muted-foreground">{zodomusStatusDetail}</p>
+          ) : null}
         </div>
 
         <div className="space-y-3 border-t border-border pt-4">

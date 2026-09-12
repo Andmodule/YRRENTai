@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { Building2, Plus } from 'lucide-react';
 import { useRouter } from '@/i18n/navigation';
 import { useProperties } from '@/hooks/use-properties';
+import { useZodomusRefreshStatus } from '@/hooks/use-property-integrations';
 import { PropertyListTable, PropertyTableSkeleton, PropertyDraftCard } from '@/components/property';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
@@ -22,11 +23,25 @@ export default function PropertiesPage() {
   const { properties, isLoading, isError, mutate, createProperty } = useProperties();
   const [draftOpen, setDraftOpen] = useState(false);
   const setPropertyCreateHandler = useUiStore((s) => s.setPropertyCreateHandler);
+  const refreshZodomusStatus = useZodomusRefreshStatus();
 
   useEffect(() => {
     setPropertyCreateHandler(() => setDraftOpen(true));
     return () => setPropertyCreateHandler(null);
   }, [setPropertyCreateHandler]);
+
+  useEffect(() => {
+    if (isLoading || properties.length === 0) return;
+    const hasLinked = properties.some(
+      (p) =>
+        Boolean(p.zodomusPropertyId?.trim()) ||
+        Boolean(p.channelListings?.some((c) => c.externalListingId?.trim())),
+    );
+    if (!hasLinked) return;
+    void refreshZodomusStatus.mutateAsync(undefined).then(() => mutate()).catch(() => undefined);
+    // Refresh once when the list first loads with linked properties.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional one-shot probe
+  }, [isLoading, properties.length]);
 
   async function handleCreate(dto: CreatePropertyDto) {
     const property = await createProperty(dto);

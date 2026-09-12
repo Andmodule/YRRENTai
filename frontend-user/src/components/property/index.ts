@@ -7,6 +7,7 @@ export { PropertyChannelIntegrationSection } from './property-channel-integratio
 export { PropertyDraftCard } from './property-draft-card';
 export { DeletePropertyDialog } from './delete-property-dialog';
 export { PropertyIntegrationsCard } from './property-integrations-card';
+export { ZodomusStatusBadge } from './zodomus-status-badge';
 export { ZodomusApiExplorer } from './zodomus-api-explorer';
 export { ClearOtaConfirmButton } from './clear-ota-confirm-button';
 export { CompanyGlobalRulesForm } from './company-global-rules-form';

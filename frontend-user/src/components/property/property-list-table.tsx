@@ -8,6 +8,15 @@ import type { Property } from '@/types';
 import { formatPropertyLocation } from '@/lib/format/property-location';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
+import { ZodomusStatusBadge } from '@/components/property/zodomus-status-badge';
+import type { ZodomusPropertyStatus } from '@rentai/shared';
+
+function isZodomusLinked(property: Property): boolean {
+  return (
+    Boolean(property.zodomusPropertyId?.trim()) ||
+    Boolean(property.channelListings?.some((c) => c.externalListingId?.trim()))
+  );
+}
 
 type SortKey = 'name' | 'address' | 'currency' | 'timezone';
 
@@ -160,12 +169,15 @@ export function PropertyListTable({ properties }: PropertyListTableProps) {
               <th scope="col" className="w-14 px-2 py-2.5 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground/90">
                 {t('colOta')}
               </th>
+              <th scope="col" className="min-w-[7rem] px-2 py-2.5 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground/90">
+                {t('colZodomus')}
+              </th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-3 py-10 text-center text-sm text-muted-foreground">
+                <td colSpan={7} className="px-3 py-10 text-center text-sm text-muted-foreground">
                   {query.trim() ? t('noSearchResults') : '—'}
                 </td>
               </tr>
@@ -222,6 +234,13 @@ export function PropertyListTable({ properties }: PropertyListTableProps) {
                       <span className="text-muted-foreground/50">—</span>
                     )}
                   </td>
+                  <td className="px-2 py-3">
+                    <ZodomusStatusBadge
+                      linked={isZodomusLinked(property)}
+                      status={property.zodomusStatus as ZodomusPropertyStatus | null | undefined}
+                      detail={property.zodomusStatusDetail}
+                    />
+                  </td>
                 </tr>
               ))
             )}
@@ -272,6 +291,11 @@ export function PropertyListTable({ properties }: PropertyListTableProps) {
                     ) : (
                       <span className="text-[11px] text-slate-400 dark:text-muted-foreground/70">—</span>
                     )}
+                    <ZodomusStatusBadge
+                      linked={isZodomusLinked(property)}
+                      status={property.zodomusStatus as ZodomusPropertyStatus | null | undefined}
+                      detail={property.zodomusStatusDetail}
+                    />
                   </div>
                 </div>
               </div>
