@@ -126,7 +126,7 @@ export class ZodomusController {
 
   /**
    * Refresh persisted Zodomus listing status for one property or all owner-linked properties.
-   * Probes GET /reservations-queue without importing bookings.
+   * Probes POST /property-check (not the reservation queue) and stores zodomusStatus.
    */
   @Post('refresh-status')
   @Roles('OWNER', 'MANAGER', 'SUPERADMIN')

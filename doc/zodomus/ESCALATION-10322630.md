@@ -3,8 +3,8 @@
 **Date:** 2026-09-12  
 **Account:** Alenrom sp. z o.o. (`api_status: Production API`)  
 **Channel:** Booking.com (`channelId: 1`)  
-**Property / hotel id:** `10322630` (K22 Komputerowa 7 Chopin Airport)  
-**RentAI property UUID:** `6254d427-090d-440f-982f-23add2320cad`  
+**Property / hotel id:** `10322630` (K22 Large Family Apart Komputerowa)  
+**RentAI property UUID:** `fc7c30ce-5bd5-4386-aefd-70d1f2aadb23`  
 **Intent:** Re-open inventory on Booking for nights **2026-11-02** and **2026-11-04** (stays 2–3 Nov and 4–5 Nov) after CRM cancel / availability push. Local CRM cancel works; outbound `POST /availability-multiple` fails with **Property status not Active**.
 
 ## Ask to Zodomus support

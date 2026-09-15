@@ -28,6 +28,11 @@ export type PushAvailabilityOptions = {
   dateFromISO?: string;
   /** Limit the sync to a specific date range (Delta Sync). */
   dateToISO?: string;
+  /**
+   * Force inline POST /availability-multiple and await Zodomus returnCode,
+   * even when BullMQ queue is configured. Used for CRM create/cancel hard-fail.
+   */
+  awaitUpstream?: boolean;
 };
 
 /** Widen date window when several debounced triggers stack for one property. */
@@ -39,6 +44,7 @@ function mergeAvailabilityPushOptions(
   if (!next) return prev;
   const out: PushAvailabilityOptions = {
     ignoreAutoPushDisable: Boolean(prev.ignoreAutoPushDisable || next.ignoreAutoPushDisable),
+    awaitUpstream: Boolean(prev.awaitUpstream || next.awaitUpstream),
   };
   const pick = (mode: 'min' | 'max', a?: string, b?: string): string | undefined => {
     const ta = a ? Date.parse(a) : NaN;
@@ -499,8 +505,8 @@ export class ZodomusAvailabilityPushService implements OnModuleInit, OnModuleDes
   private async _doPush(propertyId: string, options?: PushAvailabilityOptions): Promise<AvailabilityPushSummary> {
     try {
       const summary = await this.executePush(propertyId, options);
-      if (summary.pushed && !this.queue) {
-        // Inline executed successfully — clear dirty flag.
+      // Inline path (no queue, or awaitUpstream) completed upstream POST — clear dirty.
+      if (summary.pushed && (!this.queue || options?.awaitUpstream)) {
         await this.clearDirty(propertyId);
       }
       return summary;
@@ -695,7 +701,8 @@ export class ZodomusAvailabilityPushService implements OnModuleInit, OnModuleDes
         availability: seg.availability,
       }));
 
-      if (this.queue) {
+      const forceInline = Boolean(options?.awaitUpstream) || !this.queue;
+      if (!forceInline && this.queue) {
         /**
          * One BullMQ job per (property, channel, room) target — carries ALL segments.
          * jobId deduplication: if the same push is re-scheduled before the job runs
@@ -718,7 +725,7 @@ export class ZodomusAvailabilityPushService implements OnModuleInit, OnModuleDes
           removeOnFail: { age: 86400 },
         });
       } else {
-        // Inline mode: ONE POST /availability-multiple per target.
+        // Inline / awaitUpstream: ONE POST /availability-multiple per target (awaits returnCode).
         const maxPerMin = this.config.get<number>('ZODOMUS_AVAILABILITY_MAX_PER_MINUTE') ?? 40;
         await this.inlineRateLimit(maxPerMin);
         await this.zodomus.setAvailabilityMultiple(

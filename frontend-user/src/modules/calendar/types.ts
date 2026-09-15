@@ -1,6 +1,12 @@
 export type BookingStatus = 'confirmed' | 'pending' | 'cleaning' | 'blocked' | 'cancelled';
 export type BookingChannel = 'booking' | 'airbnb' | 'direct' | 'other';
 
+export type OtaCalendarRestrictionHint = {
+  date: string;
+  kind: 'closed' | 'minStay' | 'closedOnArrival' | 'closedOnDeparture';
+  minStay?: number;
+};
+
 export interface Property {
   uuid: string;
   title: string;
@@ -9,6 +15,10 @@ export interface Property {
   zodomusLinked?: boolean;
   /** Внешний id Zodomus (если задан). */
   zodomusPropertyId?: string | null;
+  /** Nights closed on channel inventory (not covered by a local booking). */
+  otaBlockedDays?: string[];
+  /** Rate restriction hints from Zodomus GET /availability. */
+  otaRestrictions?: OtaCalendarRestrictionHint[];
 }
 
 export interface Reservation {
@@ -16,6 +26,8 @@ export interface Reservation {
   externalId: string;
   /** Бронь пришла из Zodomus OTA sync. */
   fromOta?: boolean;
+  /** Synthetic bar from channel availability=0 (not a CRM booking). */
+  otaInventoryBlock?: boolean;
   propertyId: string;
   guestName: string;
   guestEmail?: string | null;

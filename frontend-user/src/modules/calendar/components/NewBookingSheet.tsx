@@ -28,9 +28,21 @@ type InitialStatus = 'PENDING' | 'CONFIRMED';
 
 type ConflictPreview = {
   available: boolean;
-  reason?: 'MINIMUM_ONE_NIGHT';
+  reason?:
+    | 'MINIMUM_ONE_NIGHT'
+    | 'OTA_UNAVAILABLE'
+    | 'OTA_CLOSED'
+    | 'OTA_CLOSED_ON_ARRIVAL'
+    | 'OTA_CLOSED_ON_DEPARTURE'
+    | 'OTA_MIN_STAY';
   conflictWith?: { guestName: string; checkIn: string; checkOut: string };
   otaRefreshed?: boolean;
+  otaRestriction?: {
+    reason: string;
+    date?: string;
+    minStayRequired?: number;
+    nights?: number;
+  };
 };
 
 interface NewBookingSheetProps {
@@ -169,8 +181,7 @@ export function NewBookingSheet({
   }, [totalMajor]);
 
   const availabilityOk =
-    conflictQueryError ||
-    (!conflictLoading && !conflictQueryError && conflictPreview?.available === true);
+    !conflictLoading && !conflictQueryError && conflictPreview?.available === true;
 
   const canSubmit =
     Boolean(propertyId.trim()) &&
@@ -256,12 +267,35 @@ export function NewBookingSheet({
         } else toast.error(t('error'));
         return;
       }
+      if (isAxiosError(err) && err.response?.status === 502) {
+        toast.error(t('zodomusPushFailed'));
+        return;
+      }
       if (isAxiosError(err) && err.response?.status === 400) {
-        const msg = err.response.data as { message?: string | string[] };
+        const msg = err.response.data as {
+          message?: string | string[] | { error?: string; message?: string; minStayRequired?: number };
+        };
         const m = msg?.message;
-        const s = Array.isArray(m) ? m[0] : m;
+        const s = Array.isArray(m) ? m[0] : typeof m === 'string' ? m : m?.error ?? m?.message;
         if (s === 'MINIMUM_ONE_NIGHT') {
           toast.error(t('availabilityMinNight'));
+          return;
+        }
+        if (s === 'OTA_MIN_STAY') {
+          const req =
+            typeof m === 'object' && m && !Array.isArray(m) && typeof m.minStayRequired === 'number'
+              ? m.minStayRequired
+              : undefined;
+          toast.error(req != null ? t('availabilityMinStay', { count: req }) : t('availabilityOtaBlocked'));
+          return;
+        }
+        if (
+          s === 'OTA_UNAVAILABLE' ||
+          s === 'OTA_CLOSED' ||
+          s === 'OTA_CLOSED_ON_ARRIVAL' ||
+          s === 'OTA_CLOSED_ON_DEPARTURE'
+        ) {
+          toast.error(t('availabilityOtaBlocked'));
           return;
         }
       }
@@ -305,6 +339,23 @@ export function NewBookingSheet({
           {t('availabilityBlocked', { guest: cw.guestName, from, to })}
         </p>
       );
+    } else if (
+      conflictPreview?.reason === 'OTA_MIN_STAY' ||
+      conflictPreview?.otaRestriction?.reason === 'OTA_MIN_STAY'
+    ) {
+      const req = conflictPreview.otaRestriction?.minStayRequired;
+      body = (
+        <p className="text-xs font-medium text-destructive">
+          {req != null ? t('availabilityMinStay', { count: req }) : t('availabilityOtaBlocked')}
+        </p>
+      );
+    } else if (
+      conflictPreview?.reason === 'OTA_UNAVAILABLE' ||
+      conflictPreview?.reason === 'OTA_CLOSED' ||
+      conflictPreview?.reason === 'OTA_CLOSED_ON_ARRIVAL' ||
+      conflictPreview?.reason === 'OTA_CLOSED_ON_DEPARTURE'
+    ) {
+      body = <p className="text-xs font-medium text-destructive">{t('availabilityOtaBlocked')}</p>;
     } else if (conflictPreview?.available) {
       body = (
         <div className="space-y-1">

@@ -1,11 +1,14 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, BadGatewayException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { addDays, isValid, parseISO } from 'date-fns';
 import { BOOKING_STATUS, BOOKING_STATUSES_BLOCKING_AVAILABILITY } from '@rentai/shared';
 import { BookingEntity } from '../../booking/entities/booking.entity';
-import { calendarDayToInstantInTimezone } from '../../booking/booking-availability.util';
+import {
+  calendarDayToInstantInTimezone,
+  formatCalendarDayInTimezone,
+} from '../../booking/booking-availability.util';
 import { PropertyChannelListingEntity } from '../../property/entities/property-channel-listing.entity';
 import type { PropertyEntity } from '../../property/entities/property.entity';
 import { PropertyService } from '../../property/property.service';
@@ -22,6 +25,14 @@ import {
 import { applyOverbookingFlag as markOverbooking, clearOverbookingFlag } from './zodomus-overbooking.util';
 import type { ZodomusReservation, ZodomusReservationQueueItem } from './zodomus.types';
 import { ZODOMUS_BOOKING_FLOW } from './zodomus-booking-flow.constants';
+import {
+  collectOtaBlockedDays,
+  collectOtaRestrictionHints,
+  evaluateStayAgainstInventory,
+  extractZodomusInventoryDays,
+  type OtaCalendarRestrictionHint,
+  type OtaStayInventoryResult,
+} from './zodomus-inventory.util';
 
 /** Zodomus queue status codes per official docs (inbound only — see ZODOMUS_BOOKING_FLOW). */
 const QUEUE_STATUS = {
@@ -331,7 +342,8 @@ export class ZodomusSyncService {
   /**
    * Before CRM direct create / conflict-preview: pull live OTA reservations into local DB
    * (queue + reservations-summary) so overlap checks see Booking.com occupancy.
-   * Soft no-op when Zodomus is off or property has no external listing; soft-fail on API errors.
+   * Soft no-op when Zodomus is off or property has no external listing.
+   * Hard-fail (502) when a linked channel returns API errors — do not create locally on stale data.
    */
   async pullLiveOtaBookingsForDirectBooking(
     property: PropertyEntity,
@@ -392,6 +404,15 @@ export class ZodomusSyncService {
       `pullLiveOta before direct booking property=${property.id} channels=${channelIds.join(',')} imported=${imported} queueProcessed=${queueProcessed} errors=${errors.length}`,
     );
 
+    if (errors.length > 0) {
+      throw new BadGatewayException({
+        error: 'ZODOMUS_LIVE_PULL_FAILED',
+        message: `Zodomus live OTA pull failed — local booking blocked: ${errors.join('; ')}`,
+        upstream: 'zodomus',
+        detail: errors.join('; '),
+      });
+    }
+
     return {
       attempted: true,
       channels: channelIds,
@@ -399,6 +420,134 @@ export class ZodomusSyncService {
       queueProcessed,
       errors,
     };
+  }
+
+  /**
+   * Soft live pull for calendar refresh — logs channel errors but does not throw.
+   */
+  async pullLiveOtaBookingsSoft(property: PropertyEntity): Promise<void> {
+    if (!this.zodomus.isEnabled) return;
+    const channelIds = this.resolveLinkedZodomusChannelIds(property);
+    if (channelIds.length === 0) return;
+
+    for (const channelId of channelIds) {
+      try {
+        await this.importSummaryRaw(property, channelId, { skipAvailabilityPush: true });
+      } catch (e) {
+        this.logger.warn(
+          `pullLiveOta (calendar soft) summary failed property=${property.id} channel=${channelId}: ${formatZodomusHttpException(e)}`,
+        );
+      }
+      try {
+        await this.syncQueueRaw(property, channelId, false);
+      } catch (e) {
+        this.logger.warn(
+          `pullLiveOta (calendar soft) queue failed property=${property.id} channel=${channelId}: ${formatZodomusHttpException(e)}`,
+        );
+      }
+    }
+  }
+
+  /**
+   * GET /availability for linked channels and evaluate stay vs inventory + restrictions.
+   * No-op ok when Zodomus off or property not linked.
+   */
+  async assertStayAllowedByOtaInventory(
+    property: PropertyEntity,
+    checkIn: Date,
+    checkOut: Date,
+    nights: number,
+  ): Promise<OtaStayInventoryResult & { checked: boolean }> {
+    if (!this.zodomus.isEnabled) {
+      return { ok: true, checked: false };
+    }
+    const channelIds = this.resolveLinkedZodomusChannelIds(property);
+    if (channelIds.length === 0) {
+      return { ok: true, checked: false };
+    }
+
+    const tz = property.timezone?.trim() || 'UTC';
+    const checkInYmd = formatCalendarDayInTimezone(checkIn, tz);
+    const checkOutYmd = formatCalendarDayInTimezone(checkOut, tz);
+    const errors: string[] = [];
+
+    for (const channelId of channelIds) {
+      const extId = this.propertyService.getExternalListingIdForZodomusChannel(property, channelId);
+      if (!extId) continue;
+      try {
+        const raw = await this.zodomus.getAvailability(channelId, extId, checkInYmd, checkOutYmd);
+        const days = extractZodomusInventoryDays(raw);
+        const result = evaluateStayAgainstInventory(days, checkInYmd, checkOutYmd, nights);
+        if (!result.ok) {
+          return { ...result, checked: true };
+        }
+      } catch (e) {
+        const detail = formatZodomusHttpException(e);
+        errors.push(`availability ch=${channelId}: ${detail}`);
+        this.logger.warn(
+          `OTA inventory check failed property=${property.id} channel=${channelId}: ${detail}`,
+        );
+      }
+    }
+
+    if (errors.length > 0) {
+      throw new BadGatewayException({
+        error: 'ZODOMUS_AVAILABILITY_CHECK_FAILED',
+        message: `Zodomus availability check failed — local booking blocked: ${errors.join('; ')}`,
+        upstream: 'zodomus',
+        detail: errors.join('; '),
+      });
+    }
+
+    return { ok: true, checked: true };
+  }
+
+  /**
+   * Calendar overlay: blocked nights (avail=0/booked) + restriction hints from GET /availability.
+   * Soft-fails per property/channel (returns empty overlay on errors).
+   */
+  async getInventoryOverlayForProperty(
+    property: PropertyEntity,
+    dateFromYmd: string,
+    dateToYmd: string,
+  ): Promise<{ blockedDays: string[]; restrictions: OtaCalendarRestrictionHint[] }> {
+    if (!this.zodomus.isEnabled) {
+      return { blockedDays: [], restrictions: [] };
+    }
+    const channelIds = this.resolveLinkedZodomusChannelIds(property);
+    if (channelIds.length === 0) {
+      return { blockedDays: [], restrictions: [] };
+    }
+
+    const blocked = new Set<string>();
+    const restrictions: OtaCalendarRestrictionHint[] = [];
+    const seenHint = new Set<string>();
+
+    for (const channelId of channelIds) {
+      const extId = this.propertyService.getExternalListingIdForZodomusChannel(property, channelId);
+      if (!extId) continue;
+      try {
+        const raw = await this.zodomus.getAvailability(channelId, extId, dateFromYmd, dateToYmd);
+        const days = extractZodomusInventoryDays(raw);
+        for (const d of collectOtaBlockedDays(days)) blocked.add(d);
+        for (const h of collectOtaRestrictionHints(days)) {
+          const key = `${h.date}:${h.kind}:${h.minStay ?? ''}`;
+          if (seenHint.has(key)) continue;
+          seenHint.add(key);
+          restrictions.push(h);
+        }
+      } catch (e) {
+        this.logger.warn(
+          `calendar inventory overlay failed property=${property.id} channel=${channelId}: ${formatZodomusHttpException(e)}`,
+        );
+      }
+    }
+
+    return { blockedDays: [...blocked].sort(), restrictions };
+  }
+
+  isPropertyZodomusLinked(property: PropertyEntity): boolean {
+    return this.resolveLinkedZodomusChannelIds(property).length > 0;
   }
 
   // ── private helpers ──────────────────────────────────────────────────────────

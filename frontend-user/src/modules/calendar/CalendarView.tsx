@@ -309,7 +309,10 @@ export function CalendarView({
     layoutItemHeight,
   ]);
 
-  const onSelectReservation = useCallback((r: Reservation) => setSelectedId(r.uuid), []);
+  const onSelectReservation = useCallback((r: Reservation) => {
+    if (r.otaInventoryBlock) return;
+    setSelectedId(r.uuid);
+  }, []);
 
   const renderProgram = useCallback(
     (props: {

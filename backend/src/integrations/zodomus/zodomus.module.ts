@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ZODOMUS_CLIENT } from './zodomus.tokens';
@@ -25,7 +25,7 @@ import { ZodomusAvailabilityPushService } from './zodomus-availability-push.serv
     TypeOrmModule.forFeature([BookingEntity, PropertyEntity, PropertyChannelListingEntity]),
     PropertyModule,
     UserModule,
-    CalendarModule,
+    forwardRef(() => CalendarModule),
     GuestModule,
   ],
   controllers: [

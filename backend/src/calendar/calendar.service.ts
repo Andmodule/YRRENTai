@@ -1,11 +1,13 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, Repository } from 'typeorm';
 import { addDays, parseISO } from 'date-fns';
 import { BookingEntity } from '../booking/entities/booking.entity';
 import { formatCalendarDayInTimezone } from '../booking/booking-availability.util';
 import { PropertyService } from '../property/property.service';
+import { ZodomusSyncService } from '../integrations/zodomus/zodomus-sync.service';
 import type { BookingStatus as SharedBookingStatus } from '@rentai/shared';
+import type { OtaCalendarRestrictionHint } from '../integrations/zodomus/zodomus-inventory.util';
 
 export interface CalendarPropertyDto {
   uuid: string;
@@ -15,6 +17,13 @@ export interface CalendarPropertyDto {
   zodomusLinked: boolean;
   /** Для UI-бейджа; дублирует флаг выше. */
   zodomusPropertyId?: string | null;
+  /**
+   * Nights closed on the channel (GET /availability: avail=0 or booked>0)
+   * that are not already covered by a local booking bar.
+   */
+  otaBlockedDays?: string[];
+  /** Rate restriction hints (min stay, closed) for tooltip / UI. */
+  otaRestrictions?: OtaCalendarRestrictionHint[];
 }
 
 export type CalendarBookingStatus = 'confirmed' | 'pending' | 'cleaning' | 'blocked' | 'cancelled';
@@ -54,10 +63,14 @@ export interface CalendarReservationDto {
 
 @Injectable()
 export class CalendarService {
+  private readonly logger = new Logger(CalendarService.name);
+
   constructor(
     @InjectRepository(BookingEntity)
     private readonly bookingRepository: Repository<BookingEntity>,
     private readonly propertyService: PropertyService,
+    @Inject(forwardRef(() => ZodomusSyncService))
+    private readonly zodomusSync: ZodomusSyncService,
   ) {}
 
   async getCalendarData(
@@ -70,15 +83,28 @@ export class CalendarService {
       return { properties: [], reservations: [] };
     }
 
+    const fromYmd = from.trim();
+    const toYmd = to.trim();
+
+    // Soft live pull for linked properties so calendar reflects recent OTA bookings.
+    for (const p of properties) {
+      if (!this.zodomusSync.isPropertyZodomusLinked(p)) continue;
+      try {
+        await this.zodomusSync.pullLiveOtaBookingsSoft(p);
+      } catch (e) {
+        this.logger.warn(`calendar soft OTA pull failed property=${p.id}: ${String(e)}`);
+      }
+    }
+
     const propertyIds = properties.map((p) => p.id);
     const tzByPropertyId = new Map(properties.map((p) => [p.id, p.timezone || 'UTC']));
     /**
      * Parse from/to as UTC calendar midnights and widen by ±14h so bookings stored as
      * noon-in-property-TZ still overlap the requested window regardless of process TZ.
      */
-    const rangeStart = new Date(parseISO(`${from.trim()}T00:00:00.000Z`).getTime() - 14 * 60 * 60 * 1000);
+    const rangeStart = new Date(parseISO(`${fromYmd}T00:00:00.000Z`).getTime() - 14 * 60 * 60 * 1000);
     const rangeEndExclusive = new Date(
-      addDays(parseISO(`${to.trim()}T00:00:00.000Z`), 1).getTime() + 14 * 60 * 60 * 1000,
+      addDays(parseISO(`${toYmd}T00:00:00.000Z`), 1).getTime() + 14 * 60 * 60 * 1000,
     );
 
     const bookings = await this.bookingRepository
@@ -93,16 +119,48 @@ export class CalendarService {
       mapBookingToCalendarDto(b, tzByPropertyId.get(b.propertyId) ?? 'UTC'),
     );
 
-    const propertyDtos: CalendarPropertyDto[] = properties.map((p) => {
+    const occupiedByProperty = new Map<string, Set<string>>();
+    for (const r of reservations) {
+      if (r.status === 'cancelled') continue;
+      let set = occupiedByProperty.get(r.propertyId);
+      if (!set) {
+        set = new Set();
+        occupiedByProperty.set(r.propertyId, set);
+      }
+      let cur = r.checkIn;
+      while (cur < r.checkOut) {
+        set.add(cur);
+        const [y, m, d] = cur.split('-').map(Number);
+        cur = new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
+      }
+    }
+
+    const propertyDtos: CalendarPropertyDto[] = [];
+    for (const p of properties) {
       const zid = p.zodomusPropertyId?.trim() ?? null;
-      const hasChannels = (p.channelListings?.length ?? 0) > 0;
-      return {
+      const linked = this.zodomusSync.isPropertyZodomusLinked(p);
+      const dto: CalendarPropertyDto = {
         uuid: p.id,
         title: p.name,
-        zodomusLinked: Boolean(zid) || hasChannels,
+        zodomusLinked: linked || Boolean(zid) || (p.channelListings?.length ?? 0) > 0,
         zodomusPropertyId: zid,
       };
-    });
+
+      if (linked) {
+        try {
+          const overlay = await this.zodomusSync.getInventoryOverlayForProperty(p, fromYmd, toYmd);
+          const localOcc = occupiedByProperty.get(p.id) ?? new Set();
+          dto.otaBlockedDays = overlay.blockedDays.filter((d) => !localOcc.has(d));
+          dto.otaRestrictions = overlay.restrictions;
+        } catch (e) {
+          this.logger.warn(`calendar inventory overlay failed property=${p.id}: ${String(e)}`);
+          dto.otaBlockedDays = [];
+          dto.otaRestrictions = [];
+        }
+      }
+
+      propertyDtos.push(dto);
+    }
 
     return { properties: propertyDtos, reservations };
   }
