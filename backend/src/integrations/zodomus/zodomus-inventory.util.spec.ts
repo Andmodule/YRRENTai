@@ -78,13 +78,47 @@ describe('zodomus-inventory.util', () => {
     ]);
   });
 
-  it('treats closed rates as blocked nights', () => {
+  it('extracts max open rate price per night', () => {
     const days = extractZodomusInventoryDays({
-      date: '2026-09-17',
-      availability: 1,
-      booked: 0,
-      rates: [{ closed: '1' }],
+      rooms: [
+        {
+          id: 'r1',
+          dates: [
+            {
+              date: '2026-09-17',
+              availability: '1',
+              rates: [
+                { rateId: 'std', closed: '0', price: '600.0' },
+                { rateId: 'nr', closed: '0', price: '540.0' },
+                { rateId: 'closed', closed: '1', price: '999.0' },
+              ],
+            },
+            {
+              date: '2026-09-18',
+              availability: '1',
+              rates: [{ rateId: 'std', closed: '0', price: '700.0' }],
+            },
+          ],
+        },
+      ],
     });
-    expect(collectOtaBlockedDays(days)).toEqual(['2026-09-17']);
+    expect(days[0].price).toBe(600);
+    expect(days[1].price).toBe(700);
+    const { sumStayNightlyPrices, collectOtaNightlyPrices } =
+      require('./zodomus-inventory.util') as typeof import('./zodomus-inventory.util');
+    expect(sumStayNightlyPrices(days, '2026-09-17', '2026-09-19')).toBe(1300);
+    expect(collectOtaNightlyPrices(days)).toEqual({
+      '2026-09-17': 600,
+      '2026-09-18': 700,
+    });
+  });
+
+  it('sumStayNightlyPrices returns null when a night lacks price', () => {
+    const { sumStayNightlyPrices } =
+      require('./zodomus-inventory.util') as typeof import('./zodomus-inventory.util');
+    const days = extractZodomusInventoryDays({
+      dates: [{ date: '2026-09-17', availability: 1, rates: [{ price: '100' }] }],
+    });
+    expect(sumStayNightlyPrices(days, '2026-09-17', '2026-09-19')).toBeNull();
   });
 });

@@ -19,6 +19,8 @@ export interface Property {
   otaBlockedDays?: string[];
   /** Rate restriction hints from Zodomus GET /availability. */
   otaRestrictions?: OtaCalendarRestrictionHint[];
+  /** Nightly rack prices from channel (major units). */
+  otaNightlyPrices?: Record<string, number>;
 }
 
 export interface Reservation {

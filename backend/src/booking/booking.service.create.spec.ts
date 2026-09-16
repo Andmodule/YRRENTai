@@ -58,7 +58,11 @@ describe('BookingService.create → Zodomus availability', () => {
         queueProcessed: 0,
         errors: [],
       }),
-      assertStayAllowedByOtaInventory: jest.fn().mockResolvedValue({ ok: true, checked: false }),
+      assertStayAllowedByOtaInventory: jest.fn().mockResolvedValue({
+        ok: true,
+        checked: false,
+        suggestedTotalMajor: null,
+      }),
       isPropertyZodomusLinked: jest.fn().mockReturnValue(opts.linked !== false),
     };
     const calendarGateway = { emitCalendarChanged: jest.fn() };

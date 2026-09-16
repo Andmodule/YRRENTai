@@ -27,9 +27,11 @@ import type { ZodomusReservation, ZodomusReservationQueueItem } from './zodomus.
 import { ZODOMUS_BOOKING_FLOW } from './zodomus-booking-flow.constants';
 import {
   collectOtaBlockedDays,
+  collectOtaNightlyPrices,
   collectOtaRestrictionHints,
   evaluateStayAgainstInventory,
   extractZodomusInventoryDays,
+  sumStayNightlyPrices,
   type OtaCalendarRestrictionHint,
   type OtaStayInventoryResult,
 } from './zodomus-inventory.util';
@@ -471,19 +473,22 @@ export class ZodomusSyncService {
     checkIn: Date,
     checkOut: Date,
     nights: number,
-  ): Promise<OtaStayInventoryResult & { checked: boolean }> {
+  ): Promise<
+    OtaStayInventoryResult & { checked: boolean; suggestedTotalMajor: number | null }
+  > {
     if (!this.zodomus.isEnabled) {
-      return { ok: true, checked: false };
+      return { ok: true, checked: false, suggestedTotalMajor: null };
     }
     const channelIds = this.resolveLinkedZodomusChannelIds(property);
     if (channelIds.length === 0) {
-      return { ok: true, checked: false };
+      return { ok: true, checked: false, suggestedTotalMajor: null };
     }
 
     const tz = property.timezone?.trim() || 'UTC';
     const checkInYmd = formatCalendarDayInTimezone(checkIn, tz);
     const checkOutYmd = formatCalendarDayInTimezone(checkOut, tz);
     const errors: string[] = [];
+    let suggestedTotalMajor: number | null = null;
 
     for (const channelId of channelIds) {
       const extId = this.propertyService.getExternalListingIdForZodomusChannel(property, channelId);
@@ -491,9 +496,12 @@ export class ZodomusSyncService {
       try {
         const raw = await this.zodomus.getAvailability(channelId, extId, checkInYmd, checkOutYmd);
         const days = extractZodomusInventoryDays(raw);
+        if (suggestedTotalMajor == null) {
+          suggestedTotalMajor = sumStayNightlyPrices(days, checkInYmd, checkOutYmd);
+        }
         const result = evaluateStayAgainstInventory(days, checkInYmd, checkOutYmd, nights);
         if (!result.ok) {
-          return { ...result, checked: true };
+          return { ...result, checked: true, suggestedTotalMajor };
         }
       } catch (e) {
         const detail = formatZodomusHttpException(e);
@@ -513,7 +521,7 @@ export class ZodomusSyncService {
       });
     }
 
-    return { ok: true, checked: true };
+    return { ok: true, checked: true, suggestedTotalMajor };
   }
 
   /**
@@ -524,17 +532,22 @@ export class ZodomusSyncService {
     property: PropertyEntity,
     dateFromYmd: string,
     dateToYmd: string,
-  ): Promise<{ blockedDays: string[]; restrictions: OtaCalendarRestrictionHint[] }> {
+  ): Promise<{
+    blockedDays: string[];
+    restrictions: OtaCalendarRestrictionHint[];
+    nightlyPrices: Record<string, number>;
+  }> {
     if (!this.zodomus.isEnabled) {
-      return { blockedDays: [], restrictions: [] };
+      return { blockedDays: [], restrictions: [], nightlyPrices: {} };
     }
     const channelIds = this.resolveLinkedZodomusChannelIds(property);
     if (channelIds.length === 0) {
-      return { blockedDays: [], restrictions: [] };
+      return { blockedDays: [], restrictions: [], nightlyPrices: {} };
     }
 
     const blocked = new Set<string>();
     const restrictions: OtaCalendarRestrictionHint[] = [];
+    const nightlyPrices: Record<string, number> = {};
     const seenHint = new Set<string>();
 
     for (const channelId of channelIds) {
@@ -550,6 +563,10 @@ export class ZodomusSyncService {
           seenHint.add(key);
           restrictions.push(h);
         }
+        // First linked channel wins per date (Booking.com channel typically).
+        for (const [date, price] of Object.entries(collectOtaNightlyPrices(days))) {
+          if (nightlyPrices[date] == null) nightlyPrices[date] = price;
+        }
       } catch (e) {
         this.logger.warn(
           `calendar inventory overlay failed property=${property.id} channel=${channelId}: ${formatZodomusHttpException(e)}`,
@@ -557,7 +574,7 @@ export class ZodomusSyncService {
       }
     }
 
-    return { blockedDays: [...blocked].sort(), restrictions };
+    return { blockedDays: [...blocked].sort(), restrictions, nightlyPrices };
   }
 
   isPropertyZodomusLinked(property: PropertyEntity): boolean {

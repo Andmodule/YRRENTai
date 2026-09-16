@@ -12,6 +12,11 @@ export type ZodomusInventoryDay = {
   closedOnDeparture: boolean;
   minStayArrival: number | null;
   minStayThrough: number | null;
+  /**
+   * Nightly rack price in major units (Zodomus `price`).
+   * Prefer max open rate for the night (typically Standard vs discounted child rates).
+   */
+  price: number | null;
 };
 
 export type OtaInventoryBlockReason =
@@ -56,9 +61,10 @@ function dayKeyFromNode(n: Record<string, unknown>): string | null {
 }
 
 function mergeRateIntoDay(day: ZodomusInventoryDay, rate: Record<string, unknown>): void {
-  if (isClosedFlag(rate.closed)) day.closed = true;
+  const rateClosed = isClosedFlag(rate.closed);
+  if (rateClosed) day.closed = true;
   if (isClosedFlag(rate.closedOnArrival)) day.closedOnArrival = true;
-  if (isClosedFlag(rate.closedOnDeparture)) day.closedOnDeparture = true;
+  if (isClosedFlag(rate.closedOnDeparture ?? rate.closedOnDepart)) day.closedOnDeparture = true;
 
   const minArr = toNum(rate.minStayArrival ?? rate.minStay);
   if (minArr != null && minArr > 0) {
@@ -67,6 +73,13 @@ function mergeRateIntoDay(day: ZodomusInventoryDay, rate: Record<string, unknown
   const minThru = toNum(rate.minStayThrough);
   if (minThru != null && minThru > 0) {
     day.minStayThrough = day.minStayThrough == null ? minThru : Math.max(day.minStayThrough, minThru);
+  }
+
+  if (!rateClosed) {
+    const price = toNum(rate.price);
+    if (price != null && price > 0) {
+      day.price = day.price == null ? price : Math.max(day.price, price);
+    }
   }
 }
 
@@ -89,6 +102,7 @@ export function extractZodomusInventoryDays(body: unknown): ZodomusInventoryDay[
         closedOnDeparture: false,
         minStayArrival: null,
         minStayThrough: null,
+        price: null,
       };
       byDate.set(date, d);
     }
@@ -111,7 +125,7 @@ export function extractZodomusInventoryDays(body: unknown): ZodomusInventoryDay[
       if (booked != null) day.booked = booked;
       if (isClosedFlag(n.closed)) day.closed = true;
       if (isClosedFlag(n.closedOnArrival)) day.closedOnArrival = true;
-      if (isClosedFlag(n.closedOnDeparture)) day.closedOnDeparture = true;
+      if (isClosedFlag(n.closedOnDeparture ?? n.closedOnDepart)) day.closedOnDeparture = true;
       const minArr = toNum(n.minStayArrival ?? n.minStay);
       if (minArr != null && minArr > 0) {
         day.minStayArrival = day.minStayArrival == null ? minArr : Math.max(day.minStayArrival, minArr);
@@ -257,4 +271,36 @@ export function collectOtaRestrictionHints(days: ZodomusInventoryDay[]): OtaCale
     }
   }
   return hints;
+}
+
+/** Per-night rack prices (major units) for calendar / booking defaults. */
+export function collectOtaNightlyPrices(days: ZodomusInventoryDay[]): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const d of days) {
+    if (d.price != null && d.price > 0) {
+      out[d.date] = d.price;
+    }
+  }
+  return out;
+}
+
+/**
+ * Sum nightly rack prices for [checkIn, checkOut).
+ * Returns null if any stay night is missing a price.
+ */
+export function sumStayNightlyPrices(
+  days: ZodomusInventoryDay[],
+  checkInYmd: string,
+  checkOutYmd: string,
+): number | null {
+  const byDate = new Map(days.map((d) => [d.date, d]));
+  const nightKeys = enumerateStayNightKeys(checkInYmd, checkOutYmd);
+  if (nightKeys.length === 0) return null;
+  let total = 0;
+  for (const key of nightKeys) {
+    const price = byDate.get(key)?.price;
+    if (price == null || price <= 0) return null;
+    total += price;
+  }
+  return Math.round(total * 100) / 100;
 }

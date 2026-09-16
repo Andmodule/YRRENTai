@@ -45,6 +45,11 @@ export type BookingConflictPreviewResult = {
     minStayRequired?: number;
     nights?: number;
   };
+  /**
+   * Sum of Zodomus nightly rack prices for the stay (major units).
+   * Used as default total in the new-booking form.
+   */
+  suggestedTotalMajor?: number | null;
 };
 
 @Injectable()
@@ -231,6 +236,7 @@ export class BookingService {
         available: false,
         reason: inventory.reason,
         otaRefreshed: live.attempted,
+        suggestedTotalMajor: inventory.suggestedTotalMajor,
         otaRestriction: {
           reason: inventory.reason,
           date: inventory.date,
@@ -240,7 +246,11 @@ export class BookingService {
       };
     }
 
-    return { available: true, otaRefreshed: live.attempted };
+    return {
+      available: true,
+      otaRefreshed: live.attempted,
+      suggestedTotalMajor: inventory.suggestedTotalMajor,
+    };
   }
 
   private async findBlockingOverlap(

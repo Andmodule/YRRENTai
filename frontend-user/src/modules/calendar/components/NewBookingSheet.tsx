@@ -43,7 +43,33 @@ type ConflictPreview = {
     minStayRequired?: number;
     nights?: number;
   };
+  /** Sum of Zodomus nightly rack prices (major units) for the stay. */
+  suggestedTotalMajor?: number | null;
 };
+
+function formatMoneyMajor(n: number): string {
+  return (Math.round(n * 100) / 100).toFixed(2);
+}
+
+/** Sum otaNightlyPrices for exclusive checkout nights; null if any night missing. */
+function sumLocalNightlyPrices(
+  prices: Record<string, number> | undefined,
+  checkInYmd: string,
+  checkOutYmd: string,
+): number | null {
+  if (!prices || !checkInYmd || !checkOutYmd || checkInYmd >= checkOutYmd) return null;
+  let total = 0;
+  let cur = checkInYmd;
+  while (cur < checkOutYmd) {
+    const p = prices[cur];
+    if (p == null || !(p > 0)) return null;
+    total += p;
+    const [y, m, d] = cur.split('-').map(Number);
+    cur = new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
+    if (total > 1e9) break;
+  }
+  return Math.round(total * 100) / 100;
+}
 
 interface NewBookingSheetProps {
   open: boolean;
@@ -79,6 +105,7 @@ export function NewBookingSheet({
   const [checkIn, setCheckIn] = useState('');
   const [checkOut, setCheckOut] = useState('');
   const [totalMajor, setTotalMajor] = useState('');
+  const [priceTouched, setPriceTouched] = useState(false);
   const [currency, setCurrency] = useState('EUR');
   const [guestsCount, setGuestsCount] = useState('');
   const [initialStatus, setInitialStatus] = useState<InitialStatus>('PENDING');
@@ -107,6 +134,7 @@ export function NewBookingSheet({
         setCheckOut(out);
       }
       setTotalMajor('');
+      setPriceTouched(false);
       setGuestsCount('');
       setInitialStatus('PENDING');
     }
@@ -169,6 +197,22 @@ export function NewBookingSheet({
     }
   }, [conflictPreview?.otaRefreshed, queryClient]);
 
+  const localSuggestedMajor = useMemo(() => {
+    const prop = properties.find((p) => p.uuid === propertyId);
+    return sumLocalNightlyPrices(prop?.otaNightlyPrices, checkIn, checkOut);
+  }, [properties, propertyId, checkIn, checkOut]);
+
+  const channelSuggestedMajor =
+    conflictPreview?.suggestedTotalMajor != null && conflictPreview.suggestedTotalMajor > 0
+      ? conflictPreview.suggestedTotalMajor
+      : localSuggestedMajor;
+
+  useEffect(() => {
+    if (!open || priceTouched) return;
+    if (channelSuggestedMajor == null || channelSuggestedMajor <= 0) return;
+    setTotalMajor(formatMoneyMajor(channelSuggestedMajor));
+  }, [open, priceTouched, channelSuggestedMajor]);
+
   const emailInvalid = useMemo(() => {
     const e = guestEmail.trim();
     if (!e) return false;
@@ -195,6 +239,7 @@ export function NewBookingSheet({
     !conflictLoading;
 
   const onCheckInChange = useCallback((v: string) => {
+    setPriceTouched(false);
     setCheckIn(v);
     if (!v) return;
     const ci = parseISO(`${v}T12:00:00.000Z`);
@@ -203,6 +248,11 @@ export function NewBookingSheet({
       setCheckOut(format(addDays(ci, 1), 'yyyy-MM-dd'));
     }
   }, [checkOut]);
+
+  const onCheckOutChange = useCallback((v: string) => {
+    setPriceTouched(false);
+    setCheckOut(v);
+  }, []);
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -390,7 +440,10 @@ export function NewBookingSheet({
             id="nb-property"
             className={fieldClass}
             value={propertyId}
-            onChange={(e) => setPropertyId(e.target.value)}
+            onChange={(e) => {
+              setPriceTouched(false);
+              setPropertyId(e.target.value);
+            }}
           >
             {properties.map((p) => (
               <option key={p.uuid} value={p.uuid}>
@@ -468,7 +521,7 @@ export function NewBookingSheet({
               type="date"
               className={fieldClass}
               value={checkOut}
-              onChange={(e) => setCheckOut(e.target.value)}
+              onChange={(e) => onCheckOutChange(e.target.value)}
             />
           </div>
         </div>
@@ -488,9 +541,19 @@ export function NewBookingSheet({
               inputMode="decimal"
               className={fieldClass}
               value={totalMajor}
-              onChange={(e) => setTotalMajor(e.target.value)}
-              placeholder="0.00"
+              onChange={(e) => {
+                setPriceTouched(true);
+                setTotalMajor(e.target.value);
+              }}
+              placeholder={
+                channelSuggestedMajor != null && channelSuggestedMajor > 0
+                  ? formatMoneyMajor(channelSuggestedMajor)
+                  : '0.00'
+              }
             />
+            {channelSuggestedMajor != null && channelSuggestedMajor > 0 && !priceTouched ? (
+              <p className="text-[11px] leading-snug text-muted-foreground">{t('priceFromChannel')}</p>
+            ) : null}
           </div>
           <div className="space-y-1">
             <Label htmlFor="nb-currency" className={labelClass}>

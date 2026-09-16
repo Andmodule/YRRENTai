@@ -1705,6 +1705,7 @@
       "checkOut": "Check-out",
       "checkoutExclusiveHint": "Check-out is exclusive: Nov 3–4 = 1 night (the night of the 3rd). Only stay nights are closed on the channel.",
       "total": "Total",
+      "priceFromChannel": "Prefilled from channel rate (editable)",
       "currency": "Currency",
       "guestsCount": "Guests",
       "initialStatus": "Initial status",

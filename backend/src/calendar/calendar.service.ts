@@ -24,6 +24,8 @@ export interface CalendarPropertyDto {
   otaBlockedDays?: string[];
   /** Rate restriction hints (min stay, closed) for tooltip / UI. */
   otaRestrictions?: OtaCalendarRestrictionHint[];
+  /** Nightly rack prices from Zodomus GET /availability (major units, yyyy-MM-dd → price). */
+  otaNightlyPrices?: Record<string, number>;
 }
 
 export type CalendarBookingStatus = 'confirmed' | 'pending' | 'cleaning' | 'blocked' | 'cancelled';
@@ -153,7 +155,11 @@ export class CalendarService {
     /** Parallel inventory overlay — primary source of “occupied” nights on the grid for linked props. */
     const overlayByPropertyId = new Map<
       string,
-      { blockedDays: string[]; restrictions: OtaCalendarRestrictionHint[] }
+      {
+        blockedDays: string[];
+        restrictions: OtaCalendarRestrictionHint[];
+        nightlyPrices: Record<string, number>;
+      }
     >();
     if (linked.length > 0) {
       const overlayResults = await Promise.allSettled(
@@ -189,10 +195,12 @@ export class CalendarService {
         const overlay = overlayByPropertyId.get(p.id) ?? {
           blockedDays: [],
           restrictions: [],
+          nightlyPrices: {},
         };
         const localOcc = occupiedByProperty.get(p.id) ?? new Set();
         dto.otaBlockedDays = overlay.blockedDays.filter((d) => !localOcc.has(d));
         dto.otaRestrictions = overlay.restrictions;
+        dto.otaNightlyPrices = overlay.nightlyPrices;
       }
 
       return dto;
