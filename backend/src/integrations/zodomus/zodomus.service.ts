@@ -8,6 +8,7 @@ import type {
   ZodomusReservationQueueItem,
   ZodomusRoomActivationRoom,
 } from './zodomus.types';
+import { resolveZodomusReservationTotalMajor } from './zodomus-reservation-price.util';
 
 @Injectable()
 export class ZodomusService {
@@ -390,12 +391,6 @@ export class ZodomusService {
     const rooms = Array.isArray(rb.rooms) ? rb.rooms : [];
     const firstRoom = rooms[0] && this.isRecord(rooms[0]) ? rooms[0] : null;
 
-    const numPrice = (v: unknown): number | undefined => {
-      if (v == null || v === '') return undefined;
-      const x = Number(v);
-      return Number.isFinite(x) ? x : undefined;
-    };
-
     const str = (v: unknown): string => {
       if (v == null || v === '') return '';
       return String(v).trim();
@@ -482,7 +477,7 @@ export class ZodomusService {
       currency: (resObj.currencyCode ?? resObj.currency) as unknown,
       checkIn: (firstRoom?.arrivalDate ?? resObj.checkIn) as unknown,
       checkOut: (firstRoom?.departureDate ?? resObj.checkOut) as unknown,
-      totalPrice: numPrice(resObj.totalPrice),
+      totalPrice: resolveZodomusReservationTotalMajor(resObj.totalPrice, rooms),
       status:
         resObj.status !== undefined && resObj.status !== null ? String(resObj.status) : undefined,
     };
