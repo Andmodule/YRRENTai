@@ -67,4 +67,24 @@ describe('zodomus-inventory.util', () => {
       '2026-09-14',
     ]);
   });
+
+  it('merges consecutive blocked days into ranges', () => {
+    const { mergeBlockedDaysToRanges } = require('./zodomus-inventory.util') as typeof import('./zodomus-inventory.util');
+    expect(
+      mergeBlockedDaysToRanges(['2026-09-20', '2026-09-22', '2026-09-21', '2026-09-25']),
+    ).toEqual([
+      { checkIn: '2026-09-20', checkOut: '2026-09-23' },
+      { checkIn: '2026-09-25', checkOut: '2026-09-26' },
+    ]);
+  });
+
+  it('treats closed rates as blocked nights', () => {
+    const days = extractZodomusInventoryDays({
+      date: '2026-09-17',
+      availability: 1,
+      booked: 0,
+      rates: [{ closed: '1' }],
+    });
+    expect(collectOtaBlockedDays(days)).toEqual(['2026-09-17']);
+  });
 });

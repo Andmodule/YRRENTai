@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { addDays, format, parseISO } from 'date-fns';
+import { format } from 'date-fns';
 import { apiClient } from '@/lib/api/client';
 import type { CalendarDateRange, Property, Reservation } from '../types';
 
@@ -10,16 +10,43 @@ interface CalendarApiResponse {
   reservations: Reservation[];
 }
 
-/** Merge channel-closed nights as synthetic blocked bars (avoid double-counting local bookings). */
+/** Merge consecutive yyyy-MM-dd nights into [checkIn, checkOutExclusive) ranges. */
+function mergeBlockedDaysToRanges(days: string[]): Array<{ checkIn: string; checkOut: string }> {
+  const sorted = [...new Set(days.filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)))].sort();
+  if (sorted.length === 0) return [];
+  const nextDay = (ymd: string): string => {
+    const [y, m, d] = ymd.split('-').map(Number);
+    return new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
+  };
+  const ranges: Array<{ checkIn: string; checkOut: string }> = [];
+  let start = sorted[0];
+  let prev = sorted[0];
+  for (let i = 1; i < sorted.length; i++) {
+    const cur = sorted[i];
+    if (cur === nextDay(prev)) {
+      prev = cur;
+      continue;
+    }
+    ranges.push({ checkIn: start, checkOut: nextDay(prev) });
+    start = cur;
+    prev = cur;
+  }
+  ranges.push({ checkIn: start, checkOut: nextDay(prev) });
+  return ranges;
+}
+
+/**
+ * Merge channel-closed nights as synthetic blocked bars.
+ * Consecutive nights are coalesced into one bar so Planby shows a clear occupied range.
+ */
 function withOtaBlockedBars(data: CalendarApiResponse): CalendarApiResponse {
   const extras: Reservation[] = [];
   for (const p of data.properties) {
-    for (const day of p.otaBlockedDays ?? []) {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
-      const checkOut = format(addDays(parseISO(`${day}T12:00:00.000Z`), 1), 'yyyy-MM-dd');
+    const ranges = mergeBlockedDaysToRanges(p.otaBlockedDays ?? []);
+    for (const range of ranges) {
       extras.push({
-        uuid: `ota-block-${p.uuid}-${day}`,
-        externalId: `ota-block-${day}`,
+        uuid: `ota-block-${p.uuid}-${range.checkIn}-${range.checkOut}`,
+        externalId: `ota-block-${range.checkIn}`,
         fromOta: true,
         otaInventoryBlock: true,
         propertyId: p.uuid,
@@ -34,12 +61,13 @@ function withOtaBlockedBars(data: CalendarApiResponse): CalendarApiResponse {
         paymentStatus: 'unpaid',
         otaPaymentHint: null,
         directSource: null,
+        /** Keep visible when channel filter is Booking; also ok under "all". */
         channel: 'booking',
         status: 'blocked',
         totalPrice: 0,
         currency: 'EUR',
-        checkIn: day,
-        checkOut,
+        checkIn: range.checkIn,
+        checkOut: range.checkOut,
         chatThreadId: null,
         overbookingConflict: false,
         overbookingConflictWithBookingId: null,

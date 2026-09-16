@@ -1,7 +1,7 @@
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, Repository } from 'typeorm';
-import { addDays, parseISO } from 'date-fns';
+import { addDays, format, parseISO } from 'date-fns';
 import { BookingEntity } from '../booking/entities/booking.entity';
 import { formatCalendarDayInTimezone } from '../booking/booking-availability.util';
 import { PropertyService } from '../property/property.service';
@@ -18,7 +18,7 @@ export interface CalendarPropertyDto {
   /** Для UI-бейджа; дублирует флаг выше. */
   zodomusPropertyId?: string | null;
   /**
-   * Nights closed on the channel (GET /availability: avail=0 or booked>0)
+   * Nights closed on the channel (GET /availability: avail=0, booked>0, or closed)
    * that are not already covered by a local booking bar.
    */
   otaBlockedDays?: string[];
@@ -85,15 +85,30 @@ export class CalendarService {
 
     const fromYmd = from.trim();
     const toYmd = to.trim();
+    /** Zodomus GET /availability treats dateTo as exclusive — include the last visible day. */
+    const availabilityDateToExclusive = format(
+      addDays(parseISO(`${toYmd}T12:00:00.000Z`), 1),
+      'yyyy-MM-dd',
+    );
 
-    // Soft live pull for linked properties so calendar reflects recent OTA bookings.
-    for (const p of properties) {
-      if (!this.zodomusSync.isPropertyZodomusLinked(p)) continue;
-      try {
-        await this.zodomusSync.pullLiveOtaBookingsSoft(p);
-      } catch (e) {
-        this.logger.warn(`calendar soft OTA pull failed property=${p.id}: ${String(e)}`);
-      }
+    const linked = properties.filter((p) => this.zodomusSync.isPropertyZodomusLinked(p));
+
+    /**
+     * Do NOT await full OTA summary/queue pull on the calendar request path — it can take
+     * many seconds per property and starves the availability overlay (occupied nights).
+     * Fire soft pull in background; calendar invalidates via WS when imports land.
+     */
+    if (linked.length > 0) {
+      void Promise.allSettled(
+        linked.map((p) => this.zodomusSync.pullLiveOtaBookingsSoft(p)),
+      ).then((results) => {
+        const failed = results.filter((r) => r.status === 'rejected').length;
+        if (failed > 0) {
+          this.logger.warn(
+            `calendar background OTA soft pull: ${failed}/${linked.length} property(ies) failed`,
+          );
+        }
+      });
     }
 
     const propertyIds = properties.map((p) => p.id);
@@ -135,32 +150,53 @@ export class CalendarService {
       }
     }
 
-    const propertyDtos: CalendarPropertyDto[] = [];
-    for (const p of properties) {
+    /** Parallel inventory overlay — primary source of “occupied” nights on the grid for linked props. */
+    const overlayByPropertyId = new Map<
+      string,
+      { blockedDays: string[]; restrictions: OtaCalendarRestrictionHint[] }
+    >();
+    if (linked.length > 0) {
+      const overlayResults = await Promise.allSettled(
+        linked.map(async (p) => {
+          const overlay = await this.zodomusSync.getInventoryOverlayForProperty(
+            p,
+            fromYmd,
+            availabilityDateToExclusive,
+          );
+          return { propertyId: p.id, overlay };
+        }),
+      );
+      for (const result of overlayResults) {
+        if (result.status !== 'fulfilled') {
+          this.logger.warn(`calendar inventory overlay rejected: ${String(result.reason)}`);
+          continue;
+        }
+        overlayByPropertyId.set(result.value.propertyId, result.value.overlay);
+      }
+    }
+
+    const propertyDtos: CalendarPropertyDto[] = properties.map((p) => {
       const zid = p.zodomusPropertyId?.trim() ?? null;
-      const linked = this.zodomusSync.isPropertyZodomusLinked(p);
+      const isLinked = this.zodomusSync.isPropertyZodomusLinked(p);
       const dto: CalendarPropertyDto = {
         uuid: p.id,
         title: p.name,
-        zodomusLinked: linked || Boolean(zid) || (p.channelListings?.length ?? 0) > 0,
+        zodomusLinked: isLinked || Boolean(zid) || (p.channelListings?.length ?? 0) > 0,
         zodomusPropertyId: zid,
       };
 
-      if (linked) {
-        try {
-          const overlay = await this.zodomusSync.getInventoryOverlayForProperty(p, fromYmd, toYmd);
-          const localOcc = occupiedByProperty.get(p.id) ?? new Set();
-          dto.otaBlockedDays = overlay.blockedDays.filter((d) => !localOcc.has(d));
-          dto.otaRestrictions = overlay.restrictions;
-        } catch (e) {
-          this.logger.warn(`calendar inventory overlay failed property=${p.id}: ${String(e)}`);
-          dto.otaBlockedDays = [];
-          dto.otaRestrictions = [];
-        }
+      if (isLinked) {
+        const overlay = overlayByPropertyId.get(p.id) ?? {
+          blockedDays: [],
+          restrictions: [],
+        };
+        const localOcc = occupiedByProperty.get(p.id) ?? new Set();
+        dto.otaBlockedDays = overlay.blockedDays.filter((d) => !localOcc.has(d));
+        dto.otaRestrictions = overlay.restrictions;
       }
 
-      propertyDtos.push(dto);
-    }
+      return dto;
+    });
 
     return { properties: propertyDtos, reservations };
   }

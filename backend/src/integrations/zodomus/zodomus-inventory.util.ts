@@ -198,17 +198,45 @@ export function evaluateStayAgainstInventory(
 }
 
 /**
- * Days closed on the channel (avail=0 or booked>0) — for calendar overlay.
- * Does not include restriction-only days (min stay) as fully occupied.
+ * Days closed on the channel — for calendar overlay.
+ * Occupied = availability 0, booked > 0, or rate closed.
+ * Does not treat min-stay-only nights as occupied bars.
  */
 export function collectOtaBlockedDays(days: ZodomusInventoryDay[]): string[] {
   const blocked: string[] = [];
   for (const d of days) {
-    if (d.availability === 0 || (d.booked != null && d.booked > 0)) {
+    if (d.availability === 0 || (d.booked != null && d.booked > 0) || d.closed) {
       blocked.push(d.date);
     }
   }
   return blocked;
+}
+
+/** Merge consecutive yyyy-MM-dd nights into [checkIn, checkOutExclusive) ranges. */
+export function mergeBlockedDaysToRanges(
+  days: string[],
+): Array<{ checkIn: string; checkOut: string }> {
+  const sorted = [...new Set(days.filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)))].sort();
+  if (sorted.length === 0) return [];
+  const ranges: Array<{ checkIn: string; checkOut: string }> = [];
+  let start = sorted[0];
+  let prev = sorted[0];
+  const nextDay = (ymd: string): string => {
+    const [y, m, d] = ymd.split('-').map(Number);
+    return new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
+  };
+  for (let i = 1; i < sorted.length; i++) {
+    const cur = sorted[i];
+    if (cur === nextDay(prev)) {
+      prev = cur;
+      continue;
+    }
+    ranges.push({ checkIn: start, checkOut: nextDay(prev) });
+    start = cur;
+    prev = cur;
+  }
+  ranges.push({ checkIn: start, checkOut: nextDay(prev) });
+  return ranges;
 }
 
 export function collectOtaRestrictionHints(days: ZodomusInventoryDay[]): OtaCalendarRestrictionHint[] {

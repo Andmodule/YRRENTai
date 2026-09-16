@@ -424,27 +424,41 @@ export class ZodomusSyncService {
 
   /**
    * Soft live pull for calendar refresh — logs channel errors but does not throw.
+   * Emits calendar WS event when any bookings were imported so the grid can refetch.
    */
   async pullLiveOtaBookingsSoft(property: PropertyEntity): Promise<void> {
     if (!this.zodomus.isEnabled) return;
     const channelIds = this.resolveLinkedZodomusChannelIds(property);
     if (channelIds.length === 0) return;
 
+    let imported = 0;
+    let queueProcessed = 0;
     for (const channelId of channelIds) {
       try {
-        await this.importSummaryRaw(property, channelId, { skipAvailabilityPush: true });
+        const summary = await this.importSummaryRaw(property, channelId, {
+          skipAvailabilityPush: true,
+        });
+        imported += summary.imported;
       } catch (e) {
         this.logger.warn(
           `pullLiveOta (calendar soft) summary failed property=${property.id} channel=${channelId}: ${formatZodomusHttpException(e)}`,
         );
       }
       try {
-        await this.syncQueueRaw(property, channelId, false);
+        const queue = await this.syncQueueRaw(property, channelId, false);
+        queueProcessed += queue.processed;
       } catch (e) {
         this.logger.warn(
           `pullLiveOta (calendar soft) queue failed property=${property.id} channel=${channelId}: ${formatZodomusHttpException(e)}`,
         );
       }
+    }
+
+    if (imported > 0 || queueProcessed > 0) {
+      this.calendarGateway.emitCalendarChanged({
+        propertyId: property.id,
+        source: 'calendar-soft-pull',
+      });
     }
   }
 
