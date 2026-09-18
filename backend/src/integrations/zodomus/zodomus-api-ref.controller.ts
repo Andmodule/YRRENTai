@@ -18,6 +18,7 @@ import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.de
 import { InvokeZodomusApiRefDto } from './dto/invoke-zodomus-api-ref.dto';
 import {
   findZodomusApiRefEntry,
+  injectZodomusApiRefRoomId,
   ZODOMUS_API_REF_CATALOG,
 } from './zodomus-api-ref.constants';
 import type { PropertyEntity } from '../../property/entities/property.entity';
@@ -106,6 +107,13 @@ export class ZodomusApiRefController {
         query.channelId = String(channelId);
         query.propertyId = externalListingId;
       }
+      if (entry.requiresRoomId && prop && channelId != null) {
+        const roomId =
+          dto.roomId?.trim() ||
+          this.propertyService.getZodomusRoomIdForChannel(prop, channelId) ||
+          '';
+        if (roomId) injectZodomusApiRefRoomId(entry, roomId, { query });
+      }
       const data = await this.zodomus.upstreamGet(dto.path, query);
       return {
         data: {
@@ -123,6 +131,13 @@ export class ZodomusApiRefController {
       if (body.channelId === undefined) body.channelId = channelId;
       if (body.propertyId === undefined) body.propertyId = externalListingId;
     }
+    if (entry.requiresRoomId && prop && channelId != null) {
+      const roomId =
+        dto.roomId?.trim() ||
+        this.propertyService.getZodomusRoomIdForChannel(prop, channelId) ||
+        '';
+      if (roomId) injectZodomusApiRefRoomId(entry, roomId, { body });
+    }
     const data = await this.zodomus.upstreamPost(dto.path, body);
     return {
       data: {
@@ -131,7 +146,6 @@ export class ZodomusApiRefController {
       },
     };
   }
-
   private async loadPropertyForUser(user: JwtPayload, propertyId: string): Promise<PropertyEntity> {
     const pid = propertyId?.trim();
     if (!pid) {

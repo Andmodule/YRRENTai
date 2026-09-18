@@ -14,6 +14,15 @@ export const invokeZodomusApiRefSchema = z
     /** RentAI property UUID — required when catalog entry needs property scope. */
     propertyId: z.string().uuid().optional(),
     channelId: z.coerce.number().int().positive().optional(),
+    /** Optional Zodomus room id override (otherwise taken from property channel listing). */
+    roomId: z.preprocess(
+      (v) => {
+        if (v === undefined || v === null) return undefined;
+        const t = String(v).trim();
+        return t === '' ? undefined : t;
+      },
+      z.string().max(64).optional(),
+    ),
     /** Extra query params (merged; propertyId/channelId may be injected). */
     query: z.record(z.string()).optional(),
     /** POST body (merged; propertyId/channelId may be injected as numbers/strings). */

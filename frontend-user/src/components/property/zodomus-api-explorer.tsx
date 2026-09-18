@@ -14,6 +14,8 @@ import { apiClient } from '@/lib/api/client';
 import { fetcher } from '@/lib/api/fetcher';
 import { useProperties } from '@/hooks/use-properties';
 
+type ApiRefRoomIdPlacement = 'query' | 'body' | 'bodyRoomIds' | 'bodyRooms';
+
 type ApiRefEntry = {
   path: string;
   method: 'GET' | 'POST';
@@ -21,6 +23,8 @@ type ApiRefEntry = {
   description: string;
   scope: 'account' | 'property' | 'none';
   requiresRentaiProperty: boolean;
+  requiresRoomId?: boolean;
+  roomIdPlacement?: ApiRefRoomIdPlacement;
 };
 
 type CatalogResponse = {
@@ -67,12 +71,40 @@ function propertyHasZodomus(p: {
   );
 }
 
+function resolvePropertyRoomId(
+  p:
+    | {
+        zodomusRoomId?: string | null;
+        otaPlatform?: { zodomusChannelId?: number } | null;
+        channelListings?: Array<{
+          zodomusRoomId?: string | null;
+          otaPlatform?: { zodomusChannelId?: number } | null;
+        }> | null;
+      }
+    | undefined,
+  channelId: number,
+): string {
+  if (!p) return '';
+  const listings = p.channelListings ?? [];
+  for (const row of listings) {
+    if (row.otaPlatform?.zodomusChannelId === channelId) {
+      const room = row.zodomusRoomId?.trim();
+      if (room) return room;
+    }
+  }
+  if (listings.length === 0 || p.otaPlatform?.zodomusChannelId === channelId) {
+    return p.zodomusRoomId?.trim() || '';
+  }
+  return '';
+}
+
 export function ZodomusApiExplorer() {
   const t = useTranslations('zodomusApiRef');
   const { properties, isLoading: propsLoading } = useProperties();
 
   const [propertyId, setPropertyId] = useState('');
   const [channelId, setChannelId] = useState('1');
+  const [roomId, setRoomId] = useState('');
   const [groupOpen, setGroupOpen] = useState<Record<string, boolean>>({ rentai: true, account: true });
   const [force, setForce] = useState(false);
   const [dateFrom, setDateFrom] = useState(() => format(new Date(), 'yyyy-MM-dd'));
@@ -104,12 +136,22 @@ export function ZodomusApiExplorer() {
     if (ch != null) setChannelId(String(ch));
   }, [selected?.id, selected?.otaPlatform?.zodomusChannelId]);
 
+  const ch = Number(channelId) || 1;
+  const propertyRoomId = useMemo(
+    () => resolvePropertyRoomId(selected, ch),
+    [selected, ch],
+  );
+
+  useEffect(() => {
+    if (propertyRoomId) setRoomId(propertyRoomId);
+  }, [selected?.id, ch, propertyRoomId]);
+
   const { data: catalog, error: catalogError, isLoading: catalogLoading } = useSWR<CatalogResponse>(
     '/integrations/zodomus/api-ref/catalog',
     fetcher,
   );
 
-  const ch = Number(channelId) || 1;
+  const roomIdTrim = roomId.trim();
 
   const rentaiCards = useMemo((): RentaiCard[] => {
     return [
@@ -224,9 +266,12 @@ export function ZodomusApiExplorer() {
       if (entry.path === '/reservations' && entry.method === 'GET') {
         return reservationId.trim() ? { reservationId: reservationId.trim() } : {};
       }
+      if (entry.requiresRoomId && (entry.roomIdPlacement ?? 'body') === 'query') {
+        return roomIdTrim ? { roomId: roomIdTrim } : {};
+      }
       return {};
     },
-    [dateFrom, dateTo, reservationId],
+    [dateFrom, dateTo, reservationId, roomIdTrim],
   );
 
   const defaultBodyFor = useCallback(
@@ -240,15 +285,46 @@ export function ZodomusApiExplorer() {
           ...(reservationId.trim() ? { reservationId: reservationId.trim() } : {}),
         };
       }
+      if (entry.path === '/rooms-activation' || entry.path === '/rooms-cancellation') {
+        return {
+          rooms: [
+            {
+              roomId: roomIdTrim,
+              roomName: 'Room',
+              quantity: 1,
+              status: 1,
+              rates: [],
+            },
+          ],
+        };
+      }
       if (entry.path === '/availability' && entry.method === 'POST') {
-        return { roomId: '', dateFrom, dateTo, availability: 0 };
+        return { roomId: roomIdTrim, dateFrom, dateTo, availability: 0 };
       }
       if (entry.path === '/availability-multiple') {
-        return { roomIds: [{ roomId: '', dateFrom, dateTo, availability: 0 }] };
+        return { roomIds: [{ roomId: roomIdTrim, dateFrom, dateTo, availability: 0 }] };
+      }
+      if (entry.path === '/rates' || entry.path === '/rates-derived') {
+        return { roomId: roomIdTrim, rateId: '', dateFrom, dateTo, price: 0 };
+      }
+      if (entry.path === '/room' && entry.method === 'POST') {
+        return { roomId: roomIdTrim };
+      }
+      if (entry.path === '/room-status') {
+        return { roomId: roomIdTrim, status: 1 };
+      }
+      if (entry.path === '/rate' && entry.method === 'POST') {
+        return { roomId: roomIdTrim, rateId: '' };
+      }
+      if (entry.path === '/product') {
+        return { roomId: roomIdTrim, rateId: '' };
+      }
+      if (entry.requiresRoomId && (entry.roomIdPlacement ?? 'body') === 'body') {
+        return { roomId: roomIdTrim };
       }
       return {};
     },
-    [priceModelId, createTestStatus, reservationId, dateFrom, dateTo],
+    [priceModelId, createTestStatus, reservationId, dateFrom, dateTo, roomIdTrim],
   );
 
   const entryKey = (entry: ApiRefEntry) => `${entry.method}:${entry.path}`;
@@ -292,6 +368,7 @@ export function ZodomusApiExplorer() {
         path: entry.path,
         propertyId: entry.requiresRentaiProperty ? propertyId : undefined,
         channelId: entry.requiresRentaiProperty || entry.scope === 'property' ? ch : undefined,
+        roomId: entry.requiresRoomId && roomIdTrim ? roomIdTrim : undefined,
         query: entry.method === 'GET' ? query : undefined,
         body: entry.method === 'POST' ? body : undefined,
       };
@@ -323,6 +400,7 @@ export function ZodomusApiExplorer() {
       propertyId,
       hasZodomus,
       ch,
+      roomIdTrim,
       defaultQueryFor,
       defaultBodyFor,
       queryDrafts,
@@ -400,6 +478,18 @@ export function ZodomusApiExplorer() {
               className="h-9 w-20 tabular-nums"
               value={channelId}
               onChange={(e) => setChannelId(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="api-ref-room" className="text-[10px] text-muted-foreground">
+              {t('roomId')}
+            </Label>
+            <Input
+              id="api-ref-room"
+              className="h-9 w-40 font-mono text-xs"
+              value={roomId}
+              onChange={(e) => setRoomId(e.target.value)}
+              placeholder={t('roomIdPlaceholder')}
             />
           </div>
           <div className="space-y-1">
@@ -557,6 +647,11 @@ export function ZodomusApiExplorer() {
                         <p className="font-mono text-xs">
                           <span className="text-violet-600 dark:text-violet-300">{entry.method}</span>{' '}
                           {entry.path}
+                          {entry.requiresRoomId ? (
+                            <span className="ml-2 rounded bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-sans font-medium uppercase tracking-wide text-amber-800 dark:text-amber-300">
+                              {t('requiresRoomIdBadge')}
+                            </span>
+                          ) : null}
                         </p>
                         <p className="mt-0.5 text-[11px] text-muted-foreground">{entry.description}</p>
                       </div>
@@ -576,7 +671,9 @@ export function ZodomusApiExplorer() {
                         {t('run')}
                       </Button>
                     </div>
-                    {entry.method === 'GET' && Object.keys(defaultQ).length > 0 ? (
+                    {entry.method === 'GET' &&
+                    (Object.keys(defaultQ).length > 0 ||
+                      (entry.requiresRoomId && (entry.roomIdPlacement ?? 'body') === 'query')) ? (
                       <div className="mt-2 space-y-1">
                         <Label className="text-[10px] text-muted-foreground">{t('queryJson')}</Label>
                         <Textarea

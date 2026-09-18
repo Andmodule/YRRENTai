@@ -7,6 +7,13 @@
 
 export type ZodomusApiRefScope = 'account' | 'property' | 'none';
 
+/** Where to place CRM `zodomusRoomId` / explorer roomId for room-scoped ops. */
+export type ZodomusApiRefRoomIdPlacement =
+  | 'query'
+  | 'body'
+  | 'bodyRoomIds'
+  | 'bodyRooms';
+
 export type ZodomusApiRefEntry = {
   /** Upstream path, e.g. `/account` */
   path: string;
@@ -22,6 +29,13 @@ export type ZodomusApiRefEntry = {
   scope: ZodomusApiRefScope;
   /** When true, CRM must pass RentAI propertyId (ownership checked). */
   requiresRentaiProperty: boolean;
+  /**
+   * When true, operation needs a Zodomus room id (docs: channel / property / room).
+   * Explorer prefills from property `zodomusRoomId`; invoke injects if missing.
+   */
+  requiresRoomId?: boolean;
+  /** How to inject roomId into query/body. Default `body` when requiresRoomId. */
+  roomIdPlacement?: ZodomusApiRefRoomIdPlacement;
 };
 
 export const ZODOMUS_API_REF_CATALOG: readonly ZodomusApiRefEntry[] = [
@@ -35,8 +49,26 @@ export const ZODOMUS_API_REF_CATALOG: readonly ZodomusApiRefEntry[] = [
   { path: '/property-activation', method: 'POST', group: 'mapping', description: 'Activate channel property', scope: 'property', requiresRentaiProperty: true },
   { path: '/property-cancellation', method: 'POST', group: 'mapping', description: 'Cancel channel property mapping', scope: 'property', requiresRentaiProperty: true },
   { path: '/property-check', method: 'POST', group: 'mapping', description: 'Check property with Zodomus', scope: 'property', requiresRentaiProperty: true },
-  { path: '/rooms-activation', method: 'POST', group: 'mapping', description: 'Activate rooms and rates mapping', scope: 'property', requiresRentaiProperty: true },
-  { path: '/rooms-cancellation', method: 'POST', group: 'mapping', description: 'Cancel rooms associated with Zodomus', scope: 'property', requiresRentaiProperty: true },
+  {
+    path: '/rooms-activation',
+    method: 'POST',
+    group: 'mapping',
+    description: 'Activate rooms and rates mapping (rooms[].roomId)',
+    scope: 'property',
+    requiresRentaiProperty: true,
+    requiresRoomId: true,
+    roomIdPlacement: 'bodyRooms',
+  },
+  {
+    path: '/rooms-cancellation',
+    method: 'POST',
+    group: 'mapping',
+    description: 'Cancel rooms associated with Zodomus (rooms[].roomId)',
+    scope: 'property',
+    requiresRentaiProperty: true,
+    requiresRoomId: true,
+    roomIdPlacement: 'bodyRooms',
+  },
 
   // Airbnb mapping
   { path: '/airbnb-host-activation', method: 'POST', group: 'airbnb', description: 'Activate Airbnb host', scope: 'none', requiresRentaiProperty: false },
@@ -48,10 +80,46 @@ export const ZODOMUS_API_REF_CATALOG: readonly ZodomusApiRefEntry[] = [
   // Rates & availability
   { path: '/room-rates', method: 'GET', group: 'rates', description: 'Rooms and rates for channel/property', scope: 'property', requiresRentaiProperty: true },
   { path: '/availability', method: 'GET', group: 'rates', description: 'Get room availability', scope: 'property', requiresRentaiProperty: true },
-  { path: '/availability', method: 'POST', group: 'rates', description: 'Set availability (single range)', scope: 'property', requiresRentaiProperty: true },
-  { path: '/availability-multiple', method: 'POST', group: 'rates', description: 'Set availability (multiple segments)', scope: 'property', requiresRentaiProperty: true },
-  { path: '/rates', method: 'POST', group: 'rates', description: 'Set rates', scope: 'property', requiresRentaiProperty: true },
-  { path: '/rates-derived', method: 'POST', group: 'rates', description: 'Set derived rates', scope: 'property', requiresRentaiProperty: true },
+  {
+    path: '/availability',
+    method: 'POST',
+    group: 'rates',
+    description: 'Set availability (single range) — requires roomId',
+    scope: 'property',
+    requiresRentaiProperty: true,
+    requiresRoomId: true,
+    roomIdPlacement: 'body',
+  },
+  {
+    path: '/availability-multiple',
+    method: 'POST',
+    group: 'rates',
+    description: 'Set availability (multiple segments) — roomIds[].roomId',
+    scope: 'property',
+    requiresRentaiProperty: true,
+    requiresRoomId: true,
+    roomIdPlacement: 'bodyRoomIds',
+  },
+  {
+    path: '/rates',
+    method: 'POST',
+    group: 'rates',
+    description: 'Set rates — requires roomId (+ rateId)',
+    scope: 'property',
+    requiresRentaiProperty: true,
+    requiresRoomId: true,
+    roomIdPlacement: 'body',
+  },
+  {
+    path: '/rates-derived',
+    method: 'POST',
+    group: 'rates',
+    description: 'Set derived rates — requires roomId (+ rateId)',
+    scope: 'property',
+    requiresRentaiProperty: true,
+    requiresRoomId: true,
+    roomIdPlacement: 'body',
+  },
 
   // Reservations
   { path: '/reservations-queue', method: 'GET', group: 'reservations', description: 'Reservation queue', scope: 'property', requiresRentaiProperty: true },
@@ -63,12 +131,66 @@ export const ZODOMUS_API_REF_CATALOG: readonly ZodomusApiRefEntry[] = [
   { path: '/property', method: 'GET', group: 'content', description: 'Get property (Expedia)', scope: 'property', requiresRentaiProperty: true },
   { path: '/property', method: 'POST', group: 'content', description: 'Create/modify property (Booking)', scope: 'property', requiresRentaiProperty: true },
   { path: '/property-status', method: 'POST', group: 'content', description: 'Set property status (Booking)', scope: 'property', requiresRentaiProperty: true },
-  { path: '/room', method: 'GET', group: 'content', description: 'Get room (Expedia)', scope: 'property', requiresRentaiProperty: true },
-  { path: '/room', method: 'POST', group: 'content', description: 'Create/modify room', scope: 'property', requiresRentaiProperty: true },
-  { path: '/room-status', method: 'POST', group: 'content', description: 'Set room status (Booking)', scope: 'property', requiresRentaiProperty: true },
-  { path: '/rate', method: 'GET', group: 'content', description: 'Get rate (Expedia)', scope: 'property', requiresRentaiProperty: true },
-  { path: '/rate', method: 'POST', group: 'content', description: 'Create/modify rate', scope: 'property', requiresRentaiProperty: true },
-  { path: '/product', method: 'POST', group: 'content', description: 'Create/modify/delete product (Booking)', scope: 'property', requiresRentaiProperty: true },
+  {
+    path: '/room',
+    method: 'GET',
+    group: 'content',
+    description: 'Get room (Expedia) — optional roomId for one room',
+    scope: 'property',
+    requiresRentaiProperty: true,
+    requiresRoomId: true,
+    roomIdPlacement: 'query',
+  },
+  {
+    path: '/room',
+    method: 'POST',
+    group: 'content',
+    description: 'Create/modify room — roomId when modifying',
+    scope: 'property',
+    requiresRentaiProperty: true,
+    requiresRoomId: true,
+    roomIdPlacement: 'body',
+  },
+  {
+    path: '/room-status',
+    method: 'POST',
+    group: 'content',
+    description: 'Set room status (Booking) — requires roomId',
+    scope: 'property',
+    requiresRentaiProperty: true,
+    requiresRoomId: true,
+    roomIdPlacement: 'body',
+  },
+  {
+    path: '/rate',
+    method: 'GET',
+    group: 'content',
+    description: 'Get rate (Expedia) — often scoped by roomId',
+    scope: 'property',
+    requiresRentaiProperty: true,
+    requiresRoomId: true,
+    roomIdPlacement: 'query',
+  },
+  {
+    path: '/rate',
+    method: 'POST',
+    group: 'content',
+    description: 'Create/modify rate — requires roomId',
+    scope: 'property',
+    requiresRentaiProperty: true,
+    requiresRoomId: true,
+    roomIdPlacement: 'body',
+  },
+  {
+    path: '/product',
+    method: 'POST',
+    group: 'content',
+    description: 'Create/modify/delete product (Booking) — room + rate',
+    scope: 'property',
+    requiresRentaiProperty: true,
+    requiresRoomId: true,
+    roomIdPlacement: 'body',
+  },
 
   // Booking content tables
   ...([
@@ -158,4 +280,67 @@ export function findZodomusApiRefEntry(method: string, path: string): ZodomusApi
 
 export function isZodomusApiRefAllowed(method: string, path: string): boolean {
   return Boolean(findZodomusApiRefEntry(method, path));
+}
+
+function isBlankRoomId(v: unknown): boolean {
+  return v === undefined || v === null || String(v).trim() === '';
+}
+
+/**
+ * Fill missing roomId fields for room-scoped catalog ops.
+ * Does not overwrite a non-empty roomId already present in query/body.
+ */
+export function injectZodomusApiRefRoomId(
+  entry: ZodomusApiRefEntry,
+  roomId: string,
+  target: { query?: Record<string, string>; body?: Record<string, unknown> },
+): void {
+  if (!entry.requiresRoomId) return;
+  const rid = roomId.trim();
+  if (!rid) return;
+  const placement = entry.roomIdPlacement ?? 'body';
+
+  if (placement === 'query') {
+    if (!target.query) return;
+    if (isBlankRoomId(target.query.roomId)) target.query.roomId = rid;
+    return;
+  }
+
+  if (!target.body) return;
+
+  if (placement === 'body') {
+    if (isBlankRoomId(target.body.roomId)) target.body.roomId = rid;
+    return;
+  }
+
+  if (placement === 'bodyRoomIds') {
+    const roomIds = target.body.roomIds;
+    if (!Array.isArray(roomIds) || roomIds.length === 0) {
+      target.body.roomIds = [{ roomId: rid }];
+      return;
+    }
+    target.body.roomIds = roomIds.map((item) => {
+      if (!item || typeof item !== 'object') return { roomId: rid };
+      const row = { ...(item as Record<string, unknown>) };
+      if (isBlankRoomId(row.roomId)) row.roomId = rid;
+      return row;
+    });
+    return;
+  }
+
+  if (placement === 'bodyRooms') {
+    const rooms = target.body.rooms;
+    if (!Array.isArray(rooms) || rooms.length === 0) {
+      target.body.rooms = [{ roomId: rid, roomName: 'Room', quantity: 1, status: 1, rates: [] }];
+      return;
+    }
+    target.body.rooms = rooms.map((item) => {
+      if (!item || typeof item !== 'object') {
+        return { roomId: rid, roomName: 'Room', quantity: 1, status: 1, rates: [] };
+      }
+      const row = { ...(item as Record<string, unknown>) };
+      if (isBlankRoomId(row.roomId)) row.roomId = rid;
+      return row;
+    });
+  }
 }

@@ -30,6 +30,8 @@ import { FilterBar } from './components/FilterBar';
 import { TimelineNavBar, buildCalendarWindowAround } from './components/TimelineNavBar';
 import { SmartCreateSheet } from '@/modules/tasks/components/manager/SmartCreateSheet';
 import { NewBookingSheet } from './components/NewBookingSheet';
+import { SetOtaPriceSheet } from './components/SetOtaPriceSheet';
+import { CalendarCellActionsDialog } from './components/CalendarCellActionsDialog';
 import { ReservationDetailPanel, ReservationDetailPanelFooter } from './components/ReservationDetailPanel';
 import { getCalendarPlanbyTheme } from './lib/planby-app-theme';
 import { parseLocalCalendarDay } from './lib/calendar-api-dates';
@@ -147,8 +149,12 @@ export function CalendarView({
     if (!exists) setSelectedId(null);
   }, [selectedId, filteredReservations, reservations, globalSearchReservations]);
   const [newBookingOpen, setNewBookingOpen] = useState(false);
+  const [otaPriceOpen, setOtaPriceOpen] = useState(false);
+  const [cellActionsOpen, setCellActionsOpen] = useState(false);
   /** Row clicked on grid → preselect property in «Новая бронь» (null = first object). */
   const [newBookingPropertyId, setNewBookingPropertyId] = useState<string | null>(null);
+  const [cellActionPropertyTitle, setCellActionPropertyTitle] = useState<string | null>(null);
+  const [cellActionDayLabel, setCellActionDayLabel] = useState<string | null>(null);
   /** Column clicked on grid → check-in / check-out for that day (null = today/tomorrow from toolbar). */
   const [newBookingGridDates, setNewBookingGridDates] = useState<{
     checkIn: string;
@@ -301,11 +307,21 @@ export function CalendarView({
       if (!propertyId) return;
 
       const rangeStart = startOfDay(dateRange.start);
+      const checkIn = format(addDays(rangeStart, hit.dayIndex), 'yyyy-MM-dd');
+      const checkOut = format(addDays(rangeStart, hit.dayIndex + 1), 'yyyy-MM-dd');
+      const prop = filteredProperties.find((p) => p.uuid === propertyId);
+      const linked = Boolean(prop?.zodomusLinked || prop?.zodomusPropertyId?.trim());
+
       setNewBookingPropertyId(propertyId);
-      setNewBookingGridDates({
-        checkIn: format(addDays(rangeStart, hit.dayIndex), 'yyyy-MM-dd'),
-        checkOut: format(addDays(rangeStart, hit.dayIndex + 1), 'yyyy-MM-dd'),
-      });
+      setNewBookingGridDates({ checkIn, checkOut });
+
+      if (linked) {
+        setCellActionPropertyTitle(prop?.title ?? null);
+        setCellActionDayLabel(checkIn);
+        setCellActionsOpen(true);
+        return;
+      }
+
       setNewBookingOpen(true);
     };
     el.addEventListener('click', onClick);
@@ -511,6 +527,40 @@ export function CalendarView({
     }
   }, []);
 
+  const onOtaPriceSheetOpenChange = useCallback((o: boolean) => {
+    setOtaPriceOpen(o);
+    if (!o) {
+      setNewBookingPropertyId(null);
+      setNewBookingGridDates(null);
+    }
+  }, []);
+
+  const calendarSheets = (
+    <>
+      <CalendarCellActionsDialog
+        open={cellActionsOpen}
+        onOpenChange={setCellActionsOpen}
+        propertyTitle={cellActionPropertyTitle ?? undefined}
+        dayLabel={cellActionDayLabel ?? undefined}
+        onNewBooking={() => setNewBookingOpen(true)}
+        onSetOtaPrice={() => setOtaPriceOpen(true)}
+      />
+      <NewBookingSheet
+        open={newBookingOpen}
+        onOpenChange={onNewBookingSheetOpenChange}
+        properties={properties}
+        initialPropertyId={newBookingPropertyId}
+        initialGridDates={newBookingGridDates}
+      />
+      <SetOtaPriceSheet
+        open={otaPriceOpen}
+        onOpenChange={onOtaPriceSheetOpenChange}
+        properties={properties}
+        initialPropertyId={newBookingPropertyId}
+        initialGridDates={newBookingGridDates}
+      />
+    </>
+  );
   /** Кнопка синка показывается при любых объектах; без Zodomus id тост подскажет. */
   const showSyncOta = useMemo(() => properties.length > 0, [properties]);
   const showFiltersEmptyHint =
@@ -586,13 +636,7 @@ export function CalendarView({
         <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
           <CalendarError onRetry={() => refetch()} />
         </div>
-        <NewBookingSheet
-          open={newBookingOpen}
-          onOpenChange={onNewBookingSheetOpenChange}
-          properties={properties}
-          initialPropertyId={newBookingPropertyId}
-          initialGridDates={newBookingGridDates}
-        />
+        {calendarSheets}
       </div>
     );
   }
@@ -616,13 +660,7 @@ export function CalendarView({
         <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
           <CalendarSkeleton />
         </div>
-        <NewBookingSheet
-          open={newBookingOpen}
-          onOpenChange={onNewBookingSheetOpenChange}
-          properties={properties}
-          initialPropertyId={newBookingPropertyId}
-          initialGridDates={newBookingGridDates}
-        />
+        {calendarSheets}
       </div>
     );
   }
@@ -644,13 +682,7 @@ export function CalendarView({
         <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
           <CalendarEmptyNoProperties />
         </div>
-        <NewBookingSheet
-          open={newBookingOpen}
-          onOpenChange={onNewBookingSheetOpenChange}
-          properties={properties}
-          initialPropertyId={newBookingPropertyId}
-          initialGridDates={newBookingGridDates}
-        />
+        {calendarSheets}
       </div>
     );
   }
@@ -733,13 +765,7 @@ export function CalendarView({
         )}
       </ResponsiveModal>
 
-      <NewBookingSheet
-        open={newBookingOpen}
-        onOpenChange={onNewBookingSheetOpenChange}
-        properties={properties}
-        initialPropertyId={newBookingPropertyId}
-        initialGridDates={newBookingGridDates}
-      />
+      {calendarSheets}
 
       <div className="tasks-theme">
         <SmartCreateSheet
