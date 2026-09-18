@@ -8,6 +8,7 @@ import { PropertyService } from '../property/property.service';
 import { ZodomusSyncService } from '../integrations/zodomus/zodomus-sync.service';
 import type { BookingStatus as SharedBookingStatus } from '@rentai/shared';
 import type { OtaCalendarRestrictionHint } from '../integrations/zodomus/zodomus-inventory.util';
+import { sumNightlyPriceMap } from '../integrations/zodomus/zodomus-inventory.util';
 
 export interface CalendarPropertyDto {
   uuid: string;
@@ -205,6 +206,16 @@ export class CalendarService {
 
       return dto;
     });
+
+    /** OTA rows often store totalPriceMinor=0 (Zodomus reservation.totalPrice="0"); fill from rack when complete. */
+    for (const r of reservations) {
+      if (!r.fromOta || r.totalPrice > 0) continue;
+      const nightly = overlayByPropertyId.get(r.propertyId)?.nightlyPrices;
+      const sum = sumNightlyPriceMap(nightly, r.checkIn, r.checkOut);
+      if (sum != null && sum > 0) {
+        r.totalPrice = sum;
+      }
+    }
 
     return { properties: propertyDtos, reservations };
   }

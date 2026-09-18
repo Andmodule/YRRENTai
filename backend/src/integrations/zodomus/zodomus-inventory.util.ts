@@ -378,3 +378,21 @@ export function sumStayNightlyPrices(
   }
   return Math.round(total * 100) / 100;
 }
+
+/** Sum from a date→price map (calendar overlay); null if any stay night missing. */
+export function sumNightlyPriceMap(
+  prices: Record<string, number> | undefined,
+  checkInYmd: string,
+  checkOutYmd: string,
+): number | null {
+  if (!prices || !checkInYmd || !checkOutYmd || checkInYmd >= checkOutYmd) return null;
+  const nightKeys = enumerateStayNightKeys(checkInYmd, checkOutYmd);
+  if (nightKeys.length === 0) return null;
+  let total = 0;
+  for (const key of nightKeys) {
+    const price = prices[key];
+    if (price == null || !(price > 0)) return null;
+    total += price;
+  }
+  return Math.round(total * 100) / 100;
+}

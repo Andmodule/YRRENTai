@@ -920,7 +920,8 @@ export class ZodomusSyncService {
     if (!checkOut) checkOut = addDays(checkIn, 1);
     if (checkOut.getTime() <= checkIn.getTime()) checkOut = addDays(checkIn, 1);
 
-    const totalMinor = Math.round(Number(raw.totalPrice ?? 0) * 100);
+    const resolvedMajor = Number(raw.totalPrice ?? 0);
+    const totalMinor = Math.round((Number.isFinite(resolvedMajor) ? resolvedMajor : 0) * 100);
     const currency = String(raw.currency || property.currency || 'USD').slice(0, 3);
 
     const row =
@@ -1000,7 +1001,15 @@ export class ZodomusSyncService {
 
     row.checkIn = checkIn;
     row.checkOut = checkOut;
-    row.totalPriceMinor = Number.isFinite(totalMinor) ? totalMinor : 0;
+    /**
+     * Prefer resolved Zodomus total when > 0. Do not wipe an existing CRM total with 0
+     * (Booking.com often sends reservation.totalPrice="0" until rooms[] are resolved).
+     */
+    if (Number.isFinite(totalMinor) && totalMinor > 0) {
+      row.totalPriceMinor = totalMinor;
+    } else if (!existing || !(Number(existing.totalPriceMinor) > 0)) {
+      row.totalPriceMinor = Number.isFinite(totalMinor) ? totalMinor : 0;
+    }
     row.currency = currency;
     row.zodomusReservationId = rid;
     row.zodomusChannelId = channelId;

@@ -24,6 +24,7 @@ import type { BookingStatus, Reservation } from '../types';
 import { calendarTimelineCardClasses } from '../lib/calendar-status-styles';
 import { parseLocalCalendarDay } from '../lib/calendar-api-dates';
 import { countNights } from '../lib/property-meta';
+import { formatDisplayTotal } from '../lib/resolve-display-total';
 
 const WIDE_NIGHTS_PX = 120;
 
@@ -75,9 +76,16 @@ interface ProgramBlockProps {
   };
   onSelect: (r: Reservation) => void;
   isMobile: boolean;
+  /** Channel rack prices for OTA total fallback when CRM total is 0. */
+  otaNightlyPrices?: Record<string, number>;
 }
 
-export const ProgramBlock = memo(function ProgramBlock({ program, onSelect, isMobile: _isMobile }: ProgramBlockProps) {
+export const ProgramBlock = memo(function ProgramBlock({
+  program,
+  onSelect,
+  isMobile: _isMobile,
+  otaNightlyPrices,
+}: ProgramBlockProps) {
   const t = useTranslations('calendar');
   const locale = useDateLocale();
   const p = program.program;
@@ -103,10 +111,14 @@ export const ProgramBlock = memo(function ProgramBlock({ program, onSelect, isMo
         `${format(parseLocalCalendarDay(reservation.checkIn), 'd MMM', { locale })} → ${format(parseLocalCalendarDay(reservation.checkOut), 'd MMM yyyy', { locale })}`,
       ].join('\n');
     }
-    const price = new Intl.NumberFormat(undefined, {
-      style: 'currency',
-      currency: reservation.currency,
-    }).format(reservation.totalPrice);
+    const price = formatDisplayTotal(
+      reservation.totalPrice,
+      reservation.currency,
+      reservation.checkIn,
+      reservation.checkOut,
+      otaNightlyPrices,
+      t('priceUnavailable'),
+    );
     const st = t(statusLabelKey[reservation.status]);
     const lines = [
       reservation.guestName,
@@ -120,7 +132,7 @@ export const ProgramBlock = memo(function ProgramBlock({ program, onSelect, isMo
       lines.push('', t('timelineLegendShort'));
     }
     return lines.join('\n');
-  }, [reservation, locale, t, status]);
+  }, [reservation, locale, t, status, otaNightlyPrices]);
 
   const handleClick = useCallback(
     (e: React.MouseEvent) => {

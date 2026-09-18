@@ -1718,6 +1718,7 @@
     "retry": "Повторить",
     "nights": "ночей",
     "nightsShort": "н",
+    "priceUnavailable": "Цена недоступна",
     "newBookingForm": {
       "title": "Новая бронь",
       "description": "Создание бронирования. Даты — в вашем локальном времени.",

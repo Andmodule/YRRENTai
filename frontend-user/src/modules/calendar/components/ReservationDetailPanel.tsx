@@ -20,6 +20,7 @@ import type { Reservation } from '../types';
 import { parseLocalCalendarDay } from '../lib/calendar-api-dates';
 import { countNights } from '../lib/property-meta';
 import { calendarStatusClasses } from '../lib/calendar-status-styles';
+import { formatDisplayTotal } from '../lib/resolve-display-total';
 import { InlineGuestContactFields } from './InlineGuestContactFields';
 
 const statusLabelKey: Record<Reservation['status'], string> = {
@@ -142,9 +143,11 @@ export function ReservationDetailPanelFooter({
 export function ReservationDetailPanel({
   reservation,
   onCopy,
+  otaNightlyPrices,
 }: {
   reservation: Reservation;
   onCopy: () => void;
+  otaNightlyPrices?: Record<string, number>;
 }) {
   const t = useTranslations('calendar');
   const locale = useDateLocale();
@@ -153,6 +156,14 @@ export function ReservationDetailPanel({
   const stClass = calendarStatusClasses[reservation.status];
   const paymentStatus = reservation.paymentStatus ?? 'unpaid';
   const isOta = Boolean(reservation.fromOta);
+  const displayTotal = formatDisplayTotal(
+    reservation.totalPrice,
+    reservation.currency,
+    reservation.checkIn,
+    reservation.checkOut,
+    otaNightlyPrices,
+    t('priceUnavailable'),
+  );
 
   const [draftNotes, setDraftNotes] = useState(reservation.internalNotes ?? '');
   useEffect(() => {
@@ -218,11 +229,7 @@ export function ReservationDetailPanel({
         {nights} {t('nights')}
       </p>
       <div className="space-y-2">
-        <p className="text-base font-medium">
-          {new Intl.NumberFormat(undefined, { style: 'currency', currency: reservation.currency }).format(
-            reservation.totalPrice,
-          )}
-        </p>
+        <p className="text-base font-medium">{displayTotal}</p>
         {isOta ? (
           <div className="space-y-1">
             <p className="text-xs text-muted-foreground">

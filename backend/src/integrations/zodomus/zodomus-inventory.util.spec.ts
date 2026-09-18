@@ -111,6 +111,10 @@ describe('zodomus-inventory.util', () => {
       '2026-09-17': 600,
       '2026-09-18': 700,
     });
+    const { sumNightlyPriceMap } =
+      require('./zodomus-inventory.util') as typeof import('./zodomus-inventory.util');
+    expect(sumNightlyPriceMap(collectOtaNightlyPrices(days), '2026-09-17', '2026-09-19')).toBe(1300);
+    expect(sumNightlyPriceMap(collectOtaNightlyPrices(days), '2026-09-17', '2026-09-20')).toBeNull();
   });
 
   it('merges multi-room availability with min avail (not last-write)', () => {
