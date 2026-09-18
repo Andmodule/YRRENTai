@@ -14,9 +14,22 @@ export type ZodomusInventoryDay = {
   minStayThrough: number | null;
   /**
    * Nightly rack price in major units (Zodomus `price`).
-   * Prefer max open rate for the night (typically Standard vs discounted child rates).
+   * Prefers primary/Standard rate when known; otherwise cheapest open non-derived rate.
+   * Not Booking.com Genius/public B2C price.
    */
   price: number | null;
+  /** rateId that won for `price` (debug / tests). */
+  priceRateId?: string | null;
+};
+
+export type ExtractZodomusInventoryOpts = {
+  /** When set, only this room's dates are used (CRM zodomusRoomId). */
+  preferRoomId?: string | null;
+  /**
+   * Prefer this rateId's open price (from GET /room-rates Standard Rate).
+   * Availability payloads often omit rate names — only ids.
+   */
+  preferRateId?: string | null;
 };
 
 export type OtaInventoryBlockReason =
@@ -60,7 +73,11 @@ function dayKeyFromNode(n: Record<string, unknown>): string | null {
   return m?.[1] ?? null;
 }
 
-function mergeRateIntoDay(day: ZodomusInventoryDay, rate: Record<string, unknown>): void {
+function mergeRateIntoDay(
+  day: ZodomusInventoryDay,
+  rate: Record<string, unknown>,
+  preferRateId?: string | null,
+): void {
   const rateClosed = isClosedFlag(rate.closed);
   if (rateClosed) day.closed = true;
   if (isClosedFlag(rate.closedOnArrival)) day.closedOnArrival = true;
@@ -75,15 +92,39 @@ function mergeRateIntoDay(day: ZodomusInventoryDay, rate: Record<string, unknown
     day.minStayThrough = day.minStayThrough == null ? minThru : Math.max(day.minStayThrough, minThru);
   }
 
-  if (!rateClosed) {
-    const price = toNum(rate.price);
-    if (price != null && price > 0) {
-      day.price = day.price == null ? price : Math.max(day.price, price);
-    }
+  if (rateClosed || rate.isChildRate === true) return;
+
+  const price = toNum(rate.price);
+  if (price == null || !(price > 0)) return;
+
+  const rateId = String(rate.rateId ?? rate.id ?? '').trim();
+  const prefer = preferRateId?.trim() || null;
+
+  // Preferred Standard (or mapped) rate wins over any previously merged price.
+  if (prefer && rateId && rateId === prefer) {
+    day.price = price;
+    day.priceRateId = rateId;
+    return;
+  }
+
+  // If we already locked onto the preferred rate, ignore others.
+  if (prefer && day.priceRateId === prefer) return;
+
+  /**
+   * Fallback when preferRateId unknown: keep the cheapest open rate.
+   * Math.max previously inflated rack (Weekly/Monthly/NR vs Standard).
+   */
+  if (day.price == null || price < day.price) {
+    day.price = price;
+    day.priceRateId = rateId || null;
   }
 }
 
-function mergeInventoryScalars(day: ZodomusInventoryDay, n: Record<string, unknown>): void {
+function mergeInventoryScalars(
+  day: ZodomusInventoryDay,
+  n: Record<string, unknown>,
+  preferRateId?: string | null,
+): void {
   /**
    * Multi-room payloads: take the most restrictive inventory (min avail / max booked).
    * Last-write-wins previously made calendar look free when another room was open.
@@ -110,7 +151,9 @@ function mergeInventoryScalars(day: ZodomusInventoryDay, n: Record<string, unkno
   const rates = n.rates;
   if (Array.isArray(rates)) {
     for (const r of rates) {
-      if (r && typeof r === 'object') mergeRateIntoDay(day, r as Record<string, unknown>);
+      if (r && typeof r === 'object') {
+        mergeRateIntoDay(day, r as Record<string, unknown>, preferRateId);
+      }
     }
   }
 }
@@ -144,20 +187,12 @@ function findRoomsArrays(body: unknown): Array<Record<string, unknown>> {
   return out;
 }
 
-export type ExtractZodomusInventoryOpts = {
-  /** When set, only this room's dates are used (CRM zodomusRoomId). */
-  preferRoomId?: string | null;
-};
-
-/**
- * Walk Zodomus availability JSON and collect per-date inventory + restrictions.
- * Prefers `rooms[].dates[]` when present; multi-room merges use min availability.
- */
 export function extractZodomusInventoryDays(
   body: unknown,
   opts?: ExtractZodomusInventoryOpts,
 ): ZodomusInventoryDay[] {
   const byDate = new Map<string, ZodomusInventoryDay>();
+  const preferRateId = opts?.preferRateId?.trim() || null;
 
   const ensure = (date: string): ZodomusInventoryDay => {
     let d = byDate.get(date);
@@ -172,6 +207,7 @@ export function extractZodomusInventoryDays(
         minStayArrival: null,
         minStayThrough: null,
         price: null,
+        priceRateId: null,
       };
       byDate.set(date, d);
     }
@@ -181,7 +217,7 @@ export function extractZodomusInventoryDays(
   const applyDateNode = (n: Record<string, unknown>): void => {
     const date = dayKeyFromNode(n);
     if (!date) return;
-    mergeInventoryScalars(ensure(date), n);
+    mergeInventoryScalars(ensure(date), n, preferRateId);
   };
 
   const prefer = opts?.preferRoomId?.trim() || null;

@@ -35,6 +35,7 @@ import {
   type OtaCalendarRestrictionHint,
   type OtaStayInventoryResult,
 } from './zodomus-inventory.util';
+import { pickPrimaryRateId } from './zodomus-room-rates.util';
 
 /** Zodomus queue status codes per official docs (inbound only — see ZODOMUS_BOOKING_FLOW). */
 const QUEUE_STATUS = {
@@ -555,9 +556,18 @@ export class ZodomusSyncService {
       const extId = this.propertyService.getExternalListingIdForZodomusChannel(property, channelId);
       if (!extId) continue;
       try {
-        const raw = await this.zodomus.getAvailability(channelId, extId, dateFromYmd, dateToYmd);
         const preferRoomId = this.propertyService.getZodomusRoomIdForChannel(property, channelId);
-        const days = extractZodomusInventoryDays(raw, { preferRoomId });
+        let preferRateId: string | null = null;
+        try {
+          const ratesRaw = await this.zodomus.getRoomRatesRaw(channelId, extId);
+          preferRateId = pickPrimaryRateId(ratesRaw, preferRoomId);
+        } catch (e) {
+          this.logger.debug(
+            `calendar overlay room-rates skip property=${property.id} ch=${channelId}: ${formatZodomusHttpException(e)}`,
+          );
+        }
+        const raw = await this.zodomus.getAvailability(channelId, extId, dateFromYmd, dateToYmd);
+        const days = extractZodomusInventoryDays(raw, { preferRoomId, preferRateId });
         const blockedDays = collectOtaBlockedDays(days);
         for (const d of blockedDays) blocked.add(d);
         this.logger.debug(
