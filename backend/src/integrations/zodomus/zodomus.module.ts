@@ -18,6 +18,7 @@ import { UserModule } from '../../user/user.module';
 import { CalendarModule } from '../../calendar/calendar.module';
 import { GuestModule } from '../../guest/guest.module';
 import { ZodomusAvailabilityPushService } from './zodomus-availability-push.service';
+import { ZodomusRatesPushService } from './zodomus-rates-push.service';
 import { ZodomusMappingService } from './zodomus-mapping.service';
 
 @Module({
@@ -50,8 +51,15 @@ import { ZodomusMappingService } from './zodomus-mapping.service';
     ZodomusSyncService,
     ZodomusCronService,
     ZodomusAvailabilityPushService,
+    ZodomusRatesPushService,
     ZodomusMappingService,
   ],
-  exports: [ZodomusService, ZodomusSyncService, ZodomusAvailabilityPushService, ZodomusMappingService],
+  exports: [
+    ZodomusService,
+    ZodomusSyncService,
+    ZodomusAvailabilityPushService,
+    ZodomusRatesPushService,
+    ZodomusMappingService,
+  ],
 })
 export class ZodomusModule {}

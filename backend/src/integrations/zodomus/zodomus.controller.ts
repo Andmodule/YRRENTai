@@ -14,6 +14,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { ZodomusService } from './zodomus.service';
 import { ZodomusSyncService } from './zodomus-sync.service';
 import { ZodomusAvailabilityPushService } from './zodomus-availability-push.service';
+import { ZodomusRatesPushService } from './zodomus-rates-push.service';
 import { ZodomusMappingService } from './zodomus-mapping.service';
 import { PropertyService } from '../../property/property.service';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -22,6 +23,7 @@ import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.de
 import { UserService } from '../../user/user.service';
 import { mapRoomRatesToPropertyPreview } from './zodomus-property-preview.util';
 import { formatZodomusHttpException } from './zodomus-status.util';
+import { PushZodomusRatesDto } from './dto/push-zodomus-rates.dto';
 
 @ApiTags('Zodomus')
 @ApiBearerAuth()
@@ -32,6 +34,7 @@ export class ZodomusController {
     private readonly zodomus: ZodomusService,
     private readonly zodomusSync: ZodomusSyncService,
     private readonly availabilityPush: ZodomusAvailabilityPushService,
+    private readonly ratesPush: ZodomusRatesPushService,
     private readonly zodomusMapping: ZodomusMappingService,
     private readonly propertyService: PropertyService,
     private readonly userService: UserService,
@@ -237,6 +240,31 @@ export class ZodomusController {
         `Zodomus availability push failed: ${e instanceof Error ? e.message : String(e)}`,
       );
     }
+  }
+
+  /**
+   * POST /rates via Zodomus — set nightly OTA prices for a free date range.
+   * `dateTo` is exclusive. Refuses ranges that overlap blocking CRM bookings.
+   */
+  @Post('push-rates')
+  @Roles('OWNER', 'MANAGER', 'SUPERADMIN')
+  async pushRates(@CurrentUser() user: JwtPayload, @Body() body: PushZodomusRatesDto) {
+    if (user.role === 'SUPERADMIN') {
+      await this.propertyService.findByIdForAdmin(body.propertyId);
+    } else {
+      await this.propertyService.findOneForUser(body.propertyId, user.sub, user.role);
+    }
+    const result = await this.ratesPush.pushRatesForProperty({
+      propertyId: body.propertyId,
+      dateFrom: body.dateFrom,
+      dateToExclusive: body.dateTo,
+      price: body.price,
+      priceSingle: body.priceSingle,
+      currencyCode: body.currencyCode,
+      rateId: body.rateId,
+      channelId: body.channelId,
+    });
+    return { data: result };
   }
 
   @Post('import-summary')

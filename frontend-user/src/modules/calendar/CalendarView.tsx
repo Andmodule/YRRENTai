@@ -2,9 +2,7 @@
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTheme } from 'next-themes';
-import { Epg, Layout, useEpg } from 'planby';
-import type { Channel } from 'planby';
-import { addDays, addHours, eachDayOfInterval, format, startOfDay } from 'date-fns';
+import { startOfDay } from 'date-fns';
 import { toast } from 'sonner';
 import { useTranslations } from 'next-intl';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -17,12 +15,7 @@ import { useCalendarData } from './hooks/useCalendarData';
 import { useCalendarFilters } from './hooks/useCalendarFilters';
 import { useCalendarReservationSearch } from './hooks/useCalendarReservationSearch';
 import { useZodomusCalendarSync } from './hooks/useZodomusCalendarSync';
-import { useCalendarTimelinePan } from './hooks/use-calendar-timeline-pan';
 import { useContainerSize } from './hooks/useContainerSize';
-import { getPropertyMeta } from './lib/property-meta';
-import { ProgramBlock } from './components/ProgramBlock';
-import { TimelineHeader } from './components/TimelineHeader';
-import { SidebarChannel } from './components/SidebarChannel';
 import { CalendarSkeleton } from './components/CalendarSkeleton';
 import { CalendarEmptyNoProperties, CalendarEmptyNoReservations } from './components/CalendarEmpty';
 import { CalendarError } from './components/CalendarError';
@@ -30,17 +23,13 @@ import { FilterBar } from './components/FilterBar';
 import { TimelineNavBar, buildCalendarWindowAround } from './components/TimelineNavBar';
 import { SmartCreateSheet } from '@/modules/tasks/components/manager/SmartCreateSheet';
 import { NewBookingSheet } from './components/NewBookingSheet';
+import { SetOtaPriceSheet } from './components/SetOtaPriceSheet';
+import { CalendarCellActionsDialog } from './components/CalendarCellActionsDialog';
 import { ReservationDetailPanel, ReservationDetailPanelFooter } from './components/ReservationDetailPanel';
+import { CalendarPlanbyGrid } from './components/CalendarPlanbyGrid';
 import { getCalendarPlanbyTheme } from './lib/planby-app-theme';
 import { parseLocalCalendarDay } from './lib/calendar-api-dates';
-import { hitTestCalendarCell } from './lib/hit-test-calendar-cell';
 import { isBookingIdPinQuery, normalizeCalendarQuery, reservationMatchesQuery } from './calendarSearch';
-
-const ITEM_HEIGHT_PX = 64;
-const DAY_COLUMN_WIDTH_PX = {
-  mobile: 64,
-  desktop: 96,
-} as const;
 
 export interface CalendarViewProps {
   dateRange: CalendarDateRange;
@@ -147,14 +136,15 @@ export function CalendarView({
     if (!exists) setSelectedId(null);
   }, [selectedId, filteredReservations, reservations, globalSearchReservations]);
   const [newBookingOpen, setNewBookingOpen] = useState(false);
-  /** Row clicked on grid → preselect property in «Новая бронь» (null = first object). */
+  const [otaPriceOpen, setOtaPriceOpen] = useState(false);
+  const [cellActionsOpen, setCellActionsOpen] = useState(false);
   const [newBookingPropertyId, setNewBookingPropertyId] = useState<string | null>(null);
-  /** Column clicked on grid → check-in / check-out for that day (null = today/tomorrow from toolbar). */
+  const [cellActionPropertyTitle, setCellActionPropertyTitle] = useState<string | null>(null);
+  const [cellActionDayLabel, setCellActionDayLabel] = useState<string | null>(null);
   const [newBookingGridDates, setNewBookingGridDates] = useState<{
     checkIn: string;
     checkOut: string;
   } | null>(null);
-  /** Создание задачи из карточки брони — тот же SmartCreateSheet, что и «+» на доске задач. */
   const [taskCreateReservation, setTaskCreateReservation] = useState<Reservation | null>(null);
 
   const openTaskCreateFromBooking = useCallback((r: Reservation) => {
@@ -162,339 +152,36 @@ export function CalendarView({
     setTaskCreateReservation(r);
   }, []);
 
-  const numDays = useMemo(
-    () => eachDayOfInterval({ start: startOfDay(dateRange.start), end: startOfDay(dateRange.end) }).length,
-    [dateRange],
-  );
-  const dayWidthPx = (isMobile ? DAY_COLUMN_WIDTH_PX.mobile : DAY_COLUMN_WIDTH_PX.desktop) * numDays;
   const { ref: gridContainerRef, width: gridWidth, height: gridHeight } = useContainerSize();
-
-  const channels = useMemo(
-    () =>
-      filteredProperties.map((p) => ({
-        uuid: p.uuid,
-        logo: p.avatarUrl ?? '/icons/property-placeholder.svg',
-        _property: p,
-      })),
-    [filteredProperties],
-  );
-
-  const epg = useMemo(
-    () =>
-      filteredReservations.map((r) => ({
-        id: r.uuid,
-        channelUuid: r.propertyId,
-        title: r.guestName,
-        description: '',
-        image: '',
-        /** Noon check-in → noon checkout: bar aligns with PM arrival and AM departure (not full midnight cells). */
-        since: format(addHours(parseLocalCalendarDay(r.checkIn), 12), 'yyyy-MM-dd HH:mm:ss'),
-        till: format(addHours(parseLocalCalendarDay(r.checkOut), 12), 'yyyy-MM-dd HH:mm:ss'),
-        _reservation: r,
-      })),
-    [filteredReservations],
-  );
-
-  /** Force Planby remount when reservation set changes — useEpg often keeps a stale layout after cache upsert. */
-  const planbyLayoutKey = useMemo(
-    () =>
-      filteredReservations
-        .map((r) => `${r.uuid}:${r.checkIn}:${r.checkOut}:${r.status}`)
-        .sort()
-        .join('|'),
-    [filteredReservations],
-  );
-
-  const { getEpgProps, getLayoutProps } = useEpg({
-    channels,
-    epg,
-    startDate: format(startOfDay(dateRange.start), 'yyyy-MM-dd 00:00:00'),
-    /** Planby span = hours between start and this instant; use day after last visible day (same idea as calendar API `to` + 1). */
-    endDate: format(addDays(startOfDay(dateRange.end), 1), 'yyyy-MM-dd 00:00:00'),
-    dayWidth: dayWidthPx,
-    sidebarWidth: isMobile ? 56 : 240,
-    itemHeight: ITEM_HEIGHT_PX,
-    isLine: false,
-    isTimeline: true,
-    isSidebar: true,
-    theme: planbyTheme,
-    ...(gridWidth != null && gridWidth > 0 ? { width: gridWidth } : {}),
-    ...(gridHeight != null && gridHeight > 0 ? { height: gridHeight } : {}),
-  });
-
-  const epgProps = getEpgProps();
-  const layoutProps = getLayoutProps();
-  const {
-    hourWidth: layoutHourWidth,
-    itemHeight: layoutItemHeight,
-    ref: planbyScrollRef,
-  } = layoutProps;
-  const dayColWidthPx = 24 * layoutHourWidth;
-
-  const timelinePanEnabled = Boolean(
-    data &&
-      !isError &&
-      properties.length > 0 &&
-      filteredProperties.length > 0 &&
-      dayColWidthPx > 0,
-  );
-
-  useCalendarTimelinePan({
-    enabled: timelinePanEnabled,
-    scrollRef: planbyScrollRef,
-    dayColWidthPx,
-    numDays,
-    dateRange,
-    onDateRangeChange,
-  });
-
-  useEffect(() => {
-    if (filteredProperties.length === 0) return;
-    const el = planbyScrollRef.current;
-    if (!el) return;
-    const onClick = (e: MouseEvent) => {
-      const t = e.target as HTMLElement;
-      if (t.closest('[data-testid="program-item"]')) return;
-      if (t.closest('[data-testid="sidebar"]')) return;
-      if (t.closest('[data-testid="sidebar-item"]')) return;
-      if (t.closest('[data-testid="calendar-timeline-header"]')) return;
-      const content = t.closest('[data-testid="content"]') as HTMLElement | null;
-      if (!content) return;
-      if (dayColWidthPx <= 0 || numDays <= 0) return;
-
-      const contentRect = content.getBoundingClientRect();
-      /**
-       * Content-relative coords from getBoundingClientRect already include scroll.
-       * Adding scrollLeft/scrollTop double-counts and shifts day/row (e.g. 3.11 → 11.11).
-       * Timeline header is a sibling above content → headerHeightPx = 0.
-       */
-      const yInContent = e.clientY - contentRect.top;
-      const xInContent = e.clientX - contentRect.left;
-      const rowHeight = layoutItemHeight > 0 ? layoutItemHeight : ITEM_HEIGHT_PX;
-
-      const hit = hitTestCalendarCell({
-        yInContent,
-        xInContent,
-        headerHeightPx: 0,
-        itemHeightPx: rowHeight,
-        dayColWidthPx,
-        numDays,
-        numRows: filteredProperties.length,
-      });
-      if (hit.kind !== 'cell') return;
-
-      /** Prefer Planby sidebar row under the same client Y when present. */
-      let propertyId: string | null = null;
-      const sidebarItems = el.querySelectorAll('[data-testid="sidebar-item"]');
-      for (let i = 0; i < sidebarItems.length; i++) {
-        const item = sidebarItems[i];
-        if (!(item instanceof HTMLElement)) continue;
-        const rect = item.getBoundingClientRect();
-        if (e.clientY >= rect.top && e.clientY < rect.bottom) {
-          propertyId = item.getAttribute('data-property-id');
-          break;
-        }
-      }
-      if (!propertyId) {
-        propertyId = filteredProperties[hit.rowIndex]?.uuid ?? null;
-      }
-      if (!propertyId) return;
-
-      const rangeStart = startOfDay(dateRange.start);
-      setNewBookingPropertyId(propertyId);
-      setNewBookingGridDates({
-        checkIn: format(addDays(rangeStart, hit.dayIndex), 'yyyy-MM-dd'),
-        checkOut: format(addDays(rangeStart, hit.dayIndex + 1), 'yyyy-MM-dd'),
-      });
-      setNewBookingOpen(true);
-    };
-    el.addEventListener('click', onClick);
-    return () => el.removeEventListener('click', onClick);
-  }, [
-    planbyScrollRef,
-    filteredProperties,
-    dayColWidthPx,
-    numDays,
-    dateRange.start,
-    layoutItemHeight,
-  ]);
+  const hasMeasuredSize =
+    gridWidth != null && gridWidth > 0 && gridHeight != null && gridHeight > 0;
 
   const onSelectReservation = useCallback((r: Reservation) => {
     if (r.otaInventoryBlock) return;
     setSelectedId(r.uuid);
   }, []);
 
-  const renderProgram = useCallback(
-    (props: {
-      program: import('planby/dist/Epg/helpers/types').ProgramItem;
-      isRTL: boolean;
-      isBaseTimeFormat: boolean;
-    }) => (
-      <ProgramBlock
-        key={String(props.program.data.id)}
-        program={props}
-        onSelect={onSelectReservation}
-        isMobile={isMobile}
-      />
-    ),
-    [onSelectReservation, isMobile],
-  );
+  const onEmptyCellClick = useCallback(
+    (payload: {
+      propertyId: string;
+      propertyTitle: string | undefined;
+      checkIn: string;
+      checkOut: string;
+      zodomusLinked: boolean;
+    }) => {
+      setNewBookingPropertyId(payload.propertyId);
+      setNewBookingGridDates({ checkIn: payload.checkIn, checkOut: payload.checkOut });
 
-  const propertyMetaById = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const p of filteredProperties) {
-      map.set(p.uuid, getPropertyMeta(p.uuid, filteredReservations, dateRange));
-    }
-    return map;
-  }, [filteredProperties, filteredReservations, dateRange]);
+      if (payload.zodomusLinked) {
+        setCellActionPropertyTitle(payload.propertyTitle ?? null);
+        setCellActionDayLabel(payload.checkIn);
+        setCellActionsOpen(true);
+        return;
+      }
 
-  const renderChannel = useCallback(
-    ({ channel }: { channel: Channel }) => {
-      const { top, height } = channel.position;
-      return (
-        <div
-          key={channel.uuid}
-          data-testid="sidebar-item"
-          data-property-id={channel.uuid}
-          className="bg-[#f8fafc] dark:bg-card"
-          style={{
-            position: 'absolute',
-            top,
-            height,
-            width: '100%',
-            insetInlineStart: 0,
-            display: 'flex',
-            alignItems: 'center',
-            boxSizing: 'border-box',
-            overflow: 'hidden',
-          }}
-        >
-          <SidebarChannel
-            channel={channel}
-            meta={propertyMetaById.get(channel.uuid) ?? ''}
-            isMobile={isMobile}
-          />
-        </div>
-      );
+      setNewBookingOpen(true);
     },
-    [propertyMetaById, isMobile],
-  );
-
-  const renderTimeline = useCallback(
-    (props: {
-      hourWidth: number;
-      dayWidth: number;
-      sidebarWidth: number;
-      isSidebar: boolean;
-    }) => (
-      <TimelineHeader
-        hourWidth={props.hourWidth}
-        dayWidth={props.dayWidth}
-        sidebarWidth={props.sidebarWidth}
-        isSidebar={props.isSidebar}
-        dateRange={dateRange}
-        locale={locale}
-      />
-    ),
-    [dateRange, locale],
-  );
-
-  const calendarGridCss = useMemo(
-    () => {
-      const rowH = layoutItemHeight;
-      const colW = dayColWidthPx;
-      return `
-#cal-${calendarScopeId} .planby [data-testid="content"] {
-  background-color: #f8fafc;
-  background-image:
-    repeating-linear-gradient(
-      to right,
-      transparent 0,
-      transparent ${colW - 1}px,
-      rgba(15, 23, 42, 0.07) ${colW - 1}px,
-      rgba(15, 23, 42, 0.07) ${colW}px
-    ),
-    repeating-linear-gradient(
-      to bottom,
-      transparent 0,
-      transparent ${rowH - 1}px,
-      rgba(15, 23, 42, 0.06) ${rowH - 1}px,
-      rgba(15, 23, 42, 0.06) ${rowH}px
-    );
-}
-.dark #cal-${calendarScopeId} .planby [data-testid="content"] {
-  background-color: var(--card);
-  background-image:
-    repeating-linear-gradient(
-      to right,
-      transparent 0,
-      transparent ${colW - 1}px,
-      rgba(148, 163, 184, 0.14) ${colW - 1}px,
-      rgba(148, 163, 184, 0.14) ${colW}px
-    ),
-    repeating-linear-gradient(
-      to bottom,
-      transparent 0,
-      transparent ${rowH - 1}px,
-      rgba(148, 163, 184, 0.12) ${rowH - 1}px,
-      rgba(148, 163, 184, 0.12) ${rowH}px
-    );
-}
-#cal-${calendarScopeId} .planby [data-testid="sidebar"] {
-  border-right: 1px solid var(--border);
-  box-sizing: border-box;
-  /* Above scrolling day cells; below timeline corner (z-20) */
-  z-index: 18 !important;
-}
-.dark #cal-${calendarScopeId} .planby [data-testid="sidebar"] {
-  background-color: var(--card) !important;
-}
-#cal-${calendarScopeId} .planby [data-testid="sidebar-item"] {
-  box-sizing: border-box;
-}
-/* Не добавлять border на sidebar-item: Planby задаёт ровно itemHeight px; лишний border ломает стык с горизонталями контента */
-/* Planby corner box unused — our TimelineHeader corner is sticky instead */
-#cal-${calendarScopeId} .planby[data-testid="container"] > div:first-child > div:first-child {
-  display: none !important;
-}
-#cal-${calendarScopeId} .planby [data-testid="calendar-timeline-header"] {
-  isolation: isolate;
-  /* Above program bars so sticky dates are never covered by row-0 ribbons */
-  z-index: 15 !important;
-}
-#cal-${calendarScopeId} .planby [data-testid="content"] {
-  cursor: crosshair;
-  /* Keep programs under sticky header / sidebar */
-  z-index: 1;
-}
-#cal-${calendarScopeId} .planby [data-testid="program-item"] {
-  cursor: pointer;
-  /* Must stay below sticky timeline header (z-15) and sidebar (z-18) */
-  z-index: 5 !important;
-}
-#cal-${calendarScopeId} .planby {
-  height: 100%;
-  min-height: 0;
-  scrollbar-width: thin;
-  scrollbar-color: rgb(229 231 235) transparent;
-}
-.dark #cal-${calendarScopeId} .planby {
-  scrollbar-color: rgb(51 65 85 / 0.6) transparent;
-}
-#cal-${calendarScopeId} .planby ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-#cal-${calendarScopeId} .planby ::-webkit-scrollbar-thumb {
-  background: rgb(229 231 235);
-  border-radius: 9999px;
-}
-.dark #cal-${calendarScopeId} .planby ::-webkit-scrollbar-thumb {
-  background: rgb(51 65 85 / 0.7);
-}
-`;
-    },
-    [calendarScopeId, dayColWidthPx, layoutItemHeight],
+    [],
   );
 
   const openNewBooking = useCallback(() => {
@@ -511,10 +198,52 @@ export function CalendarView({
     }
   }, []);
 
-  /** Кнопка синка показывается при любых объектах; без Zodomus id тост подскажет. */
+  const onOtaPriceSheetOpenChange = useCallback((o: boolean) => {
+    setOtaPriceOpen(o);
+    if (!o) {
+      setNewBookingPropertyId(null);
+      setNewBookingGridDates(null);
+    }
+  }, []);
+
+  const calendarSheets = (
+    <>
+      <CalendarCellActionsDialog
+        open={cellActionsOpen}
+        onOpenChange={setCellActionsOpen}
+        propertyTitle={cellActionPropertyTitle ?? undefined}
+        dayLabel={cellActionDayLabel ?? undefined}
+        onNewBooking={() => setNewBookingOpen(true)}
+        onSetOtaPrice={() => setOtaPriceOpen(true)}
+      />
+      <NewBookingSheet
+        open={newBookingOpen}
+        onOpenChange={onNewBookingSheetOpenChange}
+        properties={properties}
+        initialPropertyId={newBookingPropertyId}
+        initialGridDates={newBookingGridDates}
+      />
+      <SetOtaPriceSheet
+        open={otaPriceOpen}
+        onOpenChange={onOtaPriceSheetOpenChange}
+        properties={properties}
+        initialPropertyId={newBookingPropertyId}
+        initialGridDates={newBookingGridDates}
+      />
+    </>
+  );
   const showSyncOta = useMemo(() => properties.length > 0, [properties]);
   const showFiltersEmptyHint =
     reservations.length > 0 && filteredReservations.length === 0 && properties.length > 0;
+
+  const timelinePanEnabled = Boolean(
+    data && !isError && properties.length > 0 && filteredProperties.length > 0,
+  );
+
+  const selectedProperty = useMemo(
+    () => (selected ? properties.find((p) => p.uuid === selected.propertyId) : undefined),
+    [selected, properties],
+  );
 
   const onSyncOta = useCallback((force?: boolean) => {
     zodomusSync.mutateAsync({ force: Boolean(force) }).then(
@@ -586,13 +315,7 @@ export function CalendarView({
         <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
           <CalendarError onRetry={() => refetch()} />
         </div>
-        <NewBookingSheet
-          open={newBookingOpen}
-          onOpenChange={onNewBookingSheetOpenChange}
-          properties={properties}
-          initialPropertyId={newBookingPropertyId}
-          initialGridDates={newBookingGridDates}
-        />
+        {calendarSheets}
       </div>
     );
   }
@@ -616,13 +339,7 @@ export function CalendarView({
         <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
           <CalendarSkeleton />
         </div>
-        <NewBookingSheet
-          open={newBookingOpen}
-          onOpenChange={onNewBookingSheetOpenChange}
-          properties={properties}
-          initialPropertyId={newBookingPropertyId}
-          initialGridDates={newBookingGridDates}
-        />
+        {calendarSheets}
       </div>
     );
   }
@@ -644,13 +361,7 @@ export function CalendarView({
         <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
           <CalendarEmptyNoProperties />
         </div>
-        <NewBookingSheet
-          open={newBookingOpen}
-          onOpenChange={onNewBookingSheetOpenChange}
-          properties={properties}
-          initialPropertyId={newBookingPropertyId}
-          initialGridDates={newBookingGridDates}
-        />
+        {calendarSheets}
       </div>
     );
   }
@@ -690,21 +401,27 @@ export function CalendarView({
       >
         {filteredProperties.length === 0 ? (
           <CalendarEmptyNoReservations />
+        ) : hasMeasuredSize ? (
+          <CalendarPlanbyGrid
+            key={`${Math.round(gridWidth)}x${Math.round(gridHeight)}`}
+            calendarScopeId={calendarScopeId}
+            dateRange={dateRange}
+            onDateRangeChange={onDateRangeChange}
+            filteredProperties={filteredProperties}
+            filteredReservations={filteredReservations}
+            width={gridWidth}
+            height={gridHeight}
+            isMobile={isMobile}
+            locale={locale}
+            planbyTheme={planbyTheme}
+            timelinePanEnabled={timelinePanEnabled}
+            onSelectReservation={onSelectReservation}
+            onEmptyCellClick={onEmptyCellClick}
+          />
         ) : (
-          <>
-            {/* eslint-disable-next-line react/no-danger -- scoped grid overlay for Planby content */}
-            <style dangerouslySetInnerHTML={{ __html: calendarGridCss }} />
-            <div className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-col">
-              <Epg key={planbyLayoutKey || 'empty'} {...epgProps}>
-                <Layout
-                  {...layoutProps}
-                  renderProgram={renderProgram}
-                  renderChannel={renderChannel}
-                  renderTimeline={renderTimeline}
-                />
-              </Epg>
-            </div>
-          </>
+          <div className="flex min-h-0 flex-1 items-stretch">
+            <CalendarSkeleton />
+          </div>
         )}
       </div>
       </div>
@@ -722,24 +439,21 @@ export function CalendarView({
                 reservation={selected}
                 onCreateTask={openTaskCreateFromBooking}
                 zodomusLinked={Boolean(
-                  properties.find((p) => p.uuid === selected.propertyId)?.zodomusLinked ||
-                    properties.find((p) => p.uuid === selected.propertyId)?.zodomusPropertyId?.trim(),
+                  selectedProperty?.zodomusLinked || selectedProperty?.zodomusPropertyId?.trim(),
                 )}
               />
             }
           >
-            <ReservationDetailPanel reservation={selected} onCopy={() => toast.success(t('copied'))} />
+            <ReservationDetailPanel
+              reservation={selected}
+              onCopy={() => toast.success(t('copied'))}
+              otaNightlyPrices={selectedProperty?.otaNightlyPrices}
+            />
           </ResponsiveModalContent>
         )}
       </ResponsiveModal>
 
-      <NewBookingSheet
-        open={newBookingOpen}
-        onOpenChange={onNewBookingSheetOpenChange}
-        properties={properties}
-        initialPropertyId={newBookingPropertyId}
-        initialGridDates={newBookingGridDates}
-      />
+      {calendarSheets}
 
       <div className="tasks-theme">
         <SmartCreateSheet

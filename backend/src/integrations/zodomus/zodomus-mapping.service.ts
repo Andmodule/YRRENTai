@@ -11,6 +11,7 @@ import { ZodomusService } from './zodomus.service';
 import { ZodomusSyncService } from './zodomus-sync.service';
 import { formatZodomusHttpException } from './zodomus-status.util';
 import type { ZodomusRoomActivationRoom } from './zodomus.types';
+import { extractRoomsFromRoomRatesBody } from './zodomus-room-rates.util';
 
 export type ZodomusMappingStepName =
   | 'cancel'
@@ -49,56 +50,17 @@ function isAlreadyExistsError(detail: string): boolean {
   );
 }
 
-function pickRatesForRoom(ratesRaw: unknown[]): string[] {
-  const objs = ratesRaw.filter((x) => x && typeof x === 'object') as Array<Record<string, unknown>>;
-  const nonChild = objs.filter((x) => !x.isChildRate);
-  const standard = nonChild.filter((x) =>
-    String(x.name ?? x.rateName ?? '')
-      .toLowerCase()
-      .includes('standard'),
-  );
-  const pool = standard.length > 0 ? standard : nonChild.length > 0 ? nonChild : objs;
-  const ids = pool
-    .map((x) => String(x.id ?? x.rateId ?? '').trim())
-    .filter(Boolean);
-  if (ids.length > 0) return ids;
-  // Primitive rate ids
-  return ratesRaw.map((x) => String(x).trim()).filter((s) => s && s !== '[object Object]');
-}
-
 function buildRoomsFromRatesBody(
   ratesBody: unknown,
   preferRoomId?: string | null,
 ): ZodomusRoomActivationRoom[] {
-  const root = ratesBody && typeof ratesBody === 'object' ? (ratesBody as Record<string, unknown>) : {};
-  const roomsRaw = Array.isArray(root.rooms)
-    ? root.rooms
-    : Array.isArray((root.data as Record<string, unknown> | undefined)?.rooms)
-      ? ((root.data as Record<string, unknown>).rooms as unknown[])
-      : [];
-
-  let rooms = (roomsRaw as unknown[])
-    .filter((r) => r && typeof r === 'object')
-    .map((r) => {
-      const rec = r as Record<string, unknown>;
-      const roomId = String(rec.id ?? rec.roomId ?? '').trim();
-      const ratesArr = Array.isArray(rec.rates) ? rec.rates : [];
-      return {
-        roomId,
-        roomName: String(rec.name ?? rec.roomName ?? 'Room'),
-        quantity: Number(rec.quantity ?? 1) || 1,
-        status: 1,
-        rates: pickRatesForRoom(ratesArr),
-      } satisfies ZodomusRoomActivationRoom;
-    })
-    .filter((r) => r.roomId && r.rates.length > 0);
-
-  const prefer = preferRoomId?.trim();
-  if (prefer) {
-    const matched = rooms.filter((r) => r.roomId === prefer);
-    if (matched.length > 0) rooms = matched;
-  }
-  return rooms;
+  return extractRoomsFromRoomRatesBody(ratesBody, preferRoomId).map((r) => ({
+    roomId: r.roomId,
+    roomName: r.roomName,
+    quantity: r.quantity,
+    status: 1,
+    rates: r.rates,
+  }));
 }
 
 /**

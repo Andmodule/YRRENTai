@@ -1,0 +1,37 @@
+import assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
+import {
+  resolveDisplayTotalMajor,
+  sumOtaNightlyPrices,
+  formatDisplayTotal,
+} from './resolve-display-total.js';
+
+describe('resolve-display-total', () => {
+  const prices = {
+    '2026-09-17': 600,
+    '2026-09-18': 700,
+  };
+
+  it('sums nightly prices for exclusive checkout', () => {
+    assert.equal(sumOtaNightlyPrices(prices, '2026-09-17', '2026-09-19'), 1300);
+  });
+
+  it('returns null when any night is missing', () => {
+    assert.equal(sumOtaNightlyPrices(prices, '2026-09-17', '2026-09-20'), null);
+  });
+
+  it('prefers CRM total when > 0', () => {
+    assert.equal(resolveDisplayTotalMajor(520, '2026-09-17', '2026-09-19', prices), 520);
+  });
+
+  it('falls back to nightly sum when CRM total is 0', () => {
+    assert.equal(resolveDisplayTotalMajor(0, '2026-09-17', '2026-09-19', prices), 1300);
+  });
+
+  it('formats unavailable when no total and no rack', () => {
+    assert.equal(
+      formatDisplayTotal(0, 'EUR', '2026-09-17', '2026-09-19', undefined, 'Price unavailable'),
+      'Price unavailable',
+    );
+  });
+});

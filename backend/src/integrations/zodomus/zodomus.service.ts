@@ -176,6 +176,40 @@ export class ZodomusService {
     });
   }
 
+  /**
+   * POST /rates — set nightly prices (and optional restrictions) for a room/rate range.
+   * `dateTo` is exclusive (Zodomus convention). Price model shapes vary; Booking Maximum/Single
+   * uses `prices: { price, priceSingle? }`.
+   */
+  async setRates(params: {
+    channelId: number;
+    propertyId: string;
+    roomId: string;
+    rateId: string;
+    dateFrom: string;
+    dateToExclusive: string;
+    currencyCode: string;
+    price: number | string;
+    priceSingle?: number | string;
+  }): Promise<unknown> {
+    const prices: Record<string, string> = {
+      price: String(params.price),
+    };
+    if (params.priceSingle != null && String(params.priceSingle).trim() !== '') {
+      prices.priceSingle = String(params.priceSingle);
+    }
+    return this.ensureEnabled().post('/rates', {
+      channelId: params.channelId,
+      propertyId: params.propertyId,
+      roomId: params.roomId,
+      rateId: params.rateId,
+      dateFrom: params.dateFrom,
+      dateTo: params.dateToExclusive,
+      currencyCode: params.currencyCode,
+      prices,
+    });
+  }
+
   /** POST /property-cancellation — cancel property mapping (required before remapping rooms/rates). */
   async cancelProperty(channelId: number, propertyId: string): Promise<unknown> {
     return this.ensureEnabled().post('/property-cancellation', {
