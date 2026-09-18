@@ -1,6 +1,7 @@
 /**
  * Display total for calendar booking hover / detail.
- * Prefer CRM total; for OTA zeros fall back to sum of channel nightly rack prices.
+ * Prefer CRM total; for OTA zeros fall back to channel nightly rack
+ * (prefer "from"/cheapest eligible, then Standard).
  */
 
 /** Sum otaNightlyPrices for exclusive checkout nights; null if any night missing. */
@@ -32,10 +33,13 @@ export function resolveDisplayTotalMajor(
   checkInYmd: string,
   checkOutYmd: string,
   otaNightlyPrices?: Record<string, number>,
+  otaNightlyPricesFrom?: Record<string, number>,
 ): number | null {
   if (Number.isFinite(totalPrice) && totalPrice > 0) {
     return totalPrice;
   }
+  const fromSum = sumOtaNightlyPrices(otaNightlyPricesFrom, checkInYmd, checkOutYmd);
+  if (fromSum != null) return fromSum;
   return sumOtaNightlyPrices(otaNightlyPrices, checkInYmd, checkOutYmd);
 }
 
@@ -46,8 +50,15 @@ export function formatDisplayTotal(
   checkOutYmd: string,
   otaNightlyPrices: Record<string, number> | undefined,
   unavailableLabel: string,
+  otaNightlyPricesFrom?: Record<string, number>,
 ): string {
-  const major = resolveDisplayTotalMajor(totalPrice, checkInYmd, checkOutYmd, otaNightlyPrices);
+  const major = resolveDisplayTotalMajor(
+    totalPrice,
+    checkInYmd,
+    checkOutYmd,
+    otaNightlyPrices,
+    otaNightlyPricesFrom,
+  );
   if (major == null) return unavailableLabel;
   return new Intl.NumberFormat(undefined, {
     style: 'currency',

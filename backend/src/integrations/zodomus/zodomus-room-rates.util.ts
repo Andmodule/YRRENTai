@@ -10,6 +10,44 @@ export type ZodomusRoomRatesRoom = {
   rates: string[];
 };
 
+/** Weekly / monthly / LOS-derived plans — exclude from calendar "from" price. */
+export function isLongStayOrDerivedRateName(name: string): boolean {
+  const n = name.trim().toLowerCase();
+  if (!n) return false;
+  return (
+    /\bweekly\b/.test(n) ||
+    /\bmonthly\b/.test(n) ||
+    /\bmonth\b/.test(n) ||
+    /length of stay/.test(n) ||
+    /\blos\b/.test(n) ||
+    /per day length/.test(n)
+  );
+}
+
+/** rateId → display name from GET /room-rates (availability payloads often omit names). */
+export function buildRateNameMapFromRoomRates(ratesBody: unknown): Record<string, string> {
+  const root = ratesBody && typeof ratesBody === 'object' ? (ratesBody as Record<string, unknown>) : {};
+  const roomsRaw = Array.isArray(root.rooms)
+    ? root.rooms
+    : Array.isArray((root.data as Record<string, unknown> | undefined)?.rooms)
+      ? ((root.data as Record<string, unknown>).rooms as unknown[])
+      : [];
+  const out: Record<string, string> = {};
+  for (const room of roomsRaw) {
+    if (!room || typeof room !== 'object') continue;
+    const rates = (room as Record<string, unknown>).rates;
+    if (!Array.isArray(rates)) continue;
+    for (const r of rates) {
+      if (!r || typeof r !== 'object') continue;
+      const rec = r as Record<string, unknown>;
+      const id = String(rec.id ?? rec.rateId ?? '').trim();
+      const name = String(rec.name ?? rec.rateName ?? '').trim();
+      if (id && name) out[id] = name;
+    }
+  }
+  return out;
+}
+
 function pickRatesForRoom(ratesRaw: unknown[]): string[] {
   const objs = ratesRaw.filter((x) => x && typeof x === 'object') as Array<Record<string, unknown>>;
   const nonChild = objs.filter((x) => !x.isChildRate);

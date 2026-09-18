@@ -243,6 +243,7 @@ export function CalendarPlanbyGrid({
           onSelect={onSelectReservation}
           isMobile={isMobile}
           otaNightlyPrices={property?.otaNightlyPrices}
+          otaNightlyPricesFrom={property?.otaNightlyPricesFrom}
         />
       );
     },

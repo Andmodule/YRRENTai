@@ -7,7 +7,10 @@ import { formatCalendarDayInTimezone } from '../booking/booking-availability.uti
 import { PropertyService } from '../property/property.service';
 import { ZodomusSyncService } from '../integrations/zodomus/zodomus-sync.service';
 import type { BookingStatus as SharedBookingStatus } from '@rentai/shared';
-import type { OtaCalendarRestrictionHint } from '../integrations/zodomus/zodomus-inventory.util';
+import type {
+  OtaCalendarRestrictionHint,
+  OtaNightlyPriceMeta,
+} from '../integrations/zodomus/zodomus-inventory.util';
 import { sumNightlyPriceMap } from '../integrations/zodomus/zodomus-inventory.util';
 
 export interface CalendarPropertyDto {
@@ -25,8 +28,18 @@ export interface CalendarPropertyDto {
   otaBlockedDays?: string[];
   /** Rate restriction hints (min stay, closed) for tooltip / UI. */
   otaRestrictions?: OtaCalendarRestrictionHint[];
-  /** Nightly rack prices from Zodomus GET /availability (major units, yyyy-MM-dd → price). */
+  /**
+   * Nightly Standard (or preferred) rack from Zodomus GET /availability (major units).
+   * Not Booking.com Genius / public B2C price.
+   */
   otaNightlyPrices?: Record<string, number>;
+  /**
+   * Cheapest open non-child rate excluding Weekly/Monthly/LOS (major units).
+   * Approximate Booking "from" rack without Genius.
+   */
+  otaNightlyPricesFrom?: Record<string, number>;
+  /** Which rate won for `otaNightlyPrices` per night. */
+  otaNightlyPriceMeta?: Record<string, OtaNightlyPriceMeta>;
 }
 
 export type CalendarBookingStatus = 'confirmed' | 'pending' | 'cleaning' | 'blocked' | 'cancelled';
@@ -164,6 +177,8 @@ export class CalendarService {
         blockedDays: string[];
         restrictions: OtaCalendarRestrictionHint[];
         nightlyPrices: Record<string, number>;
+        nightlyPricesFrom: Record<string, number>;
+        nightlyPriceMeta: Record<string, OtaNightlyPriceMeta>;
       }
     >();
     if (linked.length > 0) {
@@ -201,21 +216,31 @@ export class CalendarService {
           blockedDays: [],
           restrictions: [],
           nightlyPrices: {},
+          nightlyPricesFrom: {},
+          nightlyPriceMeta: {},
         };
         const localOcc = occupiedByProperty.get(p.id) ?? new Set();
         dto.otaBlockedDays = overlay.blockedDays.filter((d) => !localOcc.has(d));
         dto.otaRestrictions = overlay.restrictions;
         dto.otaNightlyPrices = overlay.nightlyPrices;
+        dto.otaNightlyPricesFrom = overlay.nightlyPricesFrom;
+        dto.otaNightlyPriceMeta = overlay.nightlyPriceMeta;
       }
 
       return dto;
     });
 
-    /** OTA rows often store totalPriceMinor=0 (Zodomus reservation.totalPrice="0"); fill from rack when complete. */
+    /**
+     * OTA rows often store totalPriceMinor=0 (Zodomus reservation.totalPrice="0").
+     * Prefer cheapest eligible rack (NR-like "from") over Standard — closer to guest-paid
+     * when ingest could not resolve rooms[].totalPrice. Never overwrite a positive CRM total.
+     */
     for (const r of reservations) {
       if (!r.fromOta || r.totalPrice > 0) continue;
-      const nightly = overlayByPropertyId.get(r.propertyId)?.nightlyPrices;
-      const sum = sumNightlyPriceMap(nightly, r.checkIn, r.checkOut);
+      const overlay = overlayByPropertyId.get(r.propertyId);
+      const fromSum = sumNightlyPriceMap(overlay?.nightlyPricesFrom, r.checkIn, r.checkOut);
+      const stdSum = sumNightlyPriceMap(overlay?.nightlyPrices, r.checkIn, r.checkOut);
+      const sum = fromSum ?? stdSum;
       if (sum != null && sum > 0) {
         r.totalPrice = sum;
       }

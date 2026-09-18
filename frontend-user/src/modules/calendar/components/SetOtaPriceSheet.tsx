@@ -246,6 +246,7 @@ export function SetOtaPriceSheet({
               />
             </div>
           </div>
+          <p className="text-[11px] leading-snug text-muted-foreground">{t('rackPriceHint')}</p>
         </div>
       </SheetContent>
     </Sheet>

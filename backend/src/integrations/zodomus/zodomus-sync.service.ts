@@ -27,15 +27,18 @@ import type { ZodomusReservation, ZodomusReservationQueueItem } from './zodomus.
 import { ZODOMUS_BOOKING_FLOW } from './zodomus-booking-flow.constants';
 import {
   collectOtaBlockedDays,
+  collectOtaNightlyPriceMeta,
   collectOtaNightlyPrices,
+  collectOtaNightlyPricesFrom,
   collectOtaRestrictionHints,
   evaluateStayAgainstInventory,
   extractZodomusInventoryDays,
   sumStayNightlyPrices,
   type OtaCalendarRestrictionHint,
+  type OtaNightlyPriceMeta,
   type OtaStayInventoryResult,
 } from './zodomus-inventory.util';
-import { pickPrimaryRateId } from './zodomus-room-rates.util';
+import { buildRateNameMapFromRoomRates, pickPrimaryRateId } from './zodomus-room-rates.util';
 
 /** Zodomus queue status codes per official docs (inbound only — see ZODOMUS_BOOKING_FLOW). */
 const QUEUE_STATUS = {
@@ -497,14 +500,20 @@ export class ZodomusSyncService {
       try {
         const preferRoomId = this.propertyService.getZodomusRoomIdForChannel(property, channelId);
         let preferRateId: string | null = null;
+        let rateNamesById: Record<string, string> | null = null;
         try {
           const ratesRaw = await this.zodomus.getRoomRatesRaw(channelId, extId);
           preferRateId = pickPrimaryRateId(ratesRaw, preferRoomId);
+          rateNamesById = buildRateNameMapFromRoomRates(ratesRaw);
         } catch {
           /* soft: fall back to cheapest open rate */
         }
         const raw = await this.zodomus.getAvailability(channelId, extId, checkInYmd, checkOutYmd);
-        const days = extractZodomusInventoryDays(raw, { preferRoomId, preferRateId });
+        const days = extractZodomusInventoryDays(raw, {
+          preferRoomId,
+          preferRateId,
+          rateNamesById,
+        });
         if (suggestedTotalMajor == null) {
           suggestedTotalMajor = sumStayNightlyPrices(days, checkInYmd, checkOutYmd);
         }
@@ -545,18 +554,29 @@ export class ZodomusSyncService {
     blockedDays: string[];
     restrictions: OtaCalendarRestrictionHint[];
     nightlyPrices: Record<string, number>;
+    nightlyPricesFrom: Record<string, number>;
+    nightlyPriceMeta: Record<string, OtaNightlyPriceMeta>;
   }> {
+    const empty = {
+      blockedDays: [] as string[],
+      restrictions: [] as OtaCalendarRestrictionHint[],
+      nightlyPrices: {} as Record<string, number>,
+      nightlyPricesFrom: {} as Record<string, number>,
+      nightlyPriceMeta: {} as Record<string, OtaNightlyPriceMeta>,
+    };
     if (!this.zodomus.isEnabled) {
-      return { blockedDays: [], restrictions: [], nightlyPrices: {} };
+      return empty;
     }
     const channelIds = this.resolveLinkedZodomusChannelIds(property);
     if (channelIds.length === 0) {
-      return { blockedDays: [], restrictions: [], nightlyPrices: {} };
+      return empty;
     }
 
     const blocked = new Set<string>();
     const restrictions: OtaCalendarRestrictionHint[] = [];
     const nightlyPrices: Record<string, number> = {};
+    const nightlyPricesFrom: Record<string, number> = {};
+    const nightlyPriceMeta: Record<string, OtaNightlyPriceMeta> = {};
     const seenHint = new Set<string>();
 
     for (const channelId of channelIds) {
@@ -565,16 +585,22 @@ export class ZodomusSyncService {
       try {
         const preferRoomId = this.propertyService.getZodomusRoomIdForChannel(property, channelId);
         let preferRateId: string | null = null;
+        let rateNamesById: Record<string, string> | null = null;
         try {
           const ratesRaw = await this.zodomus.getRoomRatesRaw(channelId, extId);
           preferRateId = pickPrimaryRateId(ratesRaw, preferRoomId);
+          rateNamesById = buildRateNameMapFromRoomRates(ratesRaw);
         } catch (e) {
           this.logger.debug(
             `calendar overlay room-rates skip property=${property.id} ch=${channelId}: ${formatZodomusHttpException(e)}`,
           );
         }
         const raw = await this.zodomus.getAvailability(channelId, extId, dateFromYmd, dateToYmd);
-        const days = extractZodomusInventoryDays(raw, { preferRoomId, preferRateId });
+        const days = extractZodomusInventoryDays(raw, {
+          preferRoomId,
+          preferRateId,
+          rateNamesById,
+        });
         const blockedDays = collectOtaBlockedDays(days);
         for (const d of blockedDays) blocked.add(d);
         this.logger.debug(
@@ -590,6 +616,12 @@ export class ZodomusSyncService {
         for (const [date, price] of Object.entries(collectOtaNightlyPrices(days))) {
           if (nightlyPrices[date] == null) nightlyPrices[date] = price;
         }
+        for (const [date, price] of Object.entries(collectOtaNightlyPricesFrom(days))) {
+          if (nightlyPricesFrom[date] == null) nightlyPricesFrom[date] = price;
+        }
+        for (const [date, meta] of Object.entries(collectOtaNightlyPriceMeta(days))) {
+          if (nightlyPriceMeta[date] == null) nightlyPriceMeta[date] = meta;
+        }
       } catch (e) {
         this.logger.warn(
           `calendar inventory overlay failed property=${property.id} channel=${channelId}: ${formatZodomusHttpException(e)}`,
@@ -597,7 +629,13 @@ export class ZodomusSyncService {
       }
     }
 
-    return { blockedDays: [...blocked].sort(), restrictions, nightlyPrices };
+    return {
+      blockedDays: [...blocked].sort(),
+      restrictions,
+      nightlyPrices,
+      nightlyPricesFrom,
+      nightlyPriceMeta,
+    };
   }
 
   isPropertyZodomusLinked(property: PropertyEntity): boolean {

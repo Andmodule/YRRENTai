@@ -3,6 +3,8 @@
  * (inventory + rate restrictions such as minStay / closed).
  */
 
+import { isLongStayOrDerivedRateName } from './zodomus-room-rates.util';
+
 export type ZodomusInventoryDay = {
   date: string;
   availability: number | null;
@@ -20,6 +22,19 @@ export type ZodomusInventoryDay = {
   price: number | null;
   /** rateId that won for `price` (debug / tests). */
   priceRateId?: string | null;
+  /** Display name for `priceRateId` when known from GET /room-rates. */
+  priceRateName?: string | null;
+  /**
+   * Cheapest open non-child rate excluding Weekly/Monthly/LOS by name.
+   * Approximate Booking "from" rack (still without Genius).
+   */
+  priceFrom?: number | null;
+  priceFromRateId?: string | null;
+};
+
+export type OtaNightlyPriceMeta = {
+  rateId: string | null;
+  rateName: string | null;
 };
 
 export type ExtractZodomusInventoryOpts = {
@@ -30,6 +45,8 @@ export type ExtractZodomusInventoryOpts = {
    * Availability payloads often omit rate names — only ids.
    */
   preferRateId?: string | null;
+  /** rateId → name from GET /room-rates (for meta + from-price exclusions). */
+  rateNamesById?: Record<string, string> | null;
 };
 
 export type OtaInventoryBlockReason =
@@ -73,10 +90,22 @@ function dayKeyFromNode(n: Record<string, unknown>): string | null {
   return m?.[1] ?? null;
 }
 
+function resolveRateName(
+  rate: Record<string, unknown>,
+  rateId: string,
+  rateNamesById?: Record<string, string> | null,
+): string {
+  const inline = String(rate.name ?? rate.rateName ?? '').trim();
+  if (inline) return inline;
+  if (rateId && rateNamesById?.[rateId]) return rateNamesById[rateId]!;
+  return '';
+}
+
 function mergeRateIntoDay(
   day: ZodomusInventoryDay,
   rate: Record<string, unknown>,
   preferRateId?: string | null,
+  rateNamesById?: Record<string, string> | null,
 ): void {
   const rateClosed = isClosedFlag(rate.closed);
   if (rateClosed) day.closed = true;
@@ -98,25 +127,31 @@ function mergeRateIntoDay(
   if (price == null || !(price > 0)) return;
 
   const rateId = String(rate.rateId ?? rate.id ?? '').trim();
+  const rateName = resolveRateName(rate, rateId, rateNamesById);
   const prefer = preferRateId?.trim() || null;
 
   // Preferred Standard (or mapped) rate wins over any previously merged price.
   if (prefer && rateId && rateId === prefer) {
     day.price = price;
     day.priceRateId = rateId;
-    return;
+    day.priceRateName = rateName || null;
+  } else if (!(prefer && day.priceRateId === prefer)) {
+    /**
+     * Fallback when preferRateId unknown: keep the cheapest open rate.
+     * Math.max previously inflated rack (Weekly/Monthly/NR vs Standard).
+     */
+    if (day.price == null || price < day.price) {
+      day.price = price;
+      day.priceRateId = rateId || null;
+      day.priceRateName = rateName || null;
+    }
   }
 
-  // If we already locked onto the preferred rate, ignore others.
-  if (prefer && day.priceRateId === prefer) return;
-
-  /**
-   * Fallback when preferRateId unknown: keep the cheapest open rate.
-   * Math.max previously inflated rack (Weekly/Monthly/NR vs Standard).
-   */
-  if (day.price == null || price < day.price) {
-    day.price = price;
-    day.priceRateId = rateId || null;
+  // "From" price: cheapest eligible open rate (exclude weekly/monthly/LOS by name).
+  if (rateName && isLongStayOrDerivedRateName(rateName)) return;
+  if (day.priceFrom == null || price < day.priceFrom) {
+    day.priceFrom = price;
+    day.priceFromRateId = rateId || null;
   }
 }
 
@@ -124,6 +159,7 @@ function mergeInventoryScalars(
   day: ZodomusInventoryDay,
   n: Record<string, unknown>,
   preferRateId?: string | null,
+  rateNamesById?: Record<string, string> | null,
 ): void {
   /**
    * Multi-room payloads: take the most restrictive inventory (min avail / max booked).
@@ -152,7 +188,7 @@ function mergeInventoryScalars(
   if (Array.isArray(rates)) {
     for (const r of rates) {
       if (r && typeof r === 'object') {
-        mergeRateIntoDay(day, r as Record<string, unknown>, preferRateId);
+        mergeRateIntoDay(day, r as Record<string, unknown>, preferRateId, rateNamesById);
       }
     }
   }
@@ -193,6 +229,7 @@ export function extractZodomusInventoryDays(
 ): ZodomusInventoryDay[] {
   const byDate = new Map<string, ZodomusInventoryDay>();
   const preferRateId = opts?.preferRateId?.trim() || null;
+  const rateNamesById = opts?.rateNamesById ?? null;
 
   const ensure = (date: string): ZodomusInventoryDay => {
     let d = byDate.get(date);
@@ -208,6 +245,9 @@ export function extractZodomusInventoryDays(
         minStayThrough: null,
         price: null,
         priceRateId: null,
+        priceRateName: null,
+        priceFrom: null,
+        priceFromRateId: null,
       };
       byDate.set(date, d);
     }
@@ -217,7 +257,7 @@ export function extractZodomusInventoryDays(
   const applyDateNode = (n: Record<string, unknown>): void => {
     const date = dayKeyFromNode(n);
     if (!date) return;
-    mergeInventoryScalars(ensure(date), n, preferRateId);
+    mergeInventoryScalars(ensure(date), n, preferRateId, rateNamesById);
   };
 
   const prefer = opts?.preferRoomId?.trim() || null;
@@ -396,6 +436,33 @@ export function collectOtaNightlyPrices(days: ZodomusInventoryDay[]): Record<str
   for (const d of days) {
     if (d.price != null && d.price > 0) {
       out[d.date] = d.price;
+    }
+  }
+  return out;
+}
+
+/** Per-night cheapest eligible open rate (excludes weekly/monthly/LOS). */
+export function collectOtaNightlyPricesFrom(days: ZodomusInventoryDay[]): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const d of days) {
+    if (d.priceFrom != null && d.priceFrom > 0) {
+      out[d.date] = d.priceFrom;
+    }
+  }
+  return out;
+}
+
+/** Per-night primary rate meta (Standard when preferred). */
+export function collectOtaNightlyPriceMeta(
+  days: ZodomusInventoryDay[],
+): Record<string, OtaNightlyPriceMeta> {
+  const out: Record<string, OtaNightlyPriceMeta> = {};
+  for (const d of days) {
+    if (d.price != null && d.price > 0) {
+      out[d.date] = {
+        rateId: d.priceRateId ?? null,
+        rateName: d.priceRateName ?? null,
+      };
     }
   }
   return out;
