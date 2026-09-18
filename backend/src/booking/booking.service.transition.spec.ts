@@ -4,19 +4,34 @@ import { BookingService } from './booking.service';
 import type { BookingEntity } from './entities/booking.entity';
 
 describe('BookingService.transition OTA cancel guard', () => {
-  function buildService(booking: BookingEntity) {
+  function buildService(booking: BookingEntity, linked = true) {
     const bookingRepository = {
       findOne: jest.fn().mockResolvedValue(booking),
       save: jest.fn(async (b: BookingEntity) => b),
     };
     const propertyService = {
-      findOneForUser: jest.fn().mockResolvedValue({ id: booking.propertyId, timezone: 'UTC' }),
+      findOneForUser: jest.fn().mockResolvedValue({
+        id: booking.propertyId,
+        timezone: 'UTC',
+        zodomusPropertyId: linked ? '10322630' : null,
+        channelListings: [],
+      }),
     };
     const zodomusAvailabilityPush = {
       scheduleAvailabilityPush: jest.fn(),
-      pushAvailabilityNow: jest.fn(),
+      pushAvailabilityNow: jest.fn().mockResolvedValue({
+        pushed: true,
+        segmentCount: 1,
+        segmentsDispatched: 1,
+        targetCount: 1,
+        nightsEvaluated: 2,
+        dispatchMode: 'inline',
+      }),
     };
-    const zodomusSync = { pullLiveOtaBookingsForDirectBooking: jest.fn() };
+    const zodomusSync = {
+      pullLiveOtaBookingsForDirectBooking: jest.fn(),
+      isPropertyZodomusLinked: jest.fn().mockReturnValue(linked),
+    };
     const calendarGateway = {
       emitCalendarChanged: jest.fn(),
     };
@@ -58,7 +73,7 @@ describe('BookingService.transition OTA cancel guard', () => {
     expect(zodomusAvailabilityPush.scheduleAvailabilityPush).not.toHaveBeenCalled();
   });
 
-  it('cancels direct booking and schedules availability push without rollback', async () => {
+  it('cancels direct booking and awaits availability push to reopen nights', async () => {
     const booking = {
       id: 'b2',
       propertyId: 'p1',
@@ -85,14 +100,16 @@ describe('BookingService.transition OTA cancel guard', () => {
     expect(saved.status).toBe(BOOKING_STATUS.CANCELLED);
     expect(saved.overbookingConflict).toBe(false);
     expect(saved.overbookingConflictWithBookingId).toBeNull();
-    expect(zodomusAvailabilityPush.scheduleAvailabilityPush).toHaveBeenCalledWith(
+    expect(zodomusAvailabilityPush.pushAvailabilityNow).toHaveBeenCalledWith(
       'p1',
       expect.objectContaining({
         dateFromISO: expect.any(String),
         dateToISO: expect.any(String),
+        awaitUpstream: true,
+        ignoreAutoPushDisable: true,
       }),
     );
-    expect(zodomusAvailabilityPush.pushAvailabilityNow).not.toHaveBeenCalled();
+    expect(zodomusAvailabilityPush.scheduleAvailabilityPush).not.toHaveBeenCalled();
     expect(calendarGateway.emitCalendarChanged).toHaveBeenCalled();
     expect(bookingRepository.save).toHaveBeenCalled();
   });

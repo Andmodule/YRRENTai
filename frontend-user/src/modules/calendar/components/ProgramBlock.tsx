@@ -97,6 +97,12 @@ export const ProgramBlock = memo(function ProgramBlock({ program, onSelect, isMo
 
   const tooltipText = useMemo(() => {
     if (!reservation) return '';
+    if (reservation.otaInventoryBlock) {
+      return [
+        t('otaInventoryBlockedTooltip'),
+        `${format(parseLocalCalendarDay(reservation.checkIn), 'd MMM', { locale })} → ${format(parseLocalCalendarDay(reservation.checkOut), 'd MMM yyyy', { locale })}`,
+      ].join('\n');
+    }
     const price = new Intl.NumberFormat(undefined, {
       style: 'currency',
       currency: reservation.currency,
@@ -198,7 +204,7 @@ export const ProgramBlock = memo(function ProgramBlock({ program, onSelect, isMo
       >
         {reservation ? (
           <span className="min-w-0 flex-1 truncate text-[11px] font-medium leading-tight text-foreground">
-            {reservation.guestName}
+            {reservation.otaInventoryBlock ? t('otaInventoryBlockedLabel') : reservation.guestName}
           </span>
         ) : null}
         {showNights && reservation ? (

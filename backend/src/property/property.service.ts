@@ -204,6 +204,22 @@ export class PropertyService {
     return null;
   }
 
+  /** Optional Zodomus room id for the channel (filters GET /availability overlay). */
+  getZodomusRoomIdForChannel(property: PropertyEntity, zodomusChannelId: number): string | null {
+    const listings = property.channelListings ?? [];
+    for (const row of listings) {
+      const ch = row.otaPlatform?.zodomusChannelId;
+      if (ch === zodomusChannelId) {
+        const room = row.zodomusRoomId?.trim();
+        if (room) return room;
+      }
+    }
+    if (listings.length === 0 || property.otaPlatform?.zodomusChannelId === zodomusChannelId) {
+      return property.zodomusRoomId?.trim() || null;
+    }
+    return null;
+  }
+
   /** Internal: load property by id without ownership (webhooks / outbound delivery). */
   async findByIdBare(id: string): Promise<PropertyEntity | null> {
     return this.propertyRepository.findOne({

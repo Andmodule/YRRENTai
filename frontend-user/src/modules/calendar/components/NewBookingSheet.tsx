@@ -28,10 +28,47 @@ type InitialStatus = 'PENDING' | 'CONFIRMED';
 
 type ConflictPreview = {
   available: boolean;
-  reason?: 'MINIMUM_ONE_NIGHT';
+  reason?:
+    | 'MINIMUM_ONE_NIGHT'
+    | 'OTA_UNAVAILABLE'
+    | 'OTA_CLOSED'
+    | 'OTA_CLOSED_ON_ARRIVAL'
+    | 'OTA_CLOSED_ON_DEPARTURE'
+    | 'OTA_MIN_STAY';
   conflictWith?: { guestName: string; checkIn: string; checkOut: string };
   otaRefreshed?: boolean;
+  otaRestriction?: {
+    reason: string;
+    date?: string;
+    minStayRequired?: number;
+    nights?: number;
+  };
+  /** Sum of Zodomus nightly rack prices (major units) for the stay. */
+  suggestedTotalMajor?: number | null;
 };
+
+function formatMoneyMajor(n: number): string {
+  return (Math.round(n * 100) / 100).toFixed(2);
+}
+
+/** Sum otaNightlyPrices for exclusive checkout nights; null if any night missing. */
+function sumLocalNightlyPrices(
+  prices: Record<string, number> | undefined,
+  checkInYmd: string,
+  checkOutYmd: string,
+): number | null {
+  if (!prices || !checkInYmd || !checkOutYmd || checkInYmd >= checkOutYmd) return null;
+  let total = 0;
+  let cur = checkInYmd;
+  while (cur < checkOutYmd) {
+    const p = prices[cur];
+    if (p == null || !(p > 0)) return null;
+    total += p;
+    cur = format(addDays(parseISO(`${cur}T12:00:00.000Z`), 1), 'yyyy-MM-dd');
+    if (total > 1e9) break;
+  }
+  return Math.round(total * 100) / 100;
+}
 
 interface NewBookingSheetProps {
   open: boolean;
@@ -67,6 +104,7 @@ export function NewBookingSheet({
   const [checkIn, setCheckIn] = useState('');
   const [checkOut, setCheckOut] = useState('');
   const [totalMajor, setTotalMajor] = useState('');
+  const [priceTouched, setPriceTouched] = useState(false);
   const [currency, setCurrency] = useState('EUR');
   const [guestsCount, setGuestsCount] = useState('');
   const [initialStatus, setInitialStatus] = useState<InitialStatus>('PENDING');
@@ -79,26 +117,35 @@ export function NewBookingSheet({
         initialPropertyId && properties.some((p) => p.uuid === initialPropertyId)
           ? initialPropertyId
           : defaultPropertyId;
+      let nextIn = '';
+      let nextOut = '';
+      if (initialGridDates?.checkIn && initialGridDates?.checkOut) {
+        nextIn = initialGridDates.checkIn;
+        nextOut = initialGridDates.checkOut;
+      } else {
+        const today = format(new Date(), 'yyyy-MM-dd');
+        nextIn = today;
+        nextOut = format(addDays(parseISO(`${today}T12:00:00.000Z`), 1), 'yyyy-MM-dd');
+      }
       setPropertyId(preferred);
       setGuestName('');
       setGuestPhone('');
       setGuestEmail('');
       setNotes('');
       setDirectSource('');
-      if (initialGridDates?.checkIn && initialGridDates?.checkOut) {
-        setCheckIn(initialGridDates.checkIn);
-        setCheckOut(initialGridDates.checkOut);
-      } else {
-        const today = format(new Date(), 'yyyy-MM-dd');
-        const out = format(addDays(parseISO(`${today}T12:00:00.000Z`), 1), 'yyyy-MM-dd');
-        setCheckIn(today);
-        setCheckOut(out);
-      }
-      setTotalMajor('');
+      setCheckIn(nextIn);
+      setCheckOut(nextOut);
+      setPriceTouched(false);
+      const prop = properties.find((p) => p.uuid === preferred);
+      const local = sumLocalNightlyPrices(prop?.otaNightlyPrices, nextIn, nextOut);
+      setTotalMajor(local != null && local > 0 ? formatMoneyMajor(local) : '');
       setGuestsCount('');
       setInitialStatus('PENDING');
     }
   }, [open, defaultPropertyId, initialPropertyId, properties, initialGridDates]);
+
+  // conflict-preview soft-pull must NOT invalidate calendar mid-form — that drops otaNightlyPrices
+  // until the slow refetch finishes and leaves Total empty.
 
   const currencyForProperty = useMemo(() => {
     const fp = fullProperties.find((p) => p.id === propertyId);
@@ -151,11 +198,21 @@ export function NewBookingSheet({
     staleTime: 15_000,
   });
 
+  const localSuggestedMajor = useMemo(() => {
+    const prop = properties.find((p) => p.uuid === propertyId);
+    return sumLocalNightlyPrices(prop?.otaNightlyPrices, checkIn, checkOut);
+  }, [properties, propertyId, checkIn, checkOut]);
+
+  const channelSuggestedMajor =
+    conflictPreview?.suggestedTotalMajor != null && conflictPreview.suggestedTotalMajor > 0
+      ? conflictPreview.suggestedTotalMajor
+      : localSuggestedMajor;
+
   useEffect(() => {
-    if (conflictPreview?.otaRefreshed) {
-      void queryClient.invalidateQueries({ queryKey: ['calendar'] });
-    }
-  }, [conflictPreview?.otaRefreshed, queryClient]);
+    if (!open || priceTouched) return;
+    if (channelSuggestedMajor == null || channelSuggestedMajor <= 0) return;
+    setTotalMajor(formatMoneyMajor(channelSuggestedMajor));
+  }, [open, priceTouched, channelSuggestedMajor]);
 
   const emailInvalid = useMemo(() => {
     const e = guestEmail.trim();
@@ -169,8 +226,7 @@ export function NewBookingSheet({
   }, [totalMajor]);
 
   const availabilityOk =
-    conflictQueryError ||
-    (!conflictLoading && !conflictQueryError && conflictPreview?.available === true);
+    !conflictLoading && !conflictQueryError && conflictPreview?.available === true;
 
   const canSubmit =
     Boolean(propertyId.trim()) &&
@@ -184,14 +240,32 @@ export function NewBookingSheet({
     !conflictLoading;
 
   const onCheckInChange = useCallback((v: string) => {
+    setPriceTouched(false);
     setCheckIn(v);
     if (!v) return;
     const ci = parseISO(`${v}T12:00:00.000Z`);
     const co = checkOut ? parseISO(`${checkOut}T12:00:00.000Z`) : null;
+    let nextOut = checkOut;
     if (!co || co.getTime() <= ci.getTime()) {
-      setCheckOut(format(addDays(ci, 1), 'yyyy-MM-dd'));
+      nextOut = format(addDays(ci, 1), 'yyyy-MM-dd');
+      setCheckOut(nextOut);
     }
-  }, [checkOut]);
+    const prop = properties.find((p) => p.uuid === propertyId);
+    const local = sumLocalNightlyPrices(prop?.otaNightlyPrices, v, nextOut || checkOut);
+    if (local != null && local > 0) {
+      setTotalMajor(formatMoneyMajor(local));
+    }
+  }, [checkOut, properties, propertyId]);
+
+  const onCheckOutChange = useCallback((v: string) => {
+    setPriceTouched(false);
+    setCheckOut(v);
+    const prop = properties.find((p) => p.uuid === propertyId);
+    const local = sumLocalNightlyPrices(prop?.otaNightlyPrices, checkIn, v);
+    if (local != null && local > 0) {
+      setTotalMajor(formatMoneyMajor(local));
+    }
+  }, [checkIn, properties, propertyId]);
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -239,11 +313,15 @@ export function NewBookingSheet({
       return mapApiBookingToReservation(booking, { checkIn, checkOut });
     },
     onSuccess: (reservation) => {
+      // Instant bar — do not invalidate calendar immediately (full refetch waits on Zodomus
+      // availability for every property and makes Planby look empty for seconds).
       upsertReservationInCalendarCache(queryClient, reservation);
-      void queryClient.invalidateQueries({ queryKey: ['calendar'] });
       void queryClient.invalidateQueries({ queryKey: ['bookingConflictPreview'] });
       toast.success(t('success'));
       onOpenChange(false);
+      window.setTimeout(() => {
+        void queryClient.invalidateQueries({ queryKey: ['calendar'] });
+      }, 2500);
     },
     onError: (err: unknown) => {
       if (isAxiosError(err) && err.response?.status === 409) {
@@ -256,12 +334,35 @@ export function NewBookingSheet({
         } else toast.error(t('error'));
         return;
       }
+      if (isAxiosError(err) && err.response?.status === 502) {
+        toast.error(t('zodomusPushFailed'));
+        return;
+      }
       if (isAxiosError(err) && err.response?.status === 400) {
-        const msg = err.response.data as { message?: string | string[] };
+        const msg = err.response.data as {
+          message?: string | string[] | { error?: string; message?: string; minStayRequired?: number };
+        };
         const m = msg?.message;
-        const s = Array.isArray(m) ? m[0] : m;
+        const s = Array.isArray(m) ? m[0] : typeof m === 'string' ? m : m?.error ?? m?.message;
         if (s === 'MINIMUM_ONE_NIGHT') {
           toast.error(t('availabilityMinNight'));
+          return;
+        }
+        if (s === 'OTA_MIN_STAY') {
+          const req =
+            typeof m === 'object' && m && !Array.isArray(m) && typeof m.minStayRequired === 'number'
+              ? m.minStayRequired
+              : undefined;
+          toast.error(req != null ? t('availabilityMinStay', { count: req }) : t('availabilityOtaBlocked'));
+          return;
+        }
+        if (
+          s === 'OTA_UNAVAILABLE' ||
+          s === 'OTA_CLOSED' ||
+          s === 'OTA_CLOSED_ON_ARRIVAL' ||
+          s === 'OTA_CLOSED_ON_DEPARTURE'
+        ) {
+          toast.error(t('availabilityOtaBlocked'));
           return;
         }
       }
@@ -305,6 +406,23 @@ export function NewBookingSheet({
           {t('availabilityBlocked', { guest: cw.guestName, from, to })}
         </p>
       );
+    } else if (
+      conflictPreview?.reason === 'OTA_MIN_STAY' ||
+      conflictPreview?.otaRestriction?.reason === 'OTA_MIN_STAY'
+    ) {
+      const req = conflictPreview.otaRestriction?.minStayRequired;
+      body = (
+        <p className="text-xs font-medium text-destructive">
+          {req != null ? t('availabilityMinStay', { count: req }) : t('availabilityOtaBlocked')}
+        </p>
+      );
+    } else if (
+      conflictPreview?.reason === 'OTA_UNAVAILABLE' ||
+      conflictPreview?.reason === 'OTA_CLOSED' ||
+      conflictPreview?.reason === 'OTA_CLOSED_ON_ARRIVAL' ||
+      conflictPreview?.reason === 'OTA_CLOSED_ON_DEPARTURE'
+    ) {
+      body = <p className="text-xs font-medium text-destructive">{t('availabilityOtaBlocked')}</p>;
     } else if (conflictPreview?.available) {
       body = (
         <div className="space-y-1">
@@ -339,7 +457,15 @@ export function NewBookingSheet({
             id="nb-property"
             className={fieldClass}
             value={propertyId}
-            onChange={(e) => setPropertyId(e.target.value)}
+            onChange={(e) => {
+              setPriceTouched(false);
+              setPropertyId(e.target.value);
+              const prop = properties.find((p) => p.uuid === e.target.value);
+              const local = sumLocalNightlyPrices(prop?.otaNightlyPrices, checkIn, checkOut);
+              if (local != null && local > 0) {
+                setTotalMajor(formatMoneyMajor(local));
+              }
+            }}
           >
             {properties.map((p) => (
               <option key={p.uuid} value={p.uuid}>
@@ -417,7 +543,7 @@ export function NewBookingSheet({
               type="date"
               className={fieldClass}
               value={checkOut}
-              onChange={(e) => setCheckOut(e.target.value)}
+              onChange={(e) => onCheckOutChange(e.target.value)}
             />
           </div>
         </div>
@@ -437,9 +563,19 @@ export function NewBookingSheet({
               inputMode="decimal"
               className={fieldClass}
               value={totalMajor}
-              onChange={(e) => setTotalMajor(e.target.value)}
-              placeholder="0.00"
+              onChange={(e) => {
+                setPriceTouched(true);
+                setTotalMajor(e.target.value);
+              }}
+              placeholder={
+                channelSuggestedMajor != null && channelSuggestedMajor > 0
+                  ? formatMoneyMajor(channelSuggestedMajor)
+                  : '0.00'
+              }
             />
+            {channelSuggestedMajor != null && channelSuggestedMajor > 0 && !priceTouched ? (
+              <p className="text-[11px] leading-snug text-muted-foreground">{t('priceFromChannel')}</p>
+            ) : null}
           </div>
           <div className="space-y-1">
             <Label htmlFor="nb-currency" className={labelClass}>

@@ -37,6 +37,8 @@ const zodomusEnvFields = z.object({
     .transform((v) => v === 'true' || v === '1' || v === 'yes'),
   /** Delay before the startup poll (ms). 0 = as soon as the event loop runs after init. Default: 20000. */
   ZODOMUS_INITIAL_POLL_DELAY_MS: z.coerce.number().int().min(0).max(600_000).default(20_000),
+  /** Default price model for POST /property-activation (1 = Maximum/Single for Booking). */
+  ZODOMUS_PRICE_MODEL_ID: z.coerce.number().int().positive().default(1),
   /** Default OTA channel id for queue sync and availability push (e.g. 1 = Booking.com). */
   ZODOMUS_DEFAULT_CHANNEL_ID: z.coerce.number().int().positive().default(1),
   /** Push computed availability to Zodomus after local booking changes. Default: true. */
@@ -79,8 +81,13 @@ const zodomusEnvFields = z.object({
   ZODOMUS_SYNC_SOFT_BACKOFF_MINUTES: z.coerce.number().int().min(1).max(1440).default(30),
   /** Persistent quarantine for permanent listing/property errors (invalid id, inactive). Default: 1440 (1 day). */
   ZODOMUS_SYNC_PERMANENT_BLOCK_MINUTES: z.coerce.number().int().min(5).max(10_080).default(1440),
-  /** Per-attempt HTTP timeout for Zodomus upstream fetch (ms). Retries use a fresh timer each attempt. Default: 8000. */
-  ZODOMUS_FETCH_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(8000),
+  /** Per-attempt HTTP timeout for Zodomus upstream fetch (ms). Retries use a fresh timer each attempt. Default: 30000. */
+  ZODOMUS_FETCH_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(30_000),
+  /**
+   * Timeout for heavy GET /reservations-summary (all future bookings).
+   * Zodomus often exceeds the general fetch timeout on this path. Default: 60000.
+   */
+  ZODOMUS_SUMMARY_TIMEOUT_MS: z.coerce.number().int().min(5000).max(180_000).default(60_000),
 });
 
 const icalEnvFields = z.object({

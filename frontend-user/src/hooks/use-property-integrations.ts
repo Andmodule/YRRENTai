@@ -112,3 +112,44 @@ export function useZodomusRefreshStatus() {
     },
   });
 }
+
+export type ZodomusBindMappingResponse = {
+  propertyId: string;
+  channelId: number;
+  externalPropertyId: string;
+  zodomusStatus: string | null;
+  steps: Array<{ step: string; ok: boolean; detail?: string }>;
+};
+
+/**
+ * POST /integrations/zodomus/bind-mapping —
+ * cancel → activate → rooms-activation → property-check → import (full Mapping API).
+ */
+export function useZodomusBindMapping() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (vars: {
+      propertyId: string;
+      channelId?: number;
+      remap?: boolean;
+      skipImport?: boolean;
+    }) => {
+      const res = await apiClient.post<{ data: ZodomusBindMappingResponse }>(
+        '/integrations/zodomus/bind-mapping',
+        {
+          propertyId: vars.propertyId,
+          channelId: vars.channelId ?? 1,
+          remap: vars.remap !== false,
+          skipImport: Boolean(vars.skipImport),
+        },
+      );
+      const d = res.data?.data;
+      if (!d?.propertyId) throw new Error('Invalid bind-mapping response');
+      return d;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['calendar'] });
+      queryClient.invalidateQueries({ queryKey: ['properties'] });
+    },
+  });
+}

@@ -6,6 +6,7 @@ import { format } from 'date-fns';
 import { ClipboardList, Copy, Loader2, MessageSquare, TriangleAlert, XCircle } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
+import { isAxiosError } from 'axios';
 import { Link } from '@/i18n/navigation';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -71,7 +72,12 @@ export function ReservationDetailPanelFooter({
       toast.success(zodomusLinked ? t('cancelBookingSuccessChannel') : t('cancelBookingSuccess'));
       await queryClient.invalidateQueries({ queryKey: ['calendar'] });
     },
-    onError: () => {
+    onError: (err: unknown) => {
+      if (isAxiosError(err) && err.response?.status === 502) {
+        toast.error(t('cancelBookingChannelPushError'));
+        void queryClient.invalidateQueries({ queryKey: ['calendar'] });
+        return;
+      }
       toast.error(t('cancelBookingError'));
     },
   });

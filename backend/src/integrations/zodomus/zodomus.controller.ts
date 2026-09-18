@@ -14,6 +14,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { ZodomusService } from './zodomus.service';
 import { ZodomusSyncService } from './zodomus-sync.service';
 import { ZodomusAvailabilityPushService } from './zodomus-availability-push.service';
+import { ZodomusMappingService } from './zodomus-mapping.service';
 import { PropertyService } from '../../property/property.service';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -31,6 +32,7 @@ export class ZodomusController {
     private readonly zodomus: ZodomusService,
     private readonly zodomusSync: ZodomusSyncService,
     private readonly availabilityPush: ZodomusAvailabilityPushService,
+    private readonly zodomusMapping: ZodomusMappingService,
     private readonly propertyService: PropertyService,
     private readonly userService: UserService,
   ) {}
@@ -125,8 +127,47 @@ export class ZodomusController {
   }
 
   /**
+   * Full Mapping API bind: cancel → activate → rooms-activation → property-check → import.
+   * Call after saving external listing id on a property (or to remap an existing link).
+   */
+  @Post('bind-mapping')
+  @Roles('OWNER', 'MANAGER', 'SUPERADMIN')
+  async bindMapping(
+    @CurrentUser() user: JwtPayload,
+    @Body()
+    body: {
+      propertyId: string;
+      channelId?: number;
+      remap?: boolean;
+      priceModelId?: number;
+      skipImport?: boolean;
+    },
+  ) {
+    if (!this.zodomus.isEnabled) {
+      throw new ServiceUnavailableException('Zodomus is disabled');
+    }
+    const propertyId = body.propertyId?.trim();
+    if (!propertyId) throw new BadRequestException('propertyId is required');
+    const channelId = Number(body.channelId ?? 1);
+    if (!Number.isFinite(channelId) || channelId < 1) {
+      throw new BadRequestException('channelId must be a positive number');
+    }
+    const property =
+      user.role === 'SUPERADMIN'
+        ? await this.propertyService.findByIdForAdmin(propertyId)
+        : await this.propertyService.findOneForUser(propertyId, user.sub, user.role);
+
+    const data = await this.zodomusMapping.bindPropertyMapping(property, channelId, {
+      remap: body.remap !== false,
+      priceModelId: body.priceModelId,
+      skipImport: Boolean(body.skipImport),
+    });
+    return { data };
+  }
+
+  /**
    * Refresh persisted Zodomus listing status for one property or all owner-linked properties.
-   * Probes GET /reservations-queue without importing bookings.
+   * Probes POST /property-check (not the reservation queue) and stores zodomusStatus.
    */
   @Post('refresh-status')
   @Roles('OWNER', 'MANAGER', 'SUPERADMIN')

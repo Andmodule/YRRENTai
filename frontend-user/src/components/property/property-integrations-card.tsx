@@ -10,12 +10,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
   useIcalSyncProperty,
+  useZodomusBindMapping,
   useZodomusImportSummary,
   useZodomusQueueSync,
   useZodomusRefreshStatus,
 } from '@/hooks/use-property-integrations';
 import { ZodomusStatusBadge } from '@/components/property/zodomus-status-badge';
 import type { ZodomusPropertyStatus } from '@rentai/shared';
+import { isAxiosError } from 'axios';
 
 function buildPublicIcsUrl(propertyId: string): string {
   if (typeof window === 'undefined') return '';
@@ -60,6 +62,7 @@ export function PropertyIntegrationsCard({
   const zImport = useZodomusImportSummary();
   const zQueue = useZodomusQueueSync();
   const zRefresh = useZodomusRefreshStatus();
+  const zBind = useZodomusBindMapping();
   const hasZodomus =
     Boolean(zodomusPropertyId?.trim()) ||
     Boolean(channelListings?.some((c) => c.externalListingId?.trim()));
@@ -70,6 +73,33 @@ export function PropertyIntegrationsCard({
       toast.success(t('exportCopied'));
     } catch {
       toast.error(t('exportCopyFailed'));
+    }
+  }
+
+  async function runFullMapping() {
+    const ch = Number(channelId);
+    if (!Number.isFinite(ch) || ch < 1) {
+      toast.error(t('channelInvalid'));
+      return;
+    }
+    try {
+      const d = await zBind.mutateAsync({ propertyId, channelId: ch, remap: true });
+      const failed = d.steps.filter((s) => !s.ok).map((s) => s.step);
+      if (failed.length > 0) {
+        toast.warning(t('zodomusBindPartial', { steps: failed.join(', '), status: d.zodomusStatus ?? '—' }));
+      } else {
+        toast.success(t('zodomusBindOk', { status: d.zodomusStatus ?? '—' }));
+      }
+      await onSynced?.();
+    } catch (e) {
+      const msg = isAxiosError(e)
+        ? String(
+            (e.response?.data as { message?: string | { message?: string } } | undefined)?.message ??
+              e.message,
+          )
+        : t('zodomusBindError');
+      toast.error(typeof msg === 'string' ? msg : t('zodomusBindError'));
+      console.error(e);
     }
   }
 
@@ -192,6 +222,25 @@ export function PropertyIntegrationsCard({
               <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
             )}
             {t('icalSyncButton')}
+          </Button>
+        </div>
+
+        <div className="space-y-3 border-t border-border pt-4">
+          <Label className="text-xs">{t('zodomusBindLabel')}</Label>
+          <p className="text-[11px] text-muted-foreground">{t('zodomusBindHint')}</p>
+          <Button
+            type="button"
+            size="sm"
+            disabled={!hasZodomus || zBind.isPending}
+            onClick={() => void runFullMapping()}
+            title={!hasZodomus ? t('zodomusImportDisabledHint') : undefined}
+          >
+            {zBind.isPending ? (
+              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+            )}
+            {t('zodomusBindButton')}
           </Button>
         </div>
 

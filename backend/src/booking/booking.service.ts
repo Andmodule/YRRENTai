@@ -3,6 +3,8 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
+  BadGatewayException,
+  HttpException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -30,6 +32,25 @@ import {
   nightsBetweenInPropertyTimezone,
 } from './booking-availability.util';
 import { ZODOMUS_BOOKING_FLOW } from '../integrations/zodomus/zodomus-booking-flow.constants';
+import type { OtaInventoryBlockReason } from '../integrations/zodomus/zodomus-inventory.util';
+
+export type BookingConflictPreviewResult = {
+  available: boolean;
+  reason?: 'MINIMUM_ONE_NIGHT' | OtaInventoryBlockReason;
+  conflictWith?: { guestName: string; checkIn: string; checkOut: string };
+  otaRefreshed?: boolean;
+  otaRestriction?: {
+    reason: OtaInventoryBlockReason;
+    date?: string;
+    minStayRequired?: number;
+    nights?: number;
+  };
+  /**
+   * Sum of Zodomus nightly rack prices for the stay (major units).
+   * Used as default total in the new-booking form.
+   */
+  suggestedTotalMajor?: number | null;
+};
 
 @Injectable()
 export class BookingService {
@@ -55,6 +76,18 @@ export class BookingService {
     return calendarDayToInstantInTimezone(day, propertyTimezone);
   }
 
+  private throwOtaInventoryBlock(
+    result: Extract<Awaited<ReturnType<ZodomusSyncService['assertStayAllowedByOtaInventory']>>, { ok: false }>,
+  ): never {
+    throw new BadRequestException({
+      error: result.reason,
+      message: result.reason,
+      date: result.date,
+      minStayRequired: result.minStayRequired,
+      nights: result.nights,
+    });
+  }
+
   async create(dto: CreateBookingDto, userId: string, role: string): Promise<BookingEntity> {
     const property = await this.propertyService.findOneForUser(dto.propertyId, userId, role);
     const checkIn = this.normalizeBookingDay(dto.checkIn, property.timezone);
@@ -66,6 +99,7 @@ export class BookingService {
     }
 
     // Pull live OTA reservations (Booking via Zodomus) into local DB before conflict check.
+    // Hard-fails when linked channels error (returnCode >= 400 / network).
     await this.zodomusSync.pullLiveOtaBookingsForDirectBooking(property);
 
     const overlap = await this.findBlockingOverlap(property.id, checkIn, checkOut);
@@ -78,6 +112,16 @@ export class BookingService {
           checkOut: overlap.checkOut.toISOString(),
         },
       });
+    }
+
+    const inventory = await this.zodomusSync.assertStayAllowedByOtaInventory(
+      property,
+      checkIn,
+      checkOut,
+      nights,
+    );
+    if (!inventory.ok) {
+      this.throwOtaInventoryBlock(inventory);
     }
 
     const emailNorm = normalizeGuestEmail(dto.guestEmail);
@@ -113,16 +157,42 @@ export class BookingService {
     // Direct booking only — no Zodomus reservation-create (unsupported in public API).
     // Occupancy is sent to OTAs via availability push (see doc/zodomus/BOOKING-FLOW.md).
     const saved = await this.bookingRepository.save(booking);
-    this.zodomusAvailabilityPush.scheduleAvailabilityPush(saved.propertyId, {
-      dateFromISO: saved.checkIn.toISOString(),
-      dateToISO: saved.checkOut.toISOString(),
-    });
+
+    const linked = this.zodomusSync.isPropertyZodomusLinked(property);
+    if (linked) {
+      try {
+        await this.zodomusAvailabilityPush.pushAvailabilityNow(saved.propertyId, {
+          dateFromISO: saved.checkIn.toISOString(),
+          dateToISO: saved.checkOut.toISOString(),
+          ignoreAutoPushDisable: true,
+          awaitUpstream: true,
+        });
+      } catch (e) {
+        await this.bookingRepository.remove(saved);
+        if (e instanceof HttpException) {
+          const body = e.getResponse();
+          throw new BadGatewayException({
+            error: 'ZODOMUS_AVAILABILITY_PUSH_FAILED',
+            message: 'Zodomus availability push failed — local booking was not kept',
+            upstream: 'zodomus',
+            detail: typeof body === 'object' && body !== null ? body : String(e.message),
+          });
+        }
+        throw new BadGatewayException({
+          error: 'ZODOMUS_AVAILABILITY_PUSH_FAILED',
+          message: 'Zodomus availability push failed — local booking was not kept',
+          upstream: 'zodomus',
+          detail: String(e),
+        });
+      }
+    }
+
     this.calendarGateway.emitCalendarChanged({ propertyId: saved.propertyId, source: 'booking:create' });
     return saved;
   }
 
   /**
-   * For UI: same overlap + min-night rules as create, without persisting.
+   * For UI: same overlap + min-night + OTA inventory rules as create, without persisting.
    * Also refreshes live OTA bookings when the property is linked to Zodomus.
    */
   async previewConflict(
@@ -131,12 +201,7 @@ export class BookingService {
     checkOutIso: string,
     userId: string,
     role: string,
-  ): Promise<{
-    available: boolean;
-    reason?: 'MINIMUM_ONE_NIGHT';
-    conflictWith?: { guestName: string; checkIn: string; checkOut: string };
-    otaRefreshed?: boolean;
-  }> {
+  ): Promise<BookingConflictPreviewResult> {
     const property = await this.propertyService.findOneForUser(propertyId, userId, role);
     const checkIn = this.normalizeBookingDay(checkInIso, property.timezone);
     const checkOut = this.normalizeBookingDay(checkOutIso, property.timezone);
@@ -159,7 +224,33 @@ export class BookingService {
         otaRefreshed: live.attempted,
       };
     }
-    return { available: true, otaRefreshed: live.attempted };
+
+    const inventory = await this.zodomusSync.assertStayAllowedByOtaInventory(
+      property,
+      checkIn,
+      checkOut,
+      nights,
+    );
+    if (!inventory.ok) {
+      return {
+        available: false,
+        reason: inventory.reason,
+        otaRefreshed: live.attempted,
+        suggestedTotalMajor: inventory.suggestedTotalMajor,
+        otaRestriction: {
+          reason: inventory.reason,
+          date: inventory.date,
+          minStayRequired: inventory.minStayRequired,
+          nights: inventory.nights,
+        },
+      };
+    }
+
+    return {
+      available: true,
+      otaRefreshed: live.attempted,
+      suggestedTotalMajor: inventory.suggestedTotalMajor,
+    };
   }
 
   private async findBlockingOverlap(
@@ -401,10 +492,32 @@ export class BookingService {
     );
 
     // Inventory only — never treat availability push as OTA reservation cancel authority.
-    this.zodomusAvailabilityPush.scheduleAvailabilityPush(saved.propertyId, {
-      dateFromISO: saved.checkIn.toISOString(),
-      dateToISO: saved.checkOut.toISOString(),
-    });
+    // Direct cancel: await upstream so OTA nights reopen before response.
+    const property = await this.propertyService.findOneForUser(saved.propertyId, userId, role);
+    if (next === BOOKING_STATUS.CANCELLED && this.zodomusSync.isPropertyZodomusLinked(property)) {
+      try {
+        await this.zodomusAvailabilityPush.pushAvailabilityNow(saved.propertyId, {
+          dateFromISO: saved.checkIn.toISOString(),
+          dateToISO: saved.checkOut.toISOString(),
+          ignoreAutoPushDisable: true,
+          awaitUpstream: true,
+        });
+      } catch (e) {
+        // Local cancel already applied; push service marks dirty for retry.
+        if (e instanceof HttpException) throw e;
+        throw new BadGatewayException({
+          error: 'ZODOMUS_AVAILABILITY_PUSH_FAILED',
+          message: 'Booking cancelled locally but Zodomus availability reopen failed',
+          upstream: 'zodomus',
+          detail: String(e),
+        });
+      }
+    } else {
+      this.zodomusAvailabilityPush.scheduleAvailabilityPush(saved.propertyId, {
+        dateFromISO: saved.checkIn.toISOString(),
+        dateToISO: saved.checkOut.toISOString(),
+      });
+    }
 
     this.calendarGateway.emitCalendarChanged({ propertyId: saved.propertyId, source: 'booking:transition' });
 

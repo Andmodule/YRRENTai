@@ -1,11 +1,11 @@
-import { BadRequestException, ConflictException } from '@nestjs/common';
+import { BadRequestException, BadGatewayException, ConflictException } from '@nestjs/common';
 import { BOOKING_STATUS } from '@rentai/shared';
 import { BookingService } from './booking.service';
 import { ZODOMUS_BOOKING_FLOW } from '../integrations/zodomus/zodomus-booking-flow.constants';
 import type { BookingEntity } from './entities/booking.entity';
 
 describe('BookingService.create → Zodomus availability', () => {
-  function buildService(opts: { overlap?: BookingEntity | null } = {}) {
+  function buildService(opts: { overlap?: BookingEntity | null; linked?: boolean } = {}) {
     const saved: BookingEntity[] = [];
     const bookingRepository = {
       findOne: jest.fn(),
@@ -13,6 +13,11 @@ describe('BookingService.create → Zodomus availability', () => {
       save: jest.fn(async (row: BookingEntity) => {
         if (!row.id) row.id = 'new-direct-id';
         saved.push(row);
+        return row;
+      }),
+      remove: jest.fn(async (row: BookingEntity) => {
+        const idx = saved.indexOf(row);
+        if (idx >= 0) saved.splice(idx, 1);
         return row;
       }),
       createQueryBuilder: jest.fn(() => {
@@ -30,11 +35,20 @@ describe('BookingService.create → Zodomus availability', () => {
         ownerId: 'owner-1',
         timezone: 'UTC',
         currency: 'EUR',
+        channelListings: opts.linked === false ? [] : undefined,
+        zodomusPropertyId: opts.linked === false ? null : '10322630',
       }),
     };
     const zodomusAvailabilityPush = {
       scheduleAvailabilityPush: jest.fn(),
-      pushAvailabilityNow: jest.fn(),
+      pushAvailabilityNow: jest.fn().mockResolvedValue({
+        pushed: true,
+        segmentCount: 1,
+        segmentsDispatched: 1,
+        targetCount: 1,
+        nightsEvaluated: 2,
+        dispatchMode: 'inline',
+      }),
     };
     const zodomusSync = {
       pullLiveOtaBookingsForDirectBooking: jest.fn().mockResolvedValue({
@@ -44,6 +58,12 @@ describe('BookingService.create → Zodomus availability', () => {
         queueProcessed: 0,
         errors: [],
       }),
+      assertStayAllowedByOtaInventory: jest.fn().mockResolvedValue({
+        ok: true,
+        checked: false,
+        suggestedTotalMajor: null,
+      }),
+      isPropertyZodomusLinked: jest.fn().mockReturnValue(opts.linked !== false),
     };
     const calendarGateway = { emitCalendarChanged: jest.fn() };
     const eventEmitter = { emit: jest.fn() };
@@ -60,10 +80,17 @@ describe('BookingService.create → Zodomus availability', () => {
       calendarGateway as never,
       guestService as never,
     );
-    return { service, bookingRepository, zodomusAvailabilityPush, zodomusSync, calendarGateway, saved };
+    return {
+      service,
+      bookingRepository,
+      zodomusAvailabilityPush,
+      zodomusSync,
+      calendarGateway,
+      saved,
+    };
   }
 
-  it('creates a direct booking and schedules availability push (CRM → Zodomus inventory)', async () => {
+  it('creates a direct booking and awaits availability push (CRM → Zodomus inventory)', async () => {
     const { service, zodomusAvailabilityPush, zodomusSync, calendarGateway, saved } = buildService();
 
     const result = await service.create(
@@ -87,16 +114,43 @@ describe('BookingService.create → Zodomus availability', () => {
     expect(result.zodomusReservationId).toBeUndefined();
     expect(saved).toHaveLength(1);
     expect(zodomusSync.pullLiveOtaBookingsForDirectBooking).toHaveBeenCalled();
-    expect(zodomusAvailabilityPush.scheduleAvailabilityPush).toHaveBeenCalledWith(
+    expect(zodomusSync.assertStayAllowedByOtaInventory).toHaveBeenCalled();
+    expect(zodomusAvailabilityPush.pushAvailabilityNow).toHaveBeenCalledWith(
       'p1',
       expect.objectContaining({
         dateFromISO: expect.any(String),
         dateToISO: expect.any(String),
+        awaitUpstream: true,
+        ignoreAutoPushDisable: true,
       }),
     );
+    expect(zodomusAvailabilityPush.scheduleAvailabilityPush).not.toHaveBeenCalled();
     expect(calendarGateway.emitCalendarChanged).toHaveBeenCalledWith(
       expect.objectContaining({ source: 'booking:create' }),
     );
+  });
+
+  it('rolls back local booking when availability push fails', async () => {
+    const { service, bookingRepository, zodomusAvailabilityPush, saved } = buildService();
+    zodomusAvailabilityPush.pushAvailabilityNow.mockRejectedValue(new Error('upstream 400'));
+
+    await expect(
+      service.create(
+        {
+          propertyId: 'p1',
+          guestName: 'Direct Guest',
+          checkIn: '2026-09-10T12:00:00.000Z',
+          checkOut: '2026-09-12T12:00:00.000Z',
+          totalPriceMinor: 10000,
+          currency: 'EUR',
+        },
+        'u1',
+        'OWNER',
+      ),
+    ).rejects.toBeInstanceOf(BadGatewayException);
+
+    expect(bookingRepository.remove).toHaveBeenCalled();
+    expect(saved).toHaveLength(0);
   });
 
   it('pulls live OTA before conflict check and still rejects overlap', async () => {
@@ -133,7 +187,35 @@ describe('BookingService.create → Zodomus availability', () => {
     ).rejects.toBeInstanceOf(ConflictException);
 
     expect(zodomusSync.pullLiveOtaBookingsForDirectBooking).toHaveBeenCalled();
-    expect(zodomusAvailabilityPush.scheduleAvailabilityPush).not.toHaveBeenCalled();
+    expect(zodomusAvailabilityPush.pushAvailabilityNow).not.toHaveBeenCalled();
+  });
+
+  it('rejects create when OTA inventory/restrictions block the stay', async () => {
+    const { service, zodomusAvailabilityPush, zodomusSync } = buildService();
+    zodomusSync.assertStayAllowedByOtaInventory.mockResolvedValue({
+      ok: false,
+      reason: 'OTA_MIN_STAY',
+      minStayRequired: 3,
+      nights: 1,
+      checked: true,
+    });
+
+    await expect(
+      service.create(
+        {
+          propertyId: 'p1',
+          guestName: 'Direct Guest',
+          checkIn: '2026-09-13T12:00:00.000Z',
+          checkOut: '2026-09-14T12:00:00.000Z',
+          totalPriceMinor: 10000,
+          currency: 'EUR',
+        },
+        'u1',
+        'OWNER',
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(zodomusAvailabilityPush.pushAvailabilityNow).not.toHaveBeenCalled();
   });
 });
 
@@ -158,8 +240,14 @@ describe('BookingService.transition OTA cancel guard (constants)', () => {
     const propertyService = {
       findOneForUser: jest.fn().mockResolvedValue({ id: booking.propertyId, timezone: 'UTC' }),
     };
-    const zodomusAvailabilityPush = { scheduleAvailabilityPush: jest.fn() };
-    const zodomusSync = { pullLiveOtaBookingsForDirectBooking: jest.fn() };
+    const zodomusAvailabilityPush = {
+      scheduleAvailabilityPush: jest.fn(),
+      pushAvailabilityNow: jest.fn(),
+    };
+    const zodomusSync = {
+      pullLiveOtaBookingsForDirectBooking: jest.fn(),
+      isPropertyZodomusLinked: jest.fn().mockReturnValue(true),
+    };
     const calendarGateway = { emitCalendarChanged: jest.fn() };
     const eventEmitter = { emit: jest.fn() };
 
@@ -183,6 +271,6 @@ describe('BookingService.transition OTA cancel guard (constants)', () => {
     expect((caught as BadRequestException).message).toContain(
       ZODOMUS_BOOKING_FLOW.OTA_CANCEL_VIA_CHANNEL,
     );
-    expect(zodomusAvailabilityPush.scheduleAvailabilityPush).not.toHaveBeenCalled();
+    expect(zodomusAvailabilityPush.pushAvailabilityNow).not.toHaveBeenCalled();
   });
 });

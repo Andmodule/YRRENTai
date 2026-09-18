@@ -195,6 +195,16 @@ export function CalendarView({
     [filteredReservations],
   );
 
+  /** Force Planby remount when reservation set changes — useEpg often keeps a stale layout after cache upsert. */
+  const planbyLayoutKey = useMemo(
+    () =>
+      filteredReservations
+        .map((r) => `${r.uuid}:${r.checkIn}:${r.checkOut}:${r.status}`)
+        .sort()
+        .join('|'),
+    [filteredReservations],
+  );
+
   const { getEpgProps, getLayoutProps } = useEpg({
     channels,
     epg,
@@ -309,7 +319,10 @@ export function CalendarView({
     layoutItemHeight,
   ]);
 
-  const onSelectReservation = useCallback((r: Reservation) => setSelectedId(r.uuid), []);
+  const onSelectReservation = useCallback((r: Reservation) => {
+    if (r.otaInventoryBlock) return;
+    setSelectedId(r.uuid);
+  }, []);
 
   const renderProgram = useCallback(
     (props: {
@@ -682,7 +695,7 @@ export function CalendarView({
             {/* eslint-disable-next-line react/no-danger -- scoped grid overlay for Planby content */}
             <style dangerouslySetInnerHTML={{ __html: calendarGridCss }} />
             <div className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-col">
-              <Epg {...epgProps}>
+              <Epg key={planbyLayoutKey || 'empty'} {...epgProps}>
                 <Layout
                   {...layoutProps}
                   renderProgram={renderProgram}
