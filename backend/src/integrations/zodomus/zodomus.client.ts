@@ -9,22 +9,38 @@ import { assertZodomusSuccess } from './zodomus-status.util';
 
 const FETCH_MAX_ATTEMPTS = 3;
 
+type FetchOpts = {
+  /** Override per-attempt AbortController timeout (ms). */
+  timeoutMs?: number;
+};
+
 @Injectable()
 export class ZodomusClient {
   private readonly logger = new Logger(ZodomusClient.name);
   private readonly baseUrl: string;
   private readonly authHeader: string;
   private readonly fetchTimeoutMs: number;
+  private readonly summaryTimeoutMs: number;
 
   constructor(private readonly config: ConfigService) {
     this.baseUrl = this.config.getOrThrow<string>('ZODOMUS_BASE_URL').replace(/\/$/, '');
     const user = this.config.getOrThrow<string>('ZODOMUS_API_USER');
     const pass = this.config.getOrThrow<string>('ZODOMUS_API_PASSWORD');
     this.authHeader = `Basic ${Buffer.from(`${user}:${pass}`, 'utf8').toString('base64')}`;
-    this.fetchTimeoutMs = this.config.get<number>('ZODOMUS_FETCH_TIMEOUT_MS') ?? 8000;
+    this.fetchTimeoutMs = this.config.get<number>('ZODOMUS_FETCH_TIMEOUT_MS') ?? 30_000;
+    this.summaryTimeoutMs = this.config.get<number>('ZODOMUS_SUMMARY_TIMEOUT_MS') ?? 60_000;
   }
 
-  async get<T>(path: string, params?: Record<string, string>): Promise<T> {
+  /** Timeout used for GET /reservations-summary (heavy upstream). */
+  get reservationsSummaryTimeoutMs(): number {
+    return Math.max(this.fetchTimeoutMs, this.summaryTimeoutMs);
+  }
+
+  async get<T>(
+    path: string,
+    params?: Record<string, string>,
+    opts?: FetchOpts,
+  ): Promise<T> {
     const url = new URL(`${this.baseUrl}${path.startsWith('/') ? path : `/${path}`}`);
     if (params) {
       Object.entries(params).forEach(([k, v]) => {
@@ -33,50 +49,64 @@ export class ZodomusClient {
     }
 
     const label = `GET ${path}`;
+    const timeoutMs = opts?.timeoutMs ?? this.fetchTimeoutMs;
     const res = await this.fetchWithRetry(label, () =>
-      this.timedFetch(url.toString(), {
-        method: 'GET',
-        headers: {
-          Authorization: this.authHeader,
-          Accept: 'application/json',
+      this.timedFetch(
+        url.toString(),
+        {
+          method: 'GET',
+          headers: {
+            Authorization: this.authHeader,
+            Accept: 'application/json',
+          },
         },
-      }),
+        timeoutMs,
+      ),
     );
 
     return this.handleResponse<T>(res, label);
   }
 
-  async post<T>(path: string, body: unknown): Promise<T> {
+  async post<T>(path: string, body: unknown, opts?: FetchOpts): Promise<T> {
     const p = path.startsWith('/') ? path : `/${path}`;
     const label = `POST ${path}`;
+    const timeoutMs = opts?.timeoutMs ?? this.fetchTimeoutMs;
     const res = await this.fetchWithRetry(label, () =>
-      this.timedFetch(`${this.baseUrl}${p}`, {
-        method: 'POST',
-        headers: {
-          Authorization: this.authHeader,
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
+      this.timedFetch(
+        `${this.baseUrl}${p}`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: this.authHeader,
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          },
+          body: JSON.stringify(body ?? {}),
         },
-        body: JSON.stringify(body ?? {}),
-      }),
+        timeoutMs,
+      ),
     );
 
     return this.handleResponse<T>(res, label);
   }
 
   /** Single fetch with AbortController timeout (each retry gets a new timer). */
-  private async timedFetch(url: string, init: Omit<RequestInit, 'signal'>): Promise<Response> {
+  private async timedFetch(
+    url: string,
+    init: Omit<RequestInit, 'signal'>,
+    timeoutMs: number,
+  ): Promise<Response> {
     const controller = new AbortController();
     let timedOut = false;
     const t = setTimeout(() => {
       timedOut = true;
       controller.abort();
-    }, this.fetchTimeoutMs);
+    }, timeoutMs);
     try {
       return await fetch(url, { ...init, signal: controller.signal });
     } catch (e) {
       if (timedOut && e instanceof Error && e.name === 'AbortError') {
-        throw new Error(`Zodomus fetch timed out after ${this.fetchTimeoutMs}ms`);
+        throw new Error(`Zodomus fetch timed out after ${timeoutMs}ms`);
       }
       throw e;
     } finally {

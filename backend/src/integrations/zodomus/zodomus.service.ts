@@ -97,10 +97,15 @@ export class ZodomusService {
     channelId: number,
     propertyId: string,
   ): Promise<ZodomusReservation[]> {
-    const raw = await this.ensureEnabled().get<unknown>('/reservations-summary', {
-      channelId: String(channelId),
-      propertyId,
-    });
+    const client = this.ensureEnabled();
+    const raw = await client.get<unknown>(
+      '/reservations-summary',
+      {
+        channelId: String(channelId),
+        propertyId,
+      },
+      { timeoutMs: client.reservationsSummaryTimeoutMs },
+    );
     const list = this.normalizeArray<unknown>(raw);
     return list.map((item, i) => this.normalizeReservation(item, `summary-${i}`));
   }

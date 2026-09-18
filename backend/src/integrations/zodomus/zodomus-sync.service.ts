@@ -495,7 +495,8 @@ export class ZodomusSyncService {
       if (!extId) continue;
       try {
         const raw = await this.zodomus.getAvailability(channelId, extId, checkInYmd, checkOutYmd);
-        const days = extractZodomusInventoryDays(raw);
+        const preferRoomId = this.propertyService.getZodomusRoomIdForChannel(property, channelId);
+        const days = extractZodomusInventoryDays(raw, { preferRoomId });
         if (suggestedTotalMajor == null) {
           suggestedTotalMajor = sumStayNightlyPrices(days, checkInYmd, checkOutYmd);
         }
@@ -555,8 +556,13 @@ export class ZodomusSyncService {
       if (!extId) continue;
       try {
         const raw = await this.zodomus.getAvailability(channelId, extId, dateFromYmd, dateToYmd);
-        const days = extractZodomusInventoryDays(raw);
-        for (const d of collectOtaBlockedDays(days)) blocked.add(d);
+        const preferRoomId = this.propertyService.getZodomusRoomIdForChannel(property, channelId);
+        const days = extractZodomusInventoryDays(raw, { preferRoomId });
+        const blockedDays = collectOtaBlockedDays(days);
+        for (const d of blockedDays) blocked.add(d);
+        this.logger.debug(
+          `calendar overlay property=${property.id} ch=${channelId} ext=${extId} room=${preferRoomId ?? 'all'} days=${days.length} blocked=${blockedDays.length}`,
+        );
         for (const h of collectOtaRestrictionHints(days)) {
           const key = `${h.date}:${h.kind}:${h.minStay ?? ''}`;
           if (seenHint.has(key)) continue;

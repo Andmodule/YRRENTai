@@ -118,27 +118,35 @@ export function NewBookingSheet({
         initialPropertyId && properties.some((p) => p.uuid === initialPropertyId)
           ? initialPropertyId
           : defaultPropertyId;
+      let nextIn = '';
+      let nextOut = '';
+      if (initialGridDates?.checkIn && initialGridDates?.checkOut) {
+        nextIn = initialGridDates.checkIn;
+        nextOut = initialGridDates.checkOut;
+      } else {
+        const today = format(new Date(), 'yyyy-MM-dd');
+        nextIn = today;
+        nextOut = format(addDays(parseISO(`${today}T12:00:00.000Z`), 1), 'yyyy-MM-dd');
+      }
       setPropertyId(preferred);
       setGuestName('');
       setGuestPhone('');
       setGuestEmail('');
       setNotes('');
       setDirectSource('');
-      if (initialGridDates?.checkIn && initialGridDates?.checkOut) {
-        setCheckIn(initialGridDates.checkIn);
-        setCheckOut(initialGridDates.checkOut);
-      } else {
-        const today = format(new Date(), 'yyyy-MM-dd');
-        const out = format(addDays(parseISO(`${today}T12:00:00.000Z`), 1), 'yyyy-MM-dd');
-        setCheckIn(today);
-        setCheckOut(out);
-      }
-      setTotalMajor('');
+      setCheckIn(nextIn);
+      setCheckOut(nextOut);
       setPriceTouched(false);
+      const prop = properties.find((p) => p.uuid === preferred);
+      const local = sumLocalNightlyPrices(prop?.otaNightlyPrices, nextIn, nextOut);
+      setTotalMajor(local != null && local > 0 ? formatMoneyMajor(local) : '');
       setGuestsCount('');
       setInitialStatus('PENDING');
     }
   }, [open, defaultPropertyId, initialPropertyId, properties, initialGridDates]);
+
+  // conflict-preview soft-pull must NOT invalidate calendar mid-form — that drops otaNightlyPrices
+  // until the slow refetch finishes and leaves Total empty.
 
   const currencyForProperty = useMemo(() => {
     const fp = fullProperties.find((p) => p.id === propertyId);
@@ -191,12 +199,6 @@ export function NewBookingSheet({
     staleTime: 15_000,
   });
 
-  useEffect(() => {
-    if (conflictPreview?.otaRefreshed) {
-      void queryClient.invalidateQueries({ queryKey: ['calendar'] });
-    }
-  }, [conflictPreview?.otaRefreshed, queryClient]);
-
   const localSuggestedMajor = useMemo(() => {
     const prop = properties.find((p) => p.uuid === propertyId);
     return sumLocalNightlyPrices(prop?.otaNightlyPrices, checkIn, checkOut);
@@ -244,15 +246,27 @@ export function NewBookingSheet({
     if (!v) return;
     const ci = parseISO(`${v}T12:00:00.000Z`);
     const co = checkOut ? parseISO(`${checkOut}T12:00:00.000Z`) : null;
+    let nextOut = checkOut;
     if (!co || co.getTime() <= ci.getTime()) {
-      setCheckOut(format(addDays(ci, 1), 'yyyy-MM-dd'));
+      nextOut = format(addDays(ci, 1), 'yyyy-MM-dd');
+      setCheckOut(nextOut);
     }
-  }, [checkOut]);
+    const prop = properties.find((p) => p.uuid === propertyId);
+    const local = sumLocalNightlyPrices(prop?.otaNightlyPrices, v, nextOut || checkOut);
+    if (local != null && local > 0) {
+      setTotalMajor(formatMoneyMajor(local));
+    }
+  }, [checkOut, properties, propertyId]);
 
   const onCheckOutChange = useCallback((v: string) => {
     setPriceTouched(false);
     setCheckOut(v);
-  }, []);
+    const prop = properties.find((p) => p.uuid === propertyId);
+    const local = sumLocalNightlyPrices(prop?.otaNightlyPrices, checkIn, v);
+    if (local != null && local > 0) {
+      setTotalMajor(formatMoneyMajor(local));
+    }
+  }, [checkIn, properties, propertyId]);
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -300,11 +314,15 @@ export function NewBookingSheet({
       return mapApiBookingToReservation(booking, { checkIn, checkOut });
     },
     onSuccess: (reservation) => {
+      // Instant bar — do not invalidate calendar immediately (full refetch waits on Zodomus
+      // availability for every property and makes Planby look empty for seconds).
       upsertReservationInCalendarCache(queryClient, reservation);
-      void queryClient.invalidateQueries({ queryKey: ['calendar'] });
       void queryClient.invalidateQueries({ queryKey: ['bookingConflictPreview'] });
       toast.success(t('success'));
       onOpenChange(false);
+      window.setTimeout(() => {
+        void queryClient.invalidateQueries({ queryKey: ['calendar'] });
+      }, 2500);
     },
     onError: (err: unknown) => {
       if (isAxiosError(err) && err.response?.status === 409) {
@@ -443,6 +461,11 @@ export function NewBookingSheet({
             onChange={(e) => {
               setPriceTouched(false);
               setPropertyId(e.target.value);
+              const prop = properties.find((p) => p.uuid === e.target.value);
+              const local = sumLocalNightlyPrices(prop?.otaNightlyPrices, checkIn, checkOut);
+              if (local != null && local > 0) {
+                setTotalMajor(formatMoneyMajor(local));
+              }
             }}
           >
             {properties.map((p) => (

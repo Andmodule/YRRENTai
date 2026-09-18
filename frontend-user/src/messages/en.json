@@ -372,7 +372,13 @@
       "zodomusStatusHint": "Checks whether the reservation queue is available for this listing.",
       "zodomusStatusRefresh": "Refresh status",
       "zodomusStatusRefreshed": "Zodomus status updated",
-      "zodomusStatusRefreshError": "Failed to refresh Zodomus status"
+      "zodomusStatusRefreshError": "Failed to refresh Zodomus status",
+      "zodomusBindLabel": "Full channel mapping (Zodomus)",
+      "zodomusBindHint": "Runs the official Mapping flow: unbind → activate → rooms/rates → status check → import bookings. Use after linking a Booking/Zodomus id, or to remap.",
+      "zodomusBindButton": "Bind / remap channel",
+      "zodomusBindOk": "Mapping finished · status: {status}",
+      "zodomusBindPartial": "Mapping finished with warnings ({steps}) · status: {status}",
+      "zodomusBindError": "Mapping failed — check Zodomus credentials and listing id"
     },
     "detail": {
       "channels": "Sales channels",

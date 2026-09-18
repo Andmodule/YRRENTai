@@ -83,11 +83,80 @@ function mergeRateIntoDay(day: ZodomusInventoryDay, rate: Record<string, unknown
   }
 }
 
+function mergeInventoryScalars(day: ZodomusInventoryDay, n: Record<string, unknown>): void {
+  /**
+   * Multi-room payloads: take the most restrictive inventory (min avail / max booked).
+   * Last-write-wins previously made calendar look free when another room was open.
+   */
+  const avail = toNum(n.availability);
+  if (avail != null) {
+    day.availability = day.availability == null ? avail : Math.min(day.availability, avail);
+  }
+  const booked = toNum(n.booked);
+  if (booked != null) {
+    day.booked = day.booked == null ? booked : Math.max(day.booked, booked);
+  }
+  if (isClosedFlag(n.closed)) day.closed = true;
+  if (isClosedFlag(n.closedOnArrival)) day.closedOnArrival = true;
+  if (isClosedFlag(n.closedOnDeparture ?? n.closedOnDepart)) day.closedOnDeparture = true;
+  const minArr = toNum(n.minStayArrival ?? n.minStay);
+  if (minArr != null && minArr > 0) {
+    day.minStayArrival = day.minStayArrival == null ? minArr : Math.max(day.minStayArrival, minArr);
+  }
+  const minThru = toNum(n.minStayThrough);
+  if (minThru != null && minThru > 0) {
+    day.minStayThrough = day.minStayThrough == null ? minThru : Math.max(day.minStayThrough, minThru);
+  }
+  const rates = n.rates;
+  if (Array.isArray(rates)) {
+    for (const r of rates) {
+      if (r && typeof r === 'object') mergeRateIntoDay(day, r as Record<string, unknown>);
+    }
+  }
+}
+
+function roomIdOf(n: Record<string, unknown>): string | null {
+  const raw = n.roomId ?? n.id;
+  if (raw == null || raw === '') return null;
+  const s = String(raw).trim();
+  return s || null;
+}
+
+function findRoomsArrays(body: unknown): Array<Record<string, unknown>> {
+  const out: Array<Record<string, unknown>> = [];
+  const visit = (node: unknown, depth: number): void => {
+    if (!node || typeof node !== 'object' || depth > 6) return;
+    if (Array.isArray(node)) {
+      for (const item of node) visit(item, depth + 1);
+      return;
+    }
+    const n = node as Record<string, unknown>;
+    const rooms = n.rooms;
+    if (Array.isArray(rooms) && rooms.length > 0 && rooms.every((r) => r && typeof r === 'object')) {
+      for (const r of rooms) out.push(r as Record<string, unknown>);
+      return;
+    }
+    for (const v of Object.values(n)) {
+      if (v && typeof v === 'object') visit(v, depth + 1);
+    }
+  };
+  visit(body, 0);
+  return out;
+}
+
+export type ExtractZodomusInventoryOpts = {
+  /** When set, only this room's dates are used (CRM zodomusRoomId). */
+  preferRoomId?: string | null;
+};
+
 /**
- * Walk arbitrary Zodomus availability JSON and collect per-date inventory + restrictions.
- * Handles both flat day nodes and nested `rates[]` under each day.
+ * Walk Zodomus availability JSON and collect per-date inventory + restrictions.
+ * Prefers `rooms[].dates[]` when present; multi-room merges use min availability.
  */
-export function extractZodomusInventoryDays(body: unknown): ZodomusInventoryDay[] {
+export function extractZodomusInventoryDays(
+  body: unknown,
+  opts?: ExtractZodomusInventoryOpts,
+): ZodomusInventoryDay[] {
   const byDate = new Map<string, ZodomusInventoryDay>();
 
   const ensure = (date: string): ZodomusInventoryDay => {
@@ -109,6 +178,35 @@ export function extractZodomusInventoryDays(body: unknown): ZodomusInventoryDay[
     return d;
   };
 
+  const applyDateNode = (n: Record<string, unknown>): void => {
+    const date = dayKeyFromNode(n);
+    if (!date) return;
+    mergeInventoryScalars(ensure(date), n);
+  };
+
+  const prefer = opts?.preferRoomId?.trim() || null;
+  const rooms = findRoomsArrays(body);
+  if (rooms.length > 0) {
+    let selected = rooms;
+    if (prefer) {
+      const matched = rooms.filter((r) => roomIdOf(r) === prefer);
+      if (matched.length > 0) selected = matched;
+    }
+    for (const room of selected) {
+      const dates = room.dates;
+      if (Array.isArray(dates)) {
+        for (const d of dates) {
+          if (d && typeof d === 'object') applyDateNode(d as Record<string, unknown>);
+        }
+      } else {
+        applyDateNode(room);
+      }
+    }
+    if (byDate.size > 0) {
+      return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+    }
+  }
+
   const walk = (node: unknown): void => {
     if (!node || typeof node !== 'object') return;
     if (Array.isArray(node)) {
@@ -116,31 +214,7 @@ export function extractZodomusInventoryDays(body: unknown): ZodomusInventoryDay[
       return;
     }
     const n = node as Record<string, unknown>;
-    const date = dayKeyFromNode(n);
-    if (date) {
-      const day = ensure(date);
-      const avail = toNum(n.availability);
-      if (avail != null) day.availability = avail;
-      const booked = toNum(n.booked);
-      if (booked != null) day.booked = booked;
-      if (isClosedFlag(n.closed)) day.closed = true;
-      if (isClosedFlag(n.closedOnArrival)) day.closedOnArrival = true;
-      if (isClosedFlag(n.closedOnDeparture ?? n.closedOnDepart)) day.closedOnDeparture = true;
-      const minArr = toNum(n.minStayArrival ?? n.minStay);
-      if (minArr != null && minArr > 0) {
-        day.minStayArrival = day.minStayArrival == null ? minArr : Math.max(day.minStayArrival, minArr);
-      }
-      const minThru = toNum(n.minStayThrough);
-      if (minThru != null && minThru > 0) {
-        day.minStayThrough = day.minStayThrough == null ? minThru : Math.max(day.minStayThrough, minThru);
-      }
-      const rates = n.rates;
-      if (Array.isArray(rates)) {
-        for (const r of rates) {
-          if (r && typeof r === 'object') mergeRateIntoDay(day, r as Record<string, unknown>);
-        }
-      }
-    }
+    applyDateNode(n);
     for (const v of Object.values(n)) {
       if (v && typeof v === 'object') walk(v);
     }

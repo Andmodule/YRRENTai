@@ -113,6 +113,45 @@ describe('zodomus-inventory.util', () => {
     });
   });
 
+  it('merges multi-room availability with min avail (not last-write)', () => {
+    const days = extractZodomusInventoryDays({
+      rooms: [
+        {
+          id: 'room-busy',
+          dates: [{ date: '2026-09-20', availability: '0', booked: '1', rates: [] }],
+        },
+        {
+          id: 'room-free',
+          dates: [{ date: '2026-09-20', availability: '1', booked: '0', rates: [] }],
+        },
+      ],
+    });
+    expect(days).toHaveLength(1);
+    expect(days[0].availability).toBe(0);
+    expect(days[0].booked).toBe(1);
+    expect(collectOtaBlockedDays(days)).toEqual(['2026-09-20']);
+  });
+
+  it('filters availability to preferRoomId when set', () => {
+    const days = extractZodomusInventoryDays(
+      {
+        rooms: [
+          {
+            id: 'room-busy',
+            dates: [{ date: '2026-09-20', availability: '0', booked: '1' }],
+          },
+          {
+            id: 'room-free',
+            dates: [{ date: '2026-09-20', availability: '1', booked: '0' }],
+          },
+        ],
+      },
+      { preferRoomId: 'room-free' },
+    );
+    expect(days[0].availability).toBe(1);
+    expect(collectOtaBlockedDays(days)).toEqual([]);
+  });
+
   it('sumStayNightlyPrices returns null when a night lacks price', () => {
     const { sumStayNightlyPrices } =
       require('./zodomus-inventory.util') as typeof import('./zodomus-inventory.util');

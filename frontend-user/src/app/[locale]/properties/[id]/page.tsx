@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { useProperty, useProperties } from '@/hooks/use-properties';
 import { useKnowledgeBase } from '@/hooks/use-knowledge-base';
+import { useZodomusBindMapping } from '@/hooks/use-property-integrations';
 import {
   PropertyForm,
   DeletePropertyDialog,
@@ -32,6 +33,7 @@ import { ErrorState } from '@/components/ui/error-state';
 import { Link } from '@/i18n/navigation';
 import { cn } from '@/lib/utils';
 import type { CreatePropertyDto } from '@/types';
+import { isAxiosError } from 'axios';
 
 interface PropertyDetailPageProps {
   params: Promise<{ id: string }>;
@@ -57,10 +59,64 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
   const { property, isLoading, isError, mutate } = useProperty(id);
   const { updateProperty, deleteProperty } = useProperties();
   const { entries, isLoading: kbLoading, createEntry, updateEntry, deleteEntry, mutate: mutateKb } = useKnowledgeBase(id);
+  const zBind = useZodomusBindMapping();
+  const tIntegrations = useTranslations('properties.integrations');
 
   async function handleUpdate(dto: CreatePropertyDto): Promise<void> {
     await updateProperty(id, dto);
     await mutate();
+  }
+
+  async function runBindAfterChannelSave(dto: CreatePropertyDto) {
+    const nextListings = dto.channelListings ?? [];
+    const hasListing =
+      nextListings.some((c) => c.externalListingId?.trim()) || Boolean(dto.zodomusPropertyId?.trim());
+    if (!hasListing) return;
+
+    const prevKey = [
+      ...(property?.channelListings ?? []).map(
+        (c) => `${c.otaPlatformId}:${c.externalListingId.trim()}:${c.zodomusRoomId ?? ''}`,
+      ),
+      property?.zodomusPropertyId?.trim() ?? '',
+    ]
+      .sort()
+      .join('|');
+    const nextKey = [
+      ...nextListings.map(
+        (c) => `${c.otaPlatformId}:${c.externalListingId.trim()}:${c.zodomusRoomId ?? ''}`,
+      ),
+      dto.zodomusPropertyId?.trim() ?? '',
+    ]
+      .sort()
+      .join('|');
+    if (prevKey === nextKey) return;
+
+    const channelId =
+      property?.channelListings?.find((c) => c.externalListingId?.trim())?.otaPlatform
+        ?.zodomusChannelId ??
+      property?.otaPlatform?.zodomusChannelId ??
+      1;
+
+    try {
+      const d = await zBind.mutateAsync({ propertyId: id, channelId, remap: true });
+      const failed = d.steps.filter((s) => !s.ok).map((s) => s.step);
+      if (failed.length > 0) {
+        toast.warning(
+          tIntegrations('zodomusBindPartial', {
+            steps: failed.join(', '),
+            status: d.zodomusStatus ?? '—',
+          }),
+        );
+      } else {
+        toast.success(tIntegrations('zodomusBindOk', { status: d.zodomusStatus ?? '—' }));
+      }
+      await mutate();
+    } catch (e) {
+      const msg = isAxiosError(e)
+        ? String((e.response?.data as { message?: string } | undefined)?.message ?? e.message)
+        : tIntegrations('zodomusBindError');
+      toast.error(msg);
+    }
   }
 
   async function handleInlineSave(dto: CreatePropertyDto) {
@@ -68,6 +124,7 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
       await handleUpdate(dto);
       setIsEditingSettings(false);
       toast.success(t('updateSuccess'));
+      void runBindAfterChannelSave(dto);
     } catch {
       toast.error(t('updateError'));
     }
