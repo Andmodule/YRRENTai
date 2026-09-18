@@ -495,9 +495,16 @@ export class ZodomusSyncService {
       const extId = this.propertyService.getExternalListingIdForZodomusChannel(property, channelId);
       if (!extId) continue;
       try {
-        const raw = await this.zodomus.getAvailability(channelId, extId, checkInYmd, checkOutYmd);
         const preferRoomId = this.propertyService.getZodomusRoomIdForChannel(property, channelId);
-        const days = extractZodomusInventoryDays(raw, { preferRoomId });
+        let preferRateId: string | null = null;
+        try {
+          const ratesRaw = await this.zodomus.getRoomRatesRaw(channelId, extId);
+          preferRateId = pickPrimaryRateId(ratesRaw, preferRoomId);
+        } catch {
+          /* soft: fall back to cheapest open rate */
+        }
+        const raw = await this.zodomus.getAvailability(channelId, extId, checkInYmd, checkOutYmd);
+        const days = extractZodomusInventoryDays(raw, { preferRoomId, preferRateId });
         if (suggestedTotalMajor == null) {
           suggestedTotalMajor = sumStayNightlyPrices(days, checkInYmd, checkOutYmd);
         }
