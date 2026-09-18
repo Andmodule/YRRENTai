@@ -148,7 +148,11 @@ export class CalendarService {
       let cur = r.checkIn;
       while (cur < r.checkOut) {
         set.add(cur);
-        const [y, m, d] = cur.split('-').map(Number);
+        const parts = cur.split('-').map(Number);
+        const y = parts[0];
+        const m = parts[1];
+        const d = parts[2];
+        if (y == null || m == null || d == null) break;
         cur = new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
       }
     }

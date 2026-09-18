@@ -155,6 +155,18 @@ export function CalendarView({
   const { ref: gridContainerRef, width: gridWidth, height: gridHeight } = useContainerSize();
   const hasMeasuredSize =
     gridWidth != null && gridWidth > 0 && gridHeight != null && gridHeight > 0;
+  /**
+   * Remount Planby once when container size first becomes valid so layoutHeight
+   * is not stuck at 0. Do NOT key by pixel size — scrollbar changes remount-loop
+   * the grid into a blank frame.
+   */
+  const [planbySizeEpoch, setPlanbySizeEpoch] = useState(0);
+  const sizeReadyRef = useRef(false);
+  useEffect(() => {
+    if (!hasMeasuredSize || sizeReadyRef.current) return;
+    sizeReadyRef.current = true;
+    setPlanbySizeEpoch(1);
+  }, [hasMeasuredSize]);
 
   const onSelectReservation = useCallback((r: Reservation) => {
     if (r.otaInventoryBlock) return;
@@ -401,16 +413,16 @@ export function CalendarView({
       >
         {filteredProperties.length === 0 ? (
           <CalendarEmptyNoReservations />
-        ) : hasMeasuredSize ? (
+        ) : (
           <CalendarPlanbyGrid
-            key={`${Math.round(gridWidth)}x${Math.round(gridHeight)}`}
+            key={`epg-${planbySizeEpoch}`}
             calendarScopeId={calendarScopeId}
             dateRange={dateRange}
             onDateRangeChange={onDateRangeChange}
             filteredProperties={filteredProperties}
             filteredReservations={filteredReservations}
-            width={gridWidth}
-            height={gridHeight}
+            width={hasMeasuredSize ? gridWidth : undefined}
+            height={hasMeasuredSize ? gridHeight : undefined}
             isMobile={isMobile}
             locale={locale}
             planbyTheme={planbyTheme}
@@ -418,10 +430,6 @@ export function CalendarView({
             onSelectReservation={onSelectReservation}
             onEmptyCellClick={onEmptyCellClick}
           />
-        ) : (
-          <div className="flex min-h-0 flex-1 items-stretch">
-            <CalendarSkeleton />
-          </div>
         )}
       </div>
       </div>

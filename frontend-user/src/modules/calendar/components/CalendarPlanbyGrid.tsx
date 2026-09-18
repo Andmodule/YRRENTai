@@ -27,9 +27,9 @@ export interface CalendarPlanbyGridProps {
   onDateRangeChange: (r: CalendarDateRange) => void;
   filteredProperties: Property[];
   filteredReservations: Reservation[];
-  /** Measured container size — must be > 0 (parent gates mount). */
-  width: number;
-  height: number;
+  /** Measured container size — optional; Planby self-measures when omitted. */
+  width?: number;
+  height?: number;
   isMobile: boolean;
   locale: Locale;
   planbyTheme: Theme;
@@ -119,8 +119,8 @@ export function CalendarPlanbyGrid({
     isTimeline: true,
     isSidebar: true,
     theme: planbyTheme,
-    width,
-    height,
+    ...(width != null && width > 0 ? { width } : {}),
+    ...(height != null && height > 0 ? { height } : {}),
   });
 
   const epgProps = getEpgProps();

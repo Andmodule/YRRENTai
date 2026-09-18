@@ -57,7 +57,7 @@ function dayKeyFromNode(n: Record<string, unknown>): string | null {
   const raw = n.date ?? n.day ?? n.dateFrom;
   if (typeof raw !== 'string') return null;
   const m = raw.trim().match(/^(\d{4}-\d{2}-\d{2})/);
-  return m ? m[1] : null;
+  return m?.[1] ?? null;
 }
 
 function mergeRateIntoDay(day: ZodomusInventoryDay, rate: Record<string, unknown>): void {
@@ -224,16 +224,19 @@ export function extractZodomusInventoryDays(
   return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
 }
 
-/** Inclusive calendar nights: [checkIn, checkOut). */
+  /** Inclusive calendar nights: [checkIn, checkOut). */
 export function enumerateStayNightKeys(checkInYmd: string, checkOutYmd: string): string[] {
   if (checkInYmd >= checkOutYmd) return [];
   const out: string[] = [];
   let cur = checkInYmd;
   while (cur < checkOutYmd) {
     out.push(cur);
-    const [y, m, d] = cur.split('-').map(Number);
-    const next = new Date(Date.UTC(y, m - 1, d + 1));
-    cur = next.toISOString().slice(0, 10);
+    const parts = cur.split('-').map(Number);
+    const y = parts[0];
+    const m = parts[1];
+    const d = parts[2];
+    if (y == null || m == null || d == null) break;
+    cur = new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
     if (out.length > 800) break;
   }
   return out;
@@ -307,14 +310,18 @@ export function mergeBlockedDaysToRanges(
   const sorted = [...new Set(days.filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)))].sort();
   if (sorted.length === 0) return [];
   const ranges: Array<{ checkIn: string; checkOut: string }> = [];
-  let start = sorted[0];
-  let prev = sorted[0];
+  let start = sorted[0]!;
+  let prev = sorted[0]!;
   const nextDay = (ymd: string): string => {
-    const [y, m, d] = ymd.split('-').map(Number);
+    const parts = ymd.split('-').map(Number);
+    const y = parts[0];
+    const m = parts[1];
+    const d = parts[2];
+    if (y == null || m == null || d == null) return ymd;
     return new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
   };
   for (let i = 1; i < sorted.length; i++) {
-    const cur = sorted[i];
+    const cur = sorted[i]!;
     if (cur === nextDay(prev)) {
       prev = cur;
       continue;
