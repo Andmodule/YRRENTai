@@ -29,10 +29,8 @@ describe('zodomus-inventory.util', () => {
       ],
     });
     expect(days).toHaveLength(2);
-    const d0 = days[0]!;
-    const d1 = days[1]!;
-    expect(d0.minStayThrough).toBe(3);
-    expect(d1.availability).toBe(0);
+    expect(days[0]!.minStayThrough).toBe(3);
+    expect(days[1]!.availability).toBe(0);
     expect(collectOtaBlockedDays(days)).toEqual(['2026-09-14']);
   });
 
@@ -80,8 +78,41 @@ describe('zodomus-inventory.util', () => {
     ]);
   });
 
-  it('extracts max open rate price per night', () => {
-    const days = extractZodomusInventoryDays({
+  it('prefers Standard rate id when provided; else cheapest open rate', () => {
+    const days = extractZodomusInventoryDays(
+      {
+        rooms: [
+          {
+            id: 'r1',
+            dates: [
+              {
+                date: '2026-09-17',
+                availability: '1',
+                rates: [
+                  { rateId: 'std', closed: '0', price: '600.0' },
+                  { rateId: 'nr', closed: '0', price: '540.0' },
+                  { rateId: 'closed', closed: '1', price: '999.0' },
+                ],
+              },
+              {
+                date: '2026-09-18',
+                availability: '1',
+                rates: [{ rateId: 'std', closed: '0', price: '700.0' }],
+              },
+            ],
+          },
+        ],
+      },
+      { preferRateId: 'std' },
+    );
+    const d0 = days[0]!;
+    const d1 = days[1]!;
+    expect(d0.price).toBe(600);
+    expect(d0.priceRateId).toBe('std');
+    expect(d0.priceFrom).toBe(540);
+    expect(d0.priceFromRateId).toBe('nr');
+    expect(d1.price).toBe(700);
+    const withoutPrefer = extractZodomusInventoryDays({
       rooms: [
         {
           id: 'r1',
@@ -92,33 +123,68 @@ describe('zodomus-inventory.util', () => {
               rates: [
                 { rateId: 'std', closed: '0', price: '600.0' },
                 { rateId: 'nr', closed: '0', price: '540.0' },
-                { rateId: 'closed', closed: '1', price: '999.0' },
               ],
-            },
-            {
-              date: '2026-09-18',
-              availability: '1',
-              rates: [{ rateId: 'std', closed: '0', price: '700.0' }],
             },
           ],
         },
       ],
     });
-    const p0 = days[0]!;
-    const p1 = days[1]!;
-    expect(p0.price).toBe(600);
-    expect(p1.price).toBe(700);
-    const { sumStayNightlyPrices, collectOtaNightlyPrices } =
-      require('./zodomus-inventory.util') as typeof import('./zodomus-inventory.util');
+    expect(withoutPrefer[0]!.price).toBe(540);
+    const {
+      sumStayNightlyPrices,
+      collectOtaNightlyPrices,
+      collectOtaNightlyPricesFrom,
+      collectOtaNightlyPriceMeta,
+      sumNightlyPriceMap,
+    } = require('./zodomus-inventory.util') as typeof import('./zodomus-inventory.util');
     expect(sumStayNightlyPrices(days, '2026-09-17', '2026-09-19')).toBe(1300);
     expect(collectOtaNightlyPrices(days)).toEqual({
       '2026-09-17': 600,
       '2026-09-18': 700,
     });
-    const { sumNightlyPriceMap } =
-      require('./zodomus-inventory.util') as typeof import('./zodomus-inventory.util');
+    expect(collectOtaNightlyPricesFrom(days)['2026-09-17']).toBe(540);
+    expect(collectOtaNightlyPriceMeta(days)['2026-09-17']).toEqual({
+      rateId: 'std',
+      rateName: null,
+    });
     expect(sumNightlyPriceMap(collectOtaNightlyPrices(days), '2026-09-17', '2026-09-19')).toBe(1300);
     expect(sumNightlyPriceMap(collectOtaNightlyPrices(days), '2026-09-17', '2026-09-20')).toBeNull();
+  });
+
+  it('excludes weekly/monthly from priceFrom when rate names are known', () => {
+    const days = extractZodomusInventoryDays(
+      {
+        rooms: [
+          {
+            id: 'r1',
+            dates: [
+              {
+                date: '2026-09-17',
+                availability: '1',
+                rates: [
+                  { rateId: 'std', closed: '0', price: '600.0' },
+                  { rateId: 'nr', closed: '0', price: '540.0' },
+                  { rateId: 'mon', closed: '0', price: '420.0' },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      {
+        preferRateId: 'std',
+        rateNamesById: {
+          std: 'Standard Rate',
+          nr: 'Non-refundable Rate',
+          mon: 'Monthly rate',
+        },
+      },
+    );
+    const named = days[0]!;
+    expect(named.price).toBe(600);
+    expect(named.priceRateName).toBe('Standard Rate');
+    expect(named.priceFrom).toBe(540);
+    expect(named.priceFromRateId).toBe('nr');
   });
 
   it('merges multi-room availability with min avail (not last-write)', () => {

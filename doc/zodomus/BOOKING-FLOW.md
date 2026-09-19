@@ -28,6 +28,26 @@ flowchart LR
   CRM -->|"GET availability"| Zodomus
 ```
 
+## Цены: Zodomus rack vs Booking.com Genius
+
+| Что видит менеджер | Источник | Что это |
+|--------------------|----------|---------|
+| `otaNightlyPrices` в календаре | `GET /availability` → `rates[].price`, **Standard** из `GET /room-rates` | Channel-manager **rack** (без Genius / акций Booking) |
+| `otaNightlyPricesFrom` | Тот же ARI, cheapest open non-child **без** Weekly/Monthly/LOS | Приближение Booking «от» до Genius |
+| Публичная цена на Booking | Genius, −10%, mobile deals | **Не** приходит через Zodomus CM API |
+
+Поток чтения:
+
+1. `GET /room-rates` → `pickPrimaryRateId` (Standard) + карта имён тарифов  
+2. `GET /availability` → `extractZodomusInventoryDays({ preferRateId, rateNamesById })`  
+3. `GET /calendar` отдаёт `otaNightlyPrices` / `otaNightlyPricesFrom` / `otaNightlyPriceMeta`  
+4. Push цены: `POST /rates` на тот же Standard `rateId`
+
+Если Standard ≈ зачёркнутой цене на Booking, а финальная ниже — это Genius/промо, не баг sync.  
+Скрипт сверки: `doc/zodomus/_tmp-price-compare-probe.mjs`.
+
+---
+
 ## Live OTA перед прямой бронью
 
 Перед `findBlockingOverlap` при `POST /bookings` и `GET …/conflict-preview`:

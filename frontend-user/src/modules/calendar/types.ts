@@ -19,8 +19,12 @@ export interface Property {
   otaBlockedDays?: string[];
   /** Rate restriction hints from Zodomus GET /availability. */
   otaRestrictions?: OtaCalendarRestrictionHint[];
-  /** Nightly rack prices from channel (major units). */
+  /** Nightly rack prices from channel (major units). Standard preferred — not Genius B2C. */
   otaNightlyPrices?: Record<string, number>;
+  /** Cheapest open eligible rate (excludes weekly/monthly/LOS); still without Genius. */
+  otaNightlyPricesFrom?: Record<string, number>;
+  /** Rate that won for otaNightlyPrices per night. */
+  otaNightlyPriceMeta?: Record<string, { rateId: string | null; rateName: string | null }>;
 }
 
 export interface Reservation {

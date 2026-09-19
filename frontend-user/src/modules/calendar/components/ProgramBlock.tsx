@@ -78,6 +78,7 @@ interface ProgramBlockProps {
   isMobile: boolean;
   /** Channel rack prices for OTA total fallback when CRM total is 0. */
   otaNightlyPrices?: Record<string, number>;
+  otaNightlyPricesFrom?: Record<string, number>;
 }
 
 export const ProgramBlock = memo(function ProgramBlock({
@@ -85,6 +86,7 @@ export const ProgramBlock = memo(function ProgramBlock({
   onSelect,
   isMobile: _isMobile,
   otaNightlyPrices,
+  otaNightlyPricesFrom,
 }: ProgramBlockProps) {
   const t = useTranslations('calendar');
   const locale = useDateLocale();
@@ -118,6 +120,7 @@ export const ProgramBlock = memo(function ProgramBlock({
       reservation.checkOut,
       otaNightlyPrices,
       t('priceUnavailable'),
+      otaNightlyPricesFrom,
     );
     const st = t(statusLabelKey[reservation.status]);
     const lines = [
@@ -132,7 +135,7 @@ export const ProgramBlock = memo(function ProgramBlock({
       lines.push('', t('timelineLegendShort'));
     }
     return lines.join('\n');
-  }, [reservation, locale, t, status, otaNightlyPrices]);
+  }, [reservation, locale, t, status, otaNightlyPrices, otaNightlyPricesFrom]);
 
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
