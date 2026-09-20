@@ -106,4 +106,33 @@ describe('ZodomusRatesPushService priceSingle', () => {
 
     expect(setRates.mock.calls[0][0].currencyCode).toBe('PLN');
   });
+
+  it('falls back to PLN when property currency is not in allowed OTA set', async () => {
+    const propertyRepo = {
+      findOne: jest.fn().mockResolvedValue(
+        makeProperty({ currency: 'GBP' } as Partial<PropertyEntity>),
+      ),
+    } as unknown as Repository<PropertyEntity>;
+    const bookingRepo = {
+      createQueryBuilder: jest.fn().mockReturnValue(makeQb()),
+    } as unknown as Repository<BookingEntity>;
+    const zodomus = {
+      isEnabled: true,
+      setRates,
+      getRoomRates: jest.fn().mockResolvedValue([{ id: ROOM_ID }]),
+      getRoomRatesRaw: jest.fn().mockResolvedValue({
+        rooms: [{ id: ROOM_ID, rates: [{ id: RATE_ID, name: 'Standard rate' }] }],
+      }),
+    } as unknown as ZodomusService;
+    const local = new ZodomusRatesPushService(zodomus, propertyRepo, bookingRepo);
+
+    await local.pushRatesForProperty({
+      propertyId: PROPERTY_ID,
+      dateFrom: '2026-10-01',
+      dateToExclusive: '2026-10-03',
+      price: 600,
+    });
+
+    expect(setRates.mock.calls[setRates.mock.calls.length - 1][0].currencyCode).toBe('PLN');
+  });
 });

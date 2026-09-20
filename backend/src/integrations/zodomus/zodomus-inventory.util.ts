@@ -6,7 +6,6 @@
 import { addDays, format, parseISO } from 'date-fns';
 import { isLongStayOrDerivedRateName } from './zodomus-room-rates.util';
 
-/** Next calendar day (`yyyy-MM-dd`) in UTC noon encoding (stable with property TZ pipeline). */
 function calendarDayAfter(ymd: string): string {
   return format(addDays(parseISO(`${ymd}T12:00:00.000Z`), 1), 'yyyy-MM-dd');
 }

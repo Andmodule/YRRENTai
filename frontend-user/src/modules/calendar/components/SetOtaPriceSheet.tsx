@@ -14,6 +14,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
+import {
+  OTA_RATE_CURRENCIES,
+  resolveOtaRateCurrency,
+  type OtaRateCurrencyCode,
+} from '@/components/property/property-field-options';
 import type { Property as CalendarProperty } from '../types';
 
 interface SetOtaPriceSheetProps {
@@ -67,7 +72,7 @@ export function SetOtaPriceSheet({
   const [dateFrom, setDateFrom] = useState('');
   const [dateToInclusive, setDateToInclusive] = useState('');
   const [price, setPrice] = useState('');
-  const [currency, setCurrency] = useState('EUR');
+  const [currency, setCurrency] = useState<OtaRateCurrencyCode>('PLN');
 
   const defaultPropertyId = linkedProperties[0]?.uuid ?? '';
 
@@ -98,12 +103,9 @@ export function SetOtaPriceSheet({
     if (!open || !propertyId) return;
     const cal = linkedProperties.find((p) => p.uuid === propertyId);
     const full = fullProperties.find((p) => p.id === propertyId);
-    const code =
-      cal?.otaCurrency?.trim() ||
-      full?.currency?.trim() ||
-      cal?.currency?.trim() ||
-      'EUR';
-    setCurrency(code.toUpperCase().slice(0, 3));
+    setCurrency(
+      resolveOtaRateCurrency(cal?.otaCurrency || full?.currency || cal?.currency),
+    );
   }, [open, propertyId, fullProperties, linkedProperties]);
 
   const dateToExclusive = useMemo(() => {
@@ -131,7 +133,7 @@ export function SetOtaPriceSheet({
         dateFrom,
         dateTo: dateToExclusive,
         price: priceNum,
-        currencyCode: currency,
+        currencyCode: resolveOtaRateCurrency(currency),
       });
       return res.data;
     },
@@ -142,10 +144,42 @@ export function SetOtaPriceSheet({
     },
     onError: (e: unknown) => {
       if (isAxiosError(e)) {
-        const msg =
-          (e.response?.data as { message?: string | string[] } | undefined)?.message ??
-          e.message;
-        toast.error(Array.isArray(msg) ? msg.join(', ') : String(msg || t('error')));
+        const data = e.response?.data as
+          | {
+              message?: string | string[];
+              details?: unknown;
+              detail?: string;
+              error?: string;
+            }
+          | undefined;
+        const parts: string[] = [];
+        if (typeof data?.message === 'string') parts.push(data.message);
+        else if (Array.isArray(data?.message)) parts.push(...data.message.map(String));
+        if (typeof data?.detail === 'string' && data.detail.trim()) parts.push(data.detail);
+        if (data?.details != null) {
+          try {
+            if (Array.isArray(data.details)) {
+              for (const item of data.details) {
+                if (item && typeof item === 'object') {
+                  const z = item as { path?: unknown[]; message?: string };
+                  const path = Array.isArray(z.path) ? z.path.join('.') : '';
+                  const m = typeof z.message === 'string' ? z.message : JSON.stringify(item);
+                  parts.push(path ? `${path}: ${m}` : m);
+                } else {
+                  parts.push(String(item));
+                }
+              }
+            } else {
+              parts.push(
+                typeof data.details === 'string' ? data.details : JSON.stringify(data.details),
+              );
+            }
+          } catch {
+            /* ignore */
+          }
+        }
+        const msg = parts.filter(Boolean).join(' — ') || e.message || t('error');
+        toast.error(msg);
         return;
       }
       toast.error(t('error'));
@@ -243,12 +277,17 @@ export function SetOtaPriceSheet({
             </div>
             <div className="space-y-1.5">
               <Label className={labelClass}>{t('currency')}</Label>
-              <Input
+              <Select
                 className={fieldClass}
                 value={currency}
-                onChange={(e) => setCurrency(e.target.value.toUpperCase())}
-                maxLength={3}
-              />
+                onChange={(e) => setCurrency(resolveOtaRateCurrency(e.target.value))}
+              >
+                {OTA_RATE_CURRENCIES.map(({ code, label }) => (
+                  <option key={code} value={code}>
+                    {label}
+                  </option>
+                ))}
+              </Select>
             </div>
           </div>
           <p className="text-[11px] leading-snug text-muted-foreground">{t('rackPriceHint')}</p>
