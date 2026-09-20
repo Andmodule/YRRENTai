@@ -1,4 +1,9 @@
-import { resolveZodomusReservationTotalMajor } from './zodomus-reservation-price.util';
+import {
+  resolveZodomusReservationTotalMajor,
+  resolveZodomusCurrency,
+  extractCurrencyFromZodomusPayload,
+  normalizeCurrencyCode,
+} from './zodomus-reservation-price.util';
 
 describe('resolveZodomusReservationTotalMajor', () => {
   it('uses reservation total when > 0', () => {
@@ -29,5 +34,58 @@ describe('resolveZodomusReservationTotalMajor', () => {
 
   it('returns undefined when no price fields present', () => {
     expect(resolveZodomusReservationTotalMajor(undefined, [])).toBeUndefined();
+  });
+});
+
+describe('resolveZodomusCurrency', () => {
+  it('prefers currencyCode on reservation', () => {
+    expect(resolveZodomusCurrency({ currencyCode: 'pln', currency: 'EUR' }, [], 'USD')).toBe(
+      'PLN',
+    );
+  });
+
+  it('falls back to room currency when top-level missing', () => {
+    expect(resolveZodomusCurrency({}, [{ currencyCode: 'EUR' }], 'USD')).toBe('EUR');
+  });
+
+  it('falls back to property currency', () => {
+    expect(resolveZodomusCurrency({}, [], 'pln')).toBe('PLN');
+  });
+
+  it('prefers existing booking when sources empty', () => {
+    expect(resolveZodomusCurrency({}, [], null, 'USD')).toBe('USD');
+  });
+
+  it('returns null when nothing valid', () => {
+    expect(resolveZodomusCurrency({}, [], 'xx', '1')).toBeNull();
+  });
+});
+
+describe('extractCurrencyFromZodomusPayload', () => {
+  it('finds nested rate currency', () => {
+    expect(
+      extractCurrencyFromZodomusPayload({
+        rooms: [{ dates: [{ rates: [{ price: '100', currency: 'pln' }] }] }],
+      }),
+    ).toBe('PLN');
+  });
+
+  it('returns null when currency fields are null', () => {
+    expect(
+      extractCurrencyFromZodomusPayload({
+        rooms: [{ dates: [{ rates: [{ price: '100', currency: null }] }] }],
+      }),
+    ).toBeNull();
+  });
+});
+
+describe('normalizeCurrencyCode', () => {
+  it('accepts ISO codes', () => {
+    expect(normalizeCurrencyCode(' eur ')).toBe('EUR');
+  });
+
+  it('rejects garbage', () => {
+    expect(normalizeCurrencyCode('')).toBeNull();
+    expect(normalizeCurrencyCode('EU')).toBeNull();
   });
 });

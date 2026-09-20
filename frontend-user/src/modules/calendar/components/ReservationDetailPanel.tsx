@@ -145,11 +145,13 @@ export function ReservationDetailPanel({
   onCopy,
   otaNightlyPrices,
   otaNightlyPricesFrom,
+  displayCurrencyFallback,
 }: {
   reservation: Reservation;
   onCopy: () => void;
   otaNightlyPrices?: Record<string, number>;
   otaNightlyPricesFrom?: Record<string, number>;
+  displayCurrencyFallback?: string | null;
 }) {
   const t = useTranslations('calendar');
   const locale = useDateLocale();
@@ -166,6 +168,7 @@ export function ReservationDetailPanel({
     otaNightlyPrices,
     t('priceUnavailable'),
     otaNightlyPricesFrom,
+    displayCurrencyFallback,
   );
 
   const [draftNotes, setDraftNotes] = useState(reservation.internalNotes ?? '');

@@ -91,9 +91,22 @@ export class ZodomusRatesPushService {
     }
 
     const currencyCode =
-      input.currencyCode?.trim().toUpperCase() ||
-      property.currency?.trim().toUpperCase() ||
-      'EUR';
+      input.currencyCode?.trim().toUpperCase() || property.currency?.trim().toUpperCase() || '';
+    if (!/^[A-Z]{3}$/.test(currencyCode)) {
+      throw new BadRequestException(
+        'currencyCode is required (3-letter ISO) — set it on the request or property.currency',
+      );
+    }
+
+    /**
+     * Booking Maximum/Single: for single rooms only send `prices.price`.
+     * Never mirror `price` into `priceSingle` — Zodomus rejects that with
+     * "price single room is only available in maximum".
+     */
+    const priceSingle =
+      input.priceSingle != null && Number.isFinite(input.priceSingle) && input.priceSingle > 0
+        ? input.priceSingle
+        : undefined;
 
     const results: PushRatesTargetResult[] = [];
 
@@ -138,7 +151,7 @@ export class ZodomusRatesPushService {
           dateToExclusive,
           currencyCode,
           price: input.price,
-          priceSingle: input.priceSingle ?? input.price,
+          ...(priceSingle != null ? { priceSingle } : {}),
         });
 
         results.push({

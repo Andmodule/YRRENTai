@@ -97,9 +97,15 @@ export function SetOtaPriceSheet({
 
   useEffect(() => {
     if (!open || !propertyId) return;
+    const cal = linkedProperties.find((p) => p.uuid === propertyId);
     const full = fullProperties.find((p) => p.id === propertyId);
-    if (full?.currency) setCurrency(full.currency);
-  }, [open, propertyId, fullProperties]);
+    const code =
+      cal?.otaCurrency?.trim() ||
+      full?.currency?.trim() ||
+      cal?.currency?.trim() ||
+      'EUR';
+    setCurrency(code.toUpperCase().slice(0, 3));
+  }, [open, propertyId, fullProperties, linkedProperties]);
 
   const dateToExclusive = useMemo(() => {
     if (!dateToInclusive) return '';

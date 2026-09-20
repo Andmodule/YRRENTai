@@ -457,6 +457,9 @@ export function CalendarView({
               onCopy={() => toast.success(t('copied'))}
               otaNightlyPrices={selectedProperty?.otaNightlyPrices}
               otaNightlyPricesFrom={selectedProperty?.otaNightlyPricesFrom}
+              displayCurrencyFallback={
+                selectedProperty?.otaCurrency ?? selectedProperty?.currency
+              }
             />
           </ResponsiveModalContent>
         )}

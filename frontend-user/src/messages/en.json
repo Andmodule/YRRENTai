@@ -1837,6 +1837,7 @@
     "otaInventoryBlockedLabel": "Channel closed",
     "otaInventoryBlockedTooltip": "Night closed on the channel (Zodomus availability)",
     "propertyOtaBadgeTitle": "Property linked to Zodomus — OTA bookings appear on this row after “Sync OTA”",
+    "ariUnavailableHint": "Channel ARI unavailable (status / IP / Zodomus)",
     "emptyFiltersHint": "Bookings exist, but none match the current channel or status filters—set filters to “All”."
   },
   "inbox": {

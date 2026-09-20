@@ -17,10 +17,15 @@ export interface CalendarPropertyDto {
   uuid: string;
   title: string;
   avatarUrl?: string;
+  /** CRM property currency (ISO 4217). */
+  currency: string;
   /** Есть внешний id Zodomus — доступна синхронизация OTA. */
   zodomusLinked: boolean;
   /** Для UI-бейджа; дублирует флаг выше. */
   zodomusPropertyId?: string | null;
+  /** Persisted Zodomus channel status (null = unknown / not checked). */
+  zodomusStatus?: string | null;
+  zodomusStatusDetail?: string | null;
   /**
    * Nights closed on the channel (GET /availability: avail=0, booked>0, or closed)
    * that are not already covered by a local booking bar.
@@ -40,6 +45,10 @@ export interface CalendarPropertyDto {
   otaNightlyPricesFrom?: Record<string, number>;
   /** Which rate won for `otaNightlyPrices` per night. */
   otaNightlyPriceMeta?: Record<string, OtaNightlyPriceMeta>;
+  /** Currency from Zodomus ARI when present; else null (use `currency`). */
+  otaCurrency?: string | null;
+  /** Live ARI fetch failed for all linked channels. */
+  ariUnavailable?: boolean;
 }
 
 export type CalendarBookingStatus = 'confirmed' | 'pending' | 'cleaning' | 'blocked' | 'cancelled';
@@ -179,6 +188,8 @@ export class CalendarService {
         nightlyPrices: Record<string, number>;
         nightlyPricesFrom: Record<string, number>;
         nightlyPriceMeta: Record<string, OtaNightlyPriceMeta>;
+        otaCurrency: string | null;
+        ariUnavailable: boolean;
       }
     >();
     if (linked.length > 0) {
@@ -207,8 +218,11 @@ export class CalendarService {
       const dto: CalendarPropertyDto = {
         uuid: p.id,
         title: p.name,
+        currency: (p.currency?.trim().toUpperCase() || 'USD').slice(0, 3),
         zodomusLinked: isLinked || Boolean(zid) || (p.channelListings?.length ?? 0) > 0,
         zodomusPropertyId: zid,
+        zodomusStatus: p.zodomusStatus ?? null,
+        zodomusStatusDetail: p.zodomusStatusDetail ?? null,
       };
 
       if (isLinked) {
@@ -218,6 +232,8 @@ export class CalendarService {
           nightlyPrices: {},
           nightlyPricesFrom: {},
           nightlyPriceMeta: {},
+          otaCurrency: null,
+          ariUnavailable: true,
         };
         const localOcc = occupiedByProperty.get(p.id) ?? new Set();
         dto.otaBlockedDays = overlay.blockedDays.filter((d) => !localOcc.has(d));
@@ -225,6 +241,8 @@ export class CalendarService {
         dto.otaNightlyPrices = overlay.nightlyPrices;
         dto.otaNightlyPricesFrom = overlay.nightlyPricesFrom;
         dto.otaNightlyPriceMeta = overlay.nightlyPriceMeta;
+        dto.otaCurrency = overlay.otaCurrency;
+        dto.ariUnavailable = overlay.ariUnavailable;
       }
 
       return dto;

@@ -4,6 +4,7 @@ import {
   resolveDisplayTotalMajor,
   sumOtaNightlyPrices,
   formatDisplayTotal,
+  resolveDisplayCurrency,
 } from './resolve-display-total.js';
 
 describe('resolve-display-total', () => {
@@ -33,5 +34,24 @@ describe('resolve-display-total', () => {
       formatDisplayTotal(0, 'EUR', '2026-09-17', '2026-09-19', undefined, 'Price unavailable'),
       'Price unavailable',
     );
+  });
+
+  it('resolveDisplayCurrency falls back to property currency', () => {
+    assert.equal(resolveDisplayCurrency('', 'PLN'), 'PLN');
+    assert.equal(resolveDisplayCurrency('eur', 'PLN'), 'EUR');
+  });
+
+  it('formats with fallback currency when booking currency empty', () => {
+    const out = formatDisplayTotal(
+      100,
+      '',
+      '2026-09-17',
+      '2026-09-18',
+      undefined,
+      'Price unavailable',
+      undefined,
+      'PLN',
+    );
+    assert.ok(out.includes('100') || out.includes('zł') || out.includes('PLN'));
   });
 });

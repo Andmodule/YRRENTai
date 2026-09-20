@@ -38,6 +38,11 @@ import {
   type OtaNightlyPriceMeta,
   type OtaStayInventoryResult,
 } from './zodomus-inventory.util';
+import {
+  extractCurrencyFromZodomusPayload,
+  normalizeCurrencyCode,
+  resolveZodomusCurrency,
+} from './zodomus-reservation-price.util';
 import { buildRateNameMapFromRoomRates, pickPrimaryRateId } from './zodomus-room-rates.util';
 
 /** Zodomus queue status codes per official docs (inbound only — see ZODOMUS_BOOKING_FLOW). */
@@ -556,6 +561,10 @@ export class ZodomusSyncService {
     nightlyPrices: Record<string, number>;
     nightlyPricesFrom: Record<string, number>;
     nightlyPriceMeta: Record<string, OtaNightlyPriceMeta>;
+    /** ISO currency from ARI when Zodomus sends it (often null). */
+    otaCurrency: string | null;
+    /** True when every linked-channel ARI fetch failed (channel / IP / status). */
+    ariUnavailable: boolean;
   }> {
     const empty = {
       blockedDays: [] as string[],
@@ -563,6 +572,8 @@ export class ZodomusSyncService {
       nightlyPrices: {} as Record<string, number>,
       nightlyPricesFrom: {} as Record<string, number>,
       nightlyPriceMeta: {} as Record<string, OtaNightlyPriceMeta>,
+      otaCurrency: null as string | null,
+      ariUnavailable: false,
     };
     if (!this.zodomus.isEnabled) {
       return empty;
@@ -578,10 +589,14 @@ export class ZodomusSyncService {
     const nightlyPricesFrom: Record<string, number> = {};
     const nightlyPriceMeta: Record<string, OtaNightlyPriceMeta> = {};
     const seenHint = new Set<string>();
+    let otaCurrency: string | null = null;
+    let attempted = 0;
+    let succeeded = 0;
 
     for (const channelId of channelIds) {
       const extId = this.propertyService.getExternalListingIdForZodomusChannel(property, channelId);
       if (!extId) continue;
+      attempted += 1;
       try {
         const preferRoomId = this.propertyService.getZodomusRoomIdForChannel(property, channelId);
         let preferRateId: string | null = null;
@@ -596,6 +611,9 @@ export class ZodomusSyncService {
           );
         }
         const raw = await this.zodomus.getAvailability(channelId, extId, dateFromYmd, dateToYmd);
+        if (otaCurrency == null) {
+          otaCurrency = extractCurrencyFromZodomusPayload(raw);
+        }
         const days = extractZodomusInventoryDays(raw, {
           preferRoomId,
           preferRateId,
@@ -622,6 +640,7 @@ export class ZodomusSyncService {
         for (const [date, meta] of Object.entries(collectOtaNightlyPriceMeta(days))) {
           if (nightlyPriceMeta[date] == null) nightlyPriceMeta[date] = meta;
         }
+        succeeded += 1;
       } catch (e) {
         this.logger.warn(
           `calendar inventory overlay failed property=${property.id} channel=${channelId}: ${formatZodomusHttpException(e)}`,
@@ -635,6 +654,8 @@ export class ZodomusSyncService {
       nightlyPrices,
       nightlyPricesFrom,
       nightlyPriceMeta,
+      otaCurrency,
+      ariUnavailable: attempted > 0 && succeeded === 0,
     };
   }
 
@@ -977,8 +998,13 @@ export class ZodomusSyncService {
 
     const resolvedMajor = Number(raw.totalPrice ?? 0);
     const totalMinor = Math.round((Number.isFinite(resolvedMajor) ? resolvedMajor : 0) * 100);
-    const currency = String(raw.currency || property.currency || 'USD').slice(0, 3);
-
+    const rooms = Array.isArray(raw.rooms) ? raw.rooms : undefined;
+    const currencyFromPayload = resolveZodomusCurrency(
+      raw as Record<string, unknown>,
+      rooms,
+      null,
+      null,
+    );
     const row =
       existing ??
       this.bookingRepo.create({
@@ -1065,7 +1091,15 @@ export class ZodomusSyncService {
     } else if (!existing || !(Number(existing.totalPriceMinor) > 0)) {
       row.totalPriceMinor = Number.isFinite(totalMinor) ? totalMinor : 0;
     }
-    row.currency = currency;
+    // Prefer OTA payload currency; keep existing booking currency; else property CRM currency.
+    if (currencyFromPayload) {
+      row.currency = currencyFromPayload;
+    } else if (!normalizeCurrencyCode(row.currency)) {
+      row.currency =
+        normalizeCurrencyCode(existing?.currency) ??
+        normalizeCurrencyCode(property.currency) ??
+        'USD';
+    }
     row.zodomusReservationId = rid;
     row.zodomusChannelId = channelId;
     row.zodomusSynced = false;

@@ -43,6 +43,19 @@ export function resolveDisplayTotalMajor(
   return sumOtaNightlyPrices(otaNightlyPrices, checkInYmd, checkOutYmd);
 }
 
+/** Prefer booking currency; fall back to property / OTA currency when invalid or missing. */
+export function resolveDisplayCurrency(
+  bookingCurrency: string | null | undefined,
+  fallbackCurrency?: string | null,
+): string {
+  const primary = typeof bookingCurrency === 'string' ? bookingCurrency.trim().toUpperCase() : '';
+  if (/^[A-Z]{3}$/.test(primary)) return primary;
+  const fallback =
+    typeof fallbackCurrency === 'string' ? fallbackCurrency.trim().toUpperCase() : '';
+  if (/^[A-Z]{3}$/.test(fallback)) return fallback;
+  return 'USD';
+}
+
 export function formatDisplayTotal(
   totalPrice: number,
   currency: string,
@@ -51,6 +64,7 @@ export function formatDisplayTotal(
   otaNightlyPrices: Record<string, number> | undefined,
   unavailableLabel: string,
   otaNightlyPricesFrom?: Record<string, number>,
+  fallbackCurrency?: string | null,
 ): string {
   const major = resolveDisplayTotalMajor(
     totalPrice,
@@ -60,8 +74,13 @@ export function formatDisplayTotal(
     otaNightlyPricesFrom,
   );
   if (major == null) return unavailableLabel;
-  return new Intl.NumberFormat(undefined, {
-    style: 'currency',
-    currency,
-  }).format(major);
+  const code = resolveDisplayCurrency(currency, fallbackCurrency);
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency: code,
+    }).format(major);
+  } catch {
+    return `${major.toFixed(2)} ${code}`;
+  }
 }

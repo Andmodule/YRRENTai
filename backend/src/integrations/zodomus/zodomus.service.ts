@@ -8,7 +8,10 @@ import type {
   ZodomusReservationQueueItem,
   ZodomusRoomActivationRoom,
 } from './zodomus.types';
-import { resolveZodomusReservationTotalMajor } from './zodomus-reservation-price.util';
+import {
+  resolveZodomusCurrency,
+  resolveZodomusReservationTotalMajor,
+} from './zodomus-reservation-price.util';
 
 @Injectable()
 export class ZodomusService {
@@ -513,7 +516,16 @@ export class ZodomusService {
       guestChildren,
       notes: notesMerged,
       otaPaymentHint,
-      currency: (resObj.currencyCode ?? resObj.currency) as unknown,
+      rooms,
+      currency:
+        resolveZodomusCurrency(
+          {
+            ...resObj,
+            currencyCode: resObj.currencyCode,
+            currency: resObj.currencyCode ?? resObj.currency,
+          },
+          rooms,
+        ) ?? (resObj.currencyCode ?? resObj.currency),
       checkIn: (firstRoom?.arrivalDate ?? resObj.checkIn) as unknown,
       checkOut: (firstRoom?.departureDate ?? resObj.checkOut) as unknown,
       totalPrice: resolveZodomusReservationTotalMajor(resObj.totalPrice, rooms),

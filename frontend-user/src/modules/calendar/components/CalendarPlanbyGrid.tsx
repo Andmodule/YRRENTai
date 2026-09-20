@@ -244,6 +244,7 @@ export function CalendarPlanbyGrid({
           isMobile={isMobile}
           otaNightlyPrices={property?.otaNightlyPrices}
           otaNightlyPricesFrom={property?.otaNightlyPricesFrom}
+          displayCurrencyFallback={property?.otaCurrency ?? property?.currency}
         />
       );
     },
