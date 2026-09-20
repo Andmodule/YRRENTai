@@ -17,6 +17,11 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select } from '@/components/ui/select';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
+import {
+  OTA_RATE_CURRENCIES,
+  resolveOtaRateCurrency,
+  type OtaRateCurrencyCode,
+} from '@/components/property/property-field-options';
 import type { Property as CalendarProperty } from '../types';
 import {
   mapApiBookingToReservation,
@@ -106,7 +111,7 @@ export function NewBookingSheet({
   const [checkOut, setCheckOut] = useState('');
   const [totalMajor, setTotalMajor] = useState('');
   const [priceTouched, setPriceTouched] = useState(false);
-  const [currency, setCurrency] = useState('EUR');
+  const [currency, setCurrency] = useState<OtaRateCurrencyCode>('PLN');
   const [guestsCount, setGuestsCount] = useState('');
   const [initialStatus, setInitialStatus] = useState<InitialStatus>('PENDING');
 
@@ -150,7 +155,7 @@ export function NewBookingSheet({
 
   const currencyForProperty = useMemo(() => {
     const fp = fullProperties.find((p) => p.id === propertyId);
-    return fp?.currency ?? 'EUR';
+    return resolveOtaRateCurrency(fp?.currency);
   }, [fullProperties, propertyId]);
 
   useEffect(() => {
@@ -297,7 +302,7 @@ export function NewBookingSheet({
         checkIn: ciIso,
         checkOut: coIso,
         totalPriceMinor,
-        currency: currency.length === 3 ? currency.toUpperCase() : 'EUR',
+        currency: resolveOtaRateCurrency(currency),
         ...(gc !== undefined && !Number.isNaN(gc) && gc > 0 ? { guestsCount: gc } : {}),
       };
 
@@ -586,12 +591,13 @@ export function NewBookingSheet({
               id="nb-currency"
               className={fieldClass}
               value={currency}
-              onChange={(e) => setCurrency(e.target.value)}
+              onChange={(e) => setCurrency(resolveOtaRateCurrency(e.target.value))}
             >
-              <option value="USD">USD</option>
-              <option value="EUR">EUR</option>
-              <option value="BYN">BYN</option>
-              <option value="RUB">RUB</option>
+              {OTA_RATE_CURRENCIES.map(({ code, label }) => (
+                <option key={code} value={code}>
+                  {label}
+                </option>
+              ))}
             </Select>
           </div>
         </div>

@@ -90,14 +90,10 @@ export class ZodomusRatesPushService {
       );
     }
 
-    const currencyCode =
+    const allowed = new Set(['PLN', 'EUR', 'USD', 'RUB']);
+    const rawCurrency =
       input.currencyCode?.trim().toUpperCase() || property.currency?.trim().toUpperCase() || '';
-    if (!/^[A-Z]{3}$/.test(currencyCode)) {
-      throw new BadRequestException(
-        'currencyCode is required (3-letter ISO) — set it on the request or property.currency',
-      );
-    }
-
+    const currencyCode = allowed.has(rawCurrency) ? rawCurrency : 'PLN';
     /**
      * Booking Maximum/Single: for single rooms only send `prices.price`.
      * Never mirror `price` into `priceSingle` — Zodomus rejects that with

@@ -19,13 +19,15 @@ export const pushZodomusRatesSchema = z
     price: z.coerce.number().positive().max(1_000_000),
     /** Optional single-occupancy price (Booking Maximum/Single model). */
     priceSingle: z.coerce.number().positive().max(1_000_000).optional(),
-    currencyCode: z
-      .string()
-      .trim()
-      .length(3)
-      .transform((s) => s.toUpperCase())
-      .optional(),
-    /** Optional override; otherwise first Standard rate from GET /room-rates. */
+    currencyCode: z.preprocess(
+      (v) => {
+        if (v == null) return undefined;
+        if (typeof v !== 'string') return v;
+        const t = v.trim().toUpperCase();
+        return t.length === 0 ? undefined : t;
+      },
+      z.enum(['PLN', 'EUR', 'USD', 'RUB']).optional(),
+    ),    /** Optional override; otherwise first Standard rate from GET /room-rates. */
     rateId: z.string().trim().min(1).max(64).optional(),
     /** Optional Zodomus channel filter (default: all linked channels). */
     channelId: z.coerce.number().int().positive().optional(),
