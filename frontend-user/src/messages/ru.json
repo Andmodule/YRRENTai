@@ -1837,6 +1837,7 @@
     "otaInventoryBlockedLabel": "Закрыто на канале",
     "otaInventoryBlockedTooltip": "Ночь закрыта на канале (доступность Zodomus)",
     "propertyOtaBadgeTitle": "Объект привязан к Zodomus — брони с OTA попадают на эту строку после «Синхр. OTA»",
+    "ariUnavailableHint": "ARI канала недоступен (статус / IP / Zodomus)",
     "emptyFiltersHint": "Есть брони, но ни одна не подходит под текущие фильтры канала или статуса — сбросьте фильтры на «Все»."
   },
   "inbox": {

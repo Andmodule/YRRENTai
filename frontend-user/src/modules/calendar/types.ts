@@ -11,10 +11,15 @@ export interface Property {
   uuid: string;
   title: string;
   avatarUrl?: string;
+  /** CRM property currency (ISO 4217). */
+  currency?: string;
   /** Объект привязан к Zodomus (можно синхронизировать OTA). */
   zodomusLinked?: boolean;
   /** Внешний id Zodomus (если задан). */
   zodomusPropertyId?: string | null;
+  /** Persisted Zodomus channel status. */
+  zodomusStatus?: string | null;
+  zodomusStatusDetail?: string | null;
   /** Nights closed on channel inventory (not covered by a local booking). */
   otaBlockedDays?: string[];
   /** Rate restriction hints from Zodomus GET /availability. */
@@ -25,6 +30,10 @@ export interface Property {
   otaNightlyPricesFrom?: Record<string, number>;
   /** Rate that won for otaNightlyPrices per night. */
   otaNightlyPriceMeta?: Record<string, { rateId: string | null; rateName: string | null }>;
+  /** Currency from Zodomus ARI when present. */
+  otaCurrency?: string | null;
+  /** Live ARI fetch failed for all linked channels. */
+  ariUnavailable?: boolean;
 }
 
 export interface Reservation {
