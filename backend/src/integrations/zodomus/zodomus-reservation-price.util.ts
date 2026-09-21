@@ -55,6 +55,39 @@ export function resolveZodomusCurrency(
   );
 }
 
+const OTA_RATE_CURRENCY_CODES = new Set(['PLN', 'EUR', 'USD', 'RUB']);
+
+/**
+ * Currency for OTA rack display / POST /rates.
+ * Prefer ARI when Zodomus sends it; Booking.com often omits it — then use property
+ * currency, except the common CRM default USD on Europe/Warsaw listings (channel is PLN).
+ */
+export function resolveOtaChannelCurrency(opts: {
+  fromAri?: string | null;
+  explicit?: string | null;
+  propertyCurrency?: string | null;
+  timezone?: string | null;
+}): string {
+  const pick = (v: unknown): string | null => {
+    const c = normalizeCurrencyCode(v);
+    return c && OTA_RATE_CURRENCY_CODES.has(c) ? c : null;
+  };
+
+  const ari = pick(opts.fromAri);
+  if (ari) return ari;
+
+  const tz = opts.timezone?.trim() || '';
+  const warsaw = tz === 'Europe/Warsaw' || tz.startsWith('Europe/Warsaw');
+  const prop = pick(opts.propertyCurrency);
+  const explicit = pick(opts.explicit);
+
+  // Intentional non-USD property currency wins over UI default.
+  if (prop && !(warsaw && prop === 'USD')) return prop;
+  if (explicit && !(warsaw && explicit === 'USD')) return explicit;
+  if (warsaw) return 'PLN';
+  return explicit ?? prop ?? 'PLN';
+}
+
 /**
  * Walk GET /availability (or similar ARI) JSON for the first valid currency code.
  * Often null on Booking.com via Zodomus — callers should fall back to property.currency.

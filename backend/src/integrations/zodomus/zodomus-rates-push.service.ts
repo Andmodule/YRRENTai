@@ -14,6 +14,22 @@ import { BookingEntity } from '../../booking/entities/booking.entity';
 import { ZodomusService } from './zodomus.service';
 import { pickPrimaryRateId } from './zodomus-room-rates.util';
 import { formatZodomusHttpException } from './zodomus-status.util';
+import { extractZodomusInventoryDays } from './zodomus-inventory.util';
+import {
+  collectFreeNightKeys,
+  mergeNightKeysToRanges,
+  rateIdPresentInAvailability,
+  type RatesDateRange,
+} from './zodomus-rates-segments.util';
+import {
+  extractCurrencyFromZodomusPayload,
+  resolveOtaChannelCurrency,
+} from './zodomus-reservation-price.util';
+
+export type PushRatesSegmentResult = RatesDateRange & {
+  ok: boolean;
+  detail?: string;
+};
 
 export type PushRatesTargetResult = {
   channelId: number;
@@ -22,6 +38,7 @@ export type PushRatesTargetResult = {
   rateId: string;
   ok: boolean;
   detail?: string;
+  segments?: PushRatesSegmentResult[];
 };
 
 export type PushRatesResult = {
@@ -78,8 +95,6 @@ export class ZodomusRatesPushService {
       throw new BadRequestException('dateTo must be after dateFrom');
     }
 
-    await this.assertRangeIsFree(property, dateFrom, dateToExclusive);
-
     let targets = this.buildPushTargets(property);
     if (input.channelId != null) {
       targets = targets.filter((t) => t.channelId === input.channelId);
@@ -91,9 +106,6 @@ export class ZodomusRatesPushService {
     }
 
     const allowed = new Set(['PLN', 'EUR', 'USD', 'RUB']);
-    const rawCurrency =
-      input.currencyCode?.trim().toUpperCase() || property.currency?.trim().toUpperCase() || '';
-    const currencyCode = allowed.has(rawCurrency) ? rawCurrency : 'PLN';
     /**
      * Booking Maximum/Single: for single rooms only send `prices.price`.
      * Never mirror `price` into `priceSingle` — Zodomus rejects that with
@@ -104,7 +116,14 @@ export class ZodomusRatesPushService {
         ? input.priceSingle
         : undefined;
 
+    const crmBlocked = await this.collectCrmBlockedNightKeys(property, dateFrom, dateToExclusive);
     const results: PushRatesTargetResult[] = [];
+    /** Filled from first successful ARI fetch — used for all targets. */
+    let currencyCode = resolveOtaChannelCurrency({
+      explicit: input.currencyCode,
+      propertyCurrency: property.currency,
+      timezone: property.timezone,
+    });
 
     for (const t of targets) {
       try {
@@ -138,24 +157,93 @@ export class ZodomusRatesPushService {
           continue;
         }
 
-        await this.zodomus.setRates({
-          channelId: t.channelId,
-          propertyId: t.extProp,
-          roomId,
-          rateId,
+        const availRaw = await this.zodomus.getAvailability(
+          t.channelId,
+          t.extProp,
           dateFrom,
           dateToExclusive,
-          currencyCode,
-          price: input.price,
-          ...(priceSingle != null ? { priceSingle } : {}),
-        });
+        );
 
+        currencyCode = resolveOtaChannelCurrency({
+          fromAri: extractCurrencyFromZodomusPayload(availRaw),
+          explicit: input.currencyCode,
+          propertyCurrency: property.currency,
+          timezone: property.timezone,
+        });
+        if (!allowed.has(currencyCode)) {
+          currencyCode = 'PLN';
+        }
+
+        if (!rateIdPresentInAvailability(availRaw, roomId, rateId)) {
+          results.push({
+            channelId: t.channelId,
+            externalListingId: t.extProp,
+            roomId,
+            rateId,
+            ok: false,
+            detail: `rateId ${rateId} not present in GET /availability for room ${roomId} — Channel rooms and rates are not mapped`,
+          });
+          continue;
+        }
+
+        const days = extractZodomusInventoryDays(availRaw, {
+          preferRoomId: roomId,
+          preferRateId: rateId,
+        });
+        const freeKeys = collectFreeNightKeys(days, dateFrom, dateToExclusive, crmBlocked);
+        const ranges = mergeNightKeysToRanges(freeKeys);
+
+        if (ranges.length === 0) {
+          results.push({
+            channelId: t.channelId,
+            externalListingId: t.extProp,
+            roomId,
+            rateId,
+            ok: false,
+            detail: 'No free OTA nights in range (booked!=0, availability=0, closed, or CRM blocked)',
+            segments: [],
+          });
+          continue;
+        }
+
+        const segments: PushRatesSegmentResult[] = [];
+        for (const range of ranges) {
+          try {
+            await this.zodomus.setRates({
+              channelId: t.channelId,
+              propertyId: t.extProp,
+              roomId,
+              rateId,
+              dateFrom: range.dateFrom,
+              dateToExclusive: range.dateToExclusive,
+              currencyCode,
+              price: input.price,
+              ...(priceSingle != null ? { priceSingle } : {}),
+            });
+            segments.push({ ...range, ok: true });
+          } catch (e) {
+            const detail = formatZodomusHttpException(e);
+            this.logger.warn(
+              `POST /rates failed property=${property.id} channel=${t.channelId} ${range.dateFrom}→${range.dateToExclusive}: ${detail}`,
+            );
+            segments.push({ ...range, ok: false, detail });
+          }
+        }
+
+        const ok = segments.some((s) => s.ok);
         results.push({
           channelId: t.channelId,
           externalListingId: t.extProp,
           roomId,
           rateId,
-          ok: true,
+          ok,
+          detail: ok
+            ? undefined
+            : segments
+                .map((s) => s.detail)
+                .filter(Boolean)
+                .join('; ') || 'All rate segments failed',
+          segments,
         });
       } catch (e) {
         const detail = formatZodomusHttpException(e);
@@ -174,8 +262,17 @@ export class ZodomusRatesPushService {
     }
 
     if (!results.some((r) => r.ok)) {
+      const details = results.map((r) => r.detail).filter(Boolean);
+      const allNoFree = results.every(
+        (r) => r.detail?.includes('No free OTA nights') || r.segments?.length === 0,
+      );
+      if (allNoFree && details.length > 0) {
+        throw new BadRequestException(
+          `Cannot set OTA price — no free nights in range: ${details.join('; ')}`,
+        );
+      }
       throw new ServiceUnavailableException(
-        `Zodomus rates push failed: ${results.map((r) => r.detail).filter(Boolean).join('; ') || 'unknown'}`,
+        `Zodomus rates push failed: ${details.join('; ') || 'unknown'}`,
       );
     }
 
@@ -232,19 +329,19 @@ export class ZodomusRatesPushService {
   }
 
   /**
-   * Refuse to push rates over nights that already have a blocking CRM booking
-   * (free dates only — user request).
+   * CRM nights that already block inventory — skip when pushing rates
+   * (do not hard-fail the whole range).
    */
-  private async assertRangeIsFree(
+  private async collectCrmBlockedNightKeys(
     property: PropertyEntity,
     dateFrom: string,
     dateToExclusive: string,
-  ): Promise<void> {
+  ): Promise<Set<string>> {
     const tz = property.timezone?.trim() || 'UTC';
     const rangeStart = fromZonedTime(`${dateFrom}T12:00:00`, tz);
     const rangeEnd = fromZonedTime(`${dateToExclusive}T12:00:00`, tz);
 
-    const overlap = await this.bookingRepo
+    const bookings = await this.bookingRepo
       .createQueryBuilder('b')
       .where('b.propertyId = :propertyId', { propertyId: property.id })
       .andWhere('b.status IN (:...blocking)', {
@@ -254,15 +351,25 @@ export class ZodomusRatesPushService {
         rangeStart,
         rangeEnd,
       })
-      .orderBy('b.checkIn', 'ASC')
-      .getOne();
+      .getMany();
 
-    if (overlap) {
-      const from = formatInTimeZone(overlap.checkIn, tz, 'yyyy-MM-dd');
-      const to = formatInTimeZone(overlap.checkOut, tz, 'yyyy-MM-dd');
-      throw new BadRequestException(
-        `Cannot set OTA price on booked dates — overlaps booking ${from}→${to}`,
-      );
+    const blocked = new Set<string>();
+    for (const b of bookings) {
+      const from = formatInTimeZone(b.checkIn, tz, 'yyyy-MM-dd');
+      const to = formatInTimeZone(b.checkOut, tz, 'yyyy-MM-dd');
+      let cur = from < dateFrom ? dateFrom : from;
+      const end = to > dateToExclusive ? dateToExclusive : to;
+      while (cur < end) {
+        blocked.add(cur);
+        const parts = cur.split('-').map(Number);
+        const y = parts[0];
+        const m = parts[1];
+        const d = parts[2];
+        if (y == null || m == null || d == null) break;
+        cur = new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
+        if (blocked.size > 800) break;
+      }
     }
+    return blocked;
   }
 }

@@ -41,6 +41,7 @@ import {
 import {
   extractCurrencyFromZodomusPayload,
   normalizeCurrencyCode,
+  resolveOtaChannelCurrency,
   resolveZodomusCurrency,
 } from './zodomus-reservation-price.util';
 import { buildRateNameMapFromRoomRates, pickPrimaryRateId } from './zodomus-room-rates.util';
@@ -612,7 +613,11 @@ export class ZodomusSyncService {
         }
         const raw = await this.zodomus.getAvailability(channelId, extId, dateFromYmd, dateToYmd);
         if (otaCurrency == null) {
-          otaCurrency = extractCurrencyFromZodomusPayload(raw);
+          otaCurrency = resolveOtaChannelCurrency({
+            fromAri: extractCurrencyFromZodomusPayload(raw),
+            propertyCurrency: property.currency,
+            timezone: property.timezone,
+          });
         }
         const days = extractZodomusInventoryDays(raw, {
           preferRoomId,

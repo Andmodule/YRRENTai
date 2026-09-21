@@ -1703,6 +1703,7 @@
       "freeOnlyHint": "Нельзя менять цену на даты с бронью в CRM.",
       "nightlyPrice": "Цена за ночь",
       "rackPriceHint": "Rack-цена канала (Standard). Genius и акции Booking применяются только на сайте Booking — сюда они не попадают.",
+      "rateHint": "Тариф из GET /availability: {rate}",
       "currency": "Валюта",
       "cancel": "Отмена",
       "submit": "Отправить на канал",

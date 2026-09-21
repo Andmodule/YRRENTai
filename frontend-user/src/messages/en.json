@@ -1703,6 +1703,7 @@
       "freeOnlyHint": "Cannot change price on dates that already have a CRM booking.",
       "nightlyPrice": "Price per night",
       "rackPriceHint": "Channel rack (Standard). Booking.com Genius and promo discounts are applied on Booking only — they do not appear here.",
+      "rateHint": "Rate from GET /availability: {rate}",
       "currency": "Currency",
       "cancel": "Cancel",
       "submit": "Push to channel",

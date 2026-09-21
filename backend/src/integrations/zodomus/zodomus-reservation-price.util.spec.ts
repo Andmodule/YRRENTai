@@ -3,6 +3,7 @@ import {
   resolveZodomusCurrency,
   extractCurrencyFromZodomusPayload,
   normalizeCurrencyCode,
+  resolveOtaChannelCurrency,
 } from './zodomus-reservation-price.util';
 
 describe('resolveZodomusReservationTotalMajor', () => {
@@ -76,6 +77,41 @@ describe('extractCurrencyFromZodomusPayload', () => {
         rooms: [{ dates: [{ rates: [{ price: '100', currency: null }] }] }],
       }),
     ).toBeNull();
+  });
+});
+
+describe('resolveOtaChannelCurrency', () => {
+  it('prefers ARI currency', () => {
+    expect(
+      resolveOtaChannelCurrency({
+        fromAri: 'eur',
+        explicit: 'USD',
+        propertyCurrency: 'USD',
+        timezone: 'Europe/Warsaw',
+      }),
+    ).toBe('EUR');
+  });
+
+  it('maps Warsaw+USD CRM default to PLN when ARI omits currency', () => {
+    expect(
+      resolveOtaChannelCurrency({
+        fromAri: null,
+        explicit: 'USD',
+        propertyCurrency: 'USD',
+        timezone: 'Europe/Warsaw',
+      }),
+    ).toBe('PLN');
+  });
+
+  it('keeps intentional EUR on Warsaw property', () => {
+    expect(
+      resolveOtaChannelCurrency({
+        fromAri: null,
+        explicit: 'USD',
+        propertyCurrency: 'EUR',
+        timezone: 'Europe/Warsaw',
+      }),
+    ).toBe('EUR');
   });
 });
 
