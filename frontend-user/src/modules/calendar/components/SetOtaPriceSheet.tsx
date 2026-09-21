@@ -103,10 +103,22 @@ export function SetOtaPriceSheet({
     if (!open || !propertyId) return;
     const cal = linkedProperties.find((p) => p.uuid === propertyId);
     const full = fullProperties.find((p) => p.id === propertyId);
+    /** Prefer channel/ARI currency over CRM default (often wrong USD on Warsaw listings). */
     setCurrency(
       resolveOtaRateCurrency(cal?.otaCurrency || full?.currency || cal?.currency),
     );
   }, [open, propertyId, fullProperties, linkedProperties]);
+
+  const sampleRateHint = useMemo(() => {
+    const prop = linkedProperties.find((p) => p.uuid === propertyId);
+    if (!prop?.otaNightlyPriceMeta || !dateFrom) return null;
+    const meta = prop.otaNightlyPriceMeta[dateFrom];
+    if (!meta?.rateId && !meta?.rateName) return null;
+    const name = meta.rateName?.trim();
+    const id = meta.rateId?.trim();
+    if (name && id) return `${name} (${id})`;
+    return name || id || null;
+  }, [linkedProperties, propertyId, dateFrom]);
 
   const dateToExclusive = useMemo(() => {
     if (!dateToInclusive) return '';
@@ -291,6 +303,11 @@ export function SetOtaPriceSheet({
             </div>
           </div>
           <p className="text-[11px] leading-snug text-muted-foreground">{t('rackPriceHint')}</p>
+          {sampleRateHint ? (
+            <p className="text-[11px] leading-snug text-muted-foreground">
+              {t('rateHint', { rate: sampleRateHint })}
+            </p>
+          ) : null}
         </div>
       </SheetContent>
     </Sheet>

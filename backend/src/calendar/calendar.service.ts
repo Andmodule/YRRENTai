@@ -45,7 +45,7 @@ export interface CalendarPropertyDto {
   otaNightlyPricesFrom?: Record<string, number>;
   /** Which rate won for `otaNightlyPrices` per night. */
   otaNightlyPriceMeta?: Record<string, OtaNightlyPriceMeta>;
-  /** Currency from Zodomus ARI when present; else null (use `currency`). */
+  /** Channel currency for rack display / push-rates (ARI when present, else resolved). */
   otaCurrency?: string | null;
   /** Live ARI fetch failed for all linked channels. */
   ariUnavailable?: boolean;

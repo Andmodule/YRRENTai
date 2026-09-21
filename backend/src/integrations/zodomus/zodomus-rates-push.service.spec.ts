@@ -1,8 +1,9 @@
 /**
- * Guarantees POST /rates never auto-fills priceSingle from price
- * (Zodomus rejects that on single rooms / Maximum model).
+ * POST /rates: never auto-fill priceSingle; push only free ARI nights
+ * as contiguous segments (GET /availability booked==0 && availability!=0).
  */
 
+import { BadRequestException } from '@nestjs/common';
 import { ZodomusRatesPushService } from './zodomus-rates-push.service';
 import { ZodomusService } from './zodomus.service';
 import { Repository } from 'typeorm';
@@ -35,19 +36,43 @@ function makeQb() {
   for (const m of ['where', 'andWhere', 'orderBy'] as const) {
     qb[m] = jest.fn().mockReturnValue(qb);
   }
-  qb.getOne = jest.fn().mockResolvedValue(null);
+  qb.getMany = jest.fn().mockResolvedValue([]);
   return qb;
 }
 
-describe('ZodomusRatesPushService priceSingle', () => {
+function availBody(dates: Array<{ date: string; availability?: string; booked?: string }>) {
+  return {
+    rooms: [
+      {
+        id: ROOM_ID,
+        dates: dates.map((d) => ({
+          date: d.date,
+          availability: d.availability ?? '1',
+          booked: d.booked ?? '0',
+          rates: [{ rateId: RATE_ID, price: '100', closed: '0' }],
+        })),
+      },
+    ],
+  };
+}
+
+describe('ZodomusRatesPushService', () => {
   let setRates: jest.Mock;
+  let getAvailability: jest.Mock;
   let service: ZodomusRatesPushService;
 
   beforeEach(() => {
     setRates = jest.fn().mockResolvedValue({ ok: true });
+    getAvailability = jest.fn().mockResolvedValue(
+      availBody([
+        { date: '2026-10-01' },
+        { date: '2026-10-02' },
+      ]),
+    );
     const zodomus = {
       isEnabled: true,
       setRates,
+      getAvailability,
       getRoomRates: jest.fn().mockResolvedValue([{ id: ROOM_ID }]),
       getRoomRatesRaw: jest.fn().mockResolvedValue({
         rooms: [{ id: ROOM_ID, rates: [{ id: RATE_ID, name: 'Standard rate' }] }],
@@ -119,6 +144,7 @@ describe('ZodomusRatesPushService priceSingle', () => {
     const zodomus = {
       isEnabled: true,
       setRates,
+      getAvailability,
       getRoomRates: jest.fn().mockResolvedValue([{ id: ROOM_ID }]),
       getRoomRatesRaw: jest.fn().mockResolvedValue({
         rooms: [{ id: ROOM_ID, rates: [{ id: RATE_ID, name: 'Standard rate' }] }],
@@ -134,5 +160,119 @@ describe('ZodomusRatesPushService priceSingle', () => {
     });
 
     expect(setRates.mock.calls[setRates.mock.calls.length - 1][0].currencyCode).toBe('PLN');
+  });
+
+  it('splits POST /rates around booked ARI nights', async () => {
+    getAvailability.mockResolvedValue(
+      availBody([
+        { date: '2026-10-01' },
+        { date: '2026-10-02', booked: '1' },
+        { date: '2026-10-03' },
+        { date: '2026-10-04' },
+      ]),
+    );
+
+    const result = await service.pushRatesForProperty({
+      propertyId: PROPERTY_ID,
+      dateFrom: '2026-10-01',
+      dateToExclusive: '2026-10-05',
+      price: 700,
+      currencyCode: 'PLN',
+    });
+
+    expect(setRates).toHaveBeenCalledTimes(2);
+    expect(setRates.mock.calls[0][0]).toMatchObject({
+      dateFrom: '2026-10-01',
+      dateToExclusive: '2026-10-02',
+      price: 700,
+      rateId: RATE_ID,
+    });
+    expect(setRates.mock.calls[1][0]).toMatchObject({
+      dateFrom: '2026-10-03',
+      dateToExclusive: '2026-10-05',
+      price: 700,
+    });
+    expect(result.targets[0]?.segments).toHaveLength(2);
+    expect(result.targets[0]?.ok).toBe(true);
+  });
+
+  it('throws BadRequest when no free ARI nights in range', async () => {
+    getAvailability.mockResolvedValue(
+      availBody([
+        { date: '2026-10-01', booked: '1' },
+        { date: '2026-10-02', availability: '0' },
+      ]),
+    );
+
+    await expect(
+      service.pushRatesForProperty({
+        propertyId: PROPERTY_ID,
+        dateFrom: '2026-10-01',
+        dateToExclusive: '2026-10-03',
+        price: 600,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(setRates).not.toHaveBeenCalled();
+  });
+
+  it('uses PLN for Europe/Warsaw when CRM currency is USD default', async () => {
+    const propertyRepo = {
+      findOne: jest.fn().mockResolvedValue(
+        makeProperty({ currency: 'USD', timezone: 'Europe/Warsaw' } as Partial<PropertyEntity>),
+      ),
+    } as unknown as Repository<PropertyEntity>;
+    const bookingRepo = {
+      createQueryBuilder: jest.fn().mockReturnValue(makeQb()),
+    } as unknown as Repository<BookingEntity>;
+    const zodomus = {
+      isEnabled: true,
+      setRates,
+      getAvailability,
+      getRoomRates: jest.fn().mockResolvedValue([{ id: ROOM_ID }]),
+      getRoomRatesRaw: jest.fn().mockResolvedValue({
+        rooms: [{ id: ROOM_ID, rates: [{ id: RATE_ID, name: 'Standard rate' }] }],
+      }),
+    } as unknown as ZodomusService;
+    const local = new ZodomusRatesPushService(zodomus, propertyRepo, bookingRepo);
+
+    await local.pushRatesForProperty({
+      propertyId: PROPERTY_ID,
+      dateFrom: '2026-10-01',
+      dateToExclusive: '2026-10-03',
+      price: 600,
+      currencyCode: 'USD',
+    });
+
+    expect(setRates.mock.calls[setRates.mock.calls.length - 1][0].currencyCode).toBe('PLN');
+  });
+
+  it('skips target when rateId is missing from availability', async () => {
+    getAvailability.mockResolvedValue({
+      rooms: [
+        {
+          id: ROOM_ID,
+          dates: [
+            {
+              date: '2026-10-01',
+              availability: '1',
+              booked: '0',
+              rates: [{ rateId: 'other-rate', price: '100', closed: '0' }],
+            },
+          ],
+        },
+      ],
+    });
+
+    await expect(
+      service.pushRatesForProperty({
+        propertyId: PROPERTY_ID,
+        dateFrom: '2026-10-01',
+        dateToExclusive: '2026-10-02',
+        price: 600,
+      }),
+    ).rejects.toThrow(/not mapped|not present/i);
+
+    expect(setRates).not.toHaveBeenCalled();
   });
 });
