@@ -14,13 +14,19 @@ import {
 } from '@/components/ui/dropdown-menu';
 import type { CalendarDateRange } from '../types';
 import { useDateLocale } from '@/hooks/useDateLocale';
+import {
+  CALENDAR_TIMELINE_SHIFT_DAYS,
+  CALENDAR_WINDOW_DAYS,
+  CALENDAR_WINDOW_PAST_DAYS,
+} from '../constants/calendar-timeline.constants';
 
-/** Arrow step: one week. */
-const STEP_DAYS = 7;
-/** Visible window length in calendar days (inclusive). */
-export const CALENDAR_WINDOW_DAYS = 14;
-/** Days before the anchor (today / jump date) included in the window. */
-export const CALENDAR_WINDOW_PAST_DAYS = 1;
+export {
+  CALENDAR_TIMELINE_SHIFT_DAYS,
+  CALENDAR_WINDOW_DAYS,
+  CALENDAR_WINDOW_PAST_DAYS,
+} from '../constants/calendar-timeline.constants';
+
+const STEP_DAYS = CALENDAR_TIMELINE_SHIFT_DAYS;
 
 export function buildCalendarWindowAround(anchor: Date): CalendarDateRange {
   const day = startOfDay(anchor);
