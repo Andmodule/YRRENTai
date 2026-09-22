@@ -170,6 +170,7 @@ export class ZodomusMappingService {
 
     try {
       await this.zodomus.activateRooms(channelId, extId, rooms);
+      this.zodomus.invalidateRoomRatesCache(channelId, extId);
       steps.push({ step: 'roomsActivation', ok: true, detail: `rooms=${rooms.length}` });
     } catch (e) {
       // Retry with first rate only (Booking often rejects child/promo rates).
@@ -178,6 +179,7 @@ export class ZodomusMappingService {
         .filter((r) => r.rates.length > 0);
       try {
         await this.zodomus.activateRooms(channelId, extId, firstOnly);
+        this.zodomus.invalidateRoomRatesCache(channelId, extId);
         steps.push({
           step: 'roomsActivation',
           ok: true,

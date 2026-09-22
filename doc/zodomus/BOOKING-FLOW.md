@@ -8,7 +8,7 @@
 
 | Направление | Что происходит | Механизм |
 |-------------|----------------|----------|
-    | **CRM → Booking** | Менеджер создаёт **прямую** бронь в RentAI | `POST /api/v1/bookings` → **hard** live OTA pull + `GET /availability` restrictions → `BookingEntity` (без `zodomusReservationId`) → **sync** availability push; при fail Zodomus — rollback |
+    | **CRM → Booking** | Менеджер создаёт **прямую** бронь в RentAI | `POST /api/v1/bookings` → **hard** live OTA queue pull + `GET /availability` restrictions → `BookingEntity` (без `zodomusReservationId`) → **sync** availability push; при fail Zodomus — rollback |
 | **CRM → Zodomus** | Уходит занятость, чтобы OTA закрыли даты | `ZodomusAvailabilityPushService.pushAvailabilityNow({ awaitUpstream })` → `POST /availability-multiple` |
 | **CRM отмена (прямая)** | Локальный статус → `CANCELLED`, затем снова открыть даты на OTA | `PATCH /bookings/:id/status` + sync availability push |
 | **CRM отмена (OTA)** | **Заблокировано** | Ошибка `OTA_CANCEL_VIA_CHANNEL` — отменять на OTA; Zodomus пришлёт статус `3` |
@@ -53,7 +53,8 @@ flowchart LR
 Перед `findBlockingOverlap` при `POST /bookings` и `GET …/conflict-preview`:
 
 1. Если Zodomus выключен или у объекта нет external listing — no-op.
-2. Иначе для каждого привязанного канала: `GET /reservations-summary` + `GET /reservations-queue` (force) → upsert/cancel в локальную БД.
+2. Иначе для каждого привязанного канала: **только** `GET /reservations-queue` (force) → upsert/cancel в локальную БД.
+   - **`GET /reservations-summary` запрещён здесь** — только при онбординге (`POST …/import-summary`).
 3. **Hard-fail:** любая ошибка канала (сеть / `returnCode` ≥ 400) → **502** `ZODOMUS_LIVE_PULL_FAILED` — локальную бронь **не** создаём.
 4. Затем `GET /availability` на окно stay: `availability=0` / `booked>0` / `closed` / `minStay*` / CTA-CFO → **400** с reason `OTA_*` (UI conflict-preview показывает то же).
 5. После успешного save: **синхронный** `pushAvailabilityNow({ awaitUpstream: true })` → `POST /availability-multiple`. Если Zodomus не принял (returnCode не 20-x / ≥400) — локальная бронь **удаляется** (rollback), ответ **502** `ZODOMUS_AVAILABILITY_PUSH_FAILED`.

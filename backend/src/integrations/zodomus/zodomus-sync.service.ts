@@ -57,6 +57,26 @@ const QUEUE_STATUS = {
 export class ZodomusSyncService {
   private readonly logger = new Logger(ZodomusSyncService.name);
 
+  /** GET /availability overlay cache — calendar polls every 60s; ARI need not. */
+  private readonly availabilityOverlayCache = new Map<
+    string,
+    {
+      at: number;
+      value: {
+        blockedDays: string[];
+        restrictions: OtaCalendarRestrictionHint[];
+        nightlyPrices: Record<string, number>;
+        nightlyPricesFrom: Record<string, number>;
+        nightlyPriceMeta: Record<string, OtaNightlyPriceMeta>;
+        otaCurrency: string | null;
+        ariUnavailable: boolean;
+      };
+    }
+  >();
+  private static readonly AVAILABILITY_OVERLAY_TTL_MS = 10 * 60 * 1000;
+  /** Skip POST /property-check when already active and checked within this window. */
+  private static readonly PROPERTY_CHECK_MIN_INTERVAL_MS = 60 * 60 * 1000;
+
   constructor(
     private readonly zodomus: ZodomusService,
     private readonly propertyService: PropertyService,
@@ -235,12 +255,28 @@ export class ZodomusSyncService {
 
   /**
    * Source of truth for CRM `zodomusStatus`: POST /property-check (not reservations-queue).
+   * Skip when status is already `active` and checked within the last hour — queue/summary
+   * used to call this on every pass (2× POST per channel).
    */
   private async persistStatusFromPropertyCheck(
     propertyId: string,
     channelId: number,
     extId: string,
   ): Promise<{ status: string; detail: string | null }> {
+    try {
+      const existing = await this.propertyService.findByIdForAdmin(propertyId);
+      const checkedAt = existing.zodomusStatusCheckedAt?.getTime() ?? 0;
+      if (
+        existing.zodomusStatus === 'active' &&
+        checkedAt > 0 &&
+        Date.now() - checkedAt < ZodomusSyncService.PROPERTY_CHECK_MIN_INTERVAL_MS
+      ) {
+        return { status: 'active', detail: existing.zodomusStatusDetail };
+      }
+    } catch {
+      /* fall through to check */
+    }
+
     try {
       await this.zodomus.checkProperty(channelId, extId);
       await this.propertyService.setZodomusStatus(propertyId, 'active', null);
@@ -352,8 +388,9 @@ export class ZodomusSyncService {
   }
 
   /**
-   * Before CRM direct create / conflict-preview: pull live OTA reservations into local DB
-   * (queue + reservations-summary) so overlap checks see Booking.com occupancy.
+   * Before CRM direct create / conflict-preview: drain reservations-queue only
+   * so overlap checks see recent Booking.com changes.
+   * GET /reservations-summary is onboarding-only (importSummary*) — never call it here.
    * Soft no-op when Zodomus is off or property has no external listing.
    * Hard-fail (502) when a linked channel returns API errors — do not create locally on stale data.
    */
@@ -375,24 +412,10 @@ export class ZodomusSyncService {
       return { attempted: false, channels: [], imported: 0, queueProcessed: 0, errors: [] };
     }
 
-    let imported = 0;
     let queueProcessed = 0;
     const errors: string[] = [];
 
     for (const channelId of channelIds) {
-      try {
-        const summary = await this.importSummaryRaw(property, channelId, {
-          skipAvailabilityPush: true,
-        });
-        imported += summary.imported;
-      } catch (e) {
-        const detail = formatZodomusHttpException(e);
-        errors.push(`summary ch=${channelId}: ${detail}`);
-        this.logger.warn(
-          `pullLiveOta (create/preview) summary failed property=${property.id} channel=${channelId}: ${detail}`,
-        );
-      }
-
       try {
         const queue = await this.syncQueueRaw(property, channelId, true);
         queueProcessed += queue.processed;
@@ -405,7 +428,7 @@ export class ZodomusSyncService {
       }
     }
 
-    if (imported > 0 || queueProcessed > 0) {
+    if (queueProcessed > 0) {
       this.calendarGateway.emitCalendarChanged({
         propertyId: property.id,
         source: 'pull-live-before-direct',
@@ -413,7 +436,7 @@ export class ZodomusSyncService {
     }
 
     this.logger.log(
-      `pullLiveOta before direct booking property=${property.id} channels=${channelIds.join(',')} imported=${imported} queueProcessed=${queueProcessed} errors=${errors.length}`,
+      `pullLiveOta before direct booking property=${property.id} channels=${channelIds.join(',')} queueProcessed=${queueProcessed} errors=${errors.length}`,
     );
 
     if (errors.length > 0) {
@@ -428,50 +451,10 @@ export class ZodomusSyncService {
     return {
       attempted: true,
       channels: channelIds,
-      imported,
+      imported: 0,
       queueProcessed,
       errors,
     };
-  }
-
-  /**
-   * Soft live pull for calendar refresh — logs channel errors but does not throw.
-   * Emits calendar WS event when any bookings were imported so the grid can refetch.
-   */
-  async pullLiveOtaBookingsSoft(property: PropertyEntity): Promise<void> {
-    if (!this.zodomus.isEnabled) return;
-    const channelIds = this.resolveLinkedZodomusChannelIds(property);
-    if (channelIds.length === 0) return;
-
-    let imported = 0;
-    let queueProcessed = 0;
-    for (const channelId of channelIds) {
-      try {
-        const summary = await this.importSummaryRaw(property, channelId, {
-          skipAvailabilityPush: true,
-        });
-        imported += summary.imported;
-      } catch (e) {
-        this.logger.warn(
-          `pullLiveOta (calendar soft) summary failed property=${property.id} channel=${channelId}: ${formatZodomusHttpException(e)}`,
-        );
-      }
-      try {
-        const queue = await this.syncQueueRaw(property, channelId, false);
-        queueProcessed += queue.processed;
-      } catch (e) {
-        this.logger.warn(
-          `pullLiveOta (calendar soft) queue failed property=${property.id} channel=${channelId}: ${formatZodomusHttpException(e)}`,
-        );
-      }
-    }
-
-    if (imported > 0 || queueProcessed > 0) {
-      this.calendarGateway.emitCalendarChanged({
-        propertyId: property.id,
-        source: 'calendar-soft-pull',
-      });
-    }
   }
 
   /**
@@ -584,6 +567,12 @@ export class ZodomusSyncService {
       return empty;
     }
 
+    const cacheKey = `${property.id}:${dateFromYmd}:${dateToYmd}:${channelIds.join(',')}`;
+    const cached = this.availabilityOverlayCache.get(cacheKey);
+    if (cached && Date.now() - cached.at < ZodomusSyncService.AVAILABILITY_OVERLAY_TTL_MS) {
+      return cached.value;
+    }
+
     const blocked = new Set<string>();
     const restrictions: OtaCalendarRestrictionHint[] = [];
     const nightlyPrices: Record<string, number> = {};
@@ -653,7 +642,7 @@ export class ZodomusSyncService {
       }
     }
 
-    return {
+    const value = {
       blockedDays: [...blocked].sort(),
       restrictions,
       nightlyPrices,
@@ -662,6 +651,8 @@ export class ZodomusSyncService {
       otaCurrency,
       ariUnavailable: attempted > 0 && succeeded === 0,
     };
+    this.availabilityOverlayCache.set(cacheKey, { at: Date.now(), value });
+    return value;
   }
 
   isPropertyZodomusLinked(property: PropertyEntity): boolean {
@@ -1010,6 +1001,11 @@ export class ZodomusSyncService {
       null,
       null,
     );
+    const channelCurrency = resolveOtaChannelCurrency({
+      fromAri: currencyFromPayload,
+      propertyCurrency: property.currency,
+      timezone: property.timezone,
+    });
     const row =
       existing ??
       this.bookingRepo.create({
@@ -1096,14 +1092,17 @@ export class ZodomusSyncService {
     } else if (!existing || !(Number(existing.totalPriceMinor) > 0)) {
       row.totalPriceMinor = Number.isFinite(totalMinor) ? totalMinor : 0;
     }
-    // Prefer OTA payload currency; keep existing booking currency; else property CRM currency.
+    // Prefer OTA payload currency; never keep empty/default USD when channel is PLN (Warsaw).
     if (currencyFromPayload) {
       row.currency = currencyFromPayload;
-    } else if (!normalizeCurrencyCode(row.currency)) {
-      row.currency =
-        normalizeCurrencyCode(existing?.currency) ??
-        normalizeCurrencyCode(property.currency) ??
-        'USD';
+    } else {
+      const existingCode = normalizeCurrencyCode(existing?.currency ?? row.currency);
+      const tz = property.timezone?.trim() || '';
+      const warsaw = tz === 'Europe/Warsaw' || tz.startsWith('Europe/Warsaw');
+      const existingIsWeakUsd = existingCode === 'USD' && warsaw;
+      if (!existingCode || existingIsWeakUsd) {
+        row.currency = channelCurrency;
+      }
     }
     row.zodomusReservationId = rid;
     row.zodomusChannelId = channelId;

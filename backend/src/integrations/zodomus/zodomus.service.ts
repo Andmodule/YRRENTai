@@ -17,6 +17,10 @@ import {
 export class ZodomusService {
   private readonly logger = new Logger(ZodomusService.name);
 
+  /** In-memory GET /room-rates cache — rate catalog changes rarely; calendar/stay hit this every request. */
+  private readonly roomRatesCache = new Map<string, { at: number; body: unknown }>();
+  private static readonly ROOM_RATES_TTL_MS = 6 * 60 * 60 * 1000;
+
   constructor(
     @Optional() @Inject(ZODOMUS_CLIENT)
     private readonly client: ZodomusClient | null,
@@ -52,12 +56,28 @@ export class ZodomusService {
     return this.ensureEnabled().get<unknown>('/price-model');
   }
 
-  /** Полное тело GET /room-rates (для превью объекта до сохранения в БД). */
+  /** Полное тело GET /room-rates (для превью объекта до сохранения в БД). Cached 6h. */
   async getRoomRatesRaw(channelId: number, propertyId: string): Promise<unknown> {
-    return this.ensureEnabled().get<unknown>('/room-rates', {
+    const key = `${channelId}:${propertyId.trim()}`;
+    const hit = this.roomRatesCache.get(key);
+    if (hit && Date.now() - hit.at < ZodomusService.ROOM_RATES_TTL_MS) {
+      return hit.body;
+    }
+    const body = await this.ensureEnabled().get<unknown>('/room-rates', {
       channelId: String(channelId),
       propertyId: propertyId.trim(),
     });
+    this.roomRatesCache.set(key, { at: Date.now(), body });
+    return body;
+  }
+
+  /** Drop cached room-rates (after remapping / rooms-activation). */
+  invalidateRoomRatesCache(channelId?: number, propertyId?: string): void {
+    if (channelId != null && propertyId?.trim()) {
+      this.roomRatesCache.delete(`${channelId}:${propertyId.trim()}`);
+      return;
+    }
+    this.roomRatesCache.clear();
   }
 
   /** Комнаты и тарифы из OTA для объекта — источник корректных roomId/rateId для POST /rooms-activation */

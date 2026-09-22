@@ -88,6 +88,11 @@ const zodomusEnvFields = z.object({
    * Zodomus often exceeds the general fetch timeout on this path. Default: 60000.
    */
   ZODOMUS_SUMMARY_TIMEOUT_MS: z.coerce.number().int().min(5000).max(180_000).default(60_000),
+  /**
+   * Global ceiling for ALL Zodomus HTTP calls (GET+POST) per process per minute.
+   * Serializes concurrency to 1 in ZodomusClient. Default: 20 (partner: no bursts >10/sec).
+   */
+  ZODOMUS_MAX_REQUESTS_PER_MINUTE: z.coerce.number().int().min(1).max(120).default(20),
 });
 
 const icalEnvFields = z.object({

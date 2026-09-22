@@ -14,6 +14,11 @@ type FetchOpts = {
   timeoutMs?: number;
 };
 
+/**
+ * All Zodomus upstream traffic goes through this client.
+ * Enforces: at most one in-flight request + sliding-window max requests/minute
+ * (partner suspended us for >10 calls/sec bursts of GET reservations-summary / room-rates).
+ */
 @Injectable()
 export class ZodomusClient {
   private readonly logger = new Logger(ZodomusClient.name);
@@ -21,6 +26,12 @@ export class ZodomusClient {
   private readonly authHeader: string;
   private readonly fetchTimeoutMs: number;
   private readonly summaryTimeoutMs: number;
+  private readonly maxRequestsPerMinute: number;
+
+  /** Timestamps (ms) of requests that entered the upstream call (after waiting for the slot). */
+  private readonly callTimestamps: number[] = [];
+  /** Promise chain — serializes all get/post so concurrency never exceeds 1. */
+  private gate: Promise<void> = Promise.resolve();
 
   constructor(private readonly config: ConfigService) {
     this.baseUrl = this.config.getOrThrow<string>('ZODOMUS_BASE_URL').replace(/\/$/, '');
@@ -29,6 +40,7 @@ export class ZodomusClient {
     this.authHeader = `Basic ${Buffer.from(`${user}:${pass}`, 'utf8').toString('base64')}`;
     this.fetchTimeoutMs = this.config.get<number>('ZODOMUS_FETCH_TIMEOUT_MS') ?? 30_000;
     this.summaryTimeoutMs = this.config.get<number>('ZODOMUS_SUMMARY_TIMEOUT_MS') ?? 60_000;
+    this.maxRequestsPerMinute = this.config.get<number>('ZODOMUS_MAX_REQUESTS_PER_MINUTE') ?? 20;
   }
 
   /** Timeout used for GET /reservations-summary (heavy upstream). */
@@ -41,53 +53,98 @@ export class ZodomusClient {
     params?: Record<string, string>,
     opts?: FetchOpts,
   ): Promise<T> {
-    const url = new URL(`${this.baseUrl}${path.startsWith('/') ? path : `/${path}`}`);
-    if (params) {
-      Object.entries(params).forEach(([k, v]) => {
-        if (v !== undefined && v !== null) url.searchParams.set(k, String(v));
-      });
-    }
+    return this.runExclusive(async () => {
+      const url = new URL(`${this.baseUrl}${path.startsWith('/') ? path : `/${path}`}`);
+      if (params) {
+        Object.entries(params).forEach(([k, v]) => {
+          if (v !== undefined && v !== null) url.searchParams.set(k, String(v));
+        });
+      }
 
-    const label = `GET ${path}`;
-    const timeoutMs = opts?.timeoutMs ?? this.fetchTimeoutMs;
-    const res = await this.fetchWithRetry(label, () =>
-      this.timedFetch(
-        url.toString(),
-        {
-          method: 'GET',
-          headers: {
-            Authorization: this.authHeader,
-            Accept: 'application/json',
+      const label = `GET ${path}`;
+      const timeoutMs = opts?.timeoutMs ?? this.fetchTimeoutMs;
+      const res = await this.fetchWithRetry(label, () =>
+        this.timedFetch(
+          url.toString(),
+          {
+            method: 'GET',
+            headers: {
+              Authorization: this.authHeader,
+              Accept: 'application/json',
+            },
           },
-        },
-        timeoutMs,
-      ),
-    );
+          timeoutMs,
+        ),
+      );
 
-    return this.handleResponse<T>(res, label);
+      return this.handleResponse<T>(res, label);
+    });
   }
 
   async post<T>(path: string, body: unknown, opts?: FetchOpts): Promise<T> {
-    const p = path.startsWith('/') ? path : `/${path}`;
-    const label = `POST ${path}`;
-    const timeoutMs = opts?.timeoutMs ?? this.fetchTimeoutMs;
-    const res = await this.fetchWithRetry(label, () =>
-      this.timedFetch(
-        `${this.baseUrl}${p}`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: this.authHeader,
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
+    return this.runExclusive(async () => {
+      const p = path.startsWith('/') ? path : `/${path}`;
+      const label = `POST ${path}`;
+      const timeoutMs = opts?.timeoutMs ?? this.fetchTimeoutMs;
+      const res = await this.fetchWithRetry(label, () =>
+        this.timedFetch(
+          `${this.baseUrl}${p}`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: this.authHeader,
+              'Content-Type': 'application/json',
+              Accept: 'application/json',
+            },
+            body: JSON.stringify(body ?? {}),
           },
-          body: JSON.stringify(body ?? {}),
-        },
-        timeoutMs,
-      ),
-    );
+          timeoutMs,
+        ),
+      );
 
-    return this.handleResponse<T>(res, label);
+      return this.handleResponse<T>(res, label);
+    });
+  }
+
+  /**
+   * Serialize all upstream calls and wait for sliding-window capacity.
+   * Exposed for unit tests.
+   */
+  async runExclusive<T>(fn: () => Promise<T>): Promise<T> {
+    const prev = this.gate;
+    let release!: () => void;
+    this.gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await prev;
+    try {
+      await this.waitForRateSlot();
+      return await fn();
+    } finally {
+      release();
+    }
+  }
+
+  /** Wait until the current minute has room for one more call; then record the timestamp. */
+  private async waitForRateSlot(): Promise<void> {
+    const max = Math.max(1, this.maxRequestsPerMinute);
+    for (;;) {
+      const now = Date.now();
+      const windowStart = now - 60_000;
+      while (this.callTimestamps.length > 0 && this.callTimestamps[0]! <= windowStart) {
+        this.callTimestamps.shift();
+      }
+      if (this.callTimestamps.length < max) {
+        this.callTimestamps.push(Date.now());
+        return;
+      }
+      const oldest = this.callTimestamps[0]!;
+      const waitMs = oldest + 60_000 - Date.now() + 50;
+      this.logger.warn(
+        `Zodomus global rate limit: ${max} req/min reached — waiting ${Math.max(0, Math.ceil(waitMs / 1000))}s`,
+      );
+      await new Promise<void>((r) => setTimeout(r, Math.max(50, waitMs)));
+    }
   }
 
   /** Single fetch with AbortController timeout (each retry gets a new timer). */
@@ -117,6 +174,7 @@ export class ZodomusClient {
   /**
    * Retries only when fetch() throws (no Response) — transient DNS/TLS/network/timeout.
    * Does not retry HTTP 4xx/5xx; those are handled in handleResponse.
+   * Retries share the same exclusive slot (already held by runExclusive).
    */
   private async fetchWithRetry(
     label: string,

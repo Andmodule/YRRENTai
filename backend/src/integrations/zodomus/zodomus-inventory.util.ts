@@ -121,7 +121,34 @@ function mergeRateIntoDay(
     day.minStayThrough = day.minStayThrough == null ? minThru : Math.max(day.minStayThrough, minThru);
   }
 
-  if (rateClosed || rate.isChildRate === true) return;
+  if (rateClosed || rate.isChildRate === true) {
+    // Still merge price for display (occupied nights are closed; UI needs rack for OTA total fallback).
+    // Do not treat closed rates as bookable — closed flags already set above.
+    if (rate.isChildRate === true) return;
+    const price = toNum(rate.price);
+    if (price == null || !(price > 0)) return;
+    const rateId = String(rate.rateId ?? rate.id ?? '').trim();
+    const rateName = resolveRateName(rate, rateId, rateNamesById);
+    const prefer = preferRateId?.trim() || null;
+    if (prefer && rateId && rateId === prefer) {
+      if (day.price == null) {
+        day.price = price;
+        day.priceRateId = rateId;
+        day.priceRateName = rateName || null;
+      }
+    } else if (day.price == null || (!(prefer && day.priceRateId === prefer) && price < day.price)) {
+      day.price = price;
+      day.priceRateId = rateId || null;
+      day.priceRateName = rateName || null;
+    }
+    if (!(rateName && isLongStayOrDerivedRateName(rateName))) {
+      if (day.priceFrom == null || price < day.priceFrom) {
+        day.priceFrom = price;
+        day.priceFromRateId = rateId || null;
+      }
+    }
+    return;
+  }
 
   const price = toNum(rate.price);
   if (price == null || !(price > 0)) return;

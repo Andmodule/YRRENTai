@@ -6,12 +6,14 @@ import { BookingEntity } from '../booking/entities/booking.entity';
 import { formatCalendarDayInTimezone } from '../booking/booking-availability.util';
 import { PropertyService } from '../property/property.service';
 import { ZodomusSyncService } from '../integrations/zodomus/zodomus-sync.service';
+import { resolveOtaChannelCurrency } from '../integrations/zodomus/zodomus-reservation-price.util';
 import type { BookingStatus as SharedBookingStatus } from '@rentai/shared';
 import type {
   OtaCalendarRestrictionHint,
   OtaNightlyPriceMeta,
 } from '../integrations/zodomus/zodomus-inventory.util';
 import { sumNightlyPriceMap } from '../integrations/zodomus/zodomus-inventory.util';
+import type { PropertyEntity } from '../property/entities/property.entity';
 
 export interface CalendarPropertyDto {
   uuid: string;
@@ -119,22 +121,10 @@ export class CalendarService {
     const linked = properties.filter((p) => this.zodomusSync.isPropertyZodomusLinked(p));
 
     /**
-     * Do NOT await full OTA summary/queue pull on the calendar request path — it can take
-     * many seconds per property and starves the availability overlay (occupied nights).
-     * Fire soft pull in background; calendar invalidates via WS when imports land.
+     * Do NOT pull reservations-summary or queue on the calendar request path.
+     * Summary is onboarding-only; live updates come from webhooks + cron queue poll.
+     * Calendar only needs GET /availability overlay (rate-limited + cached in sync service).
      */
-    if (linked.length > 0) {
-      void Promise.allSettled(
-        linked.map((p) => this.zodomusSync.pullLiveOtaBookingsSoft(p)),
-      ).then((results) => {
-        const failed = results.filter((r) => r.status === 'rejected').length;
-        if (failed > 0) {
-          this.logger.warn(
-            `calendar background OTA soft pull: ${failed}/${linked.length} property(ies) failed`,
-          );
-        }
-      });
-    }
 
     const propertyIds = properties.map((p) => p.id);
     const tzByPropertyId = new Map(properties.map((p) => [p.id, p.timezone || 'UTC']));
@@ -155,9 +145,14 @@ export class CalendarService {
       .orderBy('b.checkIn', 'ASC')
       .getMany();
 
-    const reservations: CalendarReservationDto[] = bookings.map((b) =>
-      mapBookingToCalendarDto(b, tzByPropertyId.get(b.propertyId) ?? 'UTC'),
-    );
+    const reservations: CalendarReservationDto[] = bookings.map((b) => {
+      const prop = properties.find((p) => p.id === b.propertyId);
+      return mapBookingToCalendarDto(
+        b,
+        tzByPropertyId.get(b.propertyId) ?? 'UTC',
+        prop,
+      );
+    });
 
     const occupiedByProperty = new Map<string, Set<string>>();
     for (const r of reservations) {
@@ -179,7 +174,7 @@ export class CalendarService {
       }
     }
 
-    /** Parallel inventory overlay — primary source of “occupied” nights on the grid for linked props. */
+    /** Sequential inventory overlay — client already serializes HTTP; avoid stampeding N properties at once. */
     const overlayByPropertyId = new Map<
       string,
       {
@@ -193,22 +188,17 @@ export class CalendarService {
       }
     >();
     if (linked.length > 0) {
-      const overlayResults = await Promise.allSettled(
-        linked.map(async (p) => {
+      for (const p of linked) {
+        try {
           const overlay = await this.zodomusSync.getInventoryOverlayForProperty(
             p,
             fromYmd,
             availabilityDateToExclusive,
           );
-          return { propertyId: p.id, overlay };
-        }),
-      );
-      for (const result of overlayResults) {
-        if (result.status !== 'fulfilled') {
-          this.logger.warn(`calendar inventory overlay rejected: ${String(result.reason)}`);
-          continue;
+          overlayByPropertyId.set(p.id, overlay);
+        } catch (e) {
+          this.logger.warn(`calendar inventory overlay failed property=${p.id}: ${String(e)}`);
         }
-        overlayByPropertyId.set(result.value.propertyId, result.value.overlay);
       }
     }
 
@@ -252,16 +242,62 @@ export class CalendarService {
      * OTA rows often store totalPriceMinor=0 (Zodomus reservation.totalPrice="0").
      * Prefer cheapest eligible rack (NR-like "from") over Standard — closer to guest-paid
      * when ingest could not resolve rooms[].totalPrice. Never overwrite a positive CRM total.
+     * Also fix weak USD currency on Warsaw listings and persist price/currency when we can.
      */
+    const persistPatches: Array<{ id: string; totalPriceMinor?: number; currency?: string }> = [];
     for (const r of reservations) {
-      if (!r.fromOta || r.totalPrice > 0) continue;
+      if (!r.fromOta) continue;
+      const prop = properties.find((p) => p.id === r.propertyId);
       const overlay = overlayByPropertyId.get(r.propertyId);
+      const channelCur =
+        overlay?.otaCurrency ??
+        (prop
+          ? resolveOtaChannelCurrency({
+              propertyCurrency: prop.currency,
+              timezone: prop.timezone,
+            })
+          : null);
+
+      const bookingCur = (r.currency || '').trim().toUpperCase();
+      const tz = prop?.timezone?.trim() || '';
+      const warsaw = tz === 'Europe/Warsaw' || tz.startsWith('Europe/Warsaw');
+      if (channelCur && (bookingCur === '' || (warsaw && bookingCur === 'USD'))) {
+        if (r.currency !== channelCur) {
+          r.currency = channelCur;
+          persistPatches.push({ id: r.uuid, currency: channelCur });
+        }
+      }
+
+      if (r.totalPrice > 0) continue;
       const fromSum = sumNightlyPriceMap(overlay?.nightlyPricesFrom, r.checkIn, r.checkOut);
       const stdSum = sumNightlyPriceMap(overlay?.nightlyPrices, r.checkIn, r.checkOut);
       const sum = fromSum ?? stdSum;
       if (sum != null && sum > 0) {
         r.totalPrice = sum;
+        const minor = Math.round(sum * 100);
+        const existing = persistPatches.find((p) => p.id === r.uuid);
+        if (existing) {
+          existing.totalPriceMinor = minor;
+        } else {
+          persistPatches.push({ id: r.uuid, totalPriceMinor: minor });
+        }
       }
+    }
+
+    if (persistPatches.length > 0) {
+      void Promise.allSettled(
+        persistPatches.map(async (patch) => {
+          const update: Partial<BookingEntity> = {};
+          if (patch.totalPriceMinor != null) update.totalPriceMinor = patch.totalPriceMinor;
+          if (patch.currency) update.currency = patch.currency;
+          await this.bookingRepository.update(patch.id, update);
+        }),
+      ).then((results) => {
+        const failed = results.filter((x) => x.status === 'rejected').length;
+        if (failed > 0) {
+          this.logger.warn(`calendar OTA price/currency persist: ${failed}/${persistPatches.length} failed`);
+        }
+      });
     }
 
     return { properties: propertyDtos, reservations };
@@ -315,8 +351,13 @@ export class CalendarService {
 
     const bookings = await qb.getMany();
     const tzByPropertyId = new Map(properties.map((p) => [p.id, p.timezone || 'UTC']));
+    const propById = new Map(properties.map((p) => [p.id, p]));
     return bookings.map((b) =>
-      mapBookingToCalendarDto(b, tzByPropertyId.get(b.propertyId) ?? 'UTC'),
+      mapBookingToCalendarDto(
+        b,
+        tzByPropertyId.get(b.propertyId) ?? 'UTC',
+        propById.get(b.propertyId),
+      ),
     );
   }
 }
@@ -324,7 +365,24 @@ export class CalendarService {
 export function mapBookingToCalendarDto(
   b: BookingEntity,
   propertyTimezone: string,
+  property?: PropertyEntity | null,
 ): CalendarReservationDto {
+  let currency = (b.currency || '').trim().toUpperCase();
+  if (b.zodomusReservationId?.trim() && property) {
+    const channelCur = resolveOtaChannelCurrency({
+      propertyCurrency: property.currency,
+      timezone: property.timezone,
+    });
+    const tz = property.timezone?.trim() || '';
+    const warsaw = tz === 'Europe/Warsaw' || tz.startsWith('Europe/Warsaw');
+    if (!/^[A-Z]{3}$/.test(currency) || (warsaw && currency === 'USD')) {
+      currency = channelCur;
+    }
+  }
+  if (!/^[A-Z]{3}$/.test(currency)) {
+    currency = 'USD';
+  }
+
   return {
     uuid: b.id,
     externalId: b.zodomusReservationId?.trim() || b.id,
@@ -354,7 +412,7 @@ export function mapBookingToCalendarDto(
     channel: calendarChannelFromBooking(b),
     status: mapBookingStatus(b.status as SharedBookingStatus),
     totalPrice: b.totalPriceMinor / 100,
-    currency: b.currency,
+    currency,
     checkIn: formatCalendarDayInTimezone(b.checkIn, propertyTimezone),
     checkOut: formatCalendarDayInTimezone(b.checkOut, propertyTimezone),
     chatThreadId: null,

@@ -43,16 +43,25 @@ export function resolveDisplayTotalMajor(
   return sumOtaNightlyPrices(otaNightlyPrices, checkInYmd, checkOutYmd);
 }
 
-/** Prefer booking currency; fall back to property / OTA currency when invalid or missing. */
+/** Prefer booking currency; fall back to property / OTA currency when invalid or missing.
+ *  Also treat CRM-default USD as weak when a non-USD channel fallback is provided
+ *  (Booking.com Warsaw listings often stored USD incorrectly).
+ */
 export function resolveDisplayCurrency(
   bookingCurrency: string | null | undefined,
   fallbackCurrency?: string | null,
 ): string {
   const primary = typeof bookingCurrency === 'string' ? bookingCurrency.trim().toUpperCase() : '';
-  if (/^[A-Z]{3}$/.test(primary)) return primary;
   const fallback =
     typeof fallbackCurrency === 'string' ? fallbackCurrency.trim().toUpperCase() : '';
-  if (/^[A-Z]{3}$/.test(fallback)) return fallback;
+  const fallbackOk = /^[A-Z]{3}$/.test(fallback);
+  if (/^[A-Z]{3}$/.test(primary)) {
+    if (primary === 'USD' && fallbackOk && fallback !== 'USD') {
+      return fallback;
+    }
+    return primary;
+  }
+  if (fallbackOk) return fallback;
   return 'USD';
 }
 
