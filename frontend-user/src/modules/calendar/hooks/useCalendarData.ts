@@ -98,12 +98,12 @@ export function useCalendarData(dateRange: CalendarDateRange) {
       return withOtaBlockedBars(raw);
     },
     /**
-     * WS (`CalendarSocketProvider`) is the primary invalidation path.
-     * Keep a slow poll only as fallback when the socket drops / another origin blocks WS.
+     * WS is primary invalidation. Slow poll is fallback only.
+     * Nav arrows stay disabled while isFetching so we wait for Zodomus-paced overlay.
      */
-    staleTime: 30_000,
+    staleTime: 60_000,
     refetchInterval: 60_000,
-    refetchOnWindowFocus: true,
+    refetchOnWindowFocus: false,
     refetchOnReconnect: true,
     placeholderData: (prev) => prev,
   });

@@ -174,7 +174,7 @@ export class CalendarService {
       }
     }
 
-    /** Sequential inventory overlay — client already serializes HTTP; avoid stampeding N properties at once. */
+    /** Sequential inventory overlay — only the visible 14-day window; sync paces Zodomus ≥10s/property. */
     const overlayByPropertyId = new Map<
       string,
       {
