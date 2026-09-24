@@ -1713,6 +1713,7 @@
     "navPrev": "Предыдущая неделя",
     "navNext": "Следующая неделя",
     "loadingAria": "Загрузка данных",
+    "navWaitingChannel": "Ждём ответ канала…",
     "emptyNoProperties": "Добавьте объект для начала работы",
     "addProperty": "Добавить объект",
     "emptyNoReservations": "Нет броней в выбранном периоде",

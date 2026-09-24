@@ -41,6 +41,12 @@ describe('resolve-display-total', () => {
     assert.equal(resolveDisplayCurrency('eur', 'PLN'), 'EUR');
   });
 
+  it('resolveDisplayCurrency treats USD as weak when channel fallback is PLN', () => {
+    assert.equal(resolveDisplayCurrency('USD', 'PLN'), 'PLN');
+    assert.equal(resolveDisplayCurrency('USD', 'USD'), 'USD');
+    assert.equal(resolveDisplayCurrency('EUR', 'PLN'), 'EUR');
+  });
+
   it('formats with fallback currency when booking currency empty', () => {
     const out = formatDisplayTotal(
       100,
@@ -53,5 +59,20 @@ describe('resolve-display-total', () => {
       'PLN',
     );
     assert.ok(out.includes('100') || out.includes('zł') || out.includes('PLN'));
+  });
+
+  it('formats USD booking with PLN fallback as PLN', () => {
+    const out = formatDisplayTotal(
+      260,
+      'USD',
+      '2026-09-17',
+      '2026-09-18',
+      undefined,
+      'Price unavailable',
+      undefined,
+      'PLN',
+    );
+    assert.ok(out.includes('260') || out.includes('zł') || out.includes('PLN'));
+    assert.equal(out.includes('$') || out.includes('USD'), false);
   });
 });

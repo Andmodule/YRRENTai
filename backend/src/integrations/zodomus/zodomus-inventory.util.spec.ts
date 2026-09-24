@@ -151,6 +151,41 @@ describe('zodomus-inventory.util', () => {
     expect(sumNightlyPriceMap(collectOtaNightlyPrices(days), '2026-09-17', '2026-09-20')).toBeNull();
   });
 
+  it('keeps price from closed rates for display while still marking night closed', () => {
+    const days = extractZodomusInventoryDays(
+      {
+        rooms: [
+          {
+            id: 'r1',
+            dates: [
+              {
+                date: '2026-10-01',
+                availability: '0',
+                booked: '1',
+                rates: [
+                  { rateId: 'std', closed: '1', price: '520.0' },
+                  { rateId: 'nr', closed: '1', price: '480.0' },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      { preferRateId: 'std' },
+    );
+    const closedDay = days[0]!;
+    expect(closedDay.closed).toBe(true);
+    expect(closedDay.price).toBe(520);
+    expect(closedDay.priceRateId).toBe('std');
+    expect(closedDay.priceFrom).toBe(480);
+    const {
+      collectOtaBlockedDays,
+      sumStayNightlyPrices,
+    } = require('./zodomus-inventory.util') as typeof import('./zodomus-inventory.util');
+    expect(collectOtaBlockedDays(days)).toContain('2026-10-01');
+    expect(sumStayNightlyPrices(days, '2026-10-01', '2026-10-02')).toBe(520);
+  });
+
   it('excludes weekly/monthly from priceFrom when rate names are known', () => {
     const days = extractZodomusInventoryDays(
       {

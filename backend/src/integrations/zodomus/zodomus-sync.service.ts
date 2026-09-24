@@ -57,6 +57,34 @@ const QUEUE_STATUS = {
 export class ZodomusSyncService {
   private readonly logger = new Logger(ZodomusSyncService.name);
 
+  /** GET /availability overlay cache — calendar polls every 60s; ARI need not. */
+  private readonly availabilityOverlayCache = new Map<
+    string,
+    {
+      at: number;
+      value: {
+        blockedDays: string[];
+        restrictions: OtaCalendarRestrictionHint[];
+        nightlyPrices: Record<string, number>;
+        nightlyPricesFrom: Record<string, number>;
+        nightlyPriceMeta: Record<string, OtaNightlyPriceMeta>;
+        otaCurrency: string | null;
+        ariUnavailable: boolean;
+      };
+    }
+  >();
+  private static readonly AVAILABILITY_OVERLAY_TTL_MS = 10 * 60 * 1000;
+  /**
+   * Min gap between calendar overlay upstream fetches (one property at a time).
+   * Prevents N linked properties from hitting Zodomus back-to-back on cold calendar load.
+   */
+  private static readonly OVERLAY_PROPERTY_GAP_MS = 10_000;
+  /** Serializes overlay upstream so two calendar requests never fetch two properties at once. */
+  private overlayUpstreamGate: Promise<void> = Promise.resolve();
+  private lastOverlayUpstreamAt = 0;
+  /** Skip POST /property-check when already active and checked within this window. */
+  private static readonly PROPERTY_CHECK_MIN_INTERVAL_MS = 60 * 60 * 1000;
+
   constructor(
     private readonly zodomus: ZodomusService,
     private readonly propertyService: PropertyService,
@@ -235,12 +263,28 @@ export class ZodomusSyncService {
 
   /**
    * Source of truth for CRM `zodomusStatus`: POST /property-check (not reservations-queue).
+   * Skip when status is already `active` and checked within the last hour — queue/summary
+   * used to call this on every pass (2× POST per channel).
    */
   private async persistStatusFromPropertyCheck(
     propertyId: string,
     channelId: number,
     extId: string,
   ): Promise<{ status: string; detail: string | null }> {
+    try {
+      const existing = await this.propertyService.findByIdForAdmin(propertyId);
+      const checkedAt = existing.zodomusStatusCheckedAt?.getTime() ?? 0;
+      if (
+        existing.zodomusStatus === 'active' &&
+        checkedAt > 0 &&
+        Date.now() - checkedAt < ZodomusSyncService.PROPERTY_CHECK_MIN_INTERVAL_MS
+      ) {
+        return { status: 'active', detail: existing.zodomusStatusDetail };
+      }
+    } catch {
+      /* fall through to check */
+    }
+
     try {
       await this.zodomus.checkProperty(channelId, extId);
       await this.propertyService.setZodomusStatus(propertyId, 'active', null);
@@ -352,8 +396,9 @@ export class ZodomusSyncService {
   }
 
   /**
-   * Before CRM direct create / conflict-preview: pull live OTA reservations into local DB
-   * (queue + reservations-summary) so overlap checks see Booking.com occupancy.
+   * Before CRM direct create / conflict-preview: drain reservations-queue only
+   * so overlap checks see recent Booking.com changes.
+   * GET /reservations-summary is onboarding-only (importSummary*) — never call it here.
    * Soft no-op when Zodomus is off or property has no external listing.
    * Hard-fail (502) when a linked channel returns API errors — do not create locally on stale data.
    */
@@ -375,24 +420,10 @@ export class ZodomusSyncService {
       return { attempted: false, channels: [], imported: 0, queueProcessed: 0, errors: [] };
     }
 
-    let imported = 0;
     let queueProcessed = 0;
     const errors: string[] = [];
 
     for (const channelId of channelIds) {
-      try {
-        const summary = await this.importSummaryRaw(property, channelId, {
-          skipAvailabilityPush: true,
-        });
-        imported += summary.imported;
-      } catch (e) {
-        const detail = formatZodomusHttpException(e);
-        errors.push(`summary ch=${channelId}: ${detail}`);
-        this.logger.warn(
-          `pullLiveOta (create/preview) summary failed property=${property.id} channel=${channelId}: ${detail}`,
-        );
-      }
-
       try {
         const queue = await this.syncQueueRaw(property, channelId, true);
         queueProcessed += queue.processed;
@@ -405,7 +436,7 @@ export class ZodomusSyncService {
       }
     }
 
-    if (imported > 0 || queueProcessed > 0) {
+    if (queueProcessed > 0) {
       this.calendarGateway.emitCalendarChanged({
         propertyId: property.id,
         source: 'pull-live-before-direct',
@@ -413,7 +444,7 @@ export class ZodomusSyncService {
     }
 
     this.logger.log(
-      `pullLiveOta before direct booking property=${property.id} channels=${channelIds.join(',')} imported=${imported} queueProcessed=${queueProcessed} errors=${errors.length}`,
+      `pullLiveOta before direct booking property=${property.id} channels=${channelIds.join(',')} queueProcessed=${queueProcessed} errors=${errors.length}`,
     );
 
     if (errors.length > 0) {
@@ -428,50 +459,10 @@ export class ZodomusSyncService {
     return {
       attempted: true,
       channels: channelIds,
-      imported,
+      imported: 0,
       queueProcessed,
       errors,
     };
-  }
-
-  /**
-   * Soft live pull for calendar refresh — logs channel errors but does not throw.
-   * Emits calendar WS event when any bookings were imported so the grid can refetch.
-   */
-  async pullLiveOtaBookingsSoft(property: PropertyEntity): Promise<void> {
-    if (!this.zodomus.isEnabled) return;
-    const channelIds = this.resolveLinkedZodomusChannelIds(property);
-    if (channelIds.length === 0) return;
-
-    let imported = 0;
-    let queueProcessed = 0;
-    for (const channelId of channelIds) {
-      try {
-        const summary = await this.importSummaryRaw(property, channelId, {
-          skipAvailabilityPush: true,
-        });
-        imported += summary.imported;
-      } catch (e) {
-        this.logger.warn(
-          `pullLiveOta (calendar soft) summary failed property=${property.id} channel=${channelId}: ${formatZodomusHttpException(e)}`,
-        );
-      }
-      try {
-        const queue = await this.syncQueueRaw(property, channelId, false);
-        queueProcessed += queue.processed;
-      } catch (e) {
-        this.logger.warn(
-          `pullLiveOta (calendar soft) queue failed property=${property.id} channel=${channelId}: ${formatZodomusHttpException(e)}`,
-        );
-      }
-    }
-
-    if (imported > 0 || queueProcessed > 0) {
-      this.calendarGateway.emitCalendarChanged({
-        propertyId: property.id,
-        source: 'calendar-soft-pull',
-      });
-    }
   }
 
   /**
@@ -584,84 +575,130 @@ export class ZodomusSyncService {
       return empty;
     }
 
-    const blocked = new Set<string>();
-    const restrictions: OtaCalendarRestrictionHint[] = [];
-    const nightlyPrices: Record<string, number> = {};
-    const nightlyPricesFrom: Record<string, number> = {};
-    const nightlyPriceMeta: Record<string, OtaNightlyPriceMeta> = {};
-    const seenHint = new Set<string>();
-    let otaCurrency: string | null = null;
-    let attempted = 0;
-    let succeeded = 0;
-
-    for (const channelId of channelIds) {
-      const extId = this.propertyService.getExternalListingIdForZodomusChannel(property, channelId);
-      if (!extId) continue;
-      attempted += 1;
-      try {
-        const preferRoomId = this.propertyService.getZodomusRoomIdForChannel(property, channelId);
-        let preferRateId: string | null = null;
-        let rateNamesById: Record<string, string> | null = null;
-        try {
-          const ratesRaw = await this.zodomus.getRoomRatesRaw(channelId, extId);
-          preferRateId = pickPrimaryRateId(ratesRaw, preferRoomId);
-          rateNamesById = buildRateNameMapFromRoomRates(ratesRaw);
-        } catch (e) {
-          this.logger.debug(
-            `calendar overlay room-rates skip property=${property.id} ch=${channelId}: ${formatZodomusHttpException(e)}`,
-          );
-        }
-        const raw = await this.zodomus.getAvailability(channelId, extId, dateFromYmd, dateToYmd);
-        if (otaCurrency == null) {
-          otaCurrency = resolveOtaChannelCurrency({
-            fromAri: extractCurrencyFromZodomusPayload(raw),
-            propertyCurrency: property.currency,
-            timezone: property.timezone,
-          });
-        }
-        const days = extractZodomusInventoryDays(raw, {
-          preferRoomId,
-          preferRateId,
-          rateNamesById,
-        });
-        const blockedDays = collectOtaBlockedDays(days);
-        for (const d of blockedDays) blocked.add(d);
-        this.logger.debug(
-          `calendar overlay property=${property.id} ch=${channelId} ext=${extId} room=${preferRoomId ?? 'all'} days=${days.length} blocked=${blockedDays.length}`,
-        );
-        for (const h of collectOtaRestrictionHints(days)) {
-          const key = `${h.date}:${h.kind}:${h.minStay ?? ''}`;
-          if (seenHint.has(key)) continue;
-          seenHint.add(key);
-          restrictions.push(h);
-        }
-        // First linked channel wins per date (Booking.com channel typically).
-        for (const [date, price] of Object.entries(collectOtaNightlyPrices(days))) {
-          if (nightlyPrices[date] == null) nightlyPrices[date] = price;
-        }
-        for (const [date, price] of Object.entries(collectOtaNightlyPricesFrom(days))) {
-          if (nightlyPricesFrom[date] == null) nightlyPricesFrom[date] = price;
-        }
-        for (const [date, meta] of Object.entries(collectOtaNightlyPriceMeta(days))) {
-          if (nightlyPriceMeta[date] == null) nightlyPriceMeta[date] = meta;
-        }
-        succeeded += 1;
-      } catch (e) {
-        this.logger.warn(
-          `calendar inventory overlay failed property=${property.id} channel=${channelId}: ${formatZodomusHttpException(e)}`,
-        );
-      }
+    const cacheKey = `${property.id}:${dateFromYmd}:${dateToYmd}:${channelIds.join(',')}`;
+    const cached = this.availabilityOverlayCache.get(cacheKey);
+    if (cached && Date.now() - cached.at < ZodomusSyncService.AVAILABILITY_OVERLAY_TTL_MS) {
+      return cached.value;
     }
 
-    return {
-      blockedDays: [...blocked].sort(),
-      restrictions,
-      nightlyPrices,
-      nightlyPricesFrom,
-      nightlyPriceMeta,
-      otaCurrency,
-      ariUnavailable: attempted > 0 && succeeded === 0,
-    };
+    /** One property at a time; ≥10s since previous overlay upstream (shared across requests). */
+    return this.runPacedOverlayUpstream(async () => {
+      // Re-check cache after waiting — another request may have filled it.
+      const again = this.availabilityOverlayCache.get(cacheKey);
+      if (again && Date.now() - again.at < ZodomusSyncService.AVAILABILITY_OVERLAY_TTL_MS) {
+        return again.value;
+      }
+
+      const blocked = new Set<string>();
+      const restrictions: OtaCalendarRestrictionHint[] = [];
+      const nightlyPrices: Record<string, number> = {};
+      const nightlyPricesFrom: Record<string, number> = {};
+      const nightlyPriceMeta: Record<string, OtaNightlyPriceMeta> = {};
+      const seenHint = new Set<string>();
+      let otaCurrency: string | null = null;
+      let attempted = 0;
+      let succeeded = 0;
+
+      for (const channelId of channelIds) {
+        const extId = this.propertyService.getExternalListingIdForZodomusChannel(property, channelId);
+        if (!extId) continue;
+        attempted += 1;
+        try {
+          const preferRoomId = this.propertyService.getZodomusRoomIdForChannel(property, channelId);
+          let preferRateId: string | null = null;
+          let rateNamesById: Record<string, string> | null = null;
+          try {
+            const ratesRaw = await this.zodomus.getRoomRatesRaw(channelId, extId);
+            preferRateId = pickPrimaryRateId(ratesRaw, preferRoomId);
+            rateNamesById = buildRateNameMapFromRoomRates(ratesRaw);
+          } catch (e) {
+            this.logger.debug(
+              `calendar overlay room-rates skip property=${property.id} ch=${channelId}: ${formatZodomusHttpException(e)}`,
+            );
+          }
+          const raw = await this.zodomus.getAvailability(channelId, extId, dateFromYmd, dateToYmd);
+          if (otaCurrency == null) {
+            otaCurrency = resolveOtaChannelCurrency({
+              fromAri: extractCurrencyFromZodomusPayload(raw),
+              propertyCurrency: property.currency,
+              timezone: property.timezone,
+            });
+          }
+          const days = extractZodomusInventoryDays(raw, {
+            preferRoomId,
+            preferRateId,
+            rateNamesById,
+          });
+          const blockedDays = collectOtaBlockedDays(days);
+          for (const d of blockedDays) blocked.add(d);
+          this.logger.debug(
+            `calendar overlay property=${property.id} ch=${channelId} ext=${extId} room=${preferRoomId ?? 'all'} days=${days.length} blocked=${blockedDays.length}`,
+          );
+          for (const h of collectOtaRestrictionHints(days)) {
+            const key = `${h.date}:${h.kind}:${h.minStay ?? ''}`;
+            if (seenHint.has(key)) continue;
+            seenHint.add(key);
+            restrictions.push(h);
+          }
+          // First linked channel wins per date (Booking.com channel typically).
+          for (const [date, price] of Object.entries(collectOtaNightlyPrices(days))) {
+            if (nightlyPrices[date] == null) nightlyPrices[date] = price;
+          }
+          for (const [date, price] of Object.entries(collectOtaNightlyPricesFrom(days))) {
+            if (nightlyPricesFrom[date] == null) nightlyPricesFrom[date] = price;
+          }
+          for (const [date, meta] of Object.entries(collectOtaNightlyPriceMeta(days))) {
+            if (nightlyPriceMeta[date] == null) nightlyPriceMeta[date] = meta;
+          }
+          succeeded += 1;
+        } catch (e) {
+          this.logger.warn(
+            `calendar inventory overlay failed property=${property.id} channel=${channelId}: ${formatZodomusHttpException(e)}`,
+          );
+        }
+      }
+
+      const value = {
+        blockedDays: [...blocked].sort(),
+        restrictions,
+        nightlyPrices,
+        nightlyPricesFrom,
+        nightlyPriceMeta,
+        otaCurrency,
+        ariUnavailable: attempted > 0 && succeeded === 0,
+      };
+      this.availabilityOverlayCache.set(cacheKey, { at: Date.now(), value });
+      return value;
+    });
+  }
+
+  /**
+   * Ensures calendar ARI fetches are never concurrent and are spaced ≥10s apart
+   * (one linked property per slot). Cache hits skip this gate.
+   */
+  private async runPacedOverlayUpstream<T>(fn: () => Promise<T>): Promise<T> {
+    const prev = this.overlayUpstreamGate;
+    let release!: () => void;
+    this.overlayUpstreamGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await prev;
+    try {
+      const gapMs =
+        this.config.get<number>('ZODOMUS_CALENDAR_OVERLAY_GAP_MS') ??
+        ZodomusSyncService.OVERLAY_PROPERTY_GAP_MS;
+      if (this.lastOverlayUpstreamAt > 0 && gapMs > 0) {
+        const waitMs = gapMs - (Date.now() - this.lastOverlayUpstreamAt);
+        if (waitMs > 0) {
+          this.logger.debug(`calendar overlay pace: waiting ${waitMs}ms before next property`);
+          await new Promise<void>((r) => setTimeout(r, waitMs));
+        }
+      }
+      this.lastOverlayUpstreamAt = Date.now();
+      return await fn();
+    } finally {
+      release();
+    }
   }
 
   isPropertyZodomusLinked(property: PropertyEntity): boolean {
@@ -1010,6 +1047,11 @@ export class ZodomusSyncService {
       null,
       null,
     );
+    const channelCurrency = resolveOtaChannelCurrency({
+      fromAri: currencyFromPayload,
+      propertyCurrency: property.currency,
+      timezone: property.timezone,
+    });
     const row =
       existing ??
       this.bookingRepo.create({
@@ -1096,14 +1138,17 @@ export class ZodomusSyncService {
     } else if (!existing || !(Number(existing.totalPriceMinor) > 0)) {
       row.totalPriceMinor = Number.isFinite(totalMinor) ? totalMinor : 0;
     }
-    // Prefer OTA payload currency; keep existing booking currency; else property CRM currency.
+    // Prefer OTA payload currency; never keep empty/default USD when channel is PLN (Warsaw).
     if (currencyFromPayload) {
       row.currency = currencyFromPayload;
-    } else if (!normalizeCurrencyCode(row.currency)) {
-      row.currency =
-        normalizeCurrencyCode(existing?.currency) ??
-        normalizeCurrencyCode(property.currency) ??
-        'USD';
+    } else {
+      const existingCode = normalizeCurrencyCode(existing?.currency ?? row.currency);
+      const tz = property.timezone?.trim() || '';
+      const warsaw = tz === 'Europe/Warsaw' || tz.startsWith('Europe/Warsaw');
+      const existingIsWeakUsd = existingCode === 'USD' && warsaw;
+      if (!existingCode || existingIsWeakUsd) {
+        row.currency = channelCurrency;
+      }
     }
     row.zodomusReservationId = rid;
     row.zodomusChannelId = channelId;

@@ -8,7 +8,6 @@ import type { Locale } from 'date-fns';
 import { addDays, addHours, eachDayOfInterval, format, startOfDay } from 'date-fns';
 import type { CalendarDateRange, Property, Reservation } from '../types';
 import { useCalendarTimelinePan } from '../hooks/use-calendar-timeline-pan';
-import { usePreservePlanbyScroll } from '../hooks/use-preserve-planby-scroll';
 import { getPropertyMeta } from '../lib/property-meta';
 import { parseLocalCalendarDay } from '../lib/calendar-api-dates';
 import { hitTestCalendarCell } from '../lib/hit-test-calendar-cell';
@@ -137,11 +136,10 @@ export function CalendarPlanbyGrid({
     enabled: timelinePanEnabled && dayColWidthPx > 0,
     scrollRef: planbyScrollRef,
     dayColWidthPx,
+    numDays,
     dateRange,
     onDateRangeChange,
   });
-
-  usePreservePlanbyScroll(planbyScrollRef, dateRange, planbyLayoutKey || 'empty');
 
   useEffect(() => {
     if (filteredProperties.length === 0) return;
@@ -363,11 +361,8 @@ export function CalendarPlanbyGrid({
   z-index: 15 !important;
 }
 #cal-${calendarScopeId} .planby [data-testid="content"] {
-  cursor: grab;
+  cursor: crosshair;
   z-index: 1;
-}
-#cal-${calendarScopeId} .planby [data-testid="content"]:active {
-  cursor: grabbing;
 }
 #cal-${calendarScopeId} .planby [data-testid="program-item"] {
   cursor: pointer;

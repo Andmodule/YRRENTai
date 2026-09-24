@@ -1713,6 +1713,7 @@
     "navPrev": "Previous week",
     "navNext": "Next week",
     "loadingAria": "Loading data",
+    "navWaitingChannel": "Waiting for channel…",
     "emptyNoProperties": "Add a property to get started",
     "addProperty": "Add property",
     "emptyNoReservations": "No bookings in the selected period",

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { addDays, format, isWithinInterval, startOfDay, subDays } from 'date-fns';
 import { useTranslations } from 'next-intl';
-import { CalendarDays } from 'lucide-react';
+import { CalendarDays, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -14,19 +14,13 @@ import {
 } from '@/components/ui/dropdown-menu';
 import type { CalendarDateRange } from '../types';
 import { useDateLocale } from '@/hooks/useDateLocale';
-import {
-  CALENDAR_TIMELINE_SHIFT_DAYS,
-  CALENDAR_WINDOW_DAYS,
-  CALENDAR_WINDOW_PAST_DAYS,
-} from '../constants/calendar-timeline.constants';
 
-export {
-  CALENDAR_TIMELINE_SHIFT_DAYS,
-  CALENDAR_WINDOW_DAYS,
-  CALENDAR_WINDOW_PAST_DAYS,
-} from '../constants/calendar-timeline.constants';
-
-const STEP_DAYS = CALENDAR_TIMELINE_SHIFT_DAYS;
+/** Arrow step: one week. */
+const STEP_DAYS = 7;
+/** Visible window length in calendar days (inclusive). */
+export const CALENDAR_WINDOW_DAYS = 14;
+/** Days before the anchor (today / jump date) included in the window. */
+export const CALENDAR_WINDOW_PAST_DAYS = 1;
 
 export function buildCalendarWindowAround(anchor: Date): CalendarDateRange {
   const day = startOfDay(anchor);
@@ -60,26 +54,33 @@ export function TimelineNavBar({
   });
   const showTodayBtn = !todayInRange;
 
+  /** Block week arrows / jump while calendar (Zodomus-paced overlay) is in flight. */
+  const navLocked = isFetching || isLoading;
   const showFetchBar = isFetching && !isLoading;
 
-  const goBack = () =>
+  const goBack = () => {
+    if (navLocked) return;
     onDateRangeChange({
       start: addDays(dateRange.start, -STEP_DAYS),
       end: addDays(dateRange.end, -STEP_DAYS),
     });
+  };
 
-  const goForward = () =>
+  const goForward = () => {
+    if (navLocked) return;
     onDateRangeChange({
       start: addDays(dateRange.start, STEP_DAYS),
       end: addDays(dateRange.end, STEP_DAYS),
     });
+  };
 
   const goToday = () => {
+    if (navLocked) return;
     onDateRangeChange(buildCalendarWindowAround(new Date()));
   };
 
   const applyJump = () => {
-    if (!jumpDate) return;
+    if (navLocked || !jumpDate) return;
     const [y, m, d] = jumpDate.split('-').map(Number);
     if (!y || !m || !d) return;
     onDateRangeChange(buildCalendarWindowAround(new Date(y, m - 1, d)));
@@ -108,24 +109,39 @@ export function TimelineNavBar({
           size="sm"
           type="button"
           aria-label={t('navPrev')}
-          title={t('navWeekStep')}
+          title={navLocked ? t('navWaitingChannel') : t('navWeekStep')}
+          disabled={navLocked}
           onClick={goBack}
         >
           ←
         </Button>
         <div className="flex min-w-0 flex-1 flex-col items-center gap-1 sm:flex-row sm:justify-center sm:gap-2">
-          <DropdownMenu open={jumpOpen} onOpenChange={setJumpOpen}>
+          <DropdownMenu
+            open={jumpOpen}
+            onOpenChange={(open) => {
+              if (navLocked && open) return;
+              setJumpOpen(open);
+            }}
+          >
             <DropdownMenuTrigger asChild>
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
+                disabled={navLocked}
                 className="h-auto min-h-8 max-w-full flex-col gap-0.5 px-2 py-1 sm:flex-row sm:gap-1.5"
                 aria-label={t('navJumpTitle')}
+                title={navLocked ? t('navWaitingChannel') : undefined}
               >
-                <CalendarDays className="hidden h-3.5 w-3.5 shrink-0 text-muted-foreground sm:block" aria-hidden />
+                {navLocked ? (
+                  <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" aria-hidden />
+                ) : (
+                  <CalendarDays className="hidden h-3.5 w-3.5 shrink-0 text-muted-foreground sm:block" aria-hidden />
+                )}
                 <span className="truncate text-sm font-medium text-foreground">{windowLabel}</span>
-                <span className="text-[10px] font-normal text-muted-foreground">{t('navWeekHint')}</span>
+                <span className="text-[10px] font-normal text-muted-foreground">
+                  {navLocked ? t('navWaitingChannel') : t('navWeekHint')}
+                </span>
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="center" className="w-64 p-3">
@@ -142,7 +158,7 @@ export function TimelineNavBar({
                   onChange={(e) => setJumpDate(e.target.value)}
                 />
               </div>
-              <Button type="button" size="sm" className="mt-3 w-full" onClick={applyJump}>
+              <Button type="button" size="sm" className="mt-3 w-full" disabled={navLocked} onClick={applyJump}>
                 {t('navJumpApply')}
               </Button>
             </DropdownMenuContent>
@@ -153,6 +169,8 @@ export function TimelineNavBar({
               size="sm"
               className="h-7 text-xs text-muted-foreground"
               type="button"
+              disabled={navLocked}
+              title={navLocked ? t('navWaitingChannel') : undefined}
               onClick={goToday}
             >
               {t('today')}
@@ -164,7 +182,8 @@ export function TimelineNavBar({
           size="sm"
           type="button"
           aria-label={t('navNext')}
-          title={t('navWeekStep')}
+          title={navLocked ? t('navWaitingChannel') : t('navWeekStep')}
+          disabled={navLocked}
           onClick={goForward}
         >
           →
