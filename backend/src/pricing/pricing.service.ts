@@ -62,6 +62,8 @@ export type PropertyPricingRow = {
   geniusPct: number | null;
   promotionsAccess: 'ok' | 'denied' | 'unknown' | null;
   promotionsAccessCode: string | null;
+  /** What Zodomus answered on the last failed check (shown as is, trimmed). */
+  promotionsAccessDetail: string | null;
   promotionsAccessCheckedAt: string | null;
 };
 
@@ -153,6 +155,9 @@ export class PricingService {
         geniusPct: s?.geniusPct ?? null,
         promotionsAccess: ext ? (s?.promotionsAccess ?? 'unknown') : null,
         promotionsAccessCode: s?.promotionsAccessCode ?? null,
+        promotionsAccessDetail: s?.promotionsAccessCode
+          ? (s.promotionsAccessDetail ?? '').slice(0, 300) || null
+          : null,
         promotionsAccessCheckedAt: s?.promotionsAccessCheckedAt
           ? s.promotionsAccessCheckedAt.toISOString()
           : null,
