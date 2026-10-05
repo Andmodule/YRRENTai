@@ -1,0 +1,74 @@
+# Цены → Скидки: акции Booking.com через Zodomus
+
+Скидка в RentAI = акция Booking «Basic deal» на каждом выбранном объекте. Базовые цены не меняются: Booking показывает гостю старую цену зачёркнутой. Код: `backend/src/pricing/`, разбор ответов Zodomus: `backend/src/integrations/zodomus/zodomus-promotions.util.ts`.
+
+## Как устроено
+
+| Часть | Что делает |
+|---|---|
+| `price_promotions` | Скидка (кампания): процент, даты проживания, дни недели, статус, источник (`rentai` / `booking` — найдена в экстранете) |
+| `price_promotion_targets` | Объект внутри скидки = одна акция Booking: id акции, желаемое/фактическое состояние, ошибка, статистика |
+| `price_promotion_events` | История: кто и что сделал, что ответил Booking |
+| `property_pricing_settings` | Минимальная цена, уровень Genius, доступ к акциям (вкладка «Минимальные цены») |
+| Очередь (`PromotionQueueService`) | Отправляет изменения в Booking по одному объекту, с паузой и повторами (1 → 60 мин, до 6 попыток). Состояние хранится в БД — переживает перезапуск |
+| Сверка (`PromotionSyncService`) | Раз в 30 мин читает `GET /promotions` по объектам: доступ, статусы, статистика, скидки из экстранета. Только чтение |
+
+Название акции в экстранете Booking — служебная метка `RentAI xxxxxxxx-N` (Zodomus принимает не больше 20 символов: «Name string cannot be longer than 20 chars»); понятное название хранится в RentAI. Защита от дублей: перед созданием RentAI ищет активную акцию с такой меткой и, если находит, не создаёт вторую.
+
+Правила Booking, которые учтены:
+- акции одной категории не складываются — гость видит самую большую (предупреждение о пересечениях);
+- Genius применяется первым, затем наша скидка (защита минимальной цены считает по цене для Genius);
+- изменение акции снова делает её активной — поэтому при изменении объекты, выключенные вручную, не трогаются, а сама смена параметров = новая акция + выключение старой;
+- прошедшие даты Booking не принимает — если начало уже прошло, отправляем с «сегодня» по часовому поясу объекта.
+
+## Флаги
+
+| Переменная | По умолчанию | Смысл |
+|---|---|---|
+| `ZODOMUS_PROMOTIONS_ENABLED` | `false` | Выключено: нет фоновых задач, API отвечает 503 (кроме `GET /pricing/status`) |
+| `ZODOMUS_PROMOTIONS_DRY_RUN` | `true` | Только чтение из Booking; что было бы отправлено — пишется в историю. Запись = `ENABLED=true` **и** `DRY_RUN=false` |
+| `ZODOMUS_PROMOTIONS_PROPERTY_ALLOWLIST` | пусто | Пилот: UUID объектов RentAI через запятую, только им разрешена запись. Выключение не блокируется |
+| `ZODOMUS_PROMOTIONS_CHANNEL_ID` | `1` | Канал Booking в Zodomus |
+| `ZODOMUS_PROMOTIONS_SYNC_MINUTES` | `30` | Период сверки |
+| `ZODOMUS_PROMOTIONS_QUEUE_INTERVAL_SECONDS` | `60` | Период очереди (после действий пользователя очередь запускается сразу) |
+| `ZODOMUS_PROMOTIONS_GAP_MS` | `2000` | Пауза между объектами (плюс общий лимит `ZODOMUS_MAX_REQUESTS_PER_MINUTE`) |
+| `ZODOMUS_PROMOTIONS_VERIFY` | `true` | После создания прочитать акцию обратно и проверить номер/процент |
+
+## Порядок включения на проде
+
+1. Деплой кода (флаг выключен — ничего не меняется).
+2. Миграция `1778300000000-pricing-promotions` (`pnpm --dir backend migration:run`). Только новые таблицы, есть откат.
+3. `ZODOMUS_PROMOTIONS_ENABLED=true`, `DRY_RUN=true` (по умолчанию). Проверить: вкладка «Минимальные цены» → «Проверить доступ к акциям»; создать тестовую скидку — в истории появится «Пробный режим: создали бы…», в Booking ничего не уйдёт.
+4. Пилот: `ZODOMUS_PROMOTIONS_PROPERTY_ALLOWLIST=<uuid одного объекта>`, `DRY_RUN=false`. Скидка −5% на неделю на этом объекте. Проверить в экстранете Booking (Акции) и на сайте Booking цену, в т.ч. для Genius.
+5. Убрать allowlist — включено для всех.
+
+## Экстренное выключение
+
+Выключение флага **не снимает** уже созданные акции на Booking — оно только останавливает RentAI. Порядок:
+1. В RentAI «Выключить для всех» на нужных скидках (или `POST /api/v1/pricing/promotions/:id/deactivate`) — при `DRY_RUN=false` очередь выключит акции на Booking.
+2. Убедиться в истории, что Booking подтвердил выключение.
+3. Затем, при необходимости, `ZODOMUS_PROMOTIONS_ENABLED=false`.
+
+Если RentAI недоступен — акции выключаются в экстранете Booking (раздел «Акции»).
+
+## API (`/api/v1/pricing`, роли OWNER, MANAGER)
+
+- `GET /status` — включено ли, пробный режим, пилот.
+- `GET /properties` · `PATCH /properties/settings` · `POST /properties/access-check` · `GET /properties/:id/price-today`
+- `GET /promotions` · `POST /promotions/preview` · `POST /promotions` · `GET /promotions/:id` · `PATCH /promotions/:id`
+- `POST /promotions/:id/deactivate` · `POST /promotions/:id/activate`
+- `POST /promotions/:id/properties/:propertyId/(deactivate|activate|retry)`
+
+## Что проверяется на пилоте (песочница это не показывает)
+
+Песочница Zodomus отвечает фиксированными данными и принимает почти любой запрос. Проверено в песочнице 2026-10-04/05 через код бэкенда (`ZodomusService`): создание (`status.promotionId`), список, выключение, повторное включение; найдено ограничение имени в 20 символов. На живом объекте нужно подтвердить:
+- формат `rooms: [{ id }]` / `parentRates: [{ id }]` и `minStayThrough: "0"` в `POST /promotions`;
+- что `GET /promotions` возвращает и акции, созданные в экстранете;
+- доступ: у технического аккаунта Zodomus есть права на Promotions API, а подключение объекта к Zodomus включает тип «Promotions» (иначе 403 / `HOTEL_INELIGIBLE` — объект помечается «нет доступа»);
+- как скидка складывается с Genius на этом объекте.
+
+## Осторожно
+
+- Не запускать локальный backend с `NODE_ENV=development` на боевой БД: TypeORM `synchronize` изменит схему.
+- В тестовом аккаунте Zodomus вебхук указывает на Render — тестовые брони (`reservations-createtest`) из песочницы придут на прод.
+- Тесты `src/pricing/*.spec.ts` — только юнит, без сети и БД.

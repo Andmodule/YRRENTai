@@ -98,6 +98,41 @@ const zodomusEnvFields = z.object({
    * One property at a time; cache hits skip the gap. Default: 10000.
    */
   ZODOMUS_CALENDAR_OVERLAY_GAP_MS: z.coerce.number().int().min(0).max(120_000).default(10_000),
+  /**
+   * Booking.com promotions («Цены → Скидки»). Off by default: no cron, API answers 503, UI hidden.
+   * Deploying the code changes nothing on Booking until this is set to true.
+   */
+  ZODOMUS_PROMOTIONS_ENABLED: z
+    .enum(['true', 'false', '1', '0', 'yes', 'no'])
+    .default('false')
+    .transform((v) => v === 'true' || v === '1' || v === 'yes'),
+  /**
+   * Dry run (default true): read-only calls to Zodomus (access check, sync, room-rates, prices) are made,
+   * but nothing is created, changed or deactivated on Booking — the would-be payloads go to the history.
+   * Writes require BOTH ZODOMUS_PROMOTIONS_ENABLED=true and ZODOMUS_PROMOTIONS_DRY_RUN=false.
+   */
+  ZODOMUS_PROMOTIONS_DRY_RUN: z
+    .enum(['true', 'false', '1', '0', 'yes', 'no'])
+    .default('true')
+    .transform((v) => v === 'true' || v === '1' || v === 'yes'),
+  /**
+   * Pilot: comma-separated RentAI property UUIDs allowed to receive promotion writes.
+   * Empty = all properties. Deactivation is never blocked by the allowlist.
+   */
+  ZODOMUS_PROMOTIONS_PROPERTY_ALLOWLIST: z.string().optional(),
+  /** Zodomus channel id treated as Booking.com for promotions. Default: 1. */
+  ZODOMUS_PROMOTIONS_CHANNEL_ID: z.coerce.number().int().positive().default(1),
+  /** How often (minutes) to reconcile promotions with Booking (statuses, stats, extranet deals, access). Default: 30. */
+  ZODOMUS_PROMOTIONS_SYNC_MINUTES: z.coerce.number().int().min(5).max(1440).default(30),
+  /** Queue tick (seconds) for pending promotion writes; changes also kick the queue immediately. Default: 60. */
+  ZODOMUS_PROMOTIONS_QUEUE_INTERVAL_SECONDS: z.coerce.number().int().min(10).max(3600).default(60),
+  /** Pause between properties in the promotions queue / sync (ms), on top of the global Zodomus limiter. Default: 2000. */
+  ZODOMUS_PROMOTIONS_GAP_MS: z.coerce.number().int().min(0).max(60_000).default(2000),
+  /** After create: read the promotion back and check rooms/rate were applied. Default: true. */
+  ZODOMUS_PROMOTIONS_VERIFY: z
+    .enum(['true', 'false', '1', '0', 'yes', 'no'])
+    .default('true')
+    .transform((v) => v === 'true' || v === '1' || v === 'yes'),
 });
 
 const icalEnvFields = z.object({
