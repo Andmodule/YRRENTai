@@ -20,7 +20,9 @@ import {
   Warehouse,
   Workflow,
   BookOpen,
+  Tag,
 } from 'lucide-react';
+import { usePricingAccess } from '@/modules/pricing/hooks';
 import { useOpenIncidentsCount } from '@/modules/incidents/hooks/useIncidents';
 import { useChatNeedsHumanPending } from '@/hooks/use-conversations';
 import { useCallsNavBadge } from '@/hooks/use-calls-admin';
@@ -38,6 +40,8 @@ const navItems = [
   { href: '/dashboard/staff',     icon: Users,           key: 'staff',         roles: null },
   { href: '/dashboard/operations',icon: Warehouse,       key: 'operations',    roles: null },
   { href: '/dashboard/calendar',  icon: LayoutGrid,      key: 'calendar',      roles: null },
+  /** Shown only when the backend has «Цены» switched on (ZODOMUS_PROMOTIONS_ENABLED). */
+  { href: '/dashboard/pricing',   icon: Tag,             key: 'pricing',       roles: ['OWNER', 'MANAGER'] as const },
   { href: '/integrations/zodomus', icon: BookOpen,       key: 'zodomusApi',    roles: null },
   { href: '/automations',         icon: Workflow,        key: 'automations',   roles: null },
   { href: '/chat',                icon: MessageSquare,   key: 'chat',          roles: null },
@@ -54,6 +58,7 @@ const NAV_LIMITED_ALLOWED_KEYS = new Set<string>([
   'staff',
   'operations',
   'calendar',
+  'pricing',
   'zodomusApi',
   'automations',
   'chat',
@@ -74,6 +79,7 @@ export function Sidebar() {
   const { user, mutate } = useAuth();
   const isCallsAdmin = user?.role === 'OWNER' || user?.role === 'MANAGER';
   const callsBadge = useCallsNavBadge(isCallsAdmin);
+  const pricingAccess = usePricingAccess();
 
   async function handleLogout() {
     try {
@@ -186,6 +192,7 @@ export function Sidebar() {
             {navItems.map(({ href, icon: Icon, key, roles }) => {
               // Role-gated items: hide entirely if user doesn't have the role
               if (roles !== null && user && !(roles as readonly string[]).includes(user.role)) return null;
+              if (key === 'pricing' && !pricingAccess.enabled) return null;
 
               const itemDisabled = navLimitedMode && !NAV_LIMITED_ALLOWED_KEYS.has(key);
               const isActive =
@@ -201,6 +208,8 @@ export function Sidebar() {
                           ? pathname.includes('/dashboard/operations')
                           : href === '/dashboard/calendar'
                             ? pathname.includes('/dashboard/calendar')
+                            : href === '/dashboard/pricing'
+                            ? pathname.includes('/dashboard/pricing')
                             : href === '/integrations/zodomus'
                               ? pathname.includes('/integrations/zodomus')
                             : href === '/automations'
@@ -210,6 +219,7 @@ export function Sidebar() {
                                 !pathname.includes('/dashboard/tasks') &&
                                 !pathname.includes('/dashboard/calls') &&
                                 !pathname.includes('/dashboard/calendar') &&
+                                !pathname.includes('/dashboard/pricing') &&
                                 !pathname.includes('/dashboard/operations') &&
                                 !pathname.includes('/dashboard/staff') &&
                                 !pathname.includes('/dashboard/unmapped') &&

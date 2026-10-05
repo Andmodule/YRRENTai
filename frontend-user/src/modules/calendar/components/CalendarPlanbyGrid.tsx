@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Epg, Layout, useEpg } from 'planby';
 import type { Channel, Theme } from 'planby';
 import type { ProgramItem as PlanbyProgramRow } from 'planby/dist/Epg/helpers/types';
@@ -14,6 +15,19 @@ import { hitTestCalendarCell } from '../lib/hit-test-calendar-cell';
 import { ProgramBlock } from './ProgramBlock';
 import { TimelineHeader } from './TimelineHeader';
 import { SidebarChannel } from './SidebarChannel';
+import type { CalendarPromotion } from '@/modules/pricing/api';
+import {
+  CalendarPromotionsLayer,
+  type CellRect,
+} from '@/modules/pricing/components/calendar/CalendarPromotionsLayer';
+
+/** «Цены → Скидки» on the grid: badges, drag / Shift+click range selection. Omitted when the feature is off. */
+export type CalendarPricingProps = {
+  promotions: CalendarPromotion[];
+  selection: CellRect | null;
+  onSelectionChange: (rect: CellRect | null) => void;
+  onBadgeClick: (propertyId: string, ymd: string) => void;
+};
 
 const ITEM_HEIGHT_PX = 64;
 const DAY_COLUMN_WIDTH_PX = {
@@ -42,6 +56,7 @@ export interface CalendarPlanbyGridProps {
     checkOut: string;
     zodomusLinked: boolean;
   }) => void;
+  pricing?: CalendarPricingProps;
 }
 
 /**
@@ -62,7 +77,14 @@ export function CalendarPlanbyGrid({
   timelinePanEnabled,
   onSelectReservation,
   onEmptyCellClick,
+  pricing,
 }: CalendarPlanbyGridProps) {
+  const pricingRef = useRef(pricing);
+  pricingRef.current = pricing;
+  const dragRef = useRef<{ start: { row: number; day: number }; moved: boolean } | null>(null);
+  const suppressClickRef = useRef(false);
+  const anchorRef = useRef<{ row: number; day: number } | null>(null);
+  const [contentEl, setContentEl] = useState<HTMLElement | null>(null);
   const numDays = useMemo(
     () => eachDayOfInterval({ start: startOfDay(dateRange.start), end: startOfDay(dateRange.end) }).length,
     [dateRange],
@@ -145,15 +167,18 @@ export function CalendarPlanbyGrid({
     if (filteredProperties.length === 0) return;
     const el = planbyScrollRef.current;
     if (!el) return;
-    const onClick = (e: MouseEvent) => {
+
+    /** Empty grid cell under the pointer (not a booking bar, sidebar, header or pricing badge). */
+    const cellAt = (e: MouseEvent): { row: number; day: number; propertyId: string } | null => {
       const t = e.target as HTMLElement;
-      if (t.closest('[data-testid="program-item"]')) return;
-      if (t.closest('[data-testid="sidebar"]')) return;
-      if (t.closest('[data-testid="sidebar-item"]')) return;
-      if (t.closest('[data-testid="calendar-timeline-header"]')) return;
+      if (t.closest('[data-testid="program-item"]')) return null;
+      if (t.closest('[data-testid="sidebar"]')) return null;
+      if (t.closest('[data-testid="sidebar-item"]')) return null;
+      if (t.closest('[data-testid="calendar-timeline-header"]')) return null;
+      if (t.closest('[data-pricing-interactive]')) return null;
       const content = t.closest('[data-testid="content"]') as HTMLElement | null;
-      if (!content) return;
-      if (dayColWidthPx <= 0 || numDays <= 0) return;
+      if (!content) return null;
+      if (dayColWidthPx <= 0 || numDays <= 0) return null;
 
       const contentRect = content.getBoundingClientRect();
       const yInContent = e.clientY - contentRect.top;
@@ -169,7 +194,7 @@ export function CalendarPlanbyGrid({
         numDays,
         numRows: filteredProperties.length,
       });
-      if (hit.kind !== 'cell') return;
+      if (hit.kind !== 'cell') return null;
 
       let propertyId: string | null = null;
       const sidebarItems = el.querySelectorAll('[data-testid="sidebar-item"]');
@@ -185,24 +210,89 @@ export function CalendarPlanbyGrid({
       if (!propertyId) {
         propertyId = filteredProperties[hit.rowIndex]?.uuid ?? null;
       }
-      if (!propertyId) return;
+      if (!propertyId) return null;
+      const row = filteredProperties.findIndex((p) => p.uuid === propertyId);
+      if (row < 0) return null;
+      return { row, day: hit.dayIndex, propertyId };
+    };
+
+    const rectOf = (a: { row: number; day: number }, b: { row: number; day: number }): CellRect => ({
+      r1: Math.min(a.row, b.row),
+      r2: Math.max(a.row, b.row),
+      d1: Math.min(a.day, b.day),
+      d2: Math.max(a.day, b.day),
+    });
+
+    // Drag across days / properties → range selection (only when «Цены» is on).
+    const onMouseDown = (e: MouseEvent) => {
+      suppressClickRef.current = false;
+      if (!pricingRef.current || e.button !== 0 || e.shiftKey) return;
+      const c = cellAt(e);
+      if (!c) return;
+      dragRef.current = { start: { row: c.row, day: c.day }, moved: false };
+    };
+    const onMouseMove = (e: MouseEvent) => {
+      const d = dragRef.current;
+      if (!d || !pricingRef.current) return;
+      if ((e.buttons & 1) === 0) {
+        dragRef.current = null;
+        return;
+      }
+      const c = cellAt(e);
+      if (!c) return;
+      if (!d.moved && c.row === d.start.row && c.day === d.start.day) return;
+      d.moved = true;
+      e.preventDefault();
+      pricingRef.current.onSelectionChange(rectOf(d.start, c));
+    };
+    const onMouseUp = () => {
+      const d = dragRef.current;
+      dragRef.current = null;
+      if (d?.moved) suppressClickRef.current = true;
+    };
+
+    const onClick = (e: MouseEvent) => {
+      if (suppressClickRef.current) {
+        suppressClickRef.current = false;
+        return;
+      }
+      const c = cellAt(e);
+      if (!c) return;
+      const pricingNow = pricingRef.current;
+      if (pricingNow && e.shiftKey) {
+        // Shift+click starts or extends the range from the last clicked cell, without the actions dialog.
+        const from = anchorRef.current ?? { row: c.row, day: c.day };
+        anchorRef.current = from;
+        pricingNow.onSelectionChange(rectOf(from, c));
+        return;
+      }
+      anchorRef.current = { row: c.row, day: c.day };
+      if (pricingNow?.selection) pricingNow.onSelectionChange(null);
 
       const rangeStart = startOfDay(dateRange.start);
-      const checkIn = format(addDays(rangeStart, hit.dayIndex), 'yyyy-MM-dd');
-      const checkOut = format(addDays(rangeStart, hit.dayIndex + 1), 'yyyy-MM-dd');
-      const prop = filteredProperties.find((p) => p.uuid === propertyId);
+      const checkIn = format(addDays(rangeStart, c.day), 'yyyy-MM-dd');
+      const checkOut = format(addDays(rangeStart, c.day + 1), 'yyyy-MM-dd');
+      const prop = filteredProperties.find((p) => p.uuid === c.propertyId);
       const linked = Boolean(prop?.zodomusLinked || prop?.zodomusPropertyId?.trim());
 
       onEmptyCellClick({
-        propertyId,
+        propertyId: c.propertyId,
         propertyTitle: prop?.title,
         checkIn,
         checkOut,
         zodomusLinked: linked,
       });
     };
+    el.addEventListener('mousedown', onMouseDown);
+    el.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
     el.addEventListener('click', onClick);
-    return () => el.removeEventListener('click', onClick);
+    return () => {
+      el.removeEventListener('mousedown', onMouseDown);
+      el.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+      el.removeEventListener('click', onClick);
+    };
   }, [
     planbyScrollRef,
     filteredProperties,
@@ -212,6 +302,14 @@ export function CalendarPlanbyGrid({
     layoutItemHeight,
     onEmptyCellClick,
   ]);
+
+  /** Planby remounts its content pane with the layout key; keep the overlay's portal target current. */
+  useEffect(() => {
+    const next = pricing
+      ? (planbyScrollRef.current?.querySelector<HTMLElement>('[data-testid="content"]') ?? null)
+      : null;
+    if (next !== contentEl) setContentEl(next);
+  });
 
   const propertyMetaById = useMemo(() => {
     const map = new Map<string, string>();
@@ -226,6 +324,9 @@ export function CalendarPlanbyGrid({
     for (const p of filteredProperties) map.set(p.uuid, p);
     return map;
   }, [filteredProperties]);
+
+  const propertyIds = useMemo(() => filteredProperties.map((p) => p.uuid), [filteredProperties]);
+  const firstDayYmd = format(startOfDay(dateRange.start), 'yyyy-MM-dd');
 
   const renderProgram = useCallback(
     (props: {
@@ -302,6 +403,7 @@ export function CalendarPlanbyGrid({
     [dateRange, locale],
   );
 
+  const pricingEnabled = Boolean(pricing);
   const calendarGridCss = useMemo(() => {
     const rowH = layoutItemHeight > 0 ? layoutItemHeight : ITEM_HEIGHT_PX;
     const colW = dayColWidthPx > 0 ? dayColWidthPx : DAY_COLUMN_WIDTH_PX.desktop;
@@ -388,8 +490,15 @@ export function CalendarPlanbyGrid({
 .dark #cal-${calendarScopeId} .planby ::-webkit-scrollbar-thumb {
   background: rgb(51 65 85 / 0.7);
 }
-`;
-  }, [calendarScopeId, dayColWidthPx, layoutItemHeight]);
+${
+  pricingEnabled
+    ? `#cal-${calendarScopeId} .planby [data-testid="content"] {
+  user-select: none;
+}
+`
+    : ''
+}`;
+  }, [calendarScopeId, dayColWidthPx, layoutItemHeight, pricingEnabled]);
 
   return (
     <>
@@ -407,6 +516,21 @@ export function CalendarPlanbyGrid({
           />
         </Epg>
       </div>
+      {pricing && contentEl
+        ? createPortal(
+            <CalendarPromotionsLayer
+              propertyIds={propertyIds}
+              firstDay={firstDayYmd}
+              numDays={numDays}
+              dayColWidthPx={dayColWidthPx}
+              rowHeightPx={layoutItemHeight > 0 ? layoutItemHeight : ITEM_HEIGHT_PX}
+              promotions={pricing.promotions}
+              selection={pricing.selection}
+              onBadgeClick={pricing.onBadgeClick}
+            />,
+            contentEl,
+          )
+        : null}
     </>
   );
 }

@@ -60,6 +60,7 @@ export function Header() {
     if (pathname.includes('/dashboard/staff')) return tStaff('title');
     if (pathname.includes('/dashboard/unmapped')) return tUnmapped('title');
     if (pathname.includes('/dashboard/operations')) return tOpsNav('title');
+    if (pathname.includes('/dashboard/pricing')) return tNav('pricing');
     if (pathname.includes('/dashboard/incidents')) return tNav('incidents');
     if (pathname.includes('/kb-improvement')) return tNav('kbImprovement');
     if (pathname.includes('/settings')) return tSettings('title');

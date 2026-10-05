@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { RefreshCw } from 'lucide-react';
+import { Percent, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -27,6 +27,8 @@ interface FilterBarProps {
   isSyncingOta?: boolean;
   /** false — без нижней границы (стык с `TimelineNavBar` в одной sticky-полосе). По умолчанию true. */
   showBottomBorder?: boolean;
+  /** «Цены → Скидки» включены: кнопка «Скидка» для всех объектов. */
+  onNewDiscount?: () => void;
 }
 
 const CHANNELS: { value: BookingChannel | 'all'; labelKey: string }[] = [
@@ -52,6 +54,7 @@ function ChannelStatusRow({
   showSyncOta,
   onSyncOta,
   isSyncingOta,
+  onNewDiscount,
 }: {
   filters: CalendarFilters;
   onFiltersChange: (f: CalendarFilters) => void;
@@ -60,6 +63,7 @@ function ChannelStatusRow({
   /** `force` — удерживайте Shift при клике (принудительная перезапись уже синхронизированных броней). */
   onSyncOta?: (force?: boolean) => void;
   isSyncingOta?: boolean;
+  onNewDiscount?: () => void;
 }) {
   const t = useTranslations('calendar');
   const [forceOtaSync, setForceOtaSync] = useState(false);
@@ -130,6 +134,18 @@ function ChannelStatusRow({
           </button>
         ))}
       </div>
+      {onNewDiscount ? (
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="gap-1.5 border-primary/30 bg-primary/5 text-primary hover:bg-primary/10"
+          onClick={onNewDiscount}
+        >
+          <Percent className="h-3.5 w-3.5" aria-hidden />
+          {t('newDiscount')}
+        </Button>
+      ) : null}
       <Button type="button" size="sm" className="hidden md:inline-flex" onClick={onNewBooking}>
         {t('newBooking')}
       </Button>
@@ -147,6 +163,7 @@ export function FilterBar({
   onSyncOta,
   isSyncingOta,
   showBottomBorder = true,
+  onNewDiscount,
 }: FilterBarProps) {
   const t = useTranslations('calendar');
   const isMobile = useIsMobile();
@@ -221,6 +238,7 @@ export function FilterBar({
               showSyncOta={showSyncOta}
               onSyncOta={onSyncOta}
               isSyncingOta={isSyncingOta}
+              onNewDiscount={onNewDiscount}
             />
           </div>
         </>
@@ -238,6 +256,14 @@ export function FilterBar({
                 showSyncOta={showSyncOta}
                 onSyncOta={onSyncOta}
                 isSyncingOta={isSyncingOta}
+                onNewDiscount={
+                  onNewDiscount
+                    ? () => {
+                        onNewDiscount();
+                        setDrawerOpen(false);
+                      }
+                    : undefined
+                }
               />
               <Button
                 type="button"

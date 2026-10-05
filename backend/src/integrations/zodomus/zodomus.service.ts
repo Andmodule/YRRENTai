@@ -299,6 +299,45 @@ export class ZodomusService {
     });
   }
 
+  /** GET /promotions — Booking promotions of a property (`active` 1 = current, 0 = deactivated). Read-only. */
+  async getPromotions(channelId: number, propertyId: string, active: 0 | 1): Promise<unknown> {
+    return this.ensureEnabled().get<unknown>('/promotions', {
+      channelId: String(channelId),
+      propertyId: propertyId.trim(),
+      active: String(active),
+    });
+  }
+
+  /** POST /promotions — create a Booking promotion; the new id comes back in `status.promotionId`. */
+  async createPromotion(body: Record<string, unknown>): Promise<unknown> {
+    return this.ensureEnabled().post('/promotions', body);
+  }
+
+  /** POST /activate-promotion — reactivate a deactivated promotion (ids as query params per Zodomus docs). */
+  async activatePromotion(channelId: number, propertyId: string, promotionId: string): Promise<unknown> {
+    return this.postPromotionAction('/activate-promotion', channelId, propertyId, promotionId);
+  }
+
+  /** POST /deactivate-promotion — stop a promotion on Booking (it can be reactivated later). */
+  async deactivatePromotion(channelId: number, propertyId: string, promotionId: string): Promise<unknown> {
+    return this.postPromotionAction('/deactivate-promotion', channelId, propertyId, promotionId);
+  }
+
+  /** Zodomus documents query params for these two; the same values also go in the body for tolerance. */
+  private postPromotionAction(
+    path: string,
+    channelId: number,
+    propertyId: string,
+    promotionId: string,
+  ): Promise<unknown> {
+    const ids = { channelId: String(channelId), propertyId: propertyId.trim(), promotionId: promotionId.trim() };
+    return this.ensureEnabled().post(`${path}?${new URLSearchParams(ids).toString()}`, {
+      channelId,
+      propertyId: ids.propertyId,
+      promotionId: ids.promotionId,
+    });
+  }
+
   /** Allowlisted CRM api-ref explorer — raw GET passthrough. */
   async upstreamGet(path: string, params?: Record<string, string>): Promise<unknown> {
     return this.ensureEnabled().get<unknown>(path, params);

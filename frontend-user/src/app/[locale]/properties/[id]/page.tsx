@@ -27,6 +27,7 @@ import {
   ClearOtaConfirmButton,
 } from '@/components/property';
 import { KbBoard, KbImportDialog, KbDevClearButton } from '@/components/knowledge-base';
+import { PropertyPricingCard } from '@/modules/pricing/components/PropertyPricingCard';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/error-state';
@@ -369,6 +370,8 @@ export default function PropertyDetailPage({ params }: PropertyDetailPageProps) 
                   await mutate();
                 }}
               />
+
+              <PropertyPricingCard propertyId={property.id} />
             </>
           )}
         </div>
