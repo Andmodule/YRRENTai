@@ -10,7 +10,7 @@ import { Link } from '@/i18n/navigation';
 import { getApiErrorMessage } from '@/lib/api/error-message';
 import { cn } from '@/lib/utils';
 import { usePriceToday, usePricingAccess, usePricingMutations, usePricingProperties, usePromotions } from '../hooks';
-import { guestPrice } from '../lib/pricing-ui';
+import { guestPrice, localYmd, weekdayOf } from '../lib/pricing-ui';
 import { CampaignStatusBadge, ChoiceChip, TargetStateBadge, useErrorLabel, usePriceFormatter, useStayRangeFormatter } from './shared';
 
 const GENIUS_OPTIONS = [0, 10, 15, 20] as const;
@@ -44,8 +44,12 @@ export function PropertyPricingCard({ propertyId }: { propertyId: string }) {
 
   const current = (promos ?? []).filter((p) => p.derivedStatus === 'active');
   const past = (promos ?? []).filter((p) => p.derivedStatus !== 'active');
+  // What a guest sees tonight: only discounts whose stay dates and weekdays include today (property time zone).
+  const todayYmd = price.data?.date ?? localYmd();
   const visibleNow = current
     .filter((p) => p.target?.desiredState === 'on' && (p.target.state === 'on' || p.target.state === 'pending'))
+    .filter((p) => !!p.stayFrom && !!p.stayTo && p.stayFrom <= todayYmd && todayYmd <= p.stayTo)
+    .filter((p) => !p.activeWeekdays?.length || p.activeWeekdays.includes(weekdayOf(todayYmd)))
     .sort((a, b) => b.discountPct - a.discountPct)[0];
   const today = price.data?.price ?? null;
   const currency = price.data?.currency;
@@ -182,7 +186,7 @@ export function PropertyPricingCard({ propertyId }: { propertyId: string }) {
             {t('geniusLabel')}
             <div className="grid grid-cols-4 gap-1.5">
               {GENIUS_OPTIONS.map((g) => (
-                <ChoiceChip key={g} selected={genius === g} className="h-10 min-w-0 px-2" onClick={() => setGenius(g)}>
+                <ChoiceChip key={g} selected={genius === g} compact onClick={() => setGenius(g)}>
                   {g ? `${g}%` : t('geniusNone')}
                 </ChoiceChip>
               ))}

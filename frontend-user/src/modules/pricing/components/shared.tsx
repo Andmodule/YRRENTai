@@ -92,16 +92,22 @@ export function useErrorLabel() {
 /** Toggle chip used for discount %, date presets and weekdays. */
 export function ChoiceChip({
   selected,
+  compact = false,
   className,
   children,
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { selected: boolean }) {
+}: ButtonHTMLAttributes<HTMLButtonElement> & {
+  selected: boolean;
+  /** Fills a grid cell (weekdays, Genius levels). `cn` only joins classes, so sizes can't be overridden via className. */
+  compact?: boolean;
+}) {
   return (
     <button
       type="button"
       aria-pressed={selected}
       className={cn(
-        'inline-flex h-11 min-w-14 items-center justify-center rounded-xl border px-3.5 text-sm font-medium transition-colors',
+        'inline-flex items-center justify-center rounded-xl border text-sm font-medium transition-colors',
+        compact ? 'h-10 min-w-0 px-1' : 'h-11 min-w-14 px-3.5',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
         'disabled:cursor-not-allowed disabled:opacity-50',
         selected

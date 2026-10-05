@@ -87,9 +87,14 @@ export function useCalendarPromotions(from: string, to: string, enabled: boolean
 
 export function usePricingMutations() {
   const qc = useQueryClient();
-  const refresh = async (detail?: PromotionDetail) => {
+  const refresh = (detail?: PromotionDetail) => {
     if (detail) qc.setQueryData(pricingKeys.detail(detail.id), detail);
-    await qc.invalidateQueries({ queryKey: pricingKeys.all });
+    // Not awaited: the sheet moves to «progress» as soon as the server answers. Booking prices
+    // (each one is a Zodomus call on the server) and the form preview don't change — keep them.
+    void qc.invalidateQueries({
+      queryKey: pricingKeys.all,
+      predicate: (q) => q.queryKey[1] !== 'price-today' && q.queryKey[1] !== 'preview',
+    });
   };
   const create = useMutation({ mutationFn: (input: PromotionInput) => pricingApi.create(input), onSuccess: refresh });
   const update = useMutation({

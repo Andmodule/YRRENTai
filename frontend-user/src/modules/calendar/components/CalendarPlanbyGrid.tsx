@@ -259,8 +259,11 @@ export function CalendarPlanbyGrid({
       const c = cellAt(e);
       if (!c) return;
       const pricingNow = pricingRef.current;
-      if (pricingNow && e.shiftKey && anchorRef.current) {
-        pricingNow.onSelectionChange(rectOf(anchorRef.current, c));
+      if (pricingNow && e.shiftKey) {
+        // Shift+click starts or extends the range from the last clicked cell, without the actions dialog.
+        const from = anchorRef.current ?? { row: c.row, day: c.day };
+        anchorRef.current = from;
+        pricingNow.onSelectionChange(rectOf(from, c));
         return;
       }
       anchorRef.current = { row: c.row, day: c.day };

@@ -603,7 +603,7 @@ export function CalendarView({
           <div
             role="region"
             aria-label={tp('selectionAria')}
-            className="absolute bottom-4 left-1/2 z-20 flex max-w-[calc(100%-2rem)] -translate-x-1/2 flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl bg-zinc-900 py-2.5 pl-4 pr-2.5 text-sm text-white shadow-2xl dark:bg-zinc-800"
+            className="absolute bottom-4 left-1/2 z-20 flex w-max max-w-[calc(100%-2rem)] -translate-x-1/2 flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl bg-zinc-900 py-2.5 pl-4 pr-2.5 text-sm text-white shadow-2xl dark:bg-zinc-800"
           >
             <span className="font-semibold">
               {tp('selection', {

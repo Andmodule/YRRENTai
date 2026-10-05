@@ -143,7 +143,7 @@ export function PromotionsScreen() {
 
       <div className="overflow-hidden rounded-xl border border-border bg-card">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-2.5 sm:px-4">
-          <div className="flex flex-wrap gap-1" role="tablist">
+          <div className="flex min-w-0 max-w-full gap-1 overflow-x-auto" role="tablist">
             {(['all', 'active', 'past'] as const).map((k) => {
               const count = k === 'all' ? list.length : k === 'active' ? active.length : list.length - active.length;
               return (
@@ -154,7 +154,7 @@ export function PromotionsScreen() {
                   aria-selected={tab === k}
                   onClick={() => setTab(k)}
                   className={cn(
-                    'inline-flex h-10 items-center gap-2 rounded-lg px-3 text-sm',
+                    'inline-flex h-10 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 text-sm sm:gap-2 sm:px-3',
                     tab === k ? 'bg-muted font-semibold text-foreground' : 'text-muted-foreground hover:text-foreground',
                   )}
                 >

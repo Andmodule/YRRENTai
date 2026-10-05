@@ -377,11 +377,11 @@ export function PromotionFormSheet({ open, onOpenChange, promotion, initial, onD
               </div>
               <div className="space-y-1.5">
                 <p className="text-xs text-muted-foreground">{t('weekdays')}</p>
-                <div className="flex flex-wrap gap-1.5">
+                <div className="grid max-w-md grid-cols-7 gap-1.5">
                   {WEEKDAYS.map((d) => (
                     <ChoiceChip
                       key={d}
-                      className="min-w-12 px-2"
+                      compact
                       selected={days.has(d)}
                       onClick={() => {
                         const next = new Set(days);
