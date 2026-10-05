@@ -539,6 +539,26 @@ export class ZodomusSyncService {
     return { ok: true, checked: true, suggestedTotalMajor };
   }
 
+  // RENTAI-PRICE-CACHE-RESET (2026-10-05) — begin.
+  // After a successful OTA price push the calendar showed the old price for up to the cache TTL (10 min).
+  // Only called from ZodomusController.pushRates. To revert: delete this method and that call
+  // (or `git revert` the commit «fix(calendar): show pushed OTA price right away»).
+  /**
+   * Drops the cached calendar overlay of one property (all date windows). Makes no Zodomus call:
+   * the next calendar load fetches it once, through the same paced gate as any other overlay.
+   */
+  invalidateCalendarOverlay(propertyId: string): number {
+    let dropped = 0;
+    for (const key of [...this.availabilityOverlayCache.keys()]) {
+      if (key.startsWith(`${propertyId}:`)) {
+        this.availabilityOverlayCache.delete(key);
+        dropped++;
+      }
+    }
+    return dropped;
+  }
+  // RENTAI-PRICE-CACHE-RESET — end.
+
   /**
    * Calendar overlay: blocked nights (avail=0/booked) + restriction hints from GET /availability.
    * Soft-fails per property/channel (returns empty overlay on errors).

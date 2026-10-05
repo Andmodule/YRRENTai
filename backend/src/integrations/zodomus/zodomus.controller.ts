@@ -264,6 +264,11 @@ export class ZodomusController {
       rateId: body.rateId,
       channelId: body.channelId,
     });
+    // RENTAI-PRICE-CACHE-RESET: Zodomus accepted the price → let the calendar re-read it instead of
+    // showing the cached old one. No request here; see ZodomusSyncService.invalidateCalendarOverlay.
+    if (result.targets.some((t) => t.ok)) {
+      this.zodomusSync.invalidateCalendarOverlay(body.propertyId);
+    }
     return { data: result };
   }
 
