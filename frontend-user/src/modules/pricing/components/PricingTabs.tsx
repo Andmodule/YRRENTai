@@ -18,11 +18,15 @@ export function PricingTabs() {
   const pathname = usePathname();
   const { data: rows } = usePricingProperties(true);
 
-  /** Booking objects without access to promotions or without a minimum price. */
+  /** Booking objects without access to promotions (or a failed check) or without a minimum price. */
   const attention = useMemo(
     () =>
       (rows ?? []).filter(
-        (r) => r.bookingConnected && (r.promotionsAccess === 'denied' || r.minPrice == null),
+        (r) =>
+          r.bookingConnected &&
+          (r.promotionsAccess === 'denied' ||
+            (r.promotionsAccess !== 'ok' && !!r.promotionsAccessCode) ||
+            r.minPrice == null),
       ).length,
     [rows],
   );

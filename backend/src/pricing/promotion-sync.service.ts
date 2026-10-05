@@ -131,10 +131,13 @@ export class PromotionSyncService implements OnModuleInit, OnModuleDestroy {
       active = parsePromotionsResponse(await this.zodomus.getPromotions(channelId, ext, 1));
     } catch (e) {
       const c = classifyPromotionError(e);
+      const said = c.message.replace(/\s+/g, ' ').slice(0, 300);
       if (c.retryable) {
-        this.logger.warn(`promotions sync ${property.id}: temporary ${c.kind}`);
+        this.logger.warn(`promotions sync ${property.id}: temporary ${c.kind} — ${said}`);
+        await this.saveCheckFailure(property.id, c.kind, c.message);
         return { propertyId: property.id, access: 'unknown', code: c.kind };
       }
+      this.logger.warn(`promotions sync ${property.id}: no access ${c.kind} — ${said}`);
       await this.saveAccess(property.id, 'denied', c.kind, c.message);
       return { propertyId: property.id, access: 'denied', code: c.kind };
     }
@@ -300,6 +303,15 @@ export class PromotionSyncService implements OnModuleInit, OnModuleDestroy {
       },
       ['propertyId'],
     );
+  }
+
+  /**
+   * The check failed in a way that may be a glitch: keep the last known access, but record the
+   * time and what Zodomus answered so «Минимальные цены» can show it (and stop waiting).
+   */
+  private async saveCheckFailure(propertyId: string, code: string, detail: string): Promise<void> {
+    const prev = await this.settingsRepo.findOne({ where: { propertyId } });
+    await this.saveAccess(propertyId, prev?.promotionsAccess ?? 'unknown', code, detail);
   }
 
   private async addEvent(

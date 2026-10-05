@@ -5,7 +5,7 @@ import { useQueries } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
 import { formatDistanceToNow, parseISO } from 'date-fns';
 import { toast } from 'sonner';
-import { Check, Loader2, Lock, RefreshCw, Search, X } from 'lucide-react';
+import { AlertTriangle, Check, Loader2, Lock, RefreshCw, Search, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -72,17 +72,23 @@ export function MinPricesScreen() {
     if (!checkingSince) return;
     const id = setInterval(() => {
       void refetch();
-      if (Date.now() - checkingSince > 90_000) setCheckingSince(null);
+      if (Date.now() - checkingSince > 90_000) {
+        setCheckingSince(null);
+        toast.warning(t('checkTimeout'));
+      }
     }, 3000);
     return () => clearInterval(id);
-  }, [checkingSince, refetch]);
+  }, [checkingSince, refetch, t]);
   useEffect(() => {
     if (!checkingSince || !rows) return;
     const done = bookingRows.every((r) => r.promotionsAccessCheckedAt && Date.parse(r.promotionsAccessCheckedAt) >= checkingSince - 1000);
     if (done) {
       setCheckingSince(null);
-      const ok = bookingRows.filter((r) => r.promotionsAccess === 'ok').length;
-      toast.success(t('checkDone', { ok, denied: bookingRows.length - ok }));
+      const ok = bookingRows.filter((r) => r.promotionsAccess === 'ok' && !r.promotionsAccessCode).length;
+      const denied = bookingRows.filter((r) => r.promotionsAccess === 'denied').length;
+      const failed = bookingRows.length - ok - denied;
+      if (failed > 0) toast.warning(t('checkDoneFailed', { ok, denied, failed }));
+      else toast.success(t('checkDone', { ok, denied }));
     }
   }, [rows, bookingRows, checkingSince, t]);
 
@@ -105,7 +111,8 @@ export function MinPricesScreen() {
 
   const needsAttention = (r: PricingPropertyRow) => {
     const s = safeOf(r);
-    return r.promotionsAccess === 'denied' || value(r).minNum == null || (s != null && s <= 0);
+    const checkFailed = r.promotionsAccess !== 'ok' && !!r.promotionsAccessCode;
+    return r.promotionsAccess === 'denied' || checkFailed || value(r).minNum == null || (s != null && s <= 0);
   };
 
   const shown = bookingRows.filter(
@@ -435,11 +442,38 @@ export function MinPricesScreen() {
                               {open ? t('hide') : t('howToFix')}
                             </button>
                           </>
+                        ) : r.promotionsAccessCode ? (
+                          <span className="inline-flex h-6 items-center gap-1 rounded-full bg-amber-100 px-2.5 text-xs font-semibold text-amber-900 dark:bg-amber-500/15 dark:text-amber-300">
+                            <AlertTriangle className="h-3 w-3" />
+                            {t('access.failed')}
+                          </span>
                         ) : (
                           <span className="inline-flex h-6 items-center rounded-full bg-muted px-2.5 text-xs font-semibold text-muted-foreground">{t('access.unknown')}</span>
                         )}
+                        {!checking && r.promotionsAccess !== 'denied' && r.promotionsAccessCode ? (
+                          <button
+                            type="button"
+                            aria-expanded={open}
+                            className="text-xs font-semibold text-primary hover:underline"
+                            onClick={() => {
+                              const next = new Set(help);
+                              if (open) next.delete(r.id);
+                              else next.add(r.id);
+                              setHelp(next);
+                            }}
+                          >
+                            {open ? t('hide') : t('whatZodomusSaid')}
+                          </button>
+                        ) : null}
                       </span>
                     </div>
+                    {open && r.promotionsAccess !== 'denied' && r.promotionsAccessCode ? (
+                      <div className="mx-4 mb-3 ml-[3.75rem] space-y-1.5 rounded-xl border border-amber-300/70 bg-amber-50 px-3.5 py-3 text-[13px] text-amber-950 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
+                        <p className="font-semibold">{t('failTitle', { code: r.promotionsAccessCode })}</p>
+                        {r.promotionsAccessDetail ? <p className="break-words font-mono text-xs">{r.promotionsAccessDetail}</p> : null}
+                        <p>{t('failHint')}</p>
+                      </div>
+                    ) : null}
                     {open && r.promotionsAccess === 'denied' ? (
                       <div className="mx-4 mb-3 ml-[3.75rem] space-y-1.5 rounded-xl border border-red-200 bg-red-50 px-3.5 py-3 text-[13px] text-red-950 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-100">
                         <p className="font-semibold">{t('fixTitle', { code: r.promotionsAccessCode ?? '403' })}</p>

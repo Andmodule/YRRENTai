@@ -99,6 +99,8 @@ export interface PricingPropertyRow {
   geniusPct: number | null;
   promotionsAccess: PromotionsAccess | null;
   promotionsAccessCode: string | null;
+  /** What Zodomus answered on the last failed check. */
+  promotionsAccessDetail: string | null;
   promotionsAccessCheckedAt: string | null;
 }
 
