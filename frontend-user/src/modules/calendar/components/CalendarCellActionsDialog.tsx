@@ -1,7 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { CalendarPlus, Coins } from 'lucide-react';
+import { CalendarPlus, Coins, Percent } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   ResponsiveModal,
@@ -15,6 +15,8 @@ interface CalendarCellActionsDialogProps {
   dayLabel?: string;
   onNewBooking: () => void;
   onSetOtaPrice: () => void;
+  /** «Цены → Скидки» enabled: discount for this property and day. */
+  onSetDiscount?: () => void;
 }
 
 export function CalendarCellActionsDialog({
@@ -24,6 +26,7 @@ export function CalendarCellActionsDialog({
   dayLabel,
   onNewBooking,
   onSetOtaPrice,
+  onSetDiscount,
 }: CalendarCellActionsDialogProps) {
   const t = useTranslations('calendar.cellActions');
 
@@ -62,6 +65,23 @@ export function CalendarCellActionsDialog({
             <Coins className="h-4 w-4" />
             {t('setOtaPrice')}
           </Button>
+          {onSetDiscount ? (
+            <Button
+              type="button"
+              variant="outline"
+              className="h-11 justify-start gap-2 border-primary/30 bg-primary/5 text-primary hover:bg-primary/10"
+              onClick={() => {
+                onOpenChange(false);
+                onSetDiscount();
+              }}
+            >
+              <Percent className="h-4 w-4" />
+              <span className="flex-1 text-left">{t('setDiscount')}</span>
+              <span className="rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary-foreground">
+                {t('newBadge')}
+              </span>
+            </Button>
+          ) : null}
         </div>
       </ResponsiveModalContent>
     </ResponsiveModal>

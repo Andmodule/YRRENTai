@@ -6,6 +6,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
@@ -63,13 +64,31 @@ export class PricingController {
   // ─── Скидки ────────────────────────────────────────────────────────────────
 
   @Get('promotions')
-  async list(@CurrentUser() user: JwtPayload) {
-    return { data: await this.pricing.list(user) };
+  async list(
+    @CurrentUser() user: JwtPayload,
+    @Query('propertyId', new ParseUUIDPipe({ optional: true })) propertyId?: string,
+  ) {
+    return { data: await this.pricing.list(user, propertyId) };
   }
 
+  /** Discounts for the calendar grid: `?from=yyyy-MM-dd&to=yyyy-MM-dd` (inclusive, ≤ 120 days). */
+  @Get('calendar')
+  async calendar(
+    @CurrentUser() user: JwtPayload,
+    @Query('from') from: string,
+    @Query('to') to: string,
+  ) {
+    return { data: await this.pricing.calendar(user, from, to) };
+  }
+
+  /** Eligibility + overlaps without saving; `?excludeId=` when editing an existing discount. */
   @Post('promotions/preview')
-  async preview(@CurrentUser() user: JwtPayload, @Body() body: CreatePromotionDto) {
-    return { data: await this.pricing.preview(user, body) };
+  async preview(
+    @CurrentUser() user: JwtPayload,
+    @Body() body: CreatePromotionDto,
+    @Query('excludeId', new ParseUUIDPipe({ optional: true })) excludeId?: string,
+  ) {
+    return { data: await this.pricing.preview(user, body, excludeId) };
   }
 
   @Post('promotions')

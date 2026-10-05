@@ -7,7 +7,7 @@ import {
 import type { ConfigService } from '@nestjs/config';
 import type { DataSource, Repository } from 'typeorm';
 import { PricingConfig } from './pricing-config';
-import { PricingService } from './pricing.service';
+import { PricingService, effectiveStayWindow } from './pricing.service';
 import { addDaysYmd, todayInTz } from './pricing-math.util';
 import { PricePromotionEntity } from './entities/price-promotion.entity';
 import { PricePromotionTargetEntity } from './entities/price-promotion-target.entity';
@@ -319,5 +319,87 @@ describe('PricingService', () => {
     await expect(
       svc.updateSettings(OWNER, { items: [{ propertyId: 'zzz', minPrice: 1 }] }),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
+
+describe('PricingService — calendar and property views', () => {
+  it('lists only discounts that include the property, with its own state', async () => {
+    const { svc, db } = makeService();
+    seedPromotion(db);
+    const forA = await svc.list(OWNER, 'a');
+    expect(forA).toHaveLength(1);
+    expect(forA[0]).toMatchObject({ id: 'p1', target: { propertyId: 'a', state: 'on' } });
+    expect(await svc.list(OWNER, 'c')).toEqual([]);
+  });
+
+  it('calendar returns active discounts per property, without manually switched-off ones', async () => {
+    const { svc, db } = makeService();
+    seedPromotion(db);
+    const res = await svc.calendar(OWNER, FROM, TO);
+    expect(res).toEqual([
+      expect.objectContaining({
+        id: 'p1',
+        discountPct: 10,
+        from: FROM,
+        to: TO,
+        properties: [{ propertyId: 'a', state: 'on' }],
+      }),
+    ]);
+    await expect(svc.calendar(OWNER, TO, FROM)).rejects.toBeInstanceOf(BadRequestException);
+    await expect(svc.calendar(OWNER, 'x', TO)).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('narrows last-minute and early-booker deals to the dates they can apply to', () => {
+    const today = '2026-10-05';
+    expect(
+      effectiveStayWindow(
+        {
+          stayFrom: '2026-10-01',
+          stayTo: '2026-12-31',
+          promotionType: 'last_minute',
+          externalMeta: { lastMinute: { unit: 'day', value: 3 } },
+        },
+        today,
+      ),
+    ).toEqual({ from: '2026-10-05', to: '2026-10-07' });
+    expect(
+      effectiveStayWindow(
+        {
+          stayFrom: '2026-10-01',
+          stayTo: '2026-12-31',
+          promotionType: 'last_minute',
+          externalMeta: { lastMinute: { unit: 'hour', value: 8 } },
+        },
+        today,
+      ),
+    ).toEqual({ from: '2026-10-05', to: '2026-10-05' });
+    expect(
+      effectiveStayWindow(
+        {
+          stayFrom: '2026-10-01',
+          stayTo: '2026-12-31',
+          promotionType: 'early_booker',
+          externalMeta: { earlyBookerDays: 30 },
+        },
+        today,
+      ),
+    ).toEqual({ from: '2026-11-04', to: '2026-12-31' });
+    expect(
+      effectiveStayWindow(
+        {
+          stayFrom: '2026-10-10',
+          stayTo: '2026-10-12',
+          promotionType: 'basic',
+          externalMeta: null,
+        },
+        today,
+      ),
+    ).toEqual({ from: '2026-10-10', to: '2026-10-12' });
+    expect(
+      effectiveStayWindow(
+        { stayFrom: null, stayTo: null, promotionType: 'basic', externalMeta: null },
+        today,
+      ),
+    ).toBeNull();
   });
 });

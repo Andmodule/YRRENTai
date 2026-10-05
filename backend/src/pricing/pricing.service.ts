@@ -16,8 +16,12 @@ import { PricingConfig } from './pricing-config';
 import { PromotionExecutorService } from './promotion-executor.service';
 import { PromotionQueueService } from './promotion-queue.service';
 import { PromotionSyncService } from './promotion-sync.service';
+import { resolveOtaChannelCurrency } from '../integrations/zodomus/zodomus-reservation-price.util';
 import {
+  addDaysYmd,
   findOverlaps,
+  isYmd,
+  nightsCount,
   normalizeWeekdays,
   todayInTz,
   toMajor,
@@ -230,6 +234,8 @@ export class PricingService {
       price,
       geniusPct: g,
       geniusPrice: price !== null ? Math.round(price * (100 - (g ?? 0))) / 100 : null,
+      /** Channel currency as the calendar resolves it (ARI usually omits it). */
+      currency: resolveOtaChannelCurrency({ propertyCurrency: property.currency, timezone: property.timezone }),
     };
     this.priceTodayCache.set(property.id, { at: Date.now(), value });
     return value;
@@ -237,7 +243,8 @@ export class PricingService {
 
   // ─── «Скидки» ──────────────────────────────────────────────────────────────
 
-  async list(user: JwtPayload) {
+  /** All discounts of the tenant; with `propertyId` — only those that include this property (+ its state). */
+  async list(user: JwtPayload, propertyId?: string) {
     this.assertEnabled();
     const { ownerId } = await this.actor(user);
     const [promos, props] = await Promise.all([
@@ -250,7 +257,62 @@ export class PricingService {
       this.propertyService.findAllByOwner(ownerId),
     ]);
     const byId = new Map(props.map((p) => [p.id, p]));
-    return promos.map((p) => this.summary(p, byId));
+    if (!propertyId) return promos.map((p) => this.summary(p, byId));
+    return promos.flatMap((p) => {
+      const t = p.targets.find((x) => x.propertyId === propertyId);
+      if (!t) return [];
+      return [
+        {
+          ...this.summary(p, byId),
+          target: {
+            propertyId: t.propertyId,
+            desiredState: t.desiredState,
+            state: t.state,
+            lastErrorCode: t.lastErrorCode,
+            stats: t.stats,
+          },
+        },
+      ];
+    });
+  }
+
+  /**
+   * Discounts that touch [from, to] for the calendar: per property and state.
+   * Last-minute / early-booker deals are narrowed to the dates they can actually apply to.
+   */
+  async calendar(user: JwtPayload, from: string, to: string) {
+    this.assertEnabled();
+    if (!isYmd(from) || !isYmd(to) || from > to || nightsCount(from, to) > 120) {
+      throw new BadRequestException('from/to must be yyyy-MM-dd, from ≤ to, at most 120 days');
+    }
+    const { ownerId } = await this.actor(user);
+    const promos = await this.promotionRepo.find({
+      where: { ownerId, status: 'active' },
+      relations: ['targets'],
+    });
+    const today = todayInTz('UTC');
+    const shown: PromotionTargetState[] = ['on', 'pending', 'dry_run'];
+    return promos.flatMap((p) => {
+      const window = effectiveStayWindow(p, today);
+      if (!window || window.from > to || window.to < from) return [];
+      const properties = p.targets
+        .filter((t) => t.desiredState === 'on' && shown.includes(t.state))
+        .map((t) => ({ propertyId: t.propertyId, state: t.state }));
+      if (properties.length === 0) return [];
+      return [
+        {
+          id: p.id,
+          name: p.name,
+          source: p.source,
+          promotionType: p.promotionType,
+          discountPct: p.discountPct,
+          from: window.from,
+          to: window.to,
+          activeWeekdays: p.activeWeekdays,
+          properties,
+        },
+      ];
+    });
   }
 
   async get(user: JwtPayload, id: string) {
@@ -299,10 +361,11 @@ export class PricingService {
     };
   }
 
-  async preview(user: JwtPayload, dto: CreatePromotionDto) {
+  /** `excludePromotionId` — when editing, the discount itself is not an overlap. */
+  async preview(user: JwtPayload, dto: CreatePromotionDto, excludePromotionId?: string) {
     this.assertEnabled();
     const { ownerId } = await this.actor(user);
-    const plan = await this.plan(ownerId, dto);
+    const plan = await this.plan(ownerId, dto, excludePromotionId);
     return {
       eligible: plan.eligible.map((e) => ({ propertyId: e.property.id, name: e.property.name })),
       excluded: plan.excluded,
@@ -708,6 +771,36 @@ export class PricingService {
       stats: hasStats ? { bookings, nights, cancellations, revenueByCurrency } : null,
     };
   }
+}
+
+/**
+ * Dates a promotion can apply to as seen today: last-minute deals only near check-in,
+ * early-booker deals only far enough ahead. Approximation for the calendar view.
+ */
+export function effectiveStayWindow(
+  p: Pick<PricePromotionEntity, 'stayFrom' | 'stayTo' | 'promotionType' | 'externalMeta'>,
+  today: string,
+): { from: string; to: string } | null {
+  if (!p.stayFrom || !p.stayTo) return null;
+  let from = p.stayFrom;
+  let to = p.stayTo;
+  const meta = (p.externalMeta ?? {}) as {
+    lastMinute?: { unit?: string; value?: number } | null;
+    earlyBookerDays?: number | null;
+  };
+  if (p.promotionType === 'last_minute' && meta.lastMinute?.value) {
+    const days =
+      meta.lastMinute.unit === 'hour'
+        ? Math.max(1, Math.ceil(meta.lastMinute.value / 24))
+        : meta.lastMinute.value;
+    if (from < today) from = today;
+    const lastDay = addDaysYmd(today, Math.max(0, days - 1));
+    if (to > lastDay) to = lastDay;
+  } else if (p.promotionType === 'early_booker' && meta.earlyBookerDays) {
+    const firstDay = addDaysYmd(today, meta.earlyBookerDays);
+    if (from < firstDay) from = firstDay;
+  }
+  return from <= to ? { from, to } : null;
 }
 
 function plural(n: number, one: string, few: string, many: string): string {

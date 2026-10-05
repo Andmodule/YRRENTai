@@ -2,10 +2,12 @@
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTheme } from 'next-themes';
-import { startOfDay } from 'date-fns';
+import { format, startOfDay } from 'date-fns';
 import { toast } from 'sonner';
 import { useTranslations } from 'next-intl';
+import { Percent, X } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
 import { ResponsiveModal, ResponsiveModalContent } from '@/components/ui/responsive-modal';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useDateLocale } from '@/hooks/useDateLocale';
@@ -26,10 +28,18 @@ import { NewBookingSheet } from './components/NewBookingSheet';
 import { SetOtaPriceSheet } from './components/SetOtaPriceSheet';
 import { CalendarCellActionsDialog } from './components/CalendarCellActionsDialog';
 import { ReservationDetailPanel, ReservationDetailPanelFooter } from './components/ReservationDetailPanel';
-import { CalendarPlanbyGrid } from './components/CalendarPlanbyGrid';
+import { CalendarPlanbyGrid, type CalendarPricingProps } from './components/CalendarPlanbyGrid';
 import { getCalendarPlanbyTheme } from './lib/planby-app-theme';
 import { parseLocalCalendarDay } from './lib/calendar-api-dates';
 import { isBookingIdPinQuery, normalizeCalendarQuery, reservationMatchesQuery } from './calendarSearch';
+import { useCalendarPromotions, usePricingAccess, usePricingProperties } from '@/modules/pricing/hooks';
+import { PromotionFormSheet, type PromotionFormInitial } from '@/modules/pricing/components/PromotionFormSheet';
+import { CalendarPromotionDialog } from '@/modules/pricing/components/calendar/CalendarPromotionDialog';
+import type { CellRect } from '@/modules/pricing/components/calendar/CalendarPromotionsLayer';
+import { useStayRangeFormatter } from '@/modules/pricing/components/shared';
+import { addDaysYmd, localYmd, promotionsForCell } from '@/modules/pricing/lib/pricing-ui';
+
+const PRICING_HINT_KEY = 'rentai.pricing.calendarHintHidden';
 
 export interface CalendarViewProps {
   dateRange: CalendarDateRange;
@@ -218,6 +228,115 @@ export function CalendarView({
     }
   }, []);
 
+  // «Цены → Скидки» in the calendar: badges, range selection, discount sheet (owners / managers, feature on).
+  const tp = useTranslations('pricing.calendar');
+  const fmtStayRange = useStayRangeFormatter();
+  const pricingOn = usePricingAccess().enabled;
+  const firstDayYmd = format(startOfDay(dateRange.start), 'yyyy-MM-dd');
+  const lastDayYmd = format(startOfDay(dateRange.end), 'yyyy-MM-dd');
+  const calendarPromotions = useCalendarPromotions(firstDayYmd, lastDayYmd, pricingOn);
+  const [selection, setSelection] = useState<CellRect | null>(null);
+  const [discountOpen, setDiscountOpen] = useState(false);
+  const [discountInitial, setDiscountInitial] = useState<PromotionFormInitial | null>(null);
+  const [promoCell, setPromoCell] = useState<{ propertyId: string; ymd: string } | null>(null);
+  const [promoCellOpen, setPromoCellOpen] = useState(false);
+  const pricingRows = usePricingProperties(pricingOn && (selection != null || promoCellOpen));
+
+  const visibleIdsKey = useMemo(() => filteredProperties.map((p) => p.uuid).join(','), [filteredProperties]);
+  useEffect(() => {
+    setSelection(null);
+  }, [firstDayYmd, lastDayYmd, visibleIdsKey]);
+
+  useEffect(() => {
+    if (!selection) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSelection(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selection]);
+
+  const selectionInfo = useMemo(() => {
+    if (!selection) return null;
+    const rows = filteredProperties.slice(selection.r1, selection.r2 + 1);
+    const pricingById = new Map((pricingRows.data ?? []).map((r) => [r.id, r]));
+    const bookingIds = rows
+      .filter((p) => {
+        const row = pricingById.get(p.uuid);
+        return row ? row.bookingConnected : Boolean(p.zodomusLinked || p.zodomusPropertyId?.trim());
+      })
+      .map((p) => p.uuid);
+    const from = addDaysYmd(firstDayYmd, selection.d1);
+    const to = addDaysYmd(firstDayYmd, selection.d2);
+    return {
+      bookingIds,
+      skipped: rows.length - bookingIds.length,
+      from,
+      to,
+      nights: selection.d2 - selection.d1 + 1,
+      past: to < localYmd(),
+    };
+  }, [selection, filteredProperties, pricingRows.data, firstDayYmd]);
+
+  const openDiscount = useCallback((initial: PromotionFormInitial) => {
+    setDiscountInitial(initial);
+    setDiscountOpen(true);
+  }, []);
+
+  const onDiscountOpenChange = useCallback((o: boolean) => {
+    setDiscountOpen(o);
+    if (!o) setSelection(null);
+  }, []);
+
+  const onBadgeClick = useCallback((propertyId: string, ymd: string) => {
+    setPromoCell({ propertyId, ymd });
+    setPromoCellOpen(true);
+  }, []);
+
+  const promoCellView = useMemo(() => {
+    if (!promoCell) return null;
+    const prop = properties.find((p) => p.uuid === promoCell.propertyId);
+    return {
+      ...promoCell,
+      title: prop?.title ?? '',
+      promotions: promotionsForCell(calendarPromotions.data ?? [], promoCell.propertyId, promoCell.ymd),
+      rackPrice: prop?.otaNightlyPrices?.[promoCell.ymd] ?? null,
+      currency: prop?.otaCurrency ?? prop?.currency ?? null,
+      geniusPct: pricingRows.data?.find((r) => r.id === promoCell.propertyId)?.geniusPct ?? null,
+    };
+  }, [promoCell, properties, calendarPromotions.data, pricingRows.data]);
+
+  const gridPricing = useMemo<CalendarPricingProps | undefined>(
+    () =>
+      pricingOn
+        ? {
+            promotions: calendarPromotions.data ?? [],
+            selection,
+            onSelectionChange: setSelection,
+            onBadgeClick,
+          }
+        : undefined,
+    [pricingOn, calendarPromotions.data, selection, onBadgeClick],
+  );
+
+  /** One-time hint about the drag selection; hiding it is a per-browser convenience. */
+  const [pricingHintHidden, setPricingHintHidden] = useState(true);
+  useEffect(() => {
+    try {
+      setPricingHintHidden(window.localStorage.getItem(PRICING_HINT_KEY) === '1');
+    } catch {
+      setPricingHintHidden(false);
+    }
+  }, []);
+  const hidePricingHint = useCallback(() => {
+    setPricingHintHidden(true);
+    try {
+      window.localStorage.setItem(PRICING_HINT_KEY, '1');
+    } catch {
+      // storage unavailable — the hint just comes back next time
+    }
+  }, []);
+
   const calendarSheets = (
     <>
       <CalendarCellActionsDialog
@@ -227,7 +346,35 @@ export function CalendarView({
         dayLabel={cellActionDayLabel ?? undefined}
         onNewBooking={() => setNewBookingOpen(true)}
         onSetOtaPrice={() => setOtaPriceOpen(true)}
+        onSetDiscount={
+          pricingOn && newBookingPropertyId && newBookingGridDates
+            ? () =>
+                openDiscount({
+                  propertyIds: [newBookingPropertyId],
+                  stayFrom: newBookingGridDates.checkIn,
+                  stayTo: newBookingGridDates.checkIn,
+                })
+            : undefined
+        }
       />
+      {pricingOn ? (
+        <>
+          <PromotionFormSheet open={discountOpen} onOpenChange={onDiscountOpenChange} initial={discountInitial} />
+          {promoCellView ? (
+            <CalendarPromotionDialog
+              open={promoCellOpen}
+              onOpenChange={setPromoCellOpen}
+              propertyId={promoCellView.propertyId}
+              propertyTitle={promoCellView.title}
+              ymd={promoCellView.ymd}
+              promotions={promoCellView.promotions}
+              rackPrice={promoCellView.rackPrice}
+              currency={promoCellView.currency}
+              geniusPct={promoCellView.geniusPct}
+            />
+          ) : null}
+        </>
+      ) : null}
       <NewBookingSheet
         open={newBookingOpen}
         onOpenChange={onNewBookingSheetOpenChange}
@@ -392,6 +539,7 @@ export function CalendarView({
           onSyncOta={onSyncOta}
           isSyncingOta={zodomusSync.isPending}
           showBottomBorder={false}
+          onNewDiscount={pricingOn ? () => openDiscount({ preset: 'week' }) : undefined}
         />
         {showFiltersEmptyHint ? (
           <Alert className="border-x-0 border-t border-dashed border-b-0 border-border/60 px-4 py-2" variant="default">
@@ -404,6 +552,25 @@ export function CalendarView({
           isFetching={isFetching}
           isLoading={isLoading}
         />
+        {pricingOn && !isMobile && !pricingHintHidden ? (
+          <div className="flex items-center gap-2 border-t border-dashed border-border/60 px-4 py-1 text-xs text-muted-foreground">
+            <span
+              className="shrink-0 rounded-md bg-emerald-600 px-1.5 text-[11px] font-bold leading-[18px] text-white"
+              aria-hidden
+            >
+              −10%
+            </span>
+            <span className="min-w-0 flex-1">{tp('hint')}</span>
+            <button
+              type="button"
+              onClick={hidePricingHint}
+              aria-label={tp('hintClose')}
+              className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <X className="h-3.5 w-3.5" aria-hidden />
+            </button>
+          </div>
+        ) : null}
       </div>
 
       <div ref={gridContainerRef} className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -429,8 +596,54 @@ export function CalendarView({
             timelinePanEnabled={timelinePanEnabled}
             onSelectReservation={onSelectReservation}
             onEmptyCellClick={onEmptyCellClick}
+            pricing={gridPricing}
           />
         )}
+        {pricingOn && selectionInfo ? (
+          <div
+            role="region"
+            aria-label={tp('selectionAria')}
+            className="absolute bottom-4 left-1/2 z-20 flex max-w-[calc(100%-2rem)] -translate-x-1/2 flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl bg-zinc-900 py-2.5 pl-4 pr-2.5 text-sm text-white shadow-2xl dark:bg-zinc-800"
+          >
+            <span className="font-semibold">
+              {tp('selection', {
+                count: selectionInfo.bookingIds.length,
+                range: fmtStayRange(selectionInfo.from, selectionInfo.to),
+                nights: selectionInfo.nights,
+              })}
+            </span>
+            {selectionInfo.past ? (
+              <span className="text-[13px] text-amber-300">{tp('selectionPast')}</span>
+            ) : selectionInfo.skipped > 0 ? (
+              <span className="text-[13px] text-zinc-300">{tp('selectionSkip', { count: selectionInfo.skipped })}</span>
+            ) : null}
+            <Button
+              type="button"
+              size="sm"
+              className="h-10 gap-2 bg-blue-600 px-3.5 text-white hover:bg-blue-500"
+              disabled={selectionInfo.past || selectionInfo.bookingIds.length === 0}
+              onClick={() =>
+                openDiscount({
+                  propertyIds: selectionInfo.bookingIds,
+                  stayFrom: selectionInfo.from,
+                  stayTo: selectionInfo.to,
+                })
+              }
+            >
+              <Percent className="h-4 w-4" aria-hidden />
+              {tp('discountSelected')}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="h-10 border border-zinc-700 px-3 text-white hover:bg-zinc-800 hover:text-white dark:hover:bg-zinc-700"
+              onClick={() => setSelection(null)}
+            >
+              {tp('reset')}
+            </Button>
+          </div>
+        ) : null}
       </div>
       </div>
 
