@@ -187,6 +187,8 @@ export interface RuleInput {
 export interface RuleStepView extends RuleStepInput {
   id: string;
   name: string;
+  /** Objects where Booking stored the step differently from what was sent. */
+  mismatch: number;
   status: 'active' | 'off';
   derivedStatus: 'active' | 'finished' | 'off';
   counts: Record<PromotionTargetState, number> & { total: number };
@@ -205,6 +207,8 @@ export interface RuleView {
   counts: Record<PromotionTargetState, number> & { total: number };
   steps: RuleStepView[];
   properties: { propertyId: string; propertyName: string; state: PromotionTargetState }[];
+  /** Only on the answer to «create»: things the user should know (e.g. the old rule could not be switched off). */
+  warnings?: string[];
 }
 
 type Envelope<T> = { data: { data: T } };

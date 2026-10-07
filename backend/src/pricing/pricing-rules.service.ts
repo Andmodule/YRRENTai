@@ -54,6 +54,10 @@ export class PricingRulesService {
     private readonly targetRepo: Repository<PricePromotionTargetEntity>,
   ) {}
 
+  /**
+   * Anything that can put a discount on Booking needs the auto-rules flag. Reading and SWITCHING OFF only need
+   * promotions to be enabled: with the flag off the rules must still be visible and stoppable.
+   */
   private assertRulesEnabled(): void {
     this.pricing.assertEnabled();
     if (!this.cfg.flags.autoRules) {
@@ -99,7 +103,9 @@ export class PricingRulesService {
       const eventRepo = em.getRepository(PricePromotionEventEntity);
       for (const [stepIndex, step] of dto.steps.entries()) {
         const lastMinute = { unit: step.unit, value: step.value } as const;
-        const bookTime = step.bookTime ?? null;
+        // «Any time of the day» is the same as no restriction — don't send a pointless 0–24 window.
+        const bookTime =
+          step.bookTime && !(step.bookTime.start === 0 && step.bookTime.end === 24) ? step.bookTime : null;
         const meta = {
           rule: { groupId, name, stepIndex, horizonMonths },
           lastMinute,
@@ -158,27 +164,31 @@ export class PricingRulesService {
     });
     this.queue.kick();
 
-    // Editing: the new rule is already saved; switch the old one off (both on at once is harmless —
-    // Booking shows the highest discount only).
+    // Editing: the new rule is already saved; now switch the old one off. Until the queue has done it both
+    // are live and Booking shows the higher discount (the queue always handles switch-offs first).
+    const warnings: string[] = [];
     for (const old of replaced) {
       if (old.status !== 'active') continue;
       try {
         await this.pricing.setPromotionActive(user, old.id, false);
       } catch (e) {
         this.logger.warn(`rule ${dto.replaceGroupId}: could not switch step ${old.id} off: ${String(e)}`);
+        warnings.push(`Не удалось выключить старый шаг «${old.name}» — выключите старое правило вручную`);
       }
     }
-    return this.view(actor.ownerId, groupId);
+    return { ...(await this.view(actor.ownerId, groupId)), warnings };
   }
 
+  /** Works with the flag off too — the rules must stay visible (and stoppable) after an emergency switch-off. */
   async list(user: JwtPayload) {
-    this.assertRulesEnabled();
+    this.pricing.assertEnabled();
     const { ownerId } = await this.pricing.actor(user);
     return this.views(ownerId);
   }
 
   async setActive(user: JwtPayload, groupId: string, on: boolean) {
-    this.assertRulesEnabled();
+    if (on) this.assertRulesEnabled();
+    else this.pricing.assertEnabled();
     const actor = await this.pricing.actor(user);
     const steps = await this.stepsOf(actor.ownerId, groupId);
     if (steps.length === 0) throw new NotFoundException('Правило не найдено');
@@ -188,7 +198,8 @@ export class PricingRulesService {
 
   /** Switch the rule off / on for ONE property (all its steps), e.g. while that apartment is under repair. */
   async setPropertyActive(user: JwtPayload, groupId: string, propertyId: string, on: boolean) {
-    this.assertRulesEnabled();
+    if (on) this.assertRulesEnabled();
+    else this.pricing.assertEnabled();
     const actor = await this.pricing.actor(user);
     const steps = await this.stepsOf(actor.ownerId, groupId);
     if (steps.length === 0) throw new NotFoundException('Правило не найдено');
@@ -197,6 +208,9 @@ export class PricingRulesService {
     for (const step of mine) {
       // A step that is switched off as a whole is turned on only with the whole rule.
       if (on && step.status !== 'active') continue;
+      // Only what really changes goes to the queue (each push costs several Zodomus reads).
+      const target = step.targets.find((t) => t.propertyId === propertyId)!;
+      if (target.desiredState === (on ? 'on' : 'off')) continue;
       await this.pricing.targetAction(user, step.id, propertyId, on ? 'on' : 'off');
     }
     return this.view(actor.ownerId, groupId);
@@ -245,7 +259,7 @@ export class PricingRulesService {
       where: { ownerId, source: 'rentai', promotionType: 'last_minute' },
       relations: ['targets'],
       order: { createdAt: 'DESC' },
-      take: 400,
+      // No row limit on purpose: a limit could cut a rule in half. The set is small (rules × ≤ 8 steps).
     });
     return promos.flatMap((promo) => {
       const meta = parseRuleStepMeta(promo.externalMeta);
@@ -321,6 +335,8 @@ export class PricingRulesService {
           status: sum.status,
           derivedStatus: sum.derivedStatus,
           counts: sum.counts,
+          /** Targets where Booking stored the step differently from what was sent. */
+          mismatch: s.promo.targets.filter((t) => t.verifyNote?.startsWith('MISMATCH')).length,
         })),
         properties: [...statesByProperty.entries()].map(([propertyId, states]) => ({
           propertyId,

@@ -43,8 +43,15 @@ function makeDb() {
     events: [] as Row[],
     settings: [] as Row[],
   };
-  const match = (row: Row, where?: Record<string, unknown>) =>
-    Object.entries(where ?? {}).every(([k, v]) => row[k] === v);
+  // Equality, TypeORM Not(...) and an array of alternatives (OR) — all the find() filters the services use.
+  const matchOne = (row: Row, where?: Record<string, unknown>) =>
+    Object.entries(where ?? {}).every(([k, v]) =>
+      v && typeof v === 'object' && (v as { type?: string }).type === 'not'
+        ? row[k] !== (v as { value: unknown }).value
+        : row[k] === v,
+    );
+  const match = (row: Row, where?: Record<string, unknown> | Record<string, unknown>[]) =>
+    Array.isArray(where) ? where.some((w) => matchOne(row, w)) : matchOne(row, where);
   const put = (table: 'promotions' | 'targets' | 'events') => (r: Row) => {
     if (!r.id) r.id = `${table}-${++seq}`;
     if (!r.createdAt) r.createdAt = new Date();
@@ -66,7 +73,7 @@ function makeDb() {
       x.id = rest.id;
       return x;
     }),
-    find: jest.fn(async (o: { where?: Record<string, unknown> }) =>
+    find: jest.fn(async (o: { where?: Record<string, unknown> | Record<string, unknown>[] }) =>
       db.promotions.filter((p) => match(p, o.where)).map(withTargets),
     ),
     findOne: jest.fn(async (o: { where?: Record<string, unknown> }) =>
@@ -86,7 +93,7 @@ function makeDb() {
       (Array.isArray(x) ? x : [x]).forEach(put('events'));
       return x;
     }),
-    find: jest.fn(async (o: { where?: Record<string, unknown> }) =>
+    find: jest.fn(async (o: { where?: Record<string, unknown> | Record<string, unknown>[] }) =>
       db.events.filter((e) => match(e, o.where)),
     ),
   };

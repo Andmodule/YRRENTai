@@ -33,6 +33,8 @@ export function RulesScreen() {
   const fmtRange = useStayRangeFormatter();
   const stepWhen = useStepWhen();
   const access = usePricingAccess();
+  /** Switched off on the server: rules stay visible and can be stopped, nothing can be created or sent. */
+  const canChange = access.autoRules;
   const { data: rules, isLoading, isError, refetch } = useRules(true);
   const { setActive, setPropertyActive, resend } = useRulesMutations();
 
@@ -54,11 +56,19 @@ export function RulesScreen() {
     <div className="space-y-5 pb-8">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <p className="max-w-2xl text-sm text-muted-foreground">{t('intro')}</p>
-        <Button onClick={() => setForm({ rule: null })} className="h-11 gap-2 rounded-xl px-4">
-          <Plus className="h-4 w-4" aria-hidden />
-          {t('new')}
-        </Button>
+        {canChange ? (
+          <Button onClick={() => setForm({ rule: null })} className="h-11 gap-2 rounded-xl px-4">
+            <Plus className="h-4 w-4" aria-hidden />
+            {t('new')}
+          </Button>
+        ) : null}
       </div>
+      {!canChange ? (
+        <p className="flex gap-2 rounded-xl border border-amber-300/70 bg-amber-50 px-3.5 py-3 text-sm text-amber-950 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+          <span>{t('flagOff')}</span>
+        </p>
+      ) : null}
 
       {isError ? (
         <ErrorState message={t('loadError')} onRetry={() => refetch()} />
@@ -70,13 +80,15 @@ export function RulesScreen() {
       ) : !rules || rules.length === 0 ? (
         <EmptyState
           icon={<Workflow className="h-8 w-8" />}
-          title={t('empty')}
-          description={t('emptyHint')}
+          title={canChange ? t('empty') : t('disabledTitle')}
+          description={canChange ? t('emptyHint') : t('disabledText')}
           action={
-            <Button onClick={() => setForm({ rule: null })}>
-              <Plus className="mr-1 h-4 w-4" />
-              {t('new')}
-            </Button>
+            canChange ? (
+              <Button onClick={() => setForm({ rule: null })}>
+                <Plus className="mr-1 h-4 w-4" />
+                {t('new')}
+              </Button>
+            ) : undefined
           }
         />
       ) : (
@@ -105,9 +117,11 @@ export function RulesScreen() {
                   <div className="flex flex-wrap gap-2">
                     {live ? (
                       <>
-                        <Button size="sm" variant="outline" onClick={() => setForm({ rule: r })}>
-                          {t('edit')}
-                        </Button>
+                        {canChange ? (
+                          <Button size="sm" variant="outline" onClick={() => setForm({ rule: r })}>
+                            {t('edit')}
+                          </Button>
+                        ) : null}
                         <Button
                           size="sm"
                           variant="outline"
@@ -117,7 +131,7 @@ export function RulesScreen() {
                           {t('turnOff')}
                         </Button>
                       </>
-                    ) : r.status === 'off' ? (
+                    ) : !canChange ? null : r.status === 'off' ? (
                       <>
                         <Button size="sm" variant="outline" disabled={setActive.isPending} onClick={() => act(setActive.mutateAsync({ groupId: r.groupId, on: true }), t('turnedOn'))}>
                           {t('turnOn')}
@@ -154,6 +168,12 @@ export function RulesScreen() {
                       >
                         {t('details')}
                       </button>
+                      {s.mismatch > 0 ? (
+                        <p className="flex w-full gap-1.5 text-xs text-amber-700 dark:text-amber-400">
+                          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+                          <span>{t('mismatch', { count: s.mismatch })}</span>
+                        </p>
+                      ) : null}
                     </li>
                   ))}
                 </ol>
@@ -164,7 +184,7 @@ export function RulesScreen() {
                       <li key={p.propertyId} className="flex items-center gap-2">
                         <span className="truncate font-medium">{p.propertyName}</span>
                         <TargetStateBadge state={p.state} />
-                        {live ? (
+                        {live && (canChange || p.state !== 'off') ? (
                           <button
                             type="button"
                             disabled={setPropertyActive.isPending}
@@ -182,7 +202,7 @@ export function RulesScreen() {
                       </li>
                     ))}
                   </ul>
-                  {live && stale > 0 && !access.dryRun ? (
+                  {live && canChange && stale > 0 && !access.dryRun ? (
                     <Button size="sm" disabled={resend.isPending} onClick={() => act(resend.mutateAsync(r.groupId), t('resent'))}>
                       {resend.isPending ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Send className="mr-1 h-4 w-4" aria-hidden />}
                       {t('resend', { count: stale })}

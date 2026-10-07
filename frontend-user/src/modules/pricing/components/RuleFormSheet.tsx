@@ -118,7 +118,8 @@ export function RuleFormSheet({ open, onOpenChange, rule }: RuleFormSheetProps) 
       setDays(new Set(rule.weekdays?.length ? rule.weekdays : WEEKDAYS));
       setHorizon(HORIZONS.includes(rule.horizonMonths as 3 | 6 | 12) ? rule.horizonMonths : 6);
       setScope('pick');
-      setPicked(new Set(rule.properties.map((p) => p.propertyId)));
+      // Objects switched off by hand stay off: editing must not turn them back on.
+      setPicked(new Set(rule.properties.filter((p) => p.state !== 'off').map((p) => p.propertyId)));
       setProtect(rule.protectMinPrice);
     } else {
       setName(t('defaultName'));
@@ -189,8 +190,9 @@ export function RuleFormSheet({ open, onOpenChange, rule }: RuleFormSheetProps) 
       ...(rule ? { replaceGroupId: rule.groupId } : {}),
     };
     create.mutate(input, {
-      onSuccess: () => {
+      onSuccess: (view) => {
         toast.success(access.dryRun ? t('createdDry') : t('created'));
+        for (const w of view.warnings ?? []) toast.warning(w);
         onOpenChange(false);
       },
       onError: (e) => toast.error(getApiErrorMessage(e) ?? t('error')),

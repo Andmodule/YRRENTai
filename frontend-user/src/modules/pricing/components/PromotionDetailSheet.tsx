@@ -173,6 +173,8 @@ export function PromotionDetailSheet({
                         <p className="truncate font-medium">{x.propertyName}</p>
                         {x.lastErrorCode && (x.state === 'error' || x.state === 'skipped') ? (
                           <p className="text-xs text-amber-700 dark:text-amber-400">{errorLabel(x.lastErrorCode)}</p>
+                        ) : x.verifyNote?.startsWith('MISMATCH') ? (
+                          <p className="text-xs text-amber-700 dark:text-amber-400">{t('verifyMismatch', { note: x.verifyNote.replace(/^MISMATCH:s*/, '') })}</p>
                         ) : x.verifyNote ? (
                           <p className="text-xs text-muted-foreground">{t('verifyNote')}</p>
                         ) : null}

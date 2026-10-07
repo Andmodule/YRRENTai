@@ -222,6 +222,49 @@ describe('PromotionExecutorService — auto rule steps', () => {
     expect(out.patch.verifyNote).toContain('0–24');
   });
 
+  it('verify: a deal that came back without «за N» / booking hours / last_minute type is a mismatch', async () => {
+    const run = async (answer: Record<string, unknown>) => {
+      const z = makeZodomus();
+      z.getPromotions.mockResolvedValueOnce({ promotions: [] }).mockResolvedValueOnce({ promotions: [answer] });
+      const ex = new PromotionExecutorService(z as unknown as ZodomusService, propertyService, makeCfg());
+      return (await ex.process(ctx())).patch;
+    };
+    const base = {
+      rooms: { room: { '@attributes': { id: ROOM } } },
+      discount: { '@attributes': { value: '10' } },
+    };
+
+    // stored as a plain deal: no last_minute, no book_time
+    const plain = await run({ '@attributes': { id: 'VR-LM1', name: 'x', type: 'basic' }, ...base });
+    expect(plain.verifiedAt).toBeNull();
+    expect(plain.verifyNote).toMatch(/^MISMATCH:/);
+    expect(plain.verifyNote).toContain('basic');
+    expect(plain.verifyNote).toContain('«за N до заезда»');
+    expect(plain.verifyNote).toContain('часы бронирования');
+
+    // last_minute kept, but the booking hours were dropped
+    const noHours = await run({
+      '@attributes': { id: 'VR-LM1', name: 'x', type: 'last_minute' },
+      ...base,
+      last_minute: { '@attributes': { unit: 'hour', value: '12' } },
+    });
+    expect(noHours.verifyNote).toMatch(/^MISMATCH:.*часы бронирования/);
+    expect(noHours.verifyNote).not.toContain('за N');
+  });
+
+  it('flag off: a step that is already live on Booking is left alone (state stays «on»)', async () => {
+    const z = makeZodomus();
+    const ex = new PromotionExecutorService(
+      z as unknown as ZodomusService,
+      propertyService,
+      makeCfg({ ZODOMUS_PROMOTIONS_AUTORULES_ENABLED: false }),
+    );
+    const out = await ex.process(ctx({ target: { state: 'on', externalPromotionId: 'VR-LM1' } }));
+
+    expect(out.patch).toEqual({ needsPush: false });
+    for (const fn of Object.values(z)) expect(fn).not.toHaveBeenCalled();
+  });
+
   it('changing the step window recreates the deal and switches the old one off', async () => {
     const z = makeZodomus();
     const ex = new PromotionExecutorService(

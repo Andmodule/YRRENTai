@@ -7,7 +7,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, Not, Repository } from 'typeorm';
 import type { JwtPayload } from '../common/decorators/current-user.decorator';
 import { UserService } from '../user/user.service';
 import { PropertyService } from '../property/property.service';
@@ -258,7 +258,15 @@ export class PricingService {
     const { ownerId } = await this.actor(user);
     const [promos, props] = await Promise.all([
       this.promotionRepo.find({
-        where: { ownerId },
+        // The ordinary list leaves out steps of auto rules (they have their own tab) — filtered here, not
+        // after `take`, so many rule steps can never push ordinary discounts out of the first 200.
+        // With a property id the property card still wants the steps.
+        where: propertyId
+          ? { ownerId }
+          : [
+              { ownerId, source: 'booking' },
+              { ownerId, source: 'rentai', promotionType: Not('last_minute') },
+            ],
         relations: ['targets'],
         order: { createdAt: 'DESC' },
         take: 200,

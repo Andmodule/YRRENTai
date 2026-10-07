@@ -103,6 +103,15 @@ export class PromotionExecutorService {
     const rule = promotion.promotionType === 'last_minute' ? parseRuleStepMeta(promotion.externalMeta) : null;
     if (promotion.promotionType === 'last_minute') {
       if (!this.cfg.flags.autoRules) {
+        // A step that is already live on Booking stays as it is (only switching it off is still possible).
+        if (target.externalPromotionId && target.state === 'on') {
+          return this.done({ needsPush: false }, [
+            {
+              action: 'skipped',
+              message: 'Автоправила выключены на сервере — шаг на Booking не менялся',
+            },
+          ]);
+        }
         return this.skip(
           'AUTORULES_DISABLED',
           'Автоправила выключены (ZODOMUS_PROMOTIONS_AUTORULES_ENABLED=false) — на Booking ничего не отправлено',
@@ -527,14 +536,24 @@ export class PromotionExecutorService {
         problems.push(`скидка на Booking ${hit.discountPct}% вместо ${discountPct}%`);
       }
       if (rule) {
+        // A rule step must come back as a last-minute deal with the same window. A missing field is a
+        // mismatch too: if Booking dropped «за N» or the booking hours, the step would apply to every
+        // date / all day, which is not what was asked for.
+        if (hit.type && !/^last[_ -]?minute$/i.test(hit.type)) {
+          problems.push(`на Booking тип «${hit.type}» вместо last_minute`);
+        }
         const lm = hit.lastMinute;
-        if (lm && (lm.unit !== rule.lastMinute.unit || lm.value !== rule.lastMinute.value)) {
+        if (!lm) {
+          problems.push('Booking не вернул параметр «за N до заезда»');
+        } else if (lm.unit !== rule.lastMinute.unit || lm.value !== rule.lastMinute.value) {
           problems.push(
             `на Booking «${lm.value} ${lm.unit}» вместо «${rule.lastMinute.value} ${rule.lastMinute.unit}»`,
           );
         }
         const bt = hit.bookTime;
-        if (rule.bookTime && bt && (bt.start !== rule.bookTime.start || bt.end !== rule.bookTime.end)) {
+        if (rule.bookTime && !bt) {
+          problems.push('Booking не вернул часы бронирования');
+        } else if (rule.bookTime && bt && (bt.start !== rule.bookTime.start || bt.end !== rule.bookTime.end)) {
           problems.push(
             `время бронирования на Booking ${bt.start}–${bt.end} вместо ${rule.bookTime.start}–${rule.bookTime.end}`,
           );

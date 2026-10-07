@@ -35,8 +35,15 @@ const PROPS = [
 function makeDb() {
   let seq = 0;
   const db = { promotions: [] as Row[], targets: [] as Row[], events: [] as Row[] };
-  const match = (row: Row, where?: Record<string, unknown>) =>
-    Object.entries(where ?? {}).every(([k, v]) => row[k] === v);
+  // Equality, TypeORM Not(...) and an array of alternatives (OR) — all the find() filters the services use.
+  const matchOne = (row: Row, where?: Record<string, unknown>) =>
+    Object.entries(where ?? {}).every(([k, v]) =>
+      v && typeof v === 'object' && (v as { type?: string }).type === 'not'
+        ? row[k] !== (v as { value: unknown }).value
+        : row[k] === v,
+    );
+  const match = (row: Row, where?: Record<string, unknown> | Record<string, unknown>[]) =>
+    Array.isArray(where) ? where.some((w) => matchOne(row, w)) : matchOne(row, where);
   const put = (table: 'promotions' | 'targets' | 'events') => (r: Row) => {
     if (!r.id) r.id = `${table}-${++seq}`;
     if (!r.createdAt) r.createdAt = new Date();
@@ -58,7 +65,7 @@ function makeDb() {
       x.id = rest.id;
       return x;
     }),
-    find: jest.fn(async (o: { where?: Record<string, unknown> }) =>
+    find: jest.fn(async (o: { where?: Record<string, unknown> | Record<string, unknown>[] }) =>
       db.promotions.filter((p) => match(p, o.where)).map(withTargets),
     ),
     findOne: jest.fn(async (o: { where?: Record<string, unknown> }) =>
@@ -78,7 +85,7 @@ function makeDb() {
       (Array.isArray(x) ? x : [x]).forEach(put('events'));
       return x;
     }),
-    find: jest.fn(async (o: { where?: Record<string, unknown> }) =>
+    find: jest.fn(async (o: { where?: Record<string, unknown> | Record<string, unknown>[] }) =>
       db.events.filter((e) => match(e, o.where)),
     ),
   };
@@ -141,7 +148,7 @@ function makeServices(over: { rules?: boolean; enabled?: boolean } = {}) {
     store.promotionRepo as unknown as Repository<PricePromotionEntity>,
     store.targetRepo as unknown as Repository<PricePromotionTargetEntity>,
   );
-  return { rules, pricing, queue, ...store };
+  return { rules, pricing, queue, cfg, ...store };
 }
 
 const LADDER: CreateRuleDto = {
@@ -155,11 +162,36 @@ const LADDER: CreateRuleDto = {
 };
 
 describe('PricingRulesService', () => {
-  it('feature flag off: every route answers 503 and nothing is saved', async () => {
+  it('flag off from the start: nothing can be created, sent again or switched on', async () => {
     const { rules, db } = makeServices({ rules: false });
-    await expect(rules.list(OWNER)).rejects.toBeInstanceOf(ServiceUnavailableException);
     await expect(rules.create(OWNER, LADDER)).rejects.toBeInstanceOf(ServiceUnavailableException);
+    await expect(rules.resend(OWNER, 'g')).rejects.toBeInstanceOf(ServiceUnavailableException);
+    await expect(rules.setActive(OWNER, 'g', true)).rejects.toBeInstanceOf(ServiceUnavailableException);
+    await expect(rules.setPropertyActive(OWNER, 'g', 'a', true)).rejects.toBeInstanceOf(ServiceUnavailableException);
     expect(db.promotions).toHaveLength(0);
+    // Reading is allowed (an empty list), so the page can show what exists.
+    expect(await rules.list(OWNER)).toEqual([]);
+  });
+
+  it('emergency switch-off: with the flag off existing rules stay visible and can still be stopped', async () => {
+    const { rules, db, cfg } = makeServices();
+    const { groupId } = await rules.create(OWNER, LADDER);
+    (cfg.flags as { autoRules: boolean }).autoRules = false;
+
+    expect(await rules.list(OWNER)).toHaveLength(1);
+
+    const one = await rules.setPropertyActive(OWNER, groupId, 'a', false);
+    expect(one.properties.find((p) => p.propertyId === 'a')!.state).toBe('off');
+
+    const off = await rules.setActive(OWNER, groupId, false);
+    expect(off.status).toBe('off');
+    expect(db.targets.every((t) => t.desiredState === 'off' && t.needsPush)).toBe(true);
+
+    // …but nothing can put a discount back on Booking.
+    await expect(rules.setActive(OWNER, groupId, true)).rejects.toBeInstanceOf(ServiceUnavailableException);
+    await expect(rules.resend(OWNER, groupId)).rejects.toBeInstanceOf(ServiceUnavailableException);
+    await expect(rules.setPropertyActive(OWNER, groupId, 'a', true)).rejects.toBeInstanceOf(ServiceUnavailableException);
+    await expect(rules.create(OWNER, LADDER)).rejects.toBeInstanceOf(ServiceUnavailableException);
   });
 
   it('promotions off entirely: the rules flag alone does nothing', async () => {
@@ -252,6 +284,76 @@ describe('PricingRulesService', () => {
     expect(oldPromos.every((p) => p.status === 'off')).toBe(true);
     const oldTargets = db.targets.filter((t) => oldPromos.some((p) => p.id === t.promotionId));
     expect(oldTargets.every((t) => t.desiredState === 'off' && t.needsPush)).toBe(true);
+  });
+
+  it('editing: a failed switch-off of the old rule is reported, the new rule stays', async () => {
+    const { rules, pricing } = makeServices();
+    const old = await rules.create(OWNER, LADDER);
+    jest.spyOn(pricing, 'setPromotionActive').mockRejectedValue(new Error('db down'));
+
+    const next = await rules.create(OWNER, { ...LADDER, steps: [LADDER.steps[0]!], replaceGroupId: old.groupId });
+
+    expect(next.warnings).toHaveLength(3);
+    expect(next.warnings[0]).toContain('За 3 дня до заезда');
+    expect(next.status).toBe('active');
+  });
+
+  it('a normal create has no warnings; a whole-day booking window is stored as «no restriction»', async () => {
+    const { rules, db } = makeServices();
+    const view = await rules.create(OWNER, {
+      ...LADDER,
+      steps: [{ discountPct: 5, unit: 'hour', value: 12, bookTime: { start: 0, end: 24 } }],
+    });
+    expect(view.warnings).toEqual([]);
+    expect((db.promotions[0]!.externalMeta as { bookTime: unknown }).bookTime).toBeNull();
+    expect(db.promotions[0]!.name).toBe('За 12 часов до заезда');
+  });
+
+  it('a step whose Booking copy differs from what was sent is flagged in the rule view', async () => {
+    const { rules, db } = makeServices();
+    const { groupId } = await rules.create(OWNER, { ...LADDER, steps: [LADDER.steps[0]!, LADDER.steps[1]!] });
+    db.targets
+      .filter((t) => t.promotionId === db.promotions[0]!.id && t.propertyId === 'a')
+      .forEach((t) => Object.assign(t, { state: 'on', verifyNote: 'MISMATCH: Booking не вернул часы бронирования' }));
+
+    const view = (await rules.list(OWNER)).find((r) => r.groupId === groupId)!;
+    expect(view.steps.map((s) => s.mismatch)).toEqual([1, 0]);
+  });
+
+  it('the ordinary discount list leaves rule steps out; the property card still gets them', async () => {
+    const { rules, pricing, db } = makeServices();
+    await rules.create(OWNER, LADDER);
+    db.promotions.push({
+      id: 'plain',
+      ownerId: 'owner-1',
+      source: 'rentai',
+      promotionType: 'basic',
+      name: 'Обычная',
+      discountPct: 10,
+      status: 'active',
+      stayFrom: '2030-01-01',
+      stayTo: '2030-01-07',
+      externalMeta: null,
+      createdAt: new Date(),
+    });
+    db.targets.push({ id: 'tp', promotionId: 'plain', propertyId: 'a', desiredState: 'on', state: 'on', previousExternalIds: [] });
+
+    expect((await pricing.list(OWNER)).map((p) => p.name)).toEqual(['Обычная']);
+    expect((await pricing.list(OWNER, 'a')).length).toBe(4);
+  });
+
+  it('turning a property on / off changes only the steps where it is not already so', async () => {
+    const { rules, db, queue } = makeServices();
+    const { groupId } = await rules.create(OWNER, { ...LADDER, steps: [LADDER.steps[0]!, LADDER.steps[1]!] });
+    const events = db.events.length;
+    queue.kick.mockClear();
+
+    await rules.setPropertyActive(OWNER, groupId, 'a', true); // already on everywhere
+    expect(db.events).toHaveLength(events);
+    expect(queue.kick).not.toHaveBeenCalled();
+
+    await rules.setPropertyActive(OWNER, groupId, 'a', false);
+    expect(db.events.length).toBe(events + 2);
   });
 
   it('editing an unknown rule fails before anything is created', async () => {
@@ -393,6 +495,7 @@ describe('createRuleSchema', () => {
     ['empty name', { ...ok, name: '  ' }],
     ['horizon 13 months', { ...ok, horizonMonths: 13 }],
     ['unknown field', { ...ok, extra: 1 }],
+    ['the same property twice', { ...ok, propertyIds: ['11111111-1111-4111-8111-111111111111', '11111111-1111-4111-8111-111111111111'] }],
   ])('rejects %s', (_label, body) => {
     expect(createRuleSchema.safeParse(body).success).toBe(false);
   });

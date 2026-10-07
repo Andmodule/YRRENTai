@@ -43,7 +43,9 @@ export const createRuleSchema = z
     /** How far ahead the rule is created (months of stay dates). */
     horizonMonths: z.coerce.number().int().min(1).max(12).default(6),
     /** Omitted = every property of the tenant connected to Booking. */
-    propertyIds: propertyIds.optional(),
+    propertyIds: propertyIds
+      .refine((ids) => new Set(ids).size === ids.length, { message: 'Duplicate property ids' })
+      .optional(),
     /** Skip properties where the Genius guest price would go below their minimum. Default true. */
     protectMinPrice: z.boolean().optional(),
     /** Editing = create the new rule, then switch this one off. */
