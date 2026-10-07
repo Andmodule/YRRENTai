@@ -11,7 +11,7 @@ import { useDateLocale } from '@/hooks/useDateLocale';
 import { getApiErrorMessage } from '@/lib/api/error-message';
 import type { PromotionDetail } from '../api';
 import { usePricingMutations, usePromotion } from '../hooks';
-import { sumRevenue } from '../lib/pricing-ui';
+import { isRuleStep, sumRevenue } from '../lib/pricing-ui';
 import {
   CampaignStatusBadge,
   ConfirmDialog,
@@ -45,7 +45,9 @@ export function PromotionDetailSheet({
   const { setActive, targetAction } = usePricingMutations();
   const [confirm, setConfirm] = useState<Confirm>(null);
 
-  const editable = p?.source === 'rentai';
+  // A step of an auto rule is managed as a whole on the «Автоправила» tab; here only its objects and history.
+  const ruleStep = !!p && isRuleStep(p);
+  const editable = p?.source === 'rentai' && !ruleStep;
   const live = editable && p?.status === 'active' && p.derivedStatus !== 'finished';
 
   const run = async (fn: () => Promise<unknown>) => {
@@ -112,6 +114,9 @@ export function PromotionDetailSheet({
             <div className="space-y-6 pb-2">
               {p.source === 'booking' ? (
                 <p className="rounded-xl bg-indigo-50 px-3.5 py-3 text-sm text-indigo-950 dark:bg-indigo-500/10 dark:text-indigo-100">{t('bookingNote')}</p>
+              ) : null}
+              {ruleStep ? (
+                <p className="rounded-xl bg-muted px-3.5 py-3 text-sm text-foreground">{t('ruleStepNote')}</p>
               ) : null}
 
               <dl className="grid grid-cols-2 gap-x-5 gap-y-3.5 text-sm">
@@ -188,7 +193,7 @@ export function PromotionDetailSheet({
                           {t('on')}
                         </Button>
                       ) : null}
-                      {editable && x.state === 'error' ? (
+                      {p.source === 'rentai' && x.state === 'error' ? (
                         <Button size="sm" variant="outline" disabled={targetAction.isPending} onClick={() => run(() => targetAction.mutateAsync({ id: p.id, propertyId: x.propertyId, action: 'retry' }))}>
                           <RotateCcw className="mr-1 h-3.5 w-3.5" />
                           {t('retry')}

@@ -128,6 +128,15 @@ const zodomusEnvFields = z.object({
   ZODOMUS_PROMOTIONS_QUEUE_INTERVAL_SECONDS: z.coerce.number().int().min(10).max(3600).default(60),
   /** Pause between properties in the promotions queue / sync (ms), on top of the global Zodomus limiter. Default: 2000. */
   ZODOMUS_PROMOTIONS_GAP_MS: z.coerce.number().int().min(0).max(60_000).default(2000),
+  /**
+   * «Цены → Автоправила»: automatic last-minute discounts (Booking «Last-minute» deals with a booking
+   * time window). Off by default; needs ZODOMUS_PROMOTIONS_ENABLED=true too. While off the API answers 503,
+   * the UI tab is hidden and rule steps are never sent to Booking.
+   */
+  ZODOMUS_PROMOTIONS_AUTORULES_ENABLED: z
+    .enum(['true', 'false', '1', '0', 'yes', 'no'])
+    .default('false')
+    .transform((v) => v === 'true' || v === '1' || v === 'yes'),
   /** After create: read the promotion back and check rooms/rate were applied. Default: true. */
   ZODOMUS_PROMOTIONS_VERIFY: z
     .enum(['true', 'false', '1', '0', 'yes', 'no'])

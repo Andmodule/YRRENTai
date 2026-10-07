@@ -13,6 +13,8 @@ export type PricingFlags = {
   queueIntervalSeconds: number;
   gapMs: number;
   verify: boolean;
+  /** «Автоправила» (last-minute steps): needs `enabled` plus ZODOMUS_PROMOTIONS_AUTORULES_ENABLED. */
+  autoRules: boolean;
 };
 
 /** Env values arrive transformed by envSchema (booleans/numbers); strings are tolerated for safety. */
@@ -48,8 +50,10 @@ export class PricingConfig {
 
   constructor(config: ConfigService) {
     const zodomusEnabled = toBool(config.get('ZODOMUS_ENABLED'), false);
+    const enabled = zodomusEnabled && toBool(config.get('ZODOMUS_PROMOTIONS_ENABLED'), false);
     this.flags = {
-      enabled: zodomusEnabled && toBool(config.get('ZODOMUS_PROMOTIONS_ENABLED'), false),
+      enabled,
+      autoRules: enabled && toBool(config.get('ZODOMUS_PROMOTIONS_AUTORULES_ENABLED'), false),
       // Default to dry run when the value is missing or unreadable.
       dryRun: toBool(config.get('ZODOMUS_PROMOTIONS_DRY_RUN'), true),
       allowlist: parseAllowlist(config.get('ZODOMUS_PROMOTIONS_PROPERTY_ALLOWLIST')),
@@ -61,7 +65,7 @@ export class PricingConfig {
     };
     if (this.flags.enabled) {
       this.logger.log(
-        `Booking promotions ENABLED — dryRun=${this.flags.dryRun}, allowlist=${this.flags.allowlist.size || 'all'}, channel=${this.flags.channelId}`,
+        `Booking promotions ENABLED — dryRun=${this.flags.dryRun}, allowlist=${this.flags.allowlist.size || 'all'}, channel=${this.flags.channelId}, autoRules=${this.flags.autoRules}`,
       );
     }
   }

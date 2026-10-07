@@ -13,7 +13,7 @@ import { getApiErrorMessage } from '@/lib/api/error-message';
 import { cn } from '@/lib/utils';
 import type { PromotionDetail, PromotionSummary } from '../api';
 import { usePricingMutations, usePromotions } from '../hooks';
-import { sumRevenue } from '../lib/pricing-ui';
+import { isRuleStep, sumRevenue } from '../lib/pricing-ui';
 import { PromotionDetailSheet } from './PromotionDetailSheet';
 import { PromotionFormSheet, type PromotionFormInitial } from './PromotionFormSheet';
 import { CampaignStatusBadge, ConfirmDialog, usePriceFormatter, useStayRangeFormatter } from './shared';
@@ -45,7 +45,8 @@ export function PromotionsScreen() {
     if (forProperty) setForm({ initial: { propertyIds: [forProperty] } });
   }, [searchParams]);
 
-  const list = promos ?? [];
+  // Steps of auto rules live on their own tab.
+  const list = useMemo(() => (promos ?? []).filter((p) => !isRuleStep(p)), [promos]);
   const active = list.filter((p) => p.derivedStatus === 'active');
   const visible = list.filter((p) =>
     tab === 'all' ? true : tab === 'active' ? p.derivedStatus === 'active' : p.derivedStatus !== 'active',
