@@ -4,18 +4,17 @@ import { useMemo } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { cn } from '@/lib/utils';
 import type { CalendarPromotion } from '../../api';
-import { addDaysYmd, cellPrice, isNotSent, promotionsForCell } from '../../lib/pricing-ui';
+import { addDaysYmd, cellKey, cellPriceLabels, isNotSent, promotionsForCell } from '../../lib/pricing-ui';
 
 export type CellRect = { r1: number; r2: number; d1: number; d2: number };
 
-/** Key of one night of one property in `CalendarCellPrices`. */
-export const cellKey = (propertyId: string, ymd: string) => `${propertyId}:${ymd}`;
+export { cellKey };
 
-/** Booking nightly prices to print in free cells (see `cellPrice`). */
+/** Booking nightly prices to print in the cells (see `cellPriceLabels`). */
 export type CalendarCellPrices = {
   /** propertyId → night (yyyy-MM-dd) → rack price in the channel currency. */
   byProperty: ReadonlyMap<string, Readonly<Record<string, number>>>;
-  /** Nights with a booking or closed on the channel — no price is printed. */
+  /** Nights with a booking or closed on the channel — the price is printed over the bar, dimmed. */
   busy: ReadonlySet<string>;
   /** Check-out days: a bar covers the left half of the cell, so only the final price fits. */
   halfBusy: ReadonlySet<string>;
@@ -36,7 +35,8 @@ const BADGE_TONE = {
 
 /**
  * Overlay rendered INTO Planby's content pane (position: relative): nightly prices and discount badges
- * per cell, and the range selection. Everything sits under booking bars (Planby programs use z-index 5).
+ * per cell, and the range selection. It sits under booking bars (Planby programs use z-index 5) —
+ * except the prices of booked nights, which are printed over the bars and let every click through.
  */
 export function CalendarPromotionsLayer({
   propertyIds,
@@ -66,21 +66,24 @@ export function CalendarPromotionsLayer({
 
   const prices = useMemo(() => {
     if (!cellPrices || cellPrices.byProperty.size === 0 || dayColWidthPx <= 0) return [];
-    const out: { key: string; row: number; day: number; price: number; rack: number | null; compact: boolean }[] = [];
-    propertyIds.forEach((propertyId, row) => {
-      const byNight = cellPrices.byProperty.get(propertyId);
-      if (!byNight) return;
-      for (let day = 0; day < numDays; day++) {
-        const ymd = addDaysYmd(firstDay, day);
-        const key = cellKey(propertyId, ymd);
-        if (cellPrices.busy.has(key)) continue;
-        const view = cellPrice(byNight[ymd], promotionsForCell(promotions, propertyId, ymd));
-        if (!view) continue;
-        out.push({ key, row, day, ...view, compact: dayColWidthPx < FULL_PRICE_MIN_COL_PX || cellPrices.halfBusy.has(key) });
-      }
+    return cellPriceLabels({
+      propertyIds,
+      firstDay,
+      numDays,
+      byProperty: cellPrices.byProperty,
+      busy: cellPrices.busy,
+      halfBusy: cellPrices.halfBusy,
+      promotions,
+      narrow: dayColWidthPx < FULL_PRICE_MIN_COL_PX,
     });
-    return out;
   }, [cellPrices, promotions, propertyIds, firstDay, numDays, dayColWidthPx]);
+  const freePrices = useMemo(() => prices.filter((p) => !p.booked), [prices]);
+  const bookedPrices = useMemo(() => prices.filter((p) => p.booked), [prices]);
+  const priceBox = (p: { row: number; day: number }) => ({
+    top: (p.row + 1) * rowHeightPx - 19,
+    left: p.day * dayColWidthPx + 3,
+    width: dayColWidthPx - 8,
+  });
 
   const badges = useMemo(() => {
     if (promotions.length === 0 || dayColWidthPx <= 0) return [];
@@ -117,12 +120,26 @@ export function CalendarPromotionsLayer({
   }, [promotions, propertyIds, firstDay, numDays, dayColWidthPx, t]);
 
   return (
+    <>
+    {bookedPrices.length > 0 ? (
+      <div className="pointer-events-none absolute inset-0" style={{ zIndex: 6 }} aria-hidden>
+        {bookedPrices.map((p) => (
+          <span
+            key={`booked:${p.key}`}
+            className="absolute overflow-hidden whitespace-nowrap text-right text-[11px] leading-4 tabular-nums text-foreground/55"
+            style={priceBox(p)}
+          >
+            {fmt.format(p.price)}
+          </span>
+        ))}
+      </div>
+    ) : null}
     <div className="pointer-events-none absolute inset-0" style={{ zIndex: 2 }} aria-hidden={badges.length === 0 && prices.length === 0 && !selection}>
-      {prices.map((p) => (
+      {freePrices.map((p) => (
         <span
           key={`price:${p.key}`}
           className="absolute overflow-hidden whitespace-nowrap text-right text-[11px] leading-4 tabular-nums text-muted-foreground"
-          style={{ top: (p.row + 1) * rowHeightPx - 19, left: p.day * dayColWidthPx + 3, width: dayColWidthPx - 8 }}
+          style={priceBox(p)}
         >
           {p.rack != null && !p.compact ? <s className="mr-1 opacity-70">{fmt.format(p.rack)}</s> : null}
           <span className={p.rack != null ? 'font-semibold text-emerald-700 dark:text-emerald-400' : undefined}>{fmt.format(p.price)}</span>
@@ -158,5 +175,6 @@ export function CalendarPromotionsLayer({
         />
       ) : null}
     </div>
+    </>
   );
 }

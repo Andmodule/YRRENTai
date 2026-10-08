@@ -3,7 +3,9 @@ import { describe, it } from 'node:test';
 import {
   addDaysYmd,
   campaignHealth,
+  cellKey,
   cellPrice,
+  cellPriceLabels,
   guestPrice,
   isBelowMin,
   isNotSent,
@@ -112,6 +114,49 @@ describe('cellPrice — the price printed in a calendar cell', () => {
     assert.equal(isTargetingType('geo_rate'), true);
     assert.equal(isTargetingType('last_minute'), false);
     assert.equal(isTargetingType(null), false);
+  });
+});
+
+describe('cellPriceLabels — every night with a Booking price gets one', () => {
+  const live: CalendarPromotion = {
+    id: 'p1', name: 'Осень', source: 'booking', promotionType: 'basic', discountPct: 10, from: '2026-10-08', to: '2026-10-31', activeWeekdays: null,
+    properties: [{ propertyId: 'a', state: 'on', confirmed: true, errorCode: null }],
+  };
+  const base = {
+    propertyIds: ['x', 'a'],
+    firstDay: '2026-10-08',
+    numDays: 4,
+    byProperty: new Map([['a', { '2026-10-08': 300, '2026-10-09': 270, '2026-10-10': 268.4 }]]),
+    busy: new Set([cellKey('a', '2026-10-09')]),
+    halfBusy: new Set([cellKey('a', '2026-10-10')]),
+    promotions: [live],
+    narrow: false,
+  };
+  const short = (l: ReturnType<typeof cellPriceLabels>) => l.map((x) => [x.row, x.day, x.price, x.rack, x.booked, x.compact]);
+
+  it('free night: guest price + struck rack; booked night: the rack price of the date, alone', () => {
+    assert.deepEqual(short(cellPriceLabels(base)), [
+      [1, 0, 270, 300, false, false], // free, discount on
+      [1, 1, 270, null, true, true], // booked: rack 270, no discount maths, single number
+      [1, 2, 242, 268, false, true], // check-out day: half the cell is under a bar → compact
+      // 2026-10-11 has no price → no label; property «x» has no Booking prices at all
+    ]);
+  });
+
+  it('a booked night is printed even without any discount around', () => {
+    assert.deepEqual(short(cellPriceLabels({ ...base, promotions: [] })), [
+      [1, 0, 300, null, false, false],
+      [1, 1, 270, null, true, true],
+      [1, 2, 268, null, false, true],
+    ]);
+  });
+
+  it('narrow columns make every label compact', () => {
+    assert.ok(cellPriceLabels({ ...base, narrow: true }).every((x) => x.compact));
+  });
+
+  it('keys match the busy sets', () => {
+    assert.deepEqual(cellPriceLabels(base).map((x) => x.key), ['a:2026-10-08', 'a:2026-10-09', 'a:2026-10-10']);
   });
 });
 

@@ -177,6 +177,53 @@ export function cellPrice(rack: number | null | undefined, promotions: readonly 
   return { price: Math.round(guestPrice(rack, live.discountPct)), rack: Math.round(rack) };
 }
 
+/** Key of one night of one property (`busy` / `halfBusy` sets of the calendar prices). */
+export const cellKey = (propertyId: string, ymd: string) => `${propertyId}:${ymd}`;
+
+export type CellPriceLabel = CellPrice & {
+  key: string;
+  row: number;
+  day: number;
+  /** A booked or closed night: the price of the date is printed over the bar, dimmed, rack only. */
+  booked: boolean;
+  /** No room for the struck-through rack price next to the guest price. */
+  compact: boolean;
+};
+
+/**
+ * One label per night that has a Booking price. Free nights follow `cellPrice` (a live discount
+ * shows the guest price). Booked / closed nights show the rack price of the date — nobody is
+ * offered a discount on a sold night, and it is the price of the date, not of the booking.
+ */
+export function cellPriceLabels(input: {
+  propertyIds: readonly string[];
+  /** yyyy-MM-dd of the first column. */
+  firstDay: string;
+  numDays: number;
+  byProperty: ReadonlyMap<string, Readonly<Record<string, number>>>;
+  busy: ReadonlySet<string>;
+  /** Check-out days: a bar covers the left half of the cell. */
+  halfBusy: ReadonlySet<string>;
+  promotions: readonly CalendarPromotion[];
+  /** Narrow day columns (phone). */
+  narrow: boolean;
+}): CellPriceLabel[] {
+  const out: CellPriceLabel[] = [];
+  input.propertyIds.forEach((propertyId, row) => {
+    const byNight = input.byProperty.get(propertyId);
+    if (!byNight) return;
+    for (let day = 0; day < input.numDays; day++) {
+      const ymd = addDaysYmd(input.firstDay, day);
+      const key = cellKey(propertyId, ymd);
+      const booked = input.busy.has(key);
+      const view = cellPrice(byNight[ymd], booked ? [] : promotionsForCell(input.promotions, propertyId, ymd));
+      if (!view) continue;
+      out.push({ key, row, day, ...view, booked, compact: booked || input.narrow || input.halfBusy.has(key) });
+    }
+  });
+  return out;
+}
+
 /** Nights a stay occupies: from check-in up to, not including, the check-out day. */
 export function stayNights(checkIn: string, checkOut: string): string[] {
   const to = checkOut.slice(0, 10);
