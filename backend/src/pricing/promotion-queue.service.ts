@@ -11,6 +11,7 @@ import {
 import { PricePromotionTargetEntity } from './entities/price-promotion-target.entity';
 import { PricePromotionEventEntity } from './entities/price-promotion-event.entity';
 import { PropertyPricingSettingsEntity } from './entities/property-pricing-settings.entity';
+import { targetingPctByProperty } from './pricing-targeting.util';
 
 export const PROMOTION_MAX_ATTEMPTS = 6;
 
@@ -110,6 +111,15 @@ export class PromotionQueueService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /** Mobile / Country rate of the property as last seen on Booking (for the minimum-price check). */
+  private async targetingPct(propertyId: string): Promise<number | null> {
+    const targets = await this.targetRepo.find({
+      where: { propertyId, state: 'on' },
+      relations: ['promotion'],
+    });
+    return targetingPctByProperty(targets).get(propertyId) ?? null;
+  }
+
   async processOne(targetId: string): Promise<void> {
     const target = await this.targetRepo.findOne({
       where: { id: targetId },
@@ -139,6 +149,7 @@ export class PromotionQueueService implements OnModuleInit, OnModuleDestroy {
         promotion: target.promotion,
         property,
         settings,
+        targetingPct: await this.targetingPct(target.propertyId),
       });
     }
 

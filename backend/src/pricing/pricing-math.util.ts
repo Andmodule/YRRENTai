@@ -5,7 +5,9 @@
  * Booking rules (developers.booking.com, Promotions FAQ / Partner Hub, checked 2026-10-04):
  * - promotions of the same category (basic / last-minute / early booker) never add up —
  *   the guest sees only the highest discount;
- * - Genius applies first, then the deal, one after another (multiplicative).
+ * - Genius applies first, then the deal, one after another (multiplicative);
+ * - a Mobile / Country rate from the extranet is another category and stacks on top of both
+ *   (checked 2026-10-08) — see pricing-targeting.util.ts.
  */
 
 import { createHash } from 'crypto';
@@ -77,14 +79,19 @@ export function nightsInRange(
   return out;
 }
 
-/** Price a Genius member sees: Booking applies Genius first, then the deal. */
+/**
+ * Lowest price a guest can see: Booking applies Genius, then the deal, then the property's
+ * Mobile / Country rate (`targetingPct`), one after another.
+ */
 export function guestPriceAfter(
   price: number,
   geniusPct: number | null | undefined,
   discountPct: number,
+  targetingPct?: number | null,
 ): number {
   const g = Math.max(0, geniusPct ?? 0);
-  return (((price * (100 - g)) / 100) * (100 - discountPct)) / 100;
+  const m = Math.max(0, targetingPct ?? 0);
+  return (((((price * (100 - g)) / 100) * (100 - discountPct)) / 100) * (100 - m)) / 100;
 }
 
 export function isBelowMinPrice(
@@ -92,23 +99,25 @@ export function isBelowMinPrice(
   geniusPct: number | null | undefined,
   discountPct: number,
   minPrice: number | null | undefined,
+  targetingPct?: number | null,
 ): boolean {
   if (!minPrice || minPrice <= 0) return false;
-  return guestPriceAfter(price, geniusPct, discountPct) < minPrice;
+  return guestPriceAfter(price, geniusPct, discountPct, targetingPct) < minPrice;
 }
 
 /**
- * Largest whole discount (%) that keeps the Genius guest price ≥ minPrice.
+ * Largest whole discount (%) that keeps the lowest guest price ≥ minPrice.
  * null when no minimum is set; ≤ 0 means no discount is possible.
  */
 export function safeDiscountPct(
   price: number,
   geniusPct: number | null | undefined,
   minPrice: number | null | undefined,
+  targetingPct?: number | null,
 ): number | null {
   if (!minPrice || minPrice <= 0 || !(price > 0)) return null;
-  const geniusPrice = (price * (100 - Math.max(0, geniusPct ?? 0))) / 100;
-  return Math.floor((1 - minPrice / geniusPrice) * 100 + 1e-9);
+  const base = guestPriceAfter(price, geniusPct, 0, targetingPct);
+  return Math.floor((1 - minPrice / base) * 100 + 1e-9);
 }
 
 export type DateRange = { from: string; to: string };

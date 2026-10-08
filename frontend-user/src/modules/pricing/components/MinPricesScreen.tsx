@@ -106,7 +106,7 @@ export function MinPricesScreen() {
   const safeOf = (r: PricingPropertyRow) => {
     const price = priceOf(r.id)?.data?.price ?? null;
     const v = value(r);
-    return price == null ? undefined : safeDiscountPct(price, v.genius, v.minNum);
+    return price == null ? undefined : safeDiscountPct(price, v.genius, v.minNum, r.targetingPct);
   };
 
   const needsAttention = (r: PricingPropertyRow) => {
@@ -407,7 +407,11 @@ export function MinPricesScreen() {
                             <span className={cn('block font-bold', safe >= 10 ? 'text-emerald-700 dark:text-emerald-400' : 'text-amber-700 dark:text-amber-400')}>
                               {t('upTo', { pct: safe })}
                             </span>
-                            <span className="block text-xs text-muted-foreground">{t('safeHint', { min: fmtPrice(v.minNum, currency) })}</span>
+                            <span className="block text-xs text-muted-foreground">
+                              {r.targetingPct
+                                ? t('safeHintTargeting', { min: fmtPrice(v.minNum, currency), pct: r.targetingPct })
+                                : t('safeHint', { min: fmtPrice(v.minNum, currency) })}
+                            </span>
                           </>
                         )}
                       </span>

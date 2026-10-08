@@ -11,6 +11,7 @@ import {
 } from '../integrations/zodomus/zodomus-promotions.util';
 import { PricingConfig } from './pricing-config';
 import { hasRentaiMarker, normalizeWeekdays, todayInTz } from './pricing-math.util';
+import { targetingPctByProperty } from './pricing-targeting.util';
 import { PricePromotionEntity } from './entities/price-promotion.entity';
 import {
   PricePromotionTargetEntity,
@@ -199,6 +200,11 @@ export class PromotionSyncService implements OnModuleInit, OnModuleDestroy {
 
       if (hit) {
         const patch: PromotionTargetPatch = { stats: toStats(hit) ?? t.stats, lastSyncedAt: now };
+        // Booking lists it → confirmed. A parameter mismatch found by the executor stays on record.
+        if (t.state === 'on' && !t.verifiedAt && !(t.verifyNote ?? '').startsWith('MISMATCH')) {
+          patch.verifiedAt = now;
+          patch.verifyNote = null;
+        }
         // Still active on Booking although we switched it off → send the deactivation again.
         if (t.desiredState === 'off' && t.state === 'off' && !this.cfg.flags.dryRun) {
           patch.state = 'on';
@@ -221,6 +227,7 @@ export class PromotionSyncService implements OnModuleInit, OnModuleDestroy {
           await this.addEvent(t, 'deactivated_externally', 'Акцию выключили в экстранете Booking');
         } else {
           await this.targetRepo.update(t.id, {
+            verifiedAt: null,
             verifyNote: 'NOT_FOUND_ON_SYNC: акции нет в ответе Booking',
             lastSyncedAt: now,
           });
@@ -330,6 +337,16 @@ export class PromotionSyncService implements OnModuleInit, OnModuleDestroy {
         details: null,
       }),
     );
+  }
+
+  /** Largest Mobile / Country rate that is on at Booking, per property (as of the last sync). */
+  async targetingPctMap(propertyIds: string[]): Promise<Map<string, number>> {
+    if (propertyIds.length === 0) return new Map();
+    const targets = await this.targetRepo.find({
+      where: { propertyId: In(propertyIds), state: 'on' },
+      relations: ['promotion'],
+    });
+    return targetingPctByProperty(targets);
   }
 
   /** Access status of the given properties (for «Минимальные цены»). */

@@ -29,6 +29,7 @@ import {
   type ExistingPromotionLite,
   type OverlapInfo,
 } from './pricing-math.util';
+import { isTargetingRateType } from './pricing-targeting.util';
 import { PricePromotionEntity } from './entities/price-promotion.entity';
 import {
   PricePromotionTargetEntity,
@@ -43,8 +44,26 @@ type Actor = { ownerId: string; userId: string; label: string };
 export type ExcludedProperty = {
   propertyId: string;
   name: string;
-  reason: 'NO_BOOKING' | 'NO_ACCESS';
+  reason: 'NO_BOOKING' | 'NO_ACCESS' | 'NOT_IN_PILOT';
 };
+
+const EXCLUDED_REASON_TEXT: Record<ExcludedProperty['reason'], string> = {
+  NO_BOOKING: 'нет Booking',
+  NO_ACCESS: 'нет доступа к акциям',
+  NOT_IN_PILOT: 'не в списке пилота',
+};
+
+/**
+ * «Booking has it»: an extranet promotion is there by definition; ours — only once it was found
+ * in Booking's list (right after the push or by the regular sync). Until then the UI must not
+ * call it «Включена».
+ */
+function isConfirmed(
+  source: PricePromotionEntity['source'],
+  t: Pick<PricePromotionTargetEntity, 'state' | 'verifiedAt'>,
+): boolean {
+  return t.state === 'on' && (source === 'booking' || !!t.verifiedAt);
+}
 
 export type PromotionPlan = {
   eligible: Array<{ property: PropertyEntity; externalPropertyId: string }>;
@@ -60,6 +79,10 @@ export type PropertyPricingRow = {
   externalPropertyId: string | null;
   minPrice: number | null;
   geniusPct: number | null;
+  /** Largest Mobile / Country rate seen on Booking — stacks on top of Genius and our discount. */
+  targetingPct: number | null;
+  /** false = pilot mode is on and the property is not in the list: nothing is sent for it. */
+  inPilot: boolean;
   promotionsAccess: 'ok' | 'denied' | 'unknown' | null;
   promotionsAccessCode: string | null;
   /** What Zodomus answered on the last failed check (shown as is, trimmed). */
@@ -141,7 +164,11 @@ export class PricingService {
 
   private async propertyRows(ownerId: string): Promise<PropertyPricingRow[]> {
     const props = await this.propertyService.findAllByOwner(ownerId);
-    const settings = await this.sync.accessMap(props.map((p) => p.id));
+    const ids = props.map((p) => p.id);
+    const [settings, targeting] = await Promise.all([
+      this.sync.accessMap(ids),
+      this.sync.targetingPctMap(ids),
+    ]);
     return props.map((p) => {
       const s = settings.get(p.id);
       const ext = this.sync.externalIdOf(p);
@@ -153,6 +180,8 @@ export class PricingService {
         externalPropertyId: ext,
         minPrice: toMajor(s?.minPriceMinor),
         geniusPct: s?.geniusPct ?? null,
+        targetingPct: targeting.get(p.id) ?? null,
+        inPilot: this.cfg.isInAllowlist(p.id, ext),
         promotionsAccess: ext ? (s?.promotionsAccess ?? 'unknown') : null,
         promotionsAccessCode: s?.promotionsAccessCode ?? null,
         promotionsAccessDetail: s?.promotionsAccessCode
@@ -273,6 +302,7 @@ export class PricingService {
             propertyId: t.propertyId,
             desiredState: t.desiredState,
             state: t.state,
+            confirmed: isConfirmed(p.source, t),
             lastErrorCode: t.lastErrorCode,
             stats: t.stats,
           },
@@ -296,13 +326,20 @@ export class PricingService {
       relations: ['targets'],
     });
     const today = todayInTz('UTC');
-    const shown: PromotionTargetState[] = ['on', 'pending', 'dry_run'];
+    // Not-sent ones (skipped / error) are shown too: a discount that silently is not on Booking
+    // must not look the same as «no discount» — or as the extranet's own deal on the same nights.
+    const shown: PromotionTargetState[] = ['on', 'pending', 'dry_run', 'skipped', 'error'];
     return promos.flatMap((p) => {
       const window = effectiveStayWindow(p, today);
       if (!window || window.from > to || window.to < from) return [];
       const properties = p.targets
         .filter((t) => t.desiredState === 'on' && shown.includes(t.state))
-        .map((t) => ({ propertyId: t.propertyId, state: t.state }));
+        .map((t) => ({
+          propertyId: t.propertyId,
+          state: t.state,
+          confirmed: isConfirmed(p.source, t),
+          errorCode: t.state === 'skipped' || t.state === 'error' ? t.lastErrorCode : null,
+        }));
       if (properties.length === 0) return [];
       return [
         {
@@ -344,6 +381,7 @@ export class PricingService {
         propertyName: byId.get(t.propertyId)?.name ?? '—',
         desiredState: t.desiredState,
         state: t.state,
+        confirmed: isConfirmed(promo.source, t),
         externalPromotionId: t.externalPromotionId,
         lastErrorCode: t.lastErrorCode,
         lastError: t.lastError,
@@ -400,6 +438,8 @@ export class PricingService {
       if (!ext) excluded.push({ propertyId: p.id, name: p.name, reason: 'NO_BOOKING' });
       else if (access.get(p.id)?.promotionsAccess === 'denied')
         excluded.push({ propertyId: p.id, name: p.name, reason: 'NO_ACCESS' });
+      else if (!this.cfg.isInAllowlist(p.id, ext))
+        excluded.push({ propertyId: p.id, name: p.name, reason: 'NOT_IN_PILOT' });
       else eligible.push({ property: p, externalPropertyId: ext });
     }
 
@@ -407,8 +447,15 @@ export class PricingService {
       where: { ownerId, status: 'active' },
       relations: ['targets'],
     });
+    // Mobile / Country rates stack with our deal instead of competing with it — not an overlap.
     const existing: ExistingPromotionLite[] = active
-      .filter((p) => p.id !== excludePromotionId && p.stayFrom && p.stayTo)
+      .filter(
+        (p) =>
+          p.id !== excludePromotionId &&
+          p.stayFrom &&
+          p.stayTo &&
+          !(p.source === 'booking' && isTargetingRateType(p.promotionType)),
+      )
       .map((p) => ({
         promotionId: p.id,
         name: p.name,
@@ -442,7 +489,11 @@ export class PricingService {
     this.assertNotInPast(dto.stayTo);
     const plan = await this.plan(actor.ownerId, dto);
     if (plan.eligible.length === 0) {
-      throw new BadRequestException('Нет объектов, которым можно включить скидку на Booking');
+      throw new BadRequestException(
+        plan.excluded.some((x) => x.reason === 'NOT_IN_PILOT')
+          ? 'Пилотный режим: выбранных объектов нет в списке пилота (ZODOMUS_PROMOTIONS_PROPERTY_ALLOWLIST) — в Booking ничего не уйдёт'
+          : 'Нет объектов, которым можно включить скидку на Booking',
+      );
     }
 
     const name = dto.name?.trim() || `Скидка ${dto.discountPct}%`;
@@ -505,7 +556,7 @@ export class PricingService {
             actorUserId: null,
             actorLabel: 'RentAI',
             action: 'excluded',
-            message: `Не вошли: ${plan.excluded.map((x) => `${x.name} (${x.reason === 'NO_BOOKING' ? 'нет Booking' : 'нет доступа к акциям'})`).join(', ')}`,
+            message: `Не вошли: ${plan.excluded.map((x) => `${x.name} (${EXCLUDED_REASON_TEXT[x.reason]})`).join(', ')}`,
             details: { excluded: plan.excluded },
           }),
         );
@@ -740,9 +791,12 @@ export class PricingService {
     let nights = 0;
     let cancellations = 0;
     let hasStats = false;
+    /** Sent and accepted, but not (yet) seen in Booking's own list. */
+    let unconfirmed = 0;
     const revenueByCurrency: Record<string, number> = {};
     for (const t of p.targets ?? []) {
       counts[t.state] = (counts[t.state] ?? 0) + 1;
+      if (t.state === 'on' && !isConfirmed(p.source, t)) unconfirmed++;
       if (t.stats) {
         hasStats = true;
         bookings += t.stats.bookings ?? 0;
@@ -772,7 +826,7 @@ export class PricingService {
       derivedStatus,
       externalMeta: p.externalMeta,
       createdAt: p.createdAt.toISOString(),
-      counts: { total: p.targets?.length ?? 0, ...counts },
+      counts: { total: p.targets?.length ?? 0, ...counts, unconfirmed },
       stats: hasStats ? { bookings, nights, cancellations, revenueByCurrency } : null,
     };
   }

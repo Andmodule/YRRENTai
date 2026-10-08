@@ -25,6 +25,8 @@ function setup(
   outcome: ExecutorOutcome,
   target: Partial<PricePromotionTargetEntity> = {},
   enabled = true,
+  /** Other targets of the property that are on at Booking (extranet promotions seen by the sync). */
+  onBooking: unknown[] = [],
 ) {
   const row = {
     id: 't1',
@@ -44,6 +46,7 @@ function setup(
   };
   const targetRepo = {
     findOne: jest.fn().mockResolvedValue(row),
+    find: jest.fn().mockResolvedValue(onBooking),
     update: jest.fn().mockResolvedValue(undefined),
     createQueryBuilder: jest.fn().mockReturnValue(qb),
   };
@@ -97,6 +100,38 @@ describe('PromotionQueueService', () => {
         message: 'Мокотув: Акция VR1 создана на Booking',
       }),
     ]);
+  });
+
+  it('hands the executor the Mobile rate the sync saw on Booking (largest wins)', async () => {
+    const ok: ExecutorOutcome = { patch: { state: 'on', needsPush: false }, retry: null, events: [] };
+    const booking = (promotionType: string, discountPct: number, state = 'on') => ({
+      propertyId: 'prop-1',
+      state,
+      promotion: { source: 'booking', status: 'active', promotionType, discountPct },
+    });
+    const { svc, executor, targetRepo } = setup(ok, {}, true, [
+      booking('mobile_rate', 10),
+      booking('geo_rate', 15),
+      booking('basic', 30), // a deal, not a targeting rate — it competes with ours, never stacks
+      booking('mobile_rate', 40, 'off'),
+      {
+        propertyId: 'prop-1',
+        state: 'on',
+        promotion: { source: 'rentai', status: 'active', promotionType: 'mobile_rate', discountPct: 50 },
+      },
+    ]);
+    await svc.processOne('t1');
+    expect(targetRepo.find).toHaveBeenCalledWith({
+      where: { propertyId: 'prop-1', state: 'on' },
+      relations: ['promotion'],
+    });
+    expect(executor.process).toHaveBeenCalledWith(expect.objectContaining({ targetingPct: 15 }));
+
+    const none = setup(ok);
+    await none.svc.processOne('t1');
+    expect(none.executor.process).toHaveBeenCalledWith(
+      expect.objectContaining({ targetingPct: null }),
+    );
   });
 
   it('schedules a retry with backoff on a temporary failure', async () => {

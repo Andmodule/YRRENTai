@@ -18,12 +18,15 @@ import { SidebarChannel } from './SidebarChannel';
 import type { CalendarPromotion } from '@/modules/pricing/api';
 import {
   CalendarPromotionsLayer,
+  type CalendarCellPrices,
   type CellRect,
 } from '@/modules/pricing/components/calendar/CalendarPromotionsLayer';
 
 /** «Цены → Скидки» on the grid: badges, drag / Shift+click range selection. Omitted when the feature is off. */
 export type CalendarPricingProps = {
   promotions: CalendarPromotion[];
+  /** Booking nightly prices for free cells. */
+  cellPrices?: CalendarCellPrices;
   selection: CellRect | null;
   onSelectionChange: (rect: CellRect | null) => void;
   onBadgeClick: (propertyId: string, ymd: string) => void;
@@ -525,6 +528,7 @@ ${
               dayColWidthPx={dayColWidthPx}
               rowHeightPx={layoutItemHeight > 0 ? layoutItemHeight : ITEM_HEIGHT_PX}
               promotions={pricing.promotions}
+              cellPrices={pricing.cellPrices}
               selection={pricing.selection}
               onBadgeClick={pricing.onBadgeClick}
             />,

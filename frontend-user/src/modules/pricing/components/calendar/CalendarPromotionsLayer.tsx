@@ -1,22 +1,42 @@
 'use client';
 
 import { useMemo } from 'react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { cn } from '@/lib/utils';
 import type { CalendarPromotion } from '../../api';
-import { addDaysYmd, promotionsForCell } from '../../lib/pricing-ui';
+import { addDaysYmd, cellPrice, isNotSent, promotionsForCell } from '../../lib/pricing-ui';
 
 export type CellRect = { r1: number; r2: number; d1: number; d2: number };
+
+/** Key of one night of one property in `CalendarCellPrices`. */
+export const cellKey = (propertyId: string, ymd: string) => `${propertyId}:${ymd}`;
+
+/** Booking nightly prices to print in free cells (see `cellPrice`). */
+export type CalendarCellPrices = {
+  /** propertyId → night (yyyy-MM-dd) → rack price in the channel currency. */
+  byProperty: ReadonlyMap<string, Readonly<Record<string, number>>>;
+  /** Nights with a booking or closed on the channel — no price is printed. */
+  busy: ReadonlySet<string>;
+  /** Check-out days: a bar covers the left half of the cell, so only the final price fits. */
+  halfBusy: ReadonlySet<string>;
+};
+
+/** Below this column width a struck-through rack price does not fit next to the guest price. */
+const FULL_PRICE_MIN_COL_PX = 88;
 
 const BADGE_TONE = {
   on: 'bg-emerald-600 text-white',
   pending: 'bg-sky-600 text-white',
   dry_run: 'border border-dashed border-violet-500 bg-violet-50 text-violet-800 dark:bg-violet-500/15 dark:text-violet-200',
+  /** Sent, but Booking does not list it yet. */
+  unconfirmed: 'border border-amber-500 bg-amber-50 text-amber-900 dark:bg-amber-500/15 dark:text-amber-200',
+  /** Saved in RentAI only — it is NOT on Booking. */
+  not_sent: 'border border-dashed border-red-500 bg-red-50 text-red-800 line-through dark:bg-red-500/15 dark:text-red-200',
 } as const;
 
 /**
- * Overlay rendered INTO Planby's content pane (position: relative): discount badges per cell and the
- * range selection. Badges sit under booking bars (Planby programs use z-index 5).
+ * Overlay rendered INTO Planby's content pane (position: relative): nightly prices and discount badges
+ * per cell, and the range selection. Everything sits under booking bars (Planby programs use z-index 5).
  */
 export function CalendarPromotionsLayer({
   propertyIds,
@@ -25,6 +45,7 @@ export function CalendarPromotionsLayer({
   dayColWidthPx,
   rowHeightPx,
   promotions,
+  cellPrices,
   selection,
   onBadgeClick,
 }: {
@@ -35,10 +56,31 @@ export function CalendarPromotionsLayer({
   dayColWidthPx: number;
   rowHeightPx: number;
   promotions: CalendarPromotion[];
+  cellPrices?: CalendarCellPrices;
   selection: CellRect | null;
   onBadgeClick: (propertyId: string, ymd: string) => void;
 }) {
   const t = useTranslations('pricing.calendar');
+  const locale = useLocale();
+  const fmt = useMemo(() => new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }), [locale]);
+
+  const prices = useMemo(() => {
+    if (!cellPrices || cellPrices.byProperty.size === 0 || dayColWidthPx <= 0) return [];
+    const out: { key: string; row: number; day: number; price: number; rack: number | null; compact: boolean }[] = [];
+    propertyIds.forEach((propertyId, row) => {
+      const byNight = cellPrices.byProperty.get(propertyId);
+      if (!byNight) return;
+      for (let day = 0; day < numDays; day++) {
+        const ymd = addDaysYmd(firstDay, day);
+        const key = cellKey(propertyId, ymd);
+        if (cellPrices.busy.has(key)) continue;
+        const view = cellPrice(byNight[ymd], promotionsForCell(promotions, propertyId, ymd));
+        if (!view) continue;
+        out.push({ key, row, day, ...view, compact: dayColWidthPx < FULL_PRICE_MIN_COL_PX || cellPrices.halfBusy.has(key) });
+      }
+    });
+    return out;
+  }, [cellPrices, promotions, propertyIds, firstDay, numDays, dayColWidthPx]);
 
   const badges = useMemo(() => {
     if (promotions.length === 0 || dayColWidthPx <= 0) return [];
@@ -49,7 +91,16 @@ export function CalendarPromotionsLayer({
         const list = promotionsForCell(promotions, propertyId, ymd);
         const top = list[0];
         if (!top) continue;
-        const tone: keyof typeof BADGE_TONE = top.state === 'on' ? 'on' : top.state === 'pending' ? 'pending' : 'dry_run';
+        const tone: keyof typeof BADGE_TONE = isNotSent(top.state)
+          ? 'not_sent'
+          : top.state === 'on'
+            ? top.confirmed
+              ? 'on'
+              : 'unconfirmed'
+            : top.state === 'pending'
+              ? 'pending'
+              : 'dry_run';
+        const names = list.map((p) => `−${p.discountPct}% ${p.name}`).join(' · ');
         out.push({
           key: `${propertyId}:${ymd}`,
           row,
@@ -58,15 +109,25 @@ export function CalendarPromotionsLayer({
           ymd,
           pct: top.discountPct,
           tone,
-          title: list.map((p) => `−${p.discountPct}% ${p.name}`).join(' · '),
+          title: tone === 'not_sent' ? `${t('badgeNotSent')} · ${names}` : tone === 'unconfirmed' ? `${t('badgeUnconfirmed')} · ${names}` : names,
         });
       }
     });
     return out;
-  }, [promotions, propertyIds, firstDay, numDays, dayColWidthPx]);
+  }, [promotions, propertyIds, firstDay, numDays, dayColWidthPx, t]);
 
   return (
-    <div className="pointer-events-none absolute inset-0" style={{ zIndex: 2 }} aria-hidden={badges.length === 0 && !selection}>
+    <div className="pointer-events-none absolute inset-0" style={{ zIndex: 2 }} aria-hidden={badges.length === 0 && prices.length === 0 && !selection}>
+      {prices.map((p) => (
+        <span
+          key={`price:${p.key}`}
+          className="absolute overflow-hidden whitespace-nowrap text-right text-[11px] leading-4 tabular-nums text-muted-foreground"
+          style={{ top: (p.row + 1) * rowHeightPx - 19, left: p.day * dayColWidthPx + 3, width: dayColWidthPx - 8 }}
+        >
+          {p.rack != null && !p.compact ? <s className="mr-1 opacity-70">{fmt.format(p.rack)}</s> : null}
+          <span className={p.rack != null ? 'font-semibold text-emerald-700 dark:text-emerald-400' : undefined}>{fmt.format(p.price)}</span>
+        </span>
+      ))}
       {badges.map((b) => (
         <button
           key={b.key}

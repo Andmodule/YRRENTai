@@ -107,7 +107,7 @@ export function PropertyPricingCard({ propertyId }: { propertyId: string }) {
                       <p className="text-xs text-amber-700 dark:text-amber-400">{errorLabel(p.target.lastErrorCode)}</p>
                     ) : null}
                   </div>
-                  {p.target ? <TargetStateBadge state={p.target.state} /> : null}
+                  {p.target ? <TargetStateBadge state={p.target.state} confirmed={p.target.confirmed} /> : null}
                   {p.source === 'rentai' ? (
                     <Button
                       size="sm"
