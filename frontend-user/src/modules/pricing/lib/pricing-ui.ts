@@ -1,9 +1,10 @@
 /**
  * Pure helpers for «Цены» (no React). Same rules as backend `pricing-math.util.ts`:
- * Booking applies Genius first, then the deal; deals of one category never add up.
+ * Booking applies Genius first, then the deal; deals of one category never add up;
+ * a Mobile / Country rate from the extranet (`targetingPct`) stacks on top of both.
  */
 
-import type { BookingWeekday, CalendarPromotion, PromotionTargetState } from '../api';
+import type { BookingWeekday, CalendarPromotion, PromotionSummary, PromotionTargetState } from '../api';
 
 export const WEEKDAYS: BookingWeekday[] = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 export const DISCOUNT_PRESETS = [5, 10, 15, 20] as const;
@@ -60,19 +61,36 @@ export function normalizeWeekdays(days: readonly BookingWeekday[]): BookingWeekd
   return out.length === 0 || out.length === WEEKDAYS.length ? null : out;
 }
 
-export function guestPrice(price: number, discountPct: number, geniusPct?: number | null): number {
-  return ((price * (100 - Math.max(0, geniusPct ?? 0))) / 100) * (100 - discountPct) / 100;
+export function guestPrice(
+  price: number,
+  discountPct: number,
+  geniusPct?: number | null,
+  targetingPct?: number | null,
+): number {
+  const afterDeal = (((price * (100 - Math.max(0, geniusPct ?? 0))) / 100) * (100 - discountPct)) / 100;
+  return (afterDeal * (100 - Math.max(0, targetingPct ?? 0))) / 100;
 }
 
-/** Largest whole discount keeping the Genius price ≥ minPrice (null = no minimum, ≤ 0 = impossible). */
-export function safeDiscountPct(price: number, geniusPct: number | null, minPrice: number | null): number | null {
+/** Largest whole discount keeping the lowest guest price ≥ minPrice (null = no minimum, ≤ 0 = impossible). */
+export function safeDiscountPct(
+  price: number,
+  geniusPct: number | null,
+  minPrice: number | null,
+  targetingPct?: number | null,
+): number | null {
   if (!minPrice || minPrice <= 0 || !(price > 0)) return null;
-  const g = (price * (100 - Math.max(0, geniusPct ?? 0))) / 100;
-  return Math.floor((1 - minPrice / g) * 100 + 1e-9);
+  const base = guestPrice(price, 0, geniusPct, targetingPct);
+  return Math.floor((1 - minPrice / base) * 100 + 1e-9);
 }
 
-export function isBelowMin(price: number, discountPct: number, geniusPct: number | null, minPrice: number | null): boolean {
-  return !!minPrice && minPrice > 0 && guestPrice(price, discountPct, geniusPct) < minPrice;
+export function isBelowMin(
+  price: number,
+  discountPct: number,
+  geniusPct: number | null,
+  minPrice: number | null,
+  targetingPct?: number | null,
+): boolean {
+  return !!minPrice && minPrice > 0 && guestPrice(price, discountPct, geniusPct, targetingPct) < minPrice;
 }
 
 export function roundMoney(n: number): number {
@@ -86,9 +104,21 @@ export type CellPromotion = {
   source: CalendarPromotion['source'];
   promotionType: string;
   state: PromotionTargetState;
+  /** Booking lists it (an extranet deal always; ours once it was found there). */
+  confirmed: boolean;
+  /** Why it did not reach Booking — only for `skipped` / `error`. */
+  errorCode: string | null;
 };
 
-/** Discounts that apply to one property on one night; the first one is what the guest sees. */
+/** Saved in RentAI but not on Booking: skipped (pilot list, minimum price…) or failed. */
+export function isNotSent(state: PromotionTargetState): boolean {
+  return state === 'skipped' || state === 'error';
+}
+
+/**
+ * Discounts that apply to one property on one night. The first one is what the guest sees —
+ * unless it `isNotSent`: those go last and never hide a discount that is really on Booking.
+ */
 export function promotionsForCell(
   promotions: readonly CalendarPromotion[],
   propertyId: string,
@@ -108,11 +138,32 @@ export function promotionsForCell(
       source: p.source,
       promotionType: p.promotionType,
       state: target.state,
+      confirmed: target.confirmed,
+      errorCode: target.errorCode,
     });
   }
   // Booking shows only the highest discount; live ones win over pending / dry-run at equal size.
   const rank = (s: PromotionTargetState) => (s === 'on' ? 0 : s === 'pending' ? 1 : 2);
-  return out.sort((a, b) => b.discountPct - a.discountPct || rank(a.state) - rank(b.state));
+  return out.sort(
+    (a, b) =>
+      Number(isNotSent(a.state)) - Number(isNotSent(b.state)) ||
+      b.discountPct - a.discountPct ||
+      rank(a.state) - rank(b.state),
+  );
+}
+
+export type CampaignHealth = 'ok' | 'not_sent' | 'unconfirmed';
+
+/**
+ * An «active» discount of ours is only really active if it is on Booking somewhere:
+ * `not_sent` — no property has it (all skipped / failed); `unconfirmed` — sent, but Booking lists none yet.
+ */
+export function campaignHealth(p: Pick<PromotionSummary, 'derivedStatus' | 'source' | 'counts'>): CampaignHealth {
+  if (p.derivedStatus !== 'active' || p.source !== 'rentai') return 'ok';
+  const c = p.counts;
+  if (c.on + c.pending + c.dry_run === 0) return c.skipped + c.error > 0 ? 'not_sent' : 'ok';
+  if (c.pending === 0 && c.dry_run === 0 && c.unconfirmed === c.on) return 'unconfirmed';
+  return 'ok';
 }
 
 export function sumRevenue(byCurrency: Record<string, number> | null | undefined): { amount: number; currency: string }[] {

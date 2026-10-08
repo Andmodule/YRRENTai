@@ -10,7 +10,7 @@ import { ResponsiveModal, ResponsiveModalContent } from '@/components/ui/respons
 import { useDateLocale } from '@/hooks/useDateLocale';
 import { cn } from '@/lib/utils';
 import type { PromotionSummary, PromotionTargetState } from '../api';
-import { ymdToDate } from '../lib/pricing-ui';
+import { type CampaignHealth, ymdToDate } from '../lib/pricing-ui';
 
 /** «6–12 октября», «28 сентября – 1 октября», «6 октября». */
 export function useStayRangeFormatter() {
@@ -49,11 +49,20 @@ const CAMPAIGN_TONE: Record<PromotionSummary['derivedStatus'], string> = {
   off: 'bg-muted text-muted-foreground ring-1 ring-inset ring-border',
 };
 
-export function CampaignStatusBadge({ status }: { status: PromotionSummary['derivedStatus'] }) {
+const HEALTH_TONE = 'bg-amber-100 text-amber-900 dark:bg-amber-500/15 dark:text-amber-300';
+
+/** `health` (see `campaignHealth`) overrides «Действует» for a discount that is not really on Booking. */
+export function CampaignStatusBadge({ status, health = 'ok' }: { status: PromotionSummary['derivedStatus']; health?: CampaignHealth }) {
   const t = useTranslations('pricing.promotions.status');
+  const flagged = status === 'active' && health !== 'ok';
   return (
-    <span className={cn('inline-flex h-6 items-center whitespace-nowrap rounded-full px-2.5 text-xs font-semibold', CAMPAIGN_TONE[status])}>
-      {t(status)}
+    <span
+      className={cn(
+        'inline-flex h-6 items-center whitespace-nowrap rounded-full px-2.5 text-xs font-semibold',
+        flagged ? HEALTH_TONE : CAMPAIGN_TONE[status],
+      )}
+    >
+      {flagged ? t(health === 'not_sent' ? 'notSent' : 'unconfirmed') : t(status)}
     </span>
   );
 }
@@ -67,12 +76,19 @@ const TARGET_TONE: Record<PromotionTargetState, string> = {
   dry_run: 'bg-violet-100 text-violet-800 dark:bg-violet-500/15 dark:text-violet-300',
 };
 
-export function TargetStateBadge({ state }: { state: PromotionTargetState }) {
+/** `confirmed: false` on a switched-on target = sent, but Booking does not list it (yet) — never shown as «Включена». */
+export function TargetStateBadge({ state, confirmed }: { state: PromotionTargetState; confirmed?: boolean }) {
   const t = useTranslations('pricing.detail.targetState');
+  const unconfirmed = state === 'on' && confirmed === false;
   return (
-    <span className={cn('inline-flex h-6 items-center gap-1 whitespace-nowrap rounded-full px-2.5 text-xs font-semibold', TARGET_TONE[state])}>
+    <span
+      className={cn(
+        'inline-flex h-6 items-center gap-1 whitespace-nowrap rounded-full px-2.5 text-xs font-semibold',
+        unconfirmed ? TARGET_TONE.skipped : TARGET_TONE[state],
+      )}
+    >
       {state === 'pending' ? <Loader2 className="h-3 w-3 animate-spin" aria-hidden /> : null}
-      {t(state)}
+      {unconfirmed ? t('unconfirmed') : t(state)}
     </span>
   );
 }

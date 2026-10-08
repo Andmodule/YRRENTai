@@ -62,6 +62,19 @@ describe('Genius-aware minimum price', () => {
     expect(safeDiscountPct(100, 0, 150)).toBeLessThanOrEqual(0);
   });
 
+  it('stacks a Mobile / Country rate on top of Genius and the deal (300 → 270 → 243 → 218.7)', () => {
+    expect(guestPriceAfter(300, 10, 10, 10)).toBeCloseTo(218.7);
+    expect(guestPriceAfter(300, 10, 10, null)).toBeCloseTo(243);
+    expect(guestPriceAfter(300, null, 10, 10)).toBeCloseTo(243);
+    // Without the mobile rate −10% looks safe for a 230 minimum; with it the guest pays 218.7.
+    expect(isBelowMinPrice(300, 10, 10, 230)).toBe(false);
+    expect(isBelowMinPrice(300, 10, 10, 230, 10)).toBe(true);
+    expect(safeDiscountPct(300, 10, 230)).toBe(14);
+    expect(safeDiscountPct(300, 10, 230, 10)).toBe(5); // 300·0.9·0.9·0.95 = 230.85
+    expect(isBelowMinPrice(300, 10, 5, 230, 10)).toBe(false);
+    expect(isBelowMinPrice(300, 10, 6, 230, 10)).toBe(true);
+  });
+
   it('agrees with isBelowMinPrice at the boundary', () => {
     expect(isBelowMinPrice(420, 10, 15, 320)).toBe(false);
     expect(isBelowMinPrice(420, 10, 16, 320)).toBe(true);

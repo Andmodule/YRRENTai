@@ -4,7 +4,7 @@ import { useMemo } from 'react';
 import { useTranslations } from 'next-intl';
 import { cn } from '@/lib/utils';
 import type { CalendarPromotion } from '../../api';
-import { addDaysYmd, promotionsForCell } from '../../lib/pricing-ui';
+import { addDaysYmd, isNotSent, promotionsForCell } from '../../lib/pricing-ui';
 
 export type CellRect = { r1: number; r2: number; d1: number; d2: number };
 
@@ -12,6 +12,10 @@ const BADGE_TONE = {
   on: 'bg-emerald-600 text-white',
   pending: 'bg-sky-600 text-white',
   dry_run: 'border border-dashed border-violet-500 bg-violet-50 text-violet-800 dark:bg-violet-500/15 dark:text-violet-200',
+  /** Sent, but Booking does not list it yet. */
+  unconfirmed: 'border border-amber-500 bg-amber-50 text-amber-900 dark:bg-amber-500/15 dark:text-amber-200',
+  /** Saved in RentAI only — it is NOT on Booking. */
+  not_sent: 'border border-dashed border-red-500 bg-red-50 text-red-800 line-through dark:bg-red-500/15 dark:text-red-200',
 } as const;
 
 /**
@@ -49,7 +53,16 @@ export function CalendarPromotionsLayer({
         const list = promotionsForCell(promotions, propertyId, ymd);
         const top = list[0];
         if (!top) continue;
-        const tone: keyof typeof BADGE_TONE = top.state === 'on' ? 'on' : top.state === 'pending' ? 'pending' : 'dry_run';
+        const tone: keyof typeof BADGE_TONE = isNotSent(top.state)
+          ? 'not_sent'
+          : top.state === 'on'
+            ? top.confirmed
+              ? 'on'
+              : 'unconfirmed'
+            : top.state === 'pending'
+              ? 'pending'
+              : 'dry_run';
+        const names = list.map((p) => `−${p.discountPct}% ${p.name}`).join(' · ');
         out.push({
           key: `${propertyId}:${ymd}`,
           row,
@@ -58,12 +71,12 @@ export function CalendarPromotionsLayer({
           ymd,
           pct: top.discountPct,
           tone,
-          title: list.map((p) => `−${p.discountPct}% ${p.name}`).join(' · '),
+          title: tone === 'not_sent' ? `${t('badgeNotSent')} · ${names}` : tone === 'unconfirmed' ? `${t('badgeUnconfirmed')} · ${names}` : names,
         });
       }
     });
     return out;
-  }, [promotions, propertyIds, firstDay, numDays, dayColWidthPx]);
+  }, [promotions, propertyIds, firstDay, numDays, dayColWidthPx, t]);
 
   return (
     <div className="pointer-events-none absolute inset-0" style={{ zIndex: 2 }} aria-hidden={badges.length === 0 && !selection}>

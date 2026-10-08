@@ -13,7 +13,7 @@ import { getApiErrorMessage } from '@/lib/api/error-message';
 import { cn } from '@/lib/utils';
 import type { PromotionDetail, PromotionSummary } from '../api';
 import { usePricingMutations, usePromotions } from '../hooks';
-import { sumRevenue } from '../lib/pricing-ui';
+import { campaignHealth, sumRevenue } from '../lib/pricing-ui';
 import { PromotionDetailSheet } from './PromotionDetailSheet';
 import { PromotionFormSheet, type PromotionFormInitial } from './PromotionFormSheet';
 import { CampaignStatusBadge, ConfirmDialog, usePriceFormatter, useStayRangeFormatter } from './shared';
@@ -51,7 +51,9 @@ export function PromotionsScreen() {
     tab === 'all' ? true : tab === 'active' ? p.derivedStatus === 'active' : p.derivedStatus !== 'active',
   );
   const kpi = useMemo(() => {
-    const objects = active.reduce((a, p) => a + p.counts.on + p.counts.pending + p.counts.dry_run, 0);
+    // «Действуют сейчас» = really on Booking (or on their way), not merely saved in RentAI.
+    const running = active.filter((p) => campaignHealth(p) !== 'not_sent');
+    const objects = running.reduce((a, p) => a + p.counts.on + p.counts.pending + p.counts.dry_run, 0);
     let bookings = 0;
     const revenue: Record<string, number> = {};
     for (const p of list) {
@@ -59,7 +61,7 @@ export function PromotionsScreen() {
       bookings += p.stats.bookings;
       for (const [cur, v] of Object.entries(p.stats.revenueByCurrency)) revenue[cur] = (revenue[cur] ?? 0) + v;
     }
-    return { objects, bookings, revenue: sumRevenue(revenue) };
+    return { running: running.length, objects, bookings, revenue: sumRevenue(revenue) };
   }, [active, list]);
 
   const repeat = (p: PromotionSummary | PromotionDetail) => {
@@ -83,6 +85,8 @@ export function PromotionsScreen() {
       <div className="text-sm">
         <div>{live === p.counts.total ? t('objectsCount', { count: p.counts.total }) : t('objectsPartial', { on: live, total: p.counts.total })}</div>
         {p.counts.error > 0 ? <div className="text-xs text-amber-700 dark:text-amber-400">{t('withErrors', { count: p.counts.error })}</div> : null}
+        {p.derivedStatus === 'active' && p.counts.skipped > 0 ? <div className="text-xs text-amber-700 dark:text-amber-400">{t('notSent', { count: p.counts.skipped })}</div> : null}
+        {p.derivedStatus === 'active' && p.counts.unconfirmed > 0 ? <div className="text-xs text-amber-700 dark:text-amber-400">{t('unconfirmed', { count: p.counts.unconfirmed })}</div> : null}
         {p.counts.pending > 0 ? <div className="text-xs text-sky-700 dark:text-sky-400">{t('inProgress', { count: p.counts.pending })}</div> : null}
       </div>
     );
@@ -131,7 +135,7 @@ export function PromotionsScreen() {
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">
-        <KpiCard label={t('kpiActive')} value={t('kpiActiveValue', { count: active.length })} hint={t('kpiActiveSub', { count: kpi.objects })} loading={isLoading} />
+        <KpiCard label={t('kpiActive')} value={t('kpiActiveValue', { count: kpi.running })} hint={t('kpiActiveSub', { count: kpi.objects })} loading={isLoading} />
         <KpiCard label={t('kpiBookings')} value={t('bookings', { count: kpi.bookings })} hint={t('kpiSource')} loading={isLoading} />
         <KpiCard
           label={t('kpiRevenue')}
@@ -244,7 +248,7 @@ export function PromotionsScreen() {
                     {objectsCell(p)}
                     {resultCell(p)}
                     <span>
-                      <CampaignStatusBadge status={p.derivedStatus} />
+                      <CampaignStatusBadge status={p.derivedStatus} health={campaignHealth(p)} />
                     </span>
                     <span className="text-right">{actionButton(p)}</span>
                   </div>
@@ -263,7 +267,7 @@ export function PromotionsScreen() {
                     <span className="text-lg font-bold text-emerald-700 dark:text-emerald-400">−{p.discountPct}%</span>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <CampaignStatusBadge status={p.derivedStatus} />
+                    <CampaignStatusBadge status={p.derivedStatus} health={campaignHealth(p)} />
                     {p.source === 'booking' ? <span className="text-xs text-indigo-700 dark:text-indigo-300">{t('fromBooking')}</span> : null}
                   </div>
                   <div className="flex items-center justify-between gap-3">
