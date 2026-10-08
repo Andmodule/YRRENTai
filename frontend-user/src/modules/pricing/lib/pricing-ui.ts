@@ -152,6 +152,39 @@ export function promotionsForCell(
   );
 }
 
+/** Mobile / Country rate: a price for a part of the guests only, never «the» price of a night. */
+export function isTargetingType(type: string | null | undefined): boolean {
+  return !!type && /mobile|geo|country/i.test(type);
+}
+
+export type CellPrice = {
+  /** What a regular guest pays for the night, in whole units of the channel currency. */
+  price: number;
+  /** Rack price to strike through — only when a discount is really on Booking. */
+  rack: number | null;
+};
+
+/**
+ * Price printed in a free calendar cell: Booking's rack price of the night, or — when a discount is
+ * on and confirmed by Booking — the regular guest's price next to the struck-through rack price.
+ * Queued, test-mode, unconfirmed and not-sent discounts do not change what the guest pays.
+ */
+export function cellPrice(rack: number | null | undefined, promotions: readonly CellPromotion[]): CellPrice | null {
+  if (rack == null || !Number.isFinite(rack) || rack <= 0) return null;
+  // `promotions` come sorted by size, so the first live one is the one Booking shows.
+  const live = promotions.find((p) => p.state === 'on' && p.confirmed && !isTargetingType(p.promotionType));
+  if (!live || !(live.discountPct > 0)) return { price: Math.round(rack), rack: null };
+  return { price: Math.round(guestPrice(rack, live.discountPct)), rack: Math.round(rack) };
+}
+
+/** Nights a stay occupies: from check-in up to, not including, the check-out day. */
+export function stayNights(checkIn: string, checkOut: string): string[] {
+  const to = checkOut.slice(0, 10);
+  const out: string[] = [];
+  for (let d = checkIn.slice(0, 10); d < to && out.length < 400; d = addDaysYmd(d, 1)) out.push(d);
+  return out;
+}
+
 export type CampaignHealth = 'ok' | 'not_sent' | 'unconfirmed';
 
 /**
