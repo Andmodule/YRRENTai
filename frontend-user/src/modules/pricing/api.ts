@@ -54,7 +54,8 @@ export interface PromotionSummary {
   derivedStatus: 'active' | 'finished' | 'off';
   externalMeta: Record<string, unknown> | null;
   createdAt: string;
-  counts: Record<PromotionTargetState, number> & { total: number; unconfirmed: number };
+  /** `unconfirmed` is missing while an older backend is still being replaced during a deploy. */
+  counts: Record<PromotionTargetState, number> & { total: number; unconfirmed?: number };
   stats: PromotionStatsSummary | null;
   /** Present when listed for one property (`?propertyId=`). */
   target?: PromotionTargetBrief;

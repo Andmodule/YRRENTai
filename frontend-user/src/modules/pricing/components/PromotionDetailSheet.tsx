@@ -160,7 +160,7 @@ export function PromotionDetailSheet({
               )}
 
               <section className="space-y-2">
-                <h3 className="text-sm font-semibold">{t('objectsTitle', { on: p.counts.on - p.counts.unconfirmed, total: p.counts.total })}</h3>
+                <h3 className="text-sm font-semibold">{t('objectsTitle', { on: p.counts.on - (p.counts.unconfirmed ?? 0), total: p.counts.total })}</h3>
                 <ul className="overflow-hidden rounded-xl border border-border">
                   {p.targets.map((x) => (
                     <li key={x.propertyId} className="flex min-h-14 flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-border/60 px-3.5 py-2.5 last:border-b-0">

@@ -195,7 +195,7 @@ export function campaignHealth(p: Pick<PromotionSummary, 'derivedStatus' | 'sour
   if (p.derivedStatus !== 'active' || p.source !== 'rentai') return 'ok';
   const c = p.counts;
   if (c.on + c.pending + c.dry_run === 0) return c.skipped + c.error > 0 ? 'not_sent' : 'ok';
-  if (c.pending === 0 && c.dry_run === 0 && c.unconfirmed === c.on) return 'unconfirmed';
+  if (c.pending === 0 && c.dry_run === 0 && (c.unconfirmed ?? 0) === c.on) return 'unconfirmed';
   return 'ok';
 }
 

@@ -86,7 +86,7 @@ export function PromotionsScreen() {
         <div>{live === p.counts.total ? t('objectsCount', { count: p.counts.total }) : t('objectsPartial', { on: live, total: p.counts.total })}</div>
         {p.counts.error > 0 ? <div className="text-xs text-amber-700 dark:text-amber-400">{t('withErrors', { count: p.counts.error })}</div> : null}
         {p.derivedStatus === 'active' && p.counts.skipped > 0 ? <div className="text-xs text-amber-700 dark:text-amber-400">{t('notSent', { count: p.counts.skipped })}</div> : null}
-        {p.derivedStatus === 'active' && p.counts.unconfirmed > 0 ? <div className="text-xs text-amber-700 dark:text-amber-400">{t('unconfirmed', { count: p.counts.unconfirmed })}</div> : null}
+        {p.derivedStatus === 'active' && (p.counts.unconfirmed ?? 0) > 0 ? <div className="text-xs text-amber-700 dark:text-amber-400">{t('unconfirmed', { count: p.counts.unconfirmed ?? 0 })}</div> : null}
         {p.counts.pending > 0 ? <div className="text-xs text-sky-700 dark:text-sky-400">{t('inProgress', { count: p.counts.pending })}</div> : null}
       </div>
     );
