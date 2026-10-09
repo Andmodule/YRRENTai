@@ -502,7 +502,7 @@ describe('createRuleSchema', () => {
     ['more than 720 hours', { ...ok, steps: [{ discountPct: 5, unit: 'hour', value: 721 }] }],
     ['book time start ≥ end', { ...ok, steps: [{ discountPct: 5, unit: 'hour', value: 5, bookTime: { start: 12, end: 12 } }] }],
     ['no steps', { ...ok, steps: [] }],
-    ['9 steps', { ...ok, steps: Array.from({ length: 9 }, (_, i) => ({ discountPct: 5, unit: 'day', value: i + 1 })) }],
+    ['25 steps', { ...ok, steps: Array.from({ length: 25 }, (_, i) => ({ discountPct: 5, unit: 'day', value: i + 1 })) }],
     ['duplicate steps', { ...ok, steps: [{ discountPct: 5, unit: 'day', value: 3 }, { discountPct: 9, unit: 'day', value: 3 }] }],
     ['empty name', { ...ok, name: '  ' }],
     ['horizon 13 months', { ...ok, horizonMonths: 13 }],
@@ -510,6 +510,16 @@ describe('createRuleSchema', () => {
     ['the same property twice', { ...ok, propertyIds: ['11111111-1111-4111-8111-111111111111', '11111111-1111-4111-8111-111111111111'] }],
   ])('rejects %s', (_label, body) => {
     expect(createRuleSchema.safeParse(body).success).toBe(false);
+  });
+
+  it('an hourly ladder over a whole day (24 steps) is accepted', () => {
+    const steps = Array.from({ length: 24 }, (_, h) => ({
+      discountPct: 5 + h,
+      unit: 'hour',
+      value: 12,
+      bookTime: { start: h, end: h + 1 },
+    }));
+    expect(createRuleSchema.safeParse({ ...ok, steps }).success).toBe(true);
   });
 
   it('the same window with a different time of day is a different step', () => {

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { AlertTriangle, Loader2, Plus, Search, Trash2, Wand2 } from 'lucide-react';
+import { AlertTriangle, Loader2, Plus, Search, TrendingDown, Trash2, Wand2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -14,10 +14,12 @@ import { cn } from '@/lib/utils';
 import type { BookingWeekday, RuleInput, RuleStepInput, RuleUnit, RuleView } from '../api';
 import { useRulesMutations, usePriceToday, usePricingAccess, usePricingProperties } from '../hooks';
 import {
+  MAX_RULE_STEPS,
   TIME_WINDOWS,
   WEEKDAYS,
   findShadowedSteps,
   guestPrice,
+  hourlyLadder,
   isBelowMin,
   normalizeWeekdays,
   roundMoney,
@@ -29,9 +31,14 @@ import {
 import { ChoiceChip, SectionTitle, useStepWhen, usePriceFormatter } from './shared';
 
 const HORIZONS = [3, 6, 12] as const;
-const MAX_STEPS = 8;
+const MAX_STEPS = MAX_RULE_STEPS;
 const MAX_DAYS = 30;
 const MAX_HOURS = 720;
+const LADDER_EVERY = [1, 2, 3, 4, 6] as const;
+
+/** «Лесенка по часам» while it is being typed in. */
+type LadderDraft = { value: string; unit: RuleUnit; from: string; to: string; every: string; start: string; step: string };
+const LADDER_DEFAULT: LadderDraft = { value: '12', unit: 'hour', from: '8', to: '22', every: '1', start: '5', step: '1' };
 
 /** A step while it is being edited: raw text, so a half-typed number does not jump around. */
 type Draft = {
@@ -107,11 +114,15 @@ export function RuleFormSheet({ open, onOpenChange, rule }: RuleFormSheetProps) 
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [q, setQ] = useState('');
   const [protect, setProtect] = useState(true);
+  const [ladderOpen, setLadderOpen] = useState(false);
+  const [ladder, setLadder] = useState<LadderDraft>(LADDER_DEFAULT);
 
   // Reset every time the sheet opens.
   useEffect(() => {
     if (!open) return;
     setQ('');
+    setLadderOpen(false);
+    setLadder(LADDER_DEFAULT);
     if (rule) {
       setName(rule.name);
       setSteps(rule.steps.map(toDraft));
@@ -175,6 +186,29 @@ export function RuleFormSheet({ open, onOpenChange, rule }: RuleFormSheetProps) 
       : [];
 
   const canSubmit = allValid && !duplicates && selected.length > 0 && name.trim().length > 0 && !create.isPending;
+
+  /** Steps the ladder would give; empty while a field is incomplete or out of range. */
+  const ladderSteps = useMemo(() => {
+    const n = (s: string) => (/^\d+$/.test(s) ? Number(s) : Number.NaN);
+    const value = n(ladder.value);
+    if (!(value <= (ladder.unit === 'day' ? MAX_DAYS : MAX_HOURS))) return [];
+    return hourlyLadder({
+      unit: ladder.unit,
+      value,
+      fromHour: n(ladder.from),
+      toHour: n(ladder.to),
+      everyHours: n(ladder.every),
+      startPct: n(ladder.start),
+      stepPct: n(ladder.step),
+    });
+  }, [ladder]);
+  const ladderDigits = (key: 'value' | 'start' | 'step', max: number) => (e: { target: { value: string } }) =>
+    setLadder((prev) => ({ ...prev, [key]: e.target.value.replace(/\D/g, '').slice(0, max) }));
+  const applyLadder = (mode: 'replace' | 'append') => {
+    const drafts = ladderSteps.map(toDraft);
+    setSteps((prev) => (mode === 'replace' ? drafts : [...prev, ...drafts]));
+    setLadderOpen(false);
+  };
 
   const update = (key: string, patch: Partial<Draft>) =>
     setSteps((prev) => prev.map((d) => (d.key === key ? { ...d, ...patch } : d)));
@@ -354,7 +388,94 @@ export function RuleFormSheet({ open, onOpenChange, rule }: RuleFormSheetProps) 
                 <Wand2 className="h-4 w-4" aria-hidden />
                 {t('useTemplate')}
               </Button>
+              <Button type="button" variant="ghost" size="sm" className="gap-1.5" aria-expanded={ladderOpen} onClick={() => setLadderOpen((v) => !v)}>
+                <TrendingDown className="h-4 w-4" aria-hidden />
+                {t('ladderOpen')}
+              </Button>
             </div>
+
+            {ladderOpen ? (
+              <div className="space-y-3 rounded-xl border border-primary/40 bg-primary/5 px-3.5 py-3.5">
+                <p className="text-sm font-semibold">{t('ladderTitle')}</p>
+                <p className="text-xs text-muted-foreground">{t('ladderHint')}</p>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                  <label className="col-span-2 space-y-1.5 text-xs font-medium text-muted-foreground sm:col-span-3">
+                    {t('whenLabel')}
+                    <div className="flex gap-2">
+                      <Input inputMode="numeric" aria-label={t('ladderWhenAria')} className="w-20" value={ladder.value} onChange={ladderDigits('value', 3)} />
+                      <Select aria-label={t('ladderUnitAria')} value={ladder.unit} onChange={(e) => setLadder((prev) => ({ ...prev, unit: e.target.value as RuleUnit }))}>
+                        <option value="day">{t('unitDay')}</option>
+                        <option value="hour">{t('unitHour')}</option>
+                      </Select>
+                    </div>
+                  </label>
+                  <label className="space-y-1.5 text-xs font-medium text-muted-foreground">
+                    {t('ladderFrom')}
+                    <Select value={ladder.from} onChange={(e) => setLadder((prev) => ({ ...prev, from: e.target.value }))}>
+                      {Array.from({ length: 24 }, (_, h) => (
+                        <option key={h} value={h}>
+                          {h}:00
+                        </option>
+                      ))}
+                    </Select>
+                  </label>
+                  <label className="space-y-1.5 text-xs font-medium text-muted-foreground">
+                    {t('ladderTo')}
+                    <Select value={ladder.to} onChange={(e) => setLadder((prev) => ({ ...prev, to: e.target.value }))}>
+                      {Array.from({ length: 24 }, (_, h) => (
+                        <option key={h + 1} value={h + 1}>
+                          {h + 1}:00
+                        </option>
+                      ))}
+                    </Select>
+                  </label>
+                  <label className="space-y-1.5 text-xs font-medium text-muted-foreground">
+                    {t('ladderEvery')}
+                    <Select value={ladder.every} onChange={(e) => setLadder((prev) => ({ ...prev, every: e.target.value }))}>
+                      {LADDER_EVERY.map((h) => (
+                        <option key={h} value={h}>
+                          {t('ladderEveryOption', { count: h })}
+                        </option>
+                      ))}
+                    </Select>
+                  </label>
+                  <label className="space-y-1.5 text-xs font-medium text-muted-foreground">
+                    {t('ladderStart')}
+                    <Input inputMode="numeric" value={ladder.start} onChange={ladderDigits('start', 2)} />
+                  </label>
+                  <label className="space-y-1.5 text-xs font-medium text-muted-foreground">
+                    {t('ladderStep')}
+                    <Input inputMode="numeric" value={ladder.step} onChange={ladderDigits('step', 2)} />
+                  </label>
+                </div>
+                {ladderSteps.length === 0 ? (
+                  <p className="text-xs text-destructive">{t('ladderInvalid')}</p>
+                ) : (
+                  <p className="text-xs text-foreground">
+                    {t('ladderPreview', {
+                      count: ladderSteps.length,
+                      first: `${ladderSteps[0]!.bookTime!.start}:00 −${ladderSteps[0]!.discountPct}%`,
+                      last: `${ladderSteps[ladderSteps.length - 1]!.bookTime!.start}:00 −${ladderSteps[ladderSteps.length - 1]!.discountPct}%`,
+                    })}
+                  </p>
+                )}
+                {ladderSteps.length > MAX_STEPS ? <p className="text-xs text-destructive">{t('ladderTooMany', { max: MAX_STEPS })}</p> : null}
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" size="sm" disabled={ladderSteps.length === 0 || ladderSteps.length > MAX_STEPS} onClick={() => applyLadder('replace')}>
+                    {t('ladderReplace')}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={ladderSteps.length === 0 || steps.length + ladderSteps.length > MAX_STEPS}
+                    onClick={() => applyLadder('append')}
+                  >
+                    {t('ladderAppend')}
+                  </Button>
+                </div>
+              </div>
+            ) : null}
             <p className="text-xs text-muted-foreground">{t('hoursHint')}</p>
           </section>
 

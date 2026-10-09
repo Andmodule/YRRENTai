@@ -339,6 +339,42 @@ export function ruleTemplate(): RuleStepInput[] {
   ];
 }
 
+/** Most steps a rule may have (mirrors the backend limit). */
+export const MAX_RULE_STEPS = 24;
+
+export type HourlyLadderInput = {
+  /** Every step applies when the guest books at most this long before check-in. */
+  unit: RuleStepInput['unit'];
+  value: number;
+  /** Booking hours of the day in the property time zone: from `fromHour` up to `toHour`. */
+  fromHour: number;
+  toHour: number;
+  /** A new step every N hours. Booking has no finer grain than a whole hour. */
+  everyHours: number;
+  startPct: number;
+  /** Added at every step, whole percent. */
+  stepPct: number;
+};
+
+/**
+ * «Every N hours the discount grows by Y%»: one step per time slot, each with its own booking hours,
+ * so Booking itself switches from one to the next during the day. Empty when the input is not usable.
+ * Stops at 99% — Booking takes no bigger discount.
+ */
+export function hourlyLadder(i: HourlyLadderInput): RuleStepInput[] {
+  const numbers = [i.value, i.fromHour, i.toHour, i.everyHours, i.startPct, i.stepPct];
+  if (!numbers.every(Number.isInteger)) return [];
+  if (i.value < 1 || i.fromHour < 0 || i.toHour > 24 || i.fromHour >= i.toHour) return [];
+  if (i.everyHours < 1 || i.startPct < 1 || i.stepPct < 1) return [];
+  const out: RuleStepInput[] = [];
+  for (let start = i.fromHour, k = 0; start < i.toHour; start += i.everyHours, k++) {
+    const discountPct = i.startPct + k * i.stepPct;
+    if (discountPct > 99) break;
+    out.push({ discountPct, unit: i.unit, value: i.value, bookTime: { start, end: Math.min(start + i.everyHours, i.toHour) } });
+  }
+  return out;
+}
+
 /** Is `now` inside the booking-time window, hours counted in the property time zone? */
 export function isBookTimeNow(bookTime: BookTime | null | undefined, timezone: string | null | undefined, now: Date = new Date()): boolean {
   if (!bookTime) return true;

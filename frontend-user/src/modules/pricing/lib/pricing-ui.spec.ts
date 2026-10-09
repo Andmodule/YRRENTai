@@ -8,12 +8,14 @@ import {
   cellPriceLabels,
   findShadowedSteps,
   guestPrice,
+  hourlyLadder,
   hoursBefore,
   isBelowMin,
   isBookTimeNow,
   isNotSent,
   isRuleStep,
   isTargetingType,
+  MAX_RULE_STEPS,
   nightsCount,
   normalizeWeekdays,
   presetRange,
@@ -164,6 +166,59 @@ describe('cellPriceLabels — every night with a Booking price gets one', () => 
 
   it('keys match the busy sets', () => {
     assert.deepEqual(cellPriceLabels(base).map((x) => x.key), ['a:2026-10-08', 'a:2026-10-09', 'a:2026-10-10']);
+  });
+});
+
+describe('hourlyLadder — «каждые N часов на Y%»', () => {
+  const base = { unit: 'hour' as const, value: 12, fromHour: 8, toHour: 22, everyHours: 1, startPct: 5, stepPct: 1 };
+  const short = (steps: RuleStepInput[]) => steps.map((s) => `${s.bookTime!.start}-${s.bookTime!.end}:${s.discountPct}`);
+
+  it('every hour +1%: one step per hour, back to back, growing', () => {
+    const steps = hourlyLadder(base);
+    assert.equal(steps.length, 14);
+    assert.deepEqual(short(steps).slice(0, 3), ['8-9:5', '9-10:6', '10-11:7']);
+    assert.equal(short(steps).at(-1), '21-22:18');
+    assert.ok(steps.every((s) => s.unit === 'hour' && s.value === 12));
+    // the slots do not overlap, so no step hides another
+    assert.deepEqual(findShadowedSteps(steps), []);
+  });
+
+  it('a wider slot: the last one is cut at the end hour', () => {
+    assert.deepEqual(short(hourlyLadder({ ...base, fromHour: 9, toHour: 20, everyHours: 4, startPct: 10, stepPct: 5 })), ['9-13:10', '13-17:15', '17-20:20']);
+  });
+
+  it('a whole day fits the step limit', () => {
+    const day = hourlyLadder({ ...base, fromHour: 0, toHour: 24 });
+    assert.equal(day.length, 24);
+    assert.ok(day.length <= MAX_RULE_STEPS);
+  });
+
+  it('stops at 99% instead of sending a discount Booking refuses', () => {
+    const steps = hourlyLadder({ ...base, startPct: 95, stepPct: 2 });
+    assert.deepEqual(steps.map((s) => s.discountPct), [95, 97, 99]);
+  });
+
+  it('unusable input gives no steps', () => {
+    for (const bad of [
+      { fromHour: 12, toHour: 12 },
+      { fromHour: 20, toHour: 8 },
+      { fromHour: -1 },
+      { toHour: 25 },
+      { everyHours: 0 },
+      { everyHours: 0.5 }, // half an hour does not exist for Booking
+      { stepPct: 0 },
+      { stepPct: 0.5 }, // nor half a percent in this integration
+      { startPct: 0 },
+      { value: 0 },
+    ]) {
+      assert.deepEqual(hourlyLadder({ ...base, ...bad }), [], JSON.stringify(bad));
+    }
+  });
+
+  it('a step for the same hours with a bigger all-day discount is flagged as hidden', () => {
+    const steps = [{ discountPct: 8, unit: 'day' as const, value: 1, bookTime: null }, ...hourlyLadder({ ...base, toHour: 12 })];
+    // 8-9 −5%, 9-10 −6%, 10-11 −7%, 11-12 −8% are all covered by «1 day before, all day −8%»
+    assert.deepEqual(findShadowedSteps(steps).map(([hidden]) => hidden), [1, 2, 3, 4]);
   });
 });
 

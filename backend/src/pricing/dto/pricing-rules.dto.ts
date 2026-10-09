@@ -8,7 +8,8 @@ const propertyIds = z.array(z.string().uuid()).min(1).max(500);
 /** Booking accepts 1–1000; keep the UI sane: up to 30 days or 720 hours before arrival. */
 const MAX_DAYS = 30;
 const MAX_HOURS = 720;
-const MAX_STEPS = 8;
+/** One step = one Booking promotion per property; 24 covers an hourly ladder over a whole day. */
+const MAX_STEPS = 24;
 
 export const ruleStepSchema = z
   .object({
