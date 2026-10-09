@@ -76,6 +76,7 @@ function ctx(
     target?: Partial<PricePromotionTargetEntity>;
     promotion?: Partial<PricePromotionEntity>;
     settings?: Partial<PropertyPricingSettingsEntity> | null;
+    targetingPct?: number | null;
   } = {},
 ): ExecutorContext {
   const promotion = {
@@ -117,6 +118,7 @@ function ctx(
     } as unknown as PropertyEntity,
     settings:
       over.settings === undefined ? null : (over.settings as PropertyPricingSettingsEntity | null),
+    targetingPct: over.targetingPct,
   };
 }
 
@@ -182,6 +184,29 @@ describe('PromotionExecutorService', () => {
     const out = await ex.process(ctx());
     expect(out.patch).toMatchObject({ state: 'skipped', lastErrorCode: 'NOT_IN_ALLOWLIST' });
     for (const fn of Object.values(z)) expect(fn).not.toHaveBeenCalled();
+  });
+
+  it('pilot allowlist: the Booking hotel id works as well as the RentAI id', async () => {
+    const z = makeZodomus();
+    const ex = new PromotionExecutorService(
+      z as unknown as ZodomusService,
+      propertyService,
+      makeCfg({ ZODOMUS_PROMOTIONS_PROPERTY_ALLOWLIST: ` ${EXT} `, ZODOMUS_PROMOTIONS_VERIFY: false }),
+    );
+    const out = await ex.process(ctx());
+    expect(z.createPromotion).toHaveBeenCalledTimes(1);
+    expect(out.patch).toMatchObject({ state: 'on', externalPromotionId: 'VR1' });
+  });
+
+  it('pilot allowlist: a mixed list of both kinds of ids', () => {
+    const cfg = makeCfg({
+      ZODOMUS_PROMOTIONS_PROPERTY_ALLOWLIST: `${PROPERTY_ID.toUpperCase()}, 555`,
+    });
+    expect(cfg.isInAllowlist(PROPERTY_ID)).toBe(true);
+    expect(cfg.isInAllowlist('other', '555')).toBe(true);
+    expect(cfg.isInAllowlist('other', '556')).toBe(false);
+    expect(cfg.isInAllowlist('other', null)).toBe(false);
+    expect(cfg.canWrite('other', '555')).toBe(true);
   });
 
   it('creates the promotion, then verifies rooms/discount on Booking', async () => {
@@ -267,6 +292,29 @@ describe('PromotionExecutorService', () => {
       guestPrice: 234.9,
       minPrice: 240,
     });
+  });
+
+  it('minimum price: a Mobile rate from the extranet stacks on top and is counted', async () => {
+    // 300 · 0.9 (Genius) · 0.9 (our deal) = 243 looks fine for a 230 minimum,
+    // but a mobile guest also gets −10%: 218.7.
+    const settings = { minPriceMinor: 23000, geniusPct: 10 };
+    const z = makeZodomus();
+    z.getAvailability.mockResolvedValue(availability(300));
+    const ex = new PromotionExecutorService(
+      z as unknown as ZodomusService,
+      propertyService,
+      makeCfg({ ZODOMUS_PROMOTIONS_VERIFY: false }),
+    );
+
+    const blocked = await ex.process(ctx({ settings, targetingPct: 10 }));
+    expect(z.createPromotion).not.toHaveBeenCalled();
+    expect(blocked.patch).toMatchObject({ state: 'skipped', lastErrorCode: 'BELOW_MIN_PRICE' });
+    expect(blocked.patch.lastError).toContain('Mobile/Country rate −10%');
+    expect(blocked.events[0]!.details).toMatchObject({ guestPrice: 218.7, targetingPct: 10 });
+
+    const sent = await ex.process(ctx({ settings }));
+    expect(z.createPromotion).toHaveBeenCalledTimes(1);
+    expect(sent.patch).toMatchObject({ state: 'on' });
   });
 
   it('minimum price: no Booking price → skip (never send blind)', async () => {

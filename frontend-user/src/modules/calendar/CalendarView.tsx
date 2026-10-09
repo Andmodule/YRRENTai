@@ -35,9 +35,9 @@ import { isBookingIdPinQuery, normalizeCalendarQuery, reservationMatchesQuery } 
 import { useCalendarPromotions, usePricingAccess, usePricingProperties } from '@/modules/pricing/hooks';
 import { PromotionFormSheet, type PromotionFormInitial } from '@/modules/pricing/components/PromotionFormSheet';
 import { CalendarPromotionDialog } from '@/modules/pricing/components/calendar/CalendarPromotionDialog';
-import type { CellRect } from '@/modules/pricing/components/calendar/CalendarPromotionsLayer';
+import { cellKey, type CalendarCellPrices, type CellRect } from '@/modules/pricing/components/calendar/CalendarPromotionsLayer';
 import { useStayRangeFormatter } from '@/modules/pricing/components/shared';
-import { addDaysYmd, localYmd, promotionsForCell } from '@/modules/pricing/lib/pricing-ui';
+import { addDaysYmd, localYmd, promotionsForCell, stayNights } from '@/modules/pricing/lib/pricing-ui';
 
 const PRICING_HINT_KEY = 'rentai.pricing.calendarHintHidden';
 
@@ -306,17 +306,38 @@ export function CalendarView({
     };
   }, [promoCell, properties, calendarPromotions.data, pricingRows.data]);
 
+  /**
+   * Booking nightly prices for the free cells. Busy nights come from ALL reservations, not the
+   * filtered ones: hiding a channel's bars must not make its booked nights look for sale.
+   */
+  const cellPrices = useMemo<CalendarCellPrices>(() => {
+    const byProperty = new Map<string, Record<string, number>>();
+    const busy = new Set<string>();
+    const halfBusy = new Set<string>();
+    for (const p of filteredProperties) {
+      if (p.otaNightlyPrices && Object.keys(p.otaNightlyPrices).length > 0) byProperty.set(p.uuid, p.otaNightlyPrices);
+      for (const d of p.otaBlockedDays ?? []) busy.add(cellKey(p.uuid, d.slice(0, 10)));
+    }
+    for (const r of reservations) {
+      if (r.status === 'cancelled' || !byProperty.has(r.propertyId)) continue;
+      for (const night of stayNights(r.checkIn, r.checkOut)) busy.add(cellKey(r.propertyId, night));
+      halfBusy.add(cellKey(r.propertyId, r.checkOut.slice(0, 10)));
+    }
+    return { byProperty, busy, halfBusy };
+  }, [filteredProperties, reservations]);
+
   const gridPricing = useMemo<CalendarPricingProps | undefined>(
     () =>
       pricingOn
         ? {
             promotions: calendarPromotions.data ?? [],
+            cellPrices,
             selection,
             onSelectionChange: setSelection,
             onBadgeClick,
           }
         : undefined,
-    [pricingOn, calendarPromotions.data, selection, onBadgeClick],
+    [pricingOn, calendarPromotions.data, cellPrices, selection, onBadgeClick],
   );
 
   /** One-time hint about the drag selection; hiding it is a per-browser convenience. */

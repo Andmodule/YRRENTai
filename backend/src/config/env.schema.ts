@@ -116,8 +116,9 @@ const zodomusEnvFields = z.object({
     .default('true')
     .transform((v) => v === 'true' || v === '1' || v === 'yes'),
   /**
-   * Pilot: comma-separated RentAI property UUIDs allowed to receive promotion writes.
-   * Empty = all properties. Deactivation is never blocked by the allowlist.
+   * Pilot: comma-separated properties allowed to receive promotion writes — RentAI property UUIDs
+   * and/or Booking hotel ids (the number shown in the extranet). Empty = all properties.
+   * Deactivation is never blocked by the allowlist.
    */
   ZODOMUS_PROMOTIONS_PROPERTY_ALLOWLIST: z.string().optional(),
   /** Zodomus channel id treated as Booking.com for promotions. Default: 1. */

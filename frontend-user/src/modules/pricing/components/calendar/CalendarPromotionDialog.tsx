@@ -8,9 +8,9 @@ import { Link } from '@/i18n/navigation';
 import { getApiErrorMessage } from '@/lib/api/error-message';
 import { cn } from '@/lib/utils';
 import type { CellPromotion } from '../../lib/pricing-ui';
-import { guestPrice } from '../../lib/pricing-ui';
+import { guestPrice, isNotSent } from '../../lib/pricing-ui';
 import { usePricingMutations } from '../../hooks';
-import { usePriceFormatter, useStayRangeFormatter } from '../shared';
+import { useErrorLabel, usePriceFormatter, useStayRangeFormatter } from '../shared';
 
 /** Discounts on one night of one property: which one the guest sees, switch-off per property. */
 export function CalendarPromotionDialog({
@@ -38,17 +38,20 @@ export function CalendarPromotionDialog({
   const fmtPrice = usePriceFormatter();
   const fmtRange = useStayRangeFormatter();
   const { targetAction } = usePricingMutations();
-  const top = promotions[0];
+  const errorLabel = useErrorLabel();
+  const first = promotions[0];
+  /** What the guest sees: never a discount that did not reach Booking (those are sorted last). */
+  const top = first && !isNotSent(first.state) ? first : undefined;
 
   return (
     <ResponsiveModal open={open} onOpenChange={onOpenChange}>
       <ResponsiveModalContent
-        title={top ? t('dialogTitle', { pct: top.discountPct }) : t('dialogEmpty')}
+        title={top ? t('dialogTitle', { pct: top.discountPct }) : first ? t('dialogNotSent') : t('dialogEmpty')}
         description={`${propertyTitle} · ${fmtRange(ymd, ymd)}`}
       >
-        {top ? (
+        {first ? (
           <div className="space-y-4">
-            {rackPrice != null ? (
+            {top && rackPrice != null ? (
               <div className="grid grid-cols-2 gap-2">
                 <div className="rounded-xl bg-emerald-50 px-3.5 py-3 dark:bg-emerald-500/10">
                   <p className="text-xs text-muted-foreground">{t('regularGuest')}</p>
@@ -67,15 +70,21 @@ export function CalendarPromotionDialog({
             ) : null}
             <ul className="space-y-2">
               {promotions.map((p, i) => {
-                const visible = i === 0;
-                const visibleLabel = p.state === 'on' ? t('visible') : p.state === 'pending' ? t('visibleSoon') : t('visibleDry');
-                const canOff = p.source === 'rentai' && (p.state === 'on' || p.state === 'pending' || p.state === 'dry_run');
+                const notSent = isNotSent(p.state);
+                const visible = i === 0 && !notSent;
+                const visibleLabel =
+                  p.state === 'on' ? (p.confirmed ? t('visible') : t('visibleUnconfirmed')) : p.state === 'pending' ? t('visibleSoon') : t('visibleDry');
+                const canOff = p.source === 'rentai';
                 return (
                   <li
                     key={p.id}
                     className={cn(
                       'flex flex-wrap items-center gap-3 rounded-xl border px-3.5 py-3',
-                      visible ? 'border-emerald-200 dark:border-emerald-500/30' : 'border-border',
+                      notSent
+                        ? 'border-dashed border-red-300 dark:border-red-500/40'
+                        : visible
+                          ? 'border-emerald-200 dark:border-emerald-500/30'
+                          : 'border-border',
                     )}
                   >
                     <div className="min-w-0 flex-1">
@@ -86,9 +95,21 @@ export function CalendarPromotionDialog({
                         {t(p.source === 'booking' ? 'sourceBooking' : 'sourceRentai')}
                         {p.state === 'pending' ? ` · ${t('statePending')}` : p.state === 'dry_run' ? ` · ${t('stateDry')}` : ''}
                       </p>
-                      <p className={cn('mt-0.5 text-xs font-semibold', visible ? 'text-emerald-700 dark:text-emerald-400' : 'text-amber-700 dark:text-amber-400')}>
-                        {visible ? visibleLabel : t('hidden')}
-                      </p>
+                      {notSent ? (
+                        <p className="mt-0.5 text-xs font-semibold text-red-700 dark:text-red-400">
+                          {t('notSent')}
+                          {p.errorCode ? ` ${errorLabel(p.errorCode)}` : ''}
+                        </p>
+                      ) : (
+                        <p
+                          className={cn(
+                            'mt-0.5 text-xs font-semibold',
+                            visible && (p.state !== 'on' || p.confirmed) ? 'text-emerald-700 dark:text-emerald-400' : 'text-amber-700 dark:text-amber-400',
+                          )}
+                        >
+                          {visible ? visibleLabel : t('hidden')}
+                        </p>
+                      )}
                     </div>
                     {canOff ? (
                       <Button
@@ -116,7 +137,7 @@ export function CalendarPromotionDialog({
                 );
               })}
             </ul>
-            <Link href={`/dashboard/pricing?promotion=${top.id}`} className="inline-flex min-h-10 items-center text-sm font-semibold text-primary hover:underline">
+            <Link href={`/dashboard/pricing?promotion=${first.id}`} className="inline-flex min-h-10 items-center text-sm font-semibold text-primary hover:underline">
               {t('open')}
             </Link>
           </div>

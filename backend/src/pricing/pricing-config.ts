@@ -6,7 +6,7 @@ export type PricingFlags = {
   enabled: boolean;
   /** No writes to Booking (create / activate / deactivate); reads are allowed. */
   dryRun: boolean;
-  /** Pilot list of RentAI property ids; empty = all. */
+  /** Pilot list: RentAI property ids and/or Booking hotel ids; empty = all. */
   allowlist: ReadonlySet<string>;
   channelId: number;
   syncMinutes: number;
@@ -71,11 +71,18 @@ export class PricingConfig {
   }
 
   /** Create / reactivate on Booking is allowed for this property right now. */
-  canWrite(propertyId: string): boolean {
-    return !this.flags.dryRun && this.isInAllowlist(propertyId);
+  canWrite(propertyId: string, externalPropertyId?: string | null): boolean {
+    return !this.flags.dryRun && this.isInAllowlist(propertyId, externalPropertyId);
   }
 
-  isInAllowlist(propertyId: string): boolean {
-    return this.flags.allowlist.size === 0 || this.flags.allowlist.has(propertyId.toLowerCase());
+  /**
+   * The pilot list may name a property either way: by its RentAI id or by its Booking hotel id
+   * (the number people see in the extranet — the one that ends up in the env by hand).
+   */
+  isInAllowlist(propertyId: string, externalPropertyId?: string | null): boolean {
+    const list = this.flags.allowlist;
+    if (list.size === 0 || list.has(propertyId.toLowerCase())) return true;
+    const ext = externalPropertyId?.trim().toLowerCase();
+    return !!ext && list.has(ext);
   }
 }

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { AlertTriangle, CalendarDays, Check, Loader2, RotateCcw, Search } from 'lucide-react';
+import { AlertTriangle, CalendarDays, Check, Clock, Loader2, RotateCcw, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -136,10 +136,20 @@ export function PromotionFormSheet({ open, onOpenChange, promotion, initial, onD
   const weekdays = normalizeWeekdays([...days]);
 
   const bookingRows = useMemo(() => (rows ?? []).filter((r) => r.bookingConnected), [rows]);
-  const eligibleRows = useMemo(() => bookingRows.filter((r) => r.promotionsAccess !== 'denied'), [bookingRows]);
+  const eligibleRows = useMemo(
+    () => bookingRows.filter((r) => r.promotionsAccess !== 'denied' && r.inPilot !== false),
+    [bookingRows],
+  );
   const excludedRows = useMemo(
-    () => (rows ?? []).filter((r) => !r.bookingConnected || r.promotionsAccess === 'denied'),
+    () => (rows ?? []).filter((r) => !r.bookingConnected || r.promotionsAccess === 'denied' || r.inPilot === false),
     [rows],
+  );
+  const excludeReason = (r: (typeof excludedRows)[number]) =>
+    t(!r.bookingConnected ? 'reasonNoBooking' : r.promotionsAccess === 'denied' ? 'reasonNoAccess' : 'reasonNotInPilot');
+  /** Picked (e.g. from the calendar) but outside the pilot list — nothing would be sent for them. */
+  const pickedOutOfPilot = useMemo(
+    () => (rows ?? []).filter((r) => picked.has(r.id) && r.bookingConnected && r.inPilot === false),
+    [rows, picked],
   );
   const selected = useMemo(
     () => (scope === 'all' ? eligibleRows : eligibleRows.filter((r) => picked.has(r.id))),
@@ -184,7 +194,7 @@ export function PromotionFormSheet({ open, onOpenChange, promotion, initial, onD
 
   const belowMin = selected.filter((r) => {
     const p = priceById.get(r.id)?.data?.price;
-    return p != null && isBelowMin(p, discount, r.geniusPct, r.minPrice);
+    return p != null && isBelowMin(p, discount, r.geniusPct, r.minPrice, r.targetingPct);
   });
 
   const progress = usePromotion(step === 'form' ? null : resultId);
@@ -428,9 +438,14 @@ export function PromotionFormSheet({ open, onOpenChange, promotion, initial, onD
                 <p className="text-xs text-muted-foreground">
                   {t('excluded', {
                     list: excludedRows
-                      .map((r) => `${r.name} — ${t(r.bookingConnected ? 'reasonNoAccess' : 'reasonNoBooking')}`)
+                      .map((r) => `${r.name} — ${excludeReason(r)}`)
                       .join('; '),
                   })}
+                </p>
+              ) : null}
+              {scope === 'pick' && pickedOutOfPilot.length > 0 ? (
+                <p className="rounded-xl border border-amber-300/70 bg-amber-50 px-3 py-2.5 text-xs text-amber-950 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
+                  {t('pilotPickedOut', { list: pickedOutOfPilot.map((r) => r.name).join(', ') })}
                 </p>
               ) : null}
               {isEdit && offByHand.length > 0 ? (
@@ -455,7 +470,7 @@ export function PromotionFormSheet({ open, onOpenChange, promotion, initial, onD
                     {(rows ?? [])
                       .filter((r) => !q.trim() || r.name.toLowerCase().includes(q.trim().toLowerCase()))
                       .map((r) => {
-                        const available = r.bookingConnected && r.promotionsAccess !== 'denied';
+                        const available = r.bookingConnected && r.promotionsAccess !== 'denied' && r.inPilot !== false;
                         return (
                           <label
                             key={r.id}
@@ -482,6 +497,8 @@ export function PromotionFormSheet({ open, onOpenChange, promotion, initial, onD
                                   ? t('reasonNoBooking')
                                   : r.promotionsAccess === 'denied'
                                     ? t('reasonNoAccess')
+                                    : r.inPilot === false
+                                      ? t('reasonNotInPilot')
                                     : r.minPrice != null
                                       ? t('minShort', { price: fmtPrice(r.minPrice) })
                                       : t('noMinShort')}
@@ -546,7 +563,7 @@ export function PromotionFormSheet({ open, onOpenChange, promotion, initial, onD
                     const q2 = priceById.get(r.id);
                     const price = q2?.data?.price ?? null;
                     const currency = q2?.data?.currency;
-                    const below = price != null && isBelowMin(price, discount, r.geniusPct, r.minPrice);
+                    const below = price != null && isBelowMin(price, discount, r.geniusPct, r.minPrice, r.targetingPct);
                     return (
                       <div
                         key={r.id}
@@ -557,6 +574,14 @@ export function PromotionFormSheet({ open, onOpenChange, promotion, initial, onD
                       >
                         <span className="min-w-0">
                           <span className="block truncate">{r.name}</span>
+                          {price != null && r.targetingPct ? (
+                            <span className="block text-xs text-muted-foreground">
+                              {t('previewTargeting', {
+                                pct: r.targetingPct,
+                                price: fmtPrice(Math.round(guestPrice(price, discount, r.geniusPct, r.targetingPct) * 100) / 100, currency),
+                              })}
+                            </span>
+                          ) : null}
                           {below ? (
                             <span className="block text-xs text-amber-700 dark:text-amber-400">
                               {t('belowMin', { min: fmtPrice(r.minPrice, currency) })}
@@ -662,24 +687,55 @@ function Report({
   errorLabel: (code: string | null) => string;
 }) {
   const t = useTranslations('pricing.form');
-  const ok = detail.targets.filter((x) => x.state === 'on' || x.state === 'dry_run');
-  const problems = detail.targets.filter((x) => x.state === 'error' || x.state === 'skipped');
   const dry = detail.targets.some((x) => x.state === 'dry_run');
+  const ok = detail.targets.filter((x) => x.state === 'dry_run' || (x.state === 'on' && x.confirmed));
+  /** Accepted by the channel, but Booking's own list does not show it (yet). */
+  const waiting = detail.targets.filter((x) => x.state === 'on' && !x.confirmed);
+  const problems = detail.targets.filter((x) => x.state === 'error' || x.state === 'skipped');
+  const total = detail.targets.length;
+  const kind = dry ? 'dry' : ok.length === total ? 'all' : ok.length > 0 ? 'part' : waiting.length > 0 ? 'waiting' : 'none';
   return (
     <>
       <div className="flex items-start gap-3">
-        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-500/15">
-          <Check className="h-5 w-5 text-emerald-700 dark:text-emerald-400" aria-hidden />
+        <span
+          className={cn(
+            'flex h-11 w-11 shrink-0 items-center justify-center rounded-full',
+            kind === 'none'
+              ? 'bg-red-100 dark:bg-red-500/15'
+              : kind === 'waiting'
+                ? 'bg-amber-100 dark:bg-amber-500/15'
+                : 'bg-emerald-100 dark:bg-emerald-500/15',
+          )}
+        >
+          {kind === 'none' ? (
+            <AlertTriangle className="h-5 w-5 text-red-700 dark:text-red-400" aria-hidden />
+          ) : kind === 'waiting' ? (
+            <Clock className="h-5 w-5 text-amber-700 dark:text-amber-400" aria-hidden />
+          ) : (
+            <Check className="h-5 w-5 text-emerald-700 dark:text-emerald-400" aria-hidden />
+          )}
         </span>
         <div>
           <p className="font-semibold">
-            {dry
+            {kind === 'dry'
               ? t('reportDry')
-              : problems.length === 0
+              : kind === 'all'
                 ? t('reportAll')
-                : t('reportTitle', { ok: ok.length, total: detail.targets.length })}
+                : kind === 'part'
+                  ? t('reportTitle', { ok: ok.length, total })
+                  : kind === 'waiting'
+                    ? t('reportWaiting', { sent: waiting.length, total })
+                    : t('reportNone')}
           </p>
-          <p className="text-sm text-muted-foreground">{dry ? t('reportDrySub') : t('reportSub')}</p>
+          <p className="text-sm text-muted-foreground">
+            {kind === 'dry'
+              ? t('reportDrySub')
+              : kind === 'none'
+                ? t('reportNoneSub')
+                : kind === 'waiting'
+                  ? t('reportWaitingSub')
+                  : t('reportSub')}
+          </p>
         </div>
       </div>
       {problems.map((x) => (
@@ -702,12 +758,19 @@ function Report({
           ) : null}
         </div>
       ))}
-      {ok.length > 0 ? (
+      {ok.length + waiting.length > 0 ? (
         <ul className="overflow-hidden rounded-xl border border-border">
           {ok.map((x) => (
             <li key={x.propertyId} className="flex min-h-11 items-center gap-2.5 border-b border-border/60 px-3.5 text-sm last:border-b-0">
               <Check className="h-4 w-4 text-emerald-600" aria-hidden />
               {x.propertyName}
+            </li>
+          ))}
+          {waiting.map((x) => (
+            <li key={x.propertyId} className="flex min-h-11 flex-wrap items-center gap-x-2.5 border-b border-border/60 px-3.5 py-2 text-sm last:border-b-0">
+              <Clock className="h-4 w-4 text-amber-600" aria-hidden />
+              <span>{x.propertyName}</span>
+              <span className="text-xs text-amber-700 dark:text-amber-400">{t('reportWaitingRow')}</span>
             </li>
           ))}
         </ul>

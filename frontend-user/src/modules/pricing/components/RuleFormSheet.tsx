@@ -134,11 +134,11 @@ export function RuleFormSheet({ open, onOpenChange, rule }: RuleFormSheetProps) 
   }, [open]);
 
   const eligibleRows = useMemo(
-    () => (rows ?? []).filter((r) => r.bookingConnected && r.promotionsAccess !== 'denied'),
+    () => (rows ?? []).filter((r) => r.bookingConnected && r.promotionsAccess !== 'denied' && r.inPilot !== false),
     [rows],
   );
   const excludedRows = useMemo(
-    () => (rows ?? []).filter((r) => !r.bookingConnected || r.promotionsAccess === 'denied'),
+    () => (rows ?? []).filter((r) => !r.bookingConnected || r.promotionsAccess === 'denied' || r.inPilot === false),
     [rows],
   );
   const selected = useMemo(
@@ -171,7 +171,7 @@ export function RuleFormSheet({ open, onOpenChange, rule }: RuleFormSheetProps) 
   const currency = price.data?.currency;
   const belowMin =
     sample && rack != null
-      ? valid.filter((s) => isBelowMin(rack, s.discountPct, sample.geniusPct, sample.minPrice))
+      ? valid.filter((s) => isBelowMin(rack, s.discountPct, sample.geniusPct, sample.minPrice, sample.targetingPct))
       : [];
 
   const canSubmit = allValid && !duplicates && selected.length > 0 && name.trim().length > 0 && !create.isPending;

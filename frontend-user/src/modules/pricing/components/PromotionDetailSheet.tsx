@@ -11,7 +11,7 @@ import { useDateLocale } from '@/hooks/useDateLocale';
 import { getApiErrorMessage } from '@/lib/api/error-message';
 import type { PromotionDetail } from '../api';
 import { usePricingMutations, usePromotion } from '../hooks';
-import { isRuleStep, sumRevenue } from '../lib/pricing-ui';
+import { campaignHealth, isRuleStep, sumRevenue } from '../lib/pricing-ui';
 import {
   CampaignStatusBadge,
   ConfirmDialog,
@@ -99,7 +99,7 @@ export function PromotionDetailSheet({
           headerAdornment={
             p ? (
               <div className="flex flex-wrap items-center gap-2">
-                <CampaignStatusBadge status={p.derivedStatus} />
+                <CampaignStatusBadge status={p.derivedStatus} health={campaignHealth(p)} />
                 <span className="text-xs text-muted-foreground">
                   {t(p.source === 'booking' ? 'sourceBooking' : 'sourceRentai')} · {typeLabel(p.promotionType)}
                 </span>
@@ -165,7 +165,7 @@ export function PromotionDetailSheet({
               )}
 
               <section className="space-y-2">
-                <h3 className="text-sm font-semibold">{t('objectsTitle', { on: p.counts.on, total: p.counts.total })}</h3>
+                <h3 className="text-sm font-semibold">{t('objectsTitle', { on: p.counts.on - (p.counts.unconfirmed ?? 0), total: p.counts.total })}</h3>
                 <ul className="overflow-hidden rounded-xl border border-border">
                   {p.targets.map((x) => (
                     <li key={x.propertyId} className="flex min-h-14 flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-border/60 px-3.5 py-2.5 last:border-b-0">
@@ -173,13 +173,13 @@ export function PromotionDetailSheet({
                         <p className="truncate font-medium">{x.propertyName}</p>
                         {x.lastErrorCode && (x.state === 'error' || x.state === 'skipped') ? (
                           <p className="text-xs text-amber-700 dark:text-amber-400">{errorLabel(x.lastErrorCode)}</p>
-                        ) : x.verifyNote?.startsWith('MISMATCH') ? (
-                          <p className="text-xs text-amber-700 dark:text-amber-400">{t('verifyMismatch', { note: x.verifyNote.replace(/^MISMATCH:s*/, '') })}</p>
-                        ) : x.verifyNote ? (
-                          <p className="text-xs text-muted-foreground">{t('verifyNote')}</p>
+                        ) : x.state === 'on' && x.verifyNote?.startsWith('MISMATCH') ? (
+                          <p className="text-xs text-amber-700 dark:text-amber-400">{t('verifyMismatch', { note: x.verifyNote.replace(/^MISMATCH:\s*/, '') })}</p>
+                        ) : x.state === 'on' && !x.confirmed ? (
+                          <p className="text-xs text-amber-700 dark:text-amber-400">{t('verifyNote')}</p>
                         ) : null}
                       </div>
-                      <TargetStateBadge state={x.state} />
+                      <TargetStateBadge state={x.state} confirmed={x.confirmed} />
                       {live && x.desiredState === 'on' && (x.state === 'on' || x.state === 'pending' || x.state === 'dry_run') ? (
                         <Button
                           size="sm"

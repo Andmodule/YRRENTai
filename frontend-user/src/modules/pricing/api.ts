@@ -27,6 +27,8 @@ export interface PromotionTargetBrief {
   propertyId: string;
   desiredState: 'on' | 'off';
   state: PromotionTargetState;
+  /** Booking lists the promotion. `state: 'on'` without it = sent, but not confirmed. */
+  confirmed: boolean;
   lastErrorCode: string | null;
   stats: PromotionTargetStats | null;
 }
@@ -54,7 +56,8 @@ export interface PromotionSummary {
   derivedStatus: 'active' | 'finished' | 'off';
   externalMeta: Record<string, unknown> | null;
   createdAt: string;
-  counts: Record<PromotionTargetState, number> & { total: number };
+  /** `unconfirmed` is missing while an older backend is still being replaced during a deploy. */
+  counts: Record<PromotionTargetState, number> & { total: number; unconfirmed?: number };
   stats: PromotionStatsSummary | null;
   /** Present when listed for one property (`?propertyId=`). */
   target?: PromotionTargetBrief;
@@ -65,6 +68,7 @@ export interface PromotionTarget {
   propertyName: string;
   desiredState: 'on' | 'off';
   state: PromotionTargetState;
+  confirmed: boolean;
   externalPromotionId: string | null;
   lastErrorCode: string | null;
   lastError: string | null;
@@ -99,6 +103,10 @@ export interface PricingPropertyRow {
   externalPropertyId: string | null;
   minPrice: number | null;
   geniusPct: number | null;
+  /** Largest Mobile / Country rate seen on Booking — stacks on top of Genius and our discount. */
+  targetingPct: number | null;
+  /** false = pilot mode and the property is not in the list: nothing is sent to Booking for it. */
+  inPilot: boolean;
   promotionsAccess: PromotionsAccess | null;
   promotionsAccessCode: string | null;
   /** What Zodomus answered on the last failed check. */
@@ -140,7 +148,7 @@ export interface OverlapInfo {
 
 export interface PromotionPreview {
   eligible: { propertyId: string; name: string }[];
-  excluded: { propertyId: string; name: string; reason: 'NO_BOOKING' | 'NO_ACCESS' }[];
+  excluded: { propertyId: string; name: string; reason: 'NO_BOOKING' | 'NO_ACCESS' | 'NOT_IN_PILOT' }[];
   overlaps: OverlapInfo[];
 }
 
@@ -153,7 +161,7 @@ export interface CalendarPromotion {
   from: string;
   to: string;
   activeWeekdays: BookingWeekday[] | null;
-  properties: { propertyId: string; state: PromotionTargetState }[];
+  properties: { propertyId: string; state: PromotionTargetState; confirmed: boolean; errorCode: string | null }[];
 }
 
 export type SettingsItem = { propertyId: string; minPrice?: number | null; geniusPct?: number | null };
@@ -191,7 +199,7 @@ export interface RuleStepView extends RuleStepInput {
   mismatch: number;
   status: 'active' | 'off';
   derivedStatus: 'active' | 'finished' | 'off';
-  counts: Record<PromotionTargetState, number> & { total: number };
+  counts: Record<PromotionTargetState, number> & { total: number; unconfirmed?: number };
 }
 
 export interface RuleView {
@@ -206,7 +214,8 @@ export interface RuleView {
   status: 'active' | 'off' | 'finished';
   counts: Record<PromotionTargetState, number> & { total: number };
   steps: RuleStepView[];
-  properties: { propertyId: string; propertyName: string; state: PromotionTargetState }[];
+  /** `confirmed: false` — a step is switched on but Booking does not list it (yet). */
+  properties: { propertyId: string; propertyName: string; state: PromotionTargetState; confirmed?: boolean }[];
   /** Only on the answer to «create»: things the user should know (e.g. the old rule could not be switched off). */
   warnings?: string[];
 }

@@ -42,6 +42,8 @@ export type ExecutorContext = {
   promotion: PricePromotionEntity;
   property: PropertyEntity;
   settings: PropertyPricingSettingsEntity | null;
+  /** Largest Mobile / Country rate active on Booking for the property — it stacks on top of our deal. */
+  targetingPct?: number | null;
 };
 
 export type ExecutorEvent = { action: string; message: string; details?: Record<string, unknown> };
@@ -96,6 +98,7 @@ export class PromotionExecutorService {
 
   private async turnOn(ctx: ExecutorContext): Promise<ExecutorOutcome> {
     const { target, promotion, property, settings } = ctx;
+    const targetingPct = ctx.targetingPct && ctx.targetingPct > 0 ? ctx.targetingPct : null;
     if (promotion.source !== 'rentai') {
       return this.done({ needsPush: false }, []);
     }
@@ -121,7 +124,7 @@ export class PromotionExecutorService {
         return this.skip('RULE_INVALID', 'У шага правила нет корректных параметров «за N дней/часов»');
       }
     }
-    if (!this.cfg.isInAllowlist(property.id)) {
+    if (!this.cfg.isInAllowlist(property.id, target.externalPropertyId)) {
       return this.skip(
         'NOT_IN_ALLOWLIST',
         'Пилотный режим: объекта нет в ZODOMUS_PROMOTIONS_PROPERTY_ALLOWLIST',
@@ -166,11 +169,19 @@ export class PromotionExecutorService {
             },
           );
         }
-        const guest = guestPriceAfter(lowest.price, settings?.geniusPct, promotion.discountPct);
+        const guest = guestPriceAfter(
+          lowest.price,
+          settings?.geniusPct,
+          promotion.discountPct,
+          targetingPct,
+        );
         if (guest < minPrice) {
+          const who = targetingPct
+            ? `С учётом Genius и Mobile/Country rate −${targetingPct}% цена`
+            : 'Для гостей Genius цена';
           return this.skip(
             'BELOW_MIN_PRICE',
-            `Для гостей Genius цена опустилась бы до ${guest.toFixed(2)} при минимуме ${minPrice.toFixed(2)} (${lowest.date})`,
+            `${who} опустилась бы до ${guest.toFixed(2)} при минимуме ${minPrice.toFixed(2)} (${lowest.date})`,
             {
               roomIds,
               rateIds,
@@ -178,6 +189,7 @@ export class PromotionExecutorService {
               lowestDate: lowest.date,
               guestPrice: Math.round(guest * 100) / 100,
               minPrice,
+              targetingPct,
             },
           );
         }
@@ -218,7 +230,7 @@ export class PromotionExecutorService {
         })
       : buildBasicPromotionPayload(payloadInput);
 
-    if (!this.cfg.canWrite(property.id)) {
+    if (!this.cfg.canWrite(property.id, target.externalPropertyId)) {
       const what = reactivate
         ? `включили бы снова акцию ${existingId}`
         : recreate

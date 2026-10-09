@@ -260,6 +260,18 @@ describe('PricingRulesService', () => {
     expect(db.promotions).toHaveLength(0);
   });
 
+  it('a property reads «confirmed» only when Booking lists every step that is on', async () => {
+    const { rules, db } = makeServices();
+    await rules.create(OWNER, { ...LADDER });
+    for (const t of db.targets) Object.assign(t, { state: 'on', verifiedAt: new Date() });
+    const of = async (id: string) => (await rules.list(OWNER))[0]!.properties.find((p) => p.propertyId === id)!;
+    expect(await of('a')).toMatchObject({ state: 'on', confirmed: true });
+
+    db.targets.find((t) => t.propertyId === 'a')!.verifiedAt = null;
+    expect(await of('a')).toMatchObject({ state: 'on', confirmed: false });
+    expect(await of('b')).toMatchObject({ state: 'on', confirmed: true });
+  });
+
   it('a chosen subset of properties is respected', async () => {
     const { rules, db } = makeServices();
     await rules.create(OWNER, { ...LADDER, steps: [LADDER.steps[0]!], propertyIds: ['b'] });

@@ -121,10 +121,16 @@ function makeDb() {
   return { db, promotionRepo, targetRepo, eventRepo, settingsRepo, dataSource };
 }
 
-function makeService(enabled = true) {
+function makeService(
+  enabled = true,
+  env: Record<string, unknown> = {},
+  /** Mobile / Country rates the sync saw on Booking: [propertyId, %]. */
+  targeting: [string, number][] = [],
+) {
   const values: Record<string, unknown> = {
     ZODOMUS_ENABLED: true,
     ZODOMUS_PROMOTIONS_ENABLED: enabled,
+    ...env,
   };
   const cfg = new PricingConfig({ get: (k: string) => values[k] } as unknown as ConfigService);
   const store = makeDb();
@@ -142,6 +148,7 @@ function makeService(enabled = true) {
     accessMap: jest.fn(
       async () => new Map([['d', { propertyId: 'd', promotionsAccess: 'denied' }]]),
     ),
+    targetingPctMap: jest.fn(async () => new Map(targeting)),
   };
   const queue = { kick: jest.fn() };
   const svc = new PricingService(
@@ -329,6 +336,65 @@ describe('PricingService', () => {
   });
 });
 
+describe('PricingService — pilot list and Mobile rate', () => {
+  it('pilot: a property outside the list is excluded up front, by RentAI id or Booking id', async () => {
+    const { svc, db } = makeService(true, { ZODOMUS_PROMOTIONS_PROPERTY_ALLOWLIST: 'EXT-B' });
+    const rows = await svc.listProperties(OWNER);
+    expect(rows.map((r) => [r.id, r.inPilot])).toEqual([
+      ['a', false],
+      ['b', true],
+      ['c', false],
+      ['d', false],
+    ]);
+
+    const preview = await svc.preview(OWNER, { discountPct: 10, stayFrom: FROM, stayTo: TO });
+    expect(preview.eligible.map((e) => e.propertyId)).toEqual(['b']);
+    expect(preview.excluded).toContainEqual({
+      propertyId: 'a',
+      name: 'Мокотув',
+      reason: 'NOT_IN_PILOT',
+    });
+
+    await svc.create(OWNER, { discountPct: 10, stayFrom: FROM, stayTo: TO });
+    expect(db.targets.map((t) => t.propertyId)).toEqual(['b']);
+    expect(String(db.events[1]!.message)).toContain('Мокотув (не в списке пилота)');
+
+    await expect(
+      svc.create(OWNER, { discountPct: 10, stayFrom: FROM, stayTo: TO, propertyIds: ['a'] }),
+    ).rejects.toThrow('Пилотный режим');
+  });
+
+  it('without a pilot list every property is in', async () => {
+    const { svc } = makeService();
+    expect((await svc.listProperties(OWNER)).every((r) => r.inPilot)).toBe(true);
+  });
+
+  it('rows carry the Mobile / Country rate seen on Booking', async () => {
+    const { svc } = makeService(true, {}, [['a', 10]]);
+    const rows = await svc.listProperties(OWNER);
+    expect(rows.find((r) => r.id === 'a')!.targetingPct).toBe(10);
+    expect(rows.find((r) => r.id === 'b')!.targetingPct).toBeNull();
+  });
+
+  it('an extranet Mobile rate is not an overlap (it stacks); an extranet deal still is', async () => {
+    const { svc, db } = makeService();
+    const extranet = (id: string, promotionType: string) => {
+      seedPromotion(db, { id, source: 'booking', promotionType, name: promotionType });
+      db.targets.splice(-2, 2, {
+        id: `t-${id}`,
+        promotionId: id,
+        propertyId: 'a',
+        desiredState: 'on',
+        state: 'on',
+      });
+    };
+    extranet('mob', 'mobile_rate');
+    extranet('deal', 'basic');
+    const preview = await svc.preview(OWNER, { discountPct: 10, stayFrom: FROM, stayTo: TO });
+    expect(preview.overlaps.map((o) => o.promotionId)).toEqual(['deal']);
+  });
+});
+
 describe('PricingService — calendar and property views', () => {
   it('lists only discounts that include the property, with its own state', async () => {
     const { svc, db } = makeService();
@@ -349,11 +415,43 @@ describe('PricingService — calendar and property views', () => {
         discountPct: 10,
         from: FROM,
         to: TO,
-        properties: [{ propertyId: 'a', state: 'on' }],
+        properties: [{ propertyId: 'a', state: 'on', confirmed: false, errorCode: null }],
       }),
     ]);
     await expect(svc.calendar(OWNER, TO, FROM)).rejects.toBeInstanceOf(BadRequestException);
     await expect(svc.calendar(OWNER, 'x', TO)).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('calendar also shows discounts that did not reach Booking, with the reason', async () => {
+    const { svc, db } = makeService();
+    seedPromotion(db);
+    db.targets[0]!.verifiedAt = new Date();
+    db.targets[1] = {
+      ...db.targets[1]!,
+      desiredState: 'on',
+      state: 'skipped',
+      lastErrorCode: 'NOT_IN_ALLOWLIST',
+    };
+    const [promo] = await svc.calendar(OWNER, FROM, TO);
+    expect(promo!.properties).toEqual([
+      { propertyId: 'a', state: 'on', confirmed: true, errorCode: null },
+      { propertyId: 'b', state: 'skipped', confirmed: false, errorCode: 'NOT_IN_ALLOWLIST' },
+    ]);
+  });
+
+  it('«confirmed» = Booking lists it: ours only after a check, an extranet deal always', async () => {
+    const { svc, db } = makeService();
+    seedPromotion(db);
+    expect((await svc.list(OWNER))[0]!.counts).toMatchObject({ on: 1, unconfirmed: 1 });
+    expect((await svc.get(OWNER, 'p1')).targets[0]).toMatchObject({ state: 'on', confirmed: false });
+
+    db.targets[0]!.verifiedAt = new Date();
+    expect((await svc.list(OWNER))[0]!.counts).toMatchObject({ on: 1, unconfirmed: 0 });
+    expect((await svc.list(OWNER, 'a'))[0]).toMatchObject({ target: { state: 'on', confirmed: true } });
+
+    db.targets[0]!.verifiedAt = null;
+    db.promotions[0]!.source = 'booking';
+    expect((await svc.list(OWNER))[0]!.counts).toMatchObject({ on: 1, unconfirmed: 0 });
   });
 
   it('narrows last-minute and early-booker deals to the dates they can apply to', () => {

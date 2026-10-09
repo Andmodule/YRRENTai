@@ -78,7 +78,11 @@ export class PricingRulesService {
       discountPct: Math.max(...dto.steps.map((s) => s.discountPct)),
     });
     if (plan.eligible.length === 0) {
-      throw new BadRequestException('Нет объектов, которым можно включить правило на Booking');
+      throw new BadRequestException(
+        plan.excluded.some((x) => x.reason === 'NOT_IN_PILOT')
+          ? 'Пилотный режим: выбранных объектов нет в списке пилота (ZODOMUS_PROMOTIONS_PROPERTY_ALLOWLIST) — в Booking ничего не уйдёт'
+          : 'Нет объектов, которым можно включить правило на Booking',
+      );
     }
 
     let replaced: PricePromotionEntity[] = [];
@@ -301,10 +305,13 @@ export class PricingRulesService {
         total: 0,
       };
       const statesByProperty = new Map<string, PromotionTargetState[]>();
+      /** Properties with a step that was sent but is not (yet) in Booking's own list. */
+      const unconfirmed = new Set<string>();
       for (const { s } of summaries) {
         for (const t of s.promo.targets ?? []) {
           counts[t.state] += 1;
           counts.total += 1;
+          if (t.state === 'on' && t.desiredState !== 'off' && !t.verifiedAt) unconfirmed.add(t.propertyId);
           const states = statesByProperty.get(t.propertyId) ?? [];
           states.push(t.desiredState === 'off' ? 'off' : t.state);
           statesByProperty.set(t.propertyId, states);
@@ -342,6 +349,7 @@ export class PricingRulesService {
           propertyId,
           propertyName: byId.get(propertyId)?.name ?? '—',
           state: worstTargetState(states) ?? 'off',
+          confirmed: !unconfirmed.has(propertyId),
         })),
       };
     });

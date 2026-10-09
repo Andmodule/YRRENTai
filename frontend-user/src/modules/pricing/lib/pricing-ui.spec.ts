@@ -2,12 +2,18 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   addDaysYmd,
+  campaignHealth,
+  cellKey,
+  cellPrice,
+  cellPriceLabels,
   findShadowedSteps,
   guestPrice,
   hoursBefore,
   isBelowMin,
   isBookTimeNow,
+  isNotSent,
   isRuleStep,
+  isTargetingType,
   nightsCount,
   normalizeWeekdays,
   presetRange,
@@ -15,10 +21,12 @@ import {
   ruleTemplate,
   safeDiscountPct,
   sortSteps,
+  stayNights,
   timeWindowKey,
   weekdayOf,
 } from './pricing-ui.js';
 import type { CalendarPromotion, RuleStepInput } from '../api.js';
+import type { CellPromotion } from './pricing-ui.js';
 
 describe('dates', () => {
   it('weekdays and inclusive nights', () => {
@@ -57,18 +65,177 @@ describe('Genius-aware prices', () => {
     assert.equal(isBelowMin(420, 15, 10, 320), false);
     assert.equal(isBelowMin(420, 16, 10, 320), true);
   });
+
+  it('a Mobile / Country rate stacks on top (300 → 270 → 243 → 218.7)', () => {
+    assert.ok(Math.abs(guestPrice(300, 10, 10, 10) - 218.7) < 1e-9);
+    assert.equal(guestPrice(300, 10, 10, null), 243);
+    assert.equal(isBelowMin(300, 10, 10, 230), false);
+    assert.equal(isBelowMin(300, 10, 10, 230, 10), true);
+    assert.equal(safeDiscountPct(300, 10, 230), 14);
+    assert.equal(safeDiscountPct(300, 10, 230, 10), 5);
+    assert.equal(isBelowMin(300, 5, 10, 230, 10), false);
+    assert.equal(isBelowMin(300, 6, 10, 230, 10), true);
+  });
+});
+
+describe('cellPrice — the price printed in a calendar cell', () => {
+  const promo = (over: Partial<CellPromotion>): CellPromotion => ({
+    id: 'p', name: 'Осень', discountPct: 10, source: 'rentai', promotionType: 'basic', state: 'on', confirmed: true, errorCode: null, ...over,
+  });
+
+  it('no discount → the rack price, nothing struck through', () => {
+    assert.deepEqual(cellPrice(290, []), { price: 290, rack: null });
+    assert.deepEqual(cellPrice(220.5, []), { price: 221, rack: null });
+  });
+
+  it('no price known → nothing to print', () => {
+    for (const rack of [null, undefined, 0, -5, Number.NaN]) assert.equal(cellPrice(rack, [promo({})]), null);
+  });
+
+  it('a discount that is really on Booking → the guest price next to the struck rack price', () => {
+    assert.deepEqual(cellPrice(290, [promo({})]), { price: 261, rack: 290 });
+    assert.deepEqual(cellPrice(300, [promo({ source: 'booking', discountPct: 12 })]), { price: 264, rack: 300 });
+  });
+
+  it('only the largest live discount counts (they never add up)', () => {
+    const sorted = [promo({ id: 'big', discountPct: 20 }), promo({ id: 'small', discountPct: 5 })];
+    assert.deepEqual(cellPrice(300, sorted), { price: 240, rack: 300 });
+  });
+
+  it('queued, test-mode, unconfirmed and not-sent discounts leave the price as it is', () => {
+    for (const p of [
+      promo({ state: 'pending', confirmed: false }),
+      promo({ state: 'dry_run', confirmed: false }),
+      promo({ state: 'on', confirmed: false }),
+      promo({ state: 'skipped', confirmed: false, errorCode: 'NOT_IN_ALLOWLIST' }),
+      promo({ state: 'error', confirmed: false, errorCode: 'RATES_INVALID' }),
+    ]) {
+      assert.deepEqual(cellPrice(290, [p]), { price: 290, rack: null }, p.state);
+    }
+    // …and do not hide a smaller discount that is live.
+    assert.deepEqual(cellPrice(290, [promo({ id: 'q', discountPct: 30, state: 'pending', confirmed: false }), promo({})]), { price: 261, rack: 290 });
+  });
+
+  it('a Mobile / Country rate is not the price of the night', () => {
+    assert.deepEqual(cellPrice(290, [promo({ promotionType: 'mobile_rate', source: 'booking' })]), { price: 290, rack: null });
+    assert.equal(isTargetingType('geo_rate'), true);
+    assert.equal(isTargetingType('last_minute'), false);
+    assert.equal(isTargetingType(null), false);
+  });
+});
+
+describe('cellPriceLabels — every night with a Booking price gets one', () => {
+  const live: CalendarPromotion = {
+    id: 'p1', name: 'Осень', source: 'booking', promotionType: 'basic', discountPct: 10, from: '2026-10-08', to: '2026-10-31', activeWeekdays: null,
+    properties: [{ propertyId: 'a', state: 'on', confirmed: true, errorCode: null }],
+  };
+  const base = {
+    propertyIds: ['x', 'a'],
+    firstDay: '2026-10-08',
+    numDays: 4,
+    byProperty: new Map([['a', { '2026-10-08': 300, '2026-10-09': 270, '2026-10-10': 268.4 }]]),
+    busy: new Set([cellKey('a', '2026-10-09')]),
+    halfBusy: new Set([cellKey('a', '2026-10-10')]),
+    promotions: [live],
+    narrow: false,
+  };
+  const short = (l: ReturnType<typeof cellPriceLabels>) => l.map((x) => [x.row, x.day, x.price, x.rack, x.booked, x.compact]);
+
+  it('free night: guest price + struck rack; booked night: the rack price of the date, alone', () => {
+    assert.deepEqual(short(cellPriceLabels(base)), [
+      [1, 0, 270, 300, false, false], // free, discount on
+      [1, 1, 270, null, true, true], // booked: rack 270, no discount maths, single number
+      [1, 2, 242, 268, false, true], // check-out day: half the cell is under a bar → compact
+      // 2026-10-11 has no price → no label; property «x» has no Booking prices at all
+    ]);
+  });
+
+  it('a booked night is printed even without any discount around', () => {
+    assert.deepEqual(short(cellPriceLabels({ ...base, promotions: [] })), [
+      [1, 0, 300, null, false, false],
+      [1, 1, 270, null, true, true],
+      [1, 2, 268, null, false, true],
+    ]);
+  });
+
+  it('narrow columns make every label compact', () => {
+    assert.ok(cellPriceLabels({ ...base, narrow: true }).every((x) => x.compact));
+  });
+
+  it('keys match the busy sets', () => {
+    assert.deepEqual(cellPriceLabels(base).map((x) => x.key), ['a:2026-10-08', 'a:2026-10-09', 'a:2026-10-10']);
+  });
+});
+
+describe('stayNights', () => {
+  it('check-out day is not an occupied night', () => {
+    assert.deepEqual(stayNights('2026-10-09', '2026-10-11'), ['2026-10-09', '2026-10-10']);
+    assert.deepEqual(stayNights('2026-10-31T14:00:00Z', '2026-11-01T10:00:00Z'), ['2026-10-31']);
+  });
+
+  it('same-day or reversed dates occupy nothing', () => {
+    assert.deepEqual(stayNights('2026-10-09', '2026-10-09'), []);
+    assert.deepEqual(stayNights('2026-10-10', '2026-10-09'), []);
+  });
+});
+
+describe('campaignHealth', () => {
+  const counts = (over: Partial<Record<'pending' | 'on' | 'off' | 'error' | 'skipped' | 'dry_run' | 'unconfirmed', number>>) => {
+    const c = { pending: 0, on: 0, off: 0, error: 0, skipped: 0, dry_run: 0, unconfirmed: 0, ...over };
+    return { ...c, total: c.pending + c.on + c.off + c.error + c.skipped + c.dry_run };
+  };
+  const health = (c: ReturnType<typeof counts>, derivedStatus: 'active' | 'finished' | 'off' = 'active', source: 'rentai' | 'booking' = 'rentai') =>
+    campaignHealth({ derivedStatus, source, counts: c });
+
+  it('nothing reached Booking → not «Действует»', () => {
+    assert.equal(health(counts({ skipped: 1 })), 'not_sent');
+    assert.equal(health(counts({ skipped: 2, error: 1, off: 3 })), 'not_sent');
+  });
+
+  it('sent everywhere but confirmed nowhere → «не подтверждена»', () => {
+    assert.equal(health(counts({ on: 2, unconfirmed: 2, skipped: 1 })), 'unconfirmed');
+  });
+
+  it('one confirmed property is enough; queue and test mode are not failures', () => {
+    assert.equal(health(counts({ on: 2, unconfirmed: 1, skipped: 3 })), 'ok');
+    assert.equal(health(counts({ pending: 1, skipped: 1 })), 'ok');
+    assert.equal(health(counts({ on: 1, unconfirmed: 1, pending: 1 })), 'ok');
+    assert.equal(health(counts({ dry_run: 2 })), 'ok');
+    assert.equal(health(counts({ off: 2 })), 'ok');
+  });
+
+  it('only our own active discounts are judged', () => {
+    assert.equal(health(counts({ skipped: 1 }), 'finished'), 'ok');
+    assert.equal(health(counts({ skipped: 1 }), 'off'), 'ok');
+    assert.equal(health(counts({ skipped: 1 }), 'active', 'booking'), 'ok');
+  });
 });
 
 describe('promotionsForCell', () => {
   const promos: CalendarPromotion[] = [
-    { id: 'p1', name: 'Осень', source: 'rentai', promotionType: 'basic', discountPct: 10, from: '2026-10-06', to: '2026-10-12', activeWeekdays: null, properties: [{ propertyId: 'a', state: 'on' }] },
-    { id: 'pB', name: 'Горящее', source: 'booking', promotionType: 'last_minute', discountPct: 15, from: '2026-10-05', to: '2026-10-07', activeWeekdays: null, properties: [{ propertyId: 'a', state: 'on' }] },
-    { id: 'p2', name: 'Выходные', source: 'rentai', promotionType: 'basic', discountPct: 20, from: '2026-10-01', to: '2026-10-31', activeWeekdays: ['Sat', 'Sun'], properties: [{ propertyId: 'a', state: 'pending' }] },
+    { id: 'p1', name: 'Осень', source: 'rentai', promotionType: 'basic', discountPct: 10, from: '2026-10-06', to: '2026-10-12', activeWeekdays: null, properties: [{ propertyId: 'a', state: 'on', confirmed: true, errorCode: null }] },
+    { id: 'pB', name: 'Горящее', source: 'booking', promotionType: 'last_minute', discountPct: 15, from: '2026-10-05', to: '2026-10-07', activeWeekdays: null, properties: [{ propertyId: 'a', state: 'on', confirmed: true, errorCode: null }] },
+    { id: 'p2', name: 'Выходные', source: 'rentai', promotionType: 'basic', discountPct: 20, from: '2026-10-01', to: '2026-10-31', activeWeekdays: ['Sat', 'Sun'], properties: [{ propertyId: 'a', state: 'pending', confirmed: false, errorCode: null }] },
   ];
 
   it('orders by discount — the first one is what the guest sees', () => {
     assert.deepEqual(promotionsForCell(promos, 'a', '2026-10-06').map((p) => p.id), ['pB', 'p1']);
     assert.deepEqual(promotionsForCell(promos, 'a', '2026-10-10').map((p) => p.id), ['p2', 'p1']);
+  });
+
+  it('a discount that did not reach Booking never counts as what the guest sees', () => {
+    const lost: CalendarPromotion = {
+      id: 'pX', name: 'Не ушла', source: 'rentai', promotionType: 'basic', discountPct: 30, from: '2026-10-01', to: '2026-10-31', activeWeekdays: null,
+      properties: [{ propertyId: 'a', state: 'skipped', confirmed: false, errorCode: 'NOT_IN_ALLOWLIST' }],
+    };
+    const cell = promotionsForCell([lost, ...promos], 'a', '2026-10-06');
+    assert.deepEqual(cell.map((p) => p.id), ['pB', 'p1', 'pX']);
+    assert.equal(isNotSent(cell[0]!.state), false);
+    assert.deepEqual([cell[2]!.errorCode, cell[2]!.confirmed, isNotSent(cell[2]!.state)], ['NOT_IN_ALLOWLIST', false, true]);
+    // Alone on a night it is still listed — as «not sent», not as a live discount.
+    assert.deepEqual(promotionsForCell([lost], 'a', '2026-10-20').map((p) => [p.id, isNotSent(p.state)]), [['pX', true]]);
+    assert.equal(isNotSent('error'), true);
+    assert.equal(isNotSent('dry_run'), false);
   });
 
   it('respects weekdays, dates and properties', () => {

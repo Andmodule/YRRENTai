@@ -160,7 +160,7 @@ export function RulesScreen() {
                     <li key={s.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-border/60 px-4 py-2.5 last:border-b-0">
                       <span className="w-14 text-base font-bold text-emerald-700 dark:text-emerald-400">−{s.discountPct}%</span>
                       <span className="min-w-0 flex-1 text-sm">{stepWhen(s.unit, s.value, s.bookTime)}</span>
-                      <TargetStateBadge state={worstState(s.counts)} />
+                      <TargetStateBadge state={worstState(s.counts)} confirmed={(s.counts.unconfirmed ?? 0) === 0} />
                       <button
                         type="button"
                         className="min-h-9 text-sm font-semibold text-primary hover:underline"
@@ -183,7 +183,7 @@ export function RulesScreen() {
                     {r.properties.map((p) => (
                       <li key={p.propertyId} className="flex items-center gap-2">
                         <span className="truncate font-medium">{p.propertyName}</span>
-                        <TargetStateBadge state={p.state} />
+                        <TargetStateBadge state={p.state} confirmed={p.confirmed} />
                         {live && (canChange || p.state !== 'off') ? (
                           <button
                             type="button"
