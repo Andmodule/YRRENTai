@@ -6,6 +6,7 @@ import {
   pricingApi,
   type PromotionDetail,
   type PromotionInput,
+  type RuleInput,
   type SettingsItem,
 } from './api';
 
@@ -17,6 +18,7 @@ export const pricingKeys = {
   properties: ['pricing', 'properties'] as const,
   priceToday: (propertyId: string) => ['pricing', 'price-today', propertyId] as const,
   calendar: (from: string, to: string) => ['pricing', 'calendar', from, to] as const,
+  rules: ['pricing', 'rules'] as const,
 };
 
 const MANAGER_ROLES = new Set(['OWNER', 'MANAGER']);
@@ -37,8 +39,20 @@ export function usePricingAccess() {
     enabled: canManage && status.data?.enabled === true,
     dryRun: status.data?.dryRun ?? true,
     pilot: status.data?.pilot ?? false,
+    /** «Автоправила» tab: needs the promotions feature and its own switch on the server. */
+    autoRules: canManage && status.data?.enabled === true && status.data?.autoRules === true,
     isLoading: canManage && status.isLoading,
   };
+}
+
+/** Auto rules; refreshes quickly while Booking is still being updated. */
+export function useRules(enabled: boolean) {
+  return useQuery({
+    queryKey: pricingKeys.rules,
+    queryFn: pricingApi.rules.list,
+    enabled,
+    refetchInterval: (q) => (q.state.data?.some((r) => r.counts.pending > 0) ? 4000 : 60_000),
+  });
 }
 
 export function usePromotions(enabled: boolean, propertyId?: string) {
@@ -118,4 +132,26 @@ export function usePricingMutations() {
   });
   const accessCheck = useMutation({ mutationFn: (ids?: string[]) => pricingApi.accessCheck(ids) });
   return { create, update, setActive, targetAction, saveSettings, accessCheck };
+}
+
+export function useRulesMutations() {
+  const qc = useQueryClient();
+  const refresh = () => {
+    void qc.invalidateQueries({
+      queryKey: pricingKeys.all,
+      predicate: (q) => q.queryKey[1] !== 'price-today' && q.queryKey[1] !== 'preview',
+    });
+  };
+  const create = useMutation({ mutationFn: (input: RuleInput) => pricingApi.rules.create(input), onSuccess: refresh });
+  const setActive = useMutation({
+    mutationFn: ({ groupId, on }: { groupId: string; on: boolean }) => pricingApi.rules.setActive(groupId, on),
+    onSuccess: refresh,
+  });
+  const setPropertyActive = useMutation({
+    mutationFn: ({ groupId, propertyId, on }: { groupId: string; propertyId: string; on: boolean }) =>
+      pricingApi.rules.setPropertyActive(groupId, propertyId, on),
+    onSuccess: refresh,
+  });
+  const resend = useMutation({ mutationFn: (groupId: string) => pricingApi.rules.resend(groupId), onSuccess: refresh });
+  return { create, setActive, setPropertyActive, resend };
 }

@@ -7,12 +7,13 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, Not, Repository } from 'typeorm';
 import type { JwtPayload } from '../common/decorators/current-user.decorator';
 import { UserService } from '../user/user.service';
 import { PropertyService } from '../property/property.service';
 import type { PropertyEntity } from '../property/entities/property.entity';
 import { PricingConfig } from './pricing-config';
+import { isBookTimeNow, parseRuleStepMeta } from './pricing-rules.util';
 import { PromotionExecutorService } from './promotion-executor.service';
 import { PromotionQueueService } from './promotion-queue.service';
 import { PromotionSyncService } from './promotion-sync.service';
@@ -39,7 +40,7 @@ import { PricePromotionEventEntity } from './entities/price-promotion-event.enti
 import { PropertyPricingSettingsEntity } from './entities/property-pricing-settings.entity';
 import type { CreatePromotionDto, PricingSettingsDto, UpdatePromotionDto } from './dto/pricing.dto';
 
-type Actor = { ownerId: string; userId: string; label: string };
+export type Actor = { ownerId: string; userId: string; label: string };
 
 export type ExcludedProperty = {
   propertyId: string;
@@ -127,10 +128,12 @@ export class PricingService {
       dryRun: f.dryRun,
       pilot: f.allowlist.size > 0,
       channelId: f.channelId,
+      autoRules: f.autoRules,
     };
   }
 
-  private assertEnabled(): void {
+  /** Also used by PricingRulesService. */
+  assertEnabled(): void {
     if (!this.cfg.flags.enabled) {
       throw new ServiceUnavailableException(
         'Скидки Booking выключены (ZODOMUS_PROMOTIONS_ENABLED=false)',
@@ -138,7 +141,8 @@ export class PricingService {
     }
   }
 
-  private async actor(user: JwtPayload): Promise<Actor> {
+  /** Also used by PricingRulesService. */
+  async actor(user: JwtPayload): Promise<Actor> {
     const ownerId = await this.userService.resolveTenantOwnerId(user.sub, user.role);
     const u = await this.userService.findById(user.sub);
     const name = [u?.firstName, u?.lastName]
@@ -283,7 +287,15 @@ export class PricingService {
     const { ownerId } = await this.actor(user);
     const [promos, props] = await Promise.all([
       this.promotionRepo.find({
-        where: { ownerId },
+        // The ordinary list leaves out steps of auto rules (they have their own tab) — filtered here, not
+        // after `take`, so many rule steps can never push ordinary discounts out of the first 200.
+        // With a property id the property card still wants the steps.
+        where: propertyId
+          ? { ownerId }
+          : [
+              { ownerId, source: 'booking' },
+              { ownerId, source: 'rentai', promotionType: Not('last_minute') },
+            ],
         relations: ['targets'],
         order: { createdAt: 'DESC' },
         take: 200,
@@ -329,11 +341,23 @@ export class PricingService {
     // Not-sent ones (skipped / error) are shown too: a discount that silently is not on Booking
     // must not look the same as «no discount» — or as the extranet's own deal on the same nights.
     const shown: PromotionTargetState[] = ['on', 'pending', 'dry_run', 'skipped', 'error'];
+    // Steps of an auto rule can be limited to hours of the day: show them only while they apply.
+    const timezones = promos.some((p) => parseRuleStepMeta(p.externalMeta)?.bookTime)
+      ? new Map(
+          (await this.propertyService.findAllByOwner(ownerId)).map((x) => [x.id, x.timezone]),
+        )
+      : null;
     return promos.flatMap((p) => {
       const window = effectiveStayWindow(p, today);
       if (!window || window.from > to || window.to < from) return [];
+      const bookTime = parseRuleStepMeta(p.externalMeta)?.bookTime ?? null;
       const properties = p.targets
-        .filter((t) => t.desiredState === 'on' && shown.includes(t.state))
+        .filter(
+          (t) =>
+            t.desiredState === 'on' &&
+            shown.includes(t.state) &&
+            isBookTimeNow(bookTime, timezones?.get(t.propertyId)),
+        )
         .map((t) => ({
           propertyId: t.propertyId,
           state: t.state,
@@ -778,7 +802,8 @@ export class PricingService {
     return promo;
   }
 
-  private summary(p: PricePromotionEntity, props: Map<string, PropertyEntity>) {
+  /** Also used by PricingRulesService. */
+  summary(p: PricePromotionEntity, props: Map<string, PropertyEntity>) {
     const counts: Record<PromotionTargetState, number> = {
       pending: 0,
       on: 0,

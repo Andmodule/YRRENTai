@@ -4,7 +4,14 @@
  * a Mobile / Country rate from the extranet (`targetingPct`) stacks on top of both.
  */
 
-import type { BookingWeekday, CalendarPromotion, PromotionSummary, PromotionTargetState } from '../api';
+import type {
+  BookingWeekday,
+  BookTime,
+  CalendarPromotion,
+  PromotionSummary,
+  PromotionTargetState,
+  RuleStepInput,
+} from '../api';
 
 export const WEEKDAYS: BookingWeekday[] = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 export const DISCOUNT_PRESETS = [5, 10, 15, 20] as const;
@@ -254,4 +261,143 @@ export function sumRevenue(byCurrency: Record<string, number> | null | undefined
 
 export function isTargetDone(state: PromotionTargetState): boolean {
   return state !== 'pending';
+}
+
+// ─── «Автоправила»: a ladder of last-minute steps ────────────────────────────
+
+/** Booking keeps the highest of such deals only, so a good ladder grows towards arrival. */
+export const RULE_STEP_PRESETS = [5, 8, 10, 12, 15] as const;
+
+export type TimeWindowKey = 'any' | 'morning' | 'day' | 'evening' | 'custom';
+
+export const TIME_WINDOWS: Record<Exclude<TimeWindowKey, 'any' | 'custom'>, BookTime> = {
+  morning: { start: 6, end: 12 },
+  day: { start: 12, end: 18 },
+  evening: { start: 18, end: 24 },
+};
+
+/** Which quick choice a booking-time window corresponds to. */
+export function timeWindowKey(bookTime: BookTime | null): TimeWindowKey {
+  if (!bookTime) return 'any';
+  for (const [key, w] of Object.entries(TIME_WINDOWS)) {
+    if (w.start === bookTime.start && w.end === bookTime.end) return key as TimeWindowKey;
+  }
+  return 'custom';
+}
+
+/** How long before check-in the step starts to apply. */
+export function hoursBefore(step: Pick<RuleStepInput, 'unit' | 'value'>): number {
+  return step.unit === 'day' ? step.value * 24 : step.value;
+}
+
+/** Farthest from arrival first, then by time of day — the order a person reads the ladder in. */
+export function sortSteps<T extends RuleStepInput>(steps: readonly T[]): T[] {
+  return [...steps].sort(
+    (a, b) =>
+      hoursBefore(b) - hoursBefore(a) ||
+      (a.bookTime?.start ?? -1) - (b.bookTime?.start ?? -1) ||
+      a.discountPct - b.discountPct,
+  );
+}
+
+function windowCovers(outer: BookTime | null, inner: BookTime | null): boolean {
+  if (!outer) return true;
+  if (!inner) return false;
+  return outer.start <= inner.start && outer.end >= inner.end;
+}
+
+/**
+ * Steps a guest can never see: another step covers the same moments (it starts at least as early and
+ * covers the same hours of the day) and gives the same or a bigger discount. Booking shows the highest.
+ * Returns [shadowedIndex, coveringIndex] pairs.
+ */
+export function findShadowedSteps(steps: readonly RuleStepInput[]): Array<[number, number]> {
+  const out: Array<[number, number]> = [];
+  steps.forEach((a, i) => {
+    const j = steps.findIndex(
+      (b, k) =>
+        k !== i &&
+        hoursBefore(b) >= hoursBefore(a) &&
+        windowCovers(b.bookTime, a.bookTime) &&
+        b.discountPct >= a.discountPct &&
+        // identical moments and discount: only the later one is the duplicate
+        !(hoursBefore(b) === hoursBefore(a) && timeWindowKey(b.bookTime) === timeWindowKey(a.bookTime) && b.discountPct === a.discountPct && k > i),
+    );
+    if (j >= 0) out.push([i, j]);
+  });
+  return out;
+}
+
+/** The ladder the manager asked for: 3 days → 1 day → arrival day morning / day / evening. */
+export function ruleTemplate(): RuleStepInput[] {
+  return [
+    { discountPct: 5, unit: 'day', value: 3, bookTime: null },
+    { discountPct: 8, unit: 'day', value: 1, bookTime: null },
+    { discountPct: 10, unit: 'hour', value: 12, bookTime: TIME_WINDOWS.morning },
+    { discountPct: 12, unit: 'hour', value: 12, bookTime: TIME_WINDOWS.day },
+    { discountPct: 15, unit: 'hour', value: 12, bookTime: TIME_WINDOWS.evening },
+  ];
+}
+
+/** Most steps a rule may have (mirrors the backend limit). */
+export const MAX_RULE_STEPS = 24;
+
+export type HourlyLadderInput = {
+  /** Every step applies when the guest books at most this long before check-in. */
+  unit: RuleStepInput['unit'];
+  value: number;
+  /** Booking hours of the day in the property time zone: from `fromHour` up to `toHour`. */
+  fromHour: number;
+  toHour: number;
+  /** A new step every N hours. Booking has no finer grain than a whole hour. */
+  everyHours: number;
+  startPct: number;
+  /** Added at every step, whole percent. */
+  stepPct: number;
+};
+
+/**
+ * «Every N hours the discount grows by Y%»: one step per time slot, each with its own booking hours,
+ * so Booking itself switches from one to the next during the day. Empty when the input is not usable.
+ * Stops at 99% — Booking takes no bigger discount.
+ */
+export function hourlyLadder(i: HourlyLadderInput): RuleStepInput[] {
+  const numbers = [i.value, i.fromHour, i.toHour, i.everyHours, i.startPct, i.stepPct];
+  if (!numbers.every(Number.isInteger)) return [];
+  if (i.value < 1 || i.fromHour < 0 || i.toHour > 24 || i.fromHour >= i.toHour) return [];
+  if (i.everyHours < 1 || i.startPct < 1 || i.stepPct < 1) return [];
+  const out: RuleStepInput[] = [];
+  for (let start = i.fromHour, k = 0; start < i.toHour; start += i.everyHours, k++) {
+    const discountPct = i.startPct + k * i.stepPct;
+    if (discountPct > 99) break;
+    out.push({ discountPct, unit: i.unit, value: i.value, bookTime: { start, end: Math.min(start + i.everyHours, i.toHour) } });
+  }
+  return out;
+}
+
+/** Is `now` inside the booking-time window, hours counted in the property time zone? */
+export function isBookTimeNow(bookTime: BookTime | null | undefined, timezone: string | null | undefined, now: Date = new Date()): boolean {
+  if (!bookTime) return true;
+  let hour: number;
+  try {
+    const parts = new Intl.DateTimeFormat('en-GB', { hour: 'numeric', hourCycle: 'h23', timeZone: timezone || 'UTC' }).format(now);
+    hour = Number(parts);
+  } catch {
+    hour = now.getUTCHours();
+  }
+  return hour >= bookTime.start && hour < bookTime.end;
+}
+
+/** Booking-time window stored in a rule step's metadata, null for any time of day. */
+export function bookTimeOf(meta: Record<string, unknown> | null | undefined): BookTime | null {
+  const b = meta?.bookTime as { start?: unknown; end?: unknown } | null | undefined;
+  return b && Number.isInteger(b.start) && Number.isInteger(b.end)
+    ? { start: b.start as number, end: b.end as number }
+    : null;
+}
+
+/** Steps of an auto rule are managed on their own tab, not in the list of ordinary discounts. */
+export function isRuleStep(p: { externalMeta?: Record<string, unknown> | null }): boolean {
+  const rule = p.externalMeta?.rule;
+  return !!rule && typeof rule === 'object';
 }

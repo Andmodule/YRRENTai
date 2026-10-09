@@ -194,4 +194,42 @@ describe('PromotionQueueService', () => {
     await svc.tick();
     expect(executor.process).toHaveBeenCalledTimes(1);
   });
+
+  it('switch-offs are taken before everything else, so new promotions never delay them', async () => {
+    const { svc, targetRepo } = setup({ patch: { state: 'on', needsPush: false }, retry: null, events: [] });
+    const qb = targetRepo.createQueryBuilder() as unknown as { andWhere: jest.Mock };
+    await svc.tick();
+    const filters = qb.andWhere.mock.calls.map((c) => String(c[0]));
+    expect(filters.indexOf("t.desiredState = 'off'")).toBeGreaterThanOrEqual(0);
+    expect(filters.indexOf("t.desiredState = 'off'")).toBeLessThan(filters.indexOf("t.desiredState <> 'off'"));
+  });
+
+  it('a switch made while Booking was being called is not overwritten — the target stays queued', async () => {
+    const { svc, targetRepo } = setup({
+      patch: { state: 'on', needsPush: false, externalPromotionId: 'VR1' },
+      retry: null,
+      events: [],
+    });
+    const loaded = (await targetRepo.findOne()) as Record<string, unknown>;
+    targetRepo.findOne
+      .mockResolvedValueOnce({ ...loaded, desiredState: 'on', promotion: { id: 'p1', status: 'active' } })
+      // the user switched it off while the executor was talking to Booking
+      .mockResolvedValueOnce({ ...loaded, desiredState: 'off', promotion: { id: 'p1', status: 'active' } });
+
+    await svc.processOne('t1');
+
+    expect(targetRepo.update.mock.calls[0]![1]).toMatchObject({
+      state: 'on',
+      externalPromotionId: 'VR1',
+      needsPush: true,
+      attempts: 0,
+      nextAttemptAt: null,
+    });
+  });
+
+  it('nothing changed meanwhile: the result is stored as is', async () => {
+    const { svc, targetRepo } = setup({ patch: { state: 'on', needsPush: false }, retry: null, events: [] });
+    await svc.processOne('t1');
+    expect(targetRepo.update.mock.calls[0]![1]).toMatchObject({ needsPush: false });
+  });
 });

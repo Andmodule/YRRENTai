@@ -9,8 +9,28 @@ import { Button } from '@/components/ui/button';
 import { ResponsiveModal, ResponsiveModalContent } from '@/components/ui/responsive-modal';
 import { useDateLocale } from '@/hooks/useDateLocale';
 import { cn } from '@/lib/utils';
-import type { PromotionSummary, PromotionTargetState } from '../api';
+import type { BookTime, PromotionSummary, PromotionTargetState, RuleUnit } from '../api';
 import { type CampaignHealth, ymdToDate } from '../lib/pricing-ui';
+
+/** «за 3 дня до заезда», «за 12 часов до заезда, бронь 6:00–12:00». */
+export function useStepWhen() {
+  const t = useTranslations('pricing.rules.when');
+  return useCallback(
+    (unit: RuleUnit, value: number, bookTime: BookTime | null): string => {
+      const before = t(unit, { count: value });
+      return bookTime ? `${before}, ${t('bookTime', { from: `${bookTime.start}:00`, to: `${bookTime.end}:00` })}` : before;
+    },
+    [t],
+  );
+}
+
+/** The state a person should look at first among a step's / rule's objects. */
+export function worstState(counts: Record<PromotionTargetState, number>): PromotionTargetState {
+  for (const s of ['error', 'skipped', 'pending', 'dry_run', 'on'] as const) {
+    if (counts[s] > 0) return s;
+  }
+  return 'off';
+}
 
 /** «6–12 октября», «28 сентября – 1 октября», «6 октября». */
 export function useStayRangeFormatter() {

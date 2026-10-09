@@ -12,6 +12,8 @@ export interface PricingStatus {
   dryRun: boolean;
   pilot: boolean;
   channelId: number;
+  /** «Автоправила» switched on (ZODOMUS_PROMOTIONS_AUTORULES_ENABLED). */
+  autoRules?: boolean;
 }
 
 export interface PromotionStatsSummary {
@@ -164,6 +166,60 @@ export interface CalendarPromotion {
 
 export type SettingsItem = { propertyId: string; minPrice?: number | null; geniusPct?: number | null };
 
+// ─── «Автоправила» ───────────────────────────────────────────────────────────
+
+export type RuleUnit = 'day' | 'hour';
+/** Hours of the day in the property time zone: start inclusive, end exclusive (0–24). */
+export type BookTime = { start: number; end: number };
+
+export interface RuleStepInput {
+  discountPct: number;
+  unit: RuleUnit;
+  /** Guest books at most this many days / hours before check-in. */
+  value: number;
+  /** null = any time of the day. */
+  bookTime: BookTime | null;
+}
+
+export interface RuleInput {
+  name: string;
+  steps: RuleStepInput[];
+  weekdays?: BookingWeekday[] | null;
+  horizonMonths: number;
+  propertyIds?: string[];
+  protectMinPrice?: boolean;
+  /** Editing: create this rule, then switch the old one off. */
+  replaceGroupId?: string;
+}
+
+export interface RuleStepView extends RuleStepInput {
+  id: string;
+  name: string;
+  /** Objects where Booking stored the step differently from what was sent. */
+  mismatch: number;
+  status: 'active' | 'off';
+  derivedStatus: 'active' | 'finished' | 'off';
+  counts: Record<PromotionTargetState, number> & { total: number; unconfirmed?: number };
+}
+
+export interface RuleView {
+  groupId: string;
+  name: string;
+  createdAt: string;
+  weekdays: BookingWeekday[] | null;
+  protectMinPrice: boolean;
+  horizonMonths: number;
+  stayFrom: string | null;
+  stayTo: string | null;
+  status: 'active' | 'off' | 'finished';
+  counts: Record<PromotionTargetState, number> & { total: number };
+  steps: RuleStepView[];
+  /** `confirmed: false` — a step is switched on but Booking does not list it (yet). */
+  properties: { propertyId: string; propertyName: string; state: PromotionTargetState; confirmed?: boolean }[];
+  /** Only on the answer to «create»: things the user should know (e.g. the old rule could not be switched off). */
+  warnings?: string[];
+}
+
 type Envelope<T> = { data: { data: T } };
 const unwrap = <T>(p: Promise<Envelope<T>>): Promise<T> => p.then((r) => r.data.data);
 
@@ -196,4 +252,15 @@ export const pricingApi = {
     unwrap<PromotionDetail>(apiClient.post(`/pricing/promotions/${id}/properties/${propertyId}/${action}`)),
   calendar: (from: string, to: string) =>
     unwrap<CalendarPromotion[]>(apiClient.get('/pricing/calendar', { params: { from, to } })),
+  rules: {
+    list: () => unwrap<RuleView[]>(apiClient.get('/pricing/rules')),
+    create: (input: RuleInput) => unwrap<RuleView>(apiClient.post('/pricing/rules', input)),
+    setActive: (groupId: string, on: boolean) =>
+      unwrap<RuleView>(apiClient.post(`/pricing/rules/${groupId}/${on ? 'activate' : 'deactivate'}`)),
+    setPropertyActive: (groupId: string, propertyId: string, on: boolean) =>
+      unwrap<RuleView>(
+        apiClient.post(`/pricing/rules/${groupId}/properties/${propertyId}/${on ? 'activate' : 'deactivate'}`),
+      ),
+    resend: (groupId: string) => unwrap<RuleView>(apiClient.post(`/pricing/rules/${groupId}/resend`)),
+  },
 };

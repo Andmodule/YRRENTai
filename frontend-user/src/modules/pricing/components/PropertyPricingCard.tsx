@@ -10,7 +10,7 @@ import { Link } from '@/i18n/navigation';
 import { getApiErrorMessage } from '@/lib/api/error-message';
 import { cn } from '@/lib/utils';
 import { usePriceToday, usePricingAccess, usePricingMutations, usePricingProperties, usePromotions } from '../hooks';
-import { guestPrice, localYmd, weekdayOf } from '../lib/pricing-ui';
+import { bookTimeOf, guestPrice, isBookTimeNow, isRuleStep, localYmd, weekdayOf } from '../lib/pricing-ui';
 import { CampaignStatusBadge, ChoiceChip, TargetStateBadge, useErrorLabel, usePriceFormatter, useStayRangeFormatter } from './shared';
 
 const GENIUS_OPTIONS = [0, 10, 15, 20] as const;
@@ -50,6 +50,8 @@ export function PropertyPricingCard({ propertyId }: { propertyId: string }) {
     .filter((p) => p.target?.desiredState === 'on' && (p.target.state === 'on' || p.target.state === 'pending'))
     .filter((p) => !!p.stayFrom && !!p.stayTo && p.stayFrom <= todayYmd && todayYmd <= p.stayTo)
     .filter((p) => !p.activeWeekdays?.length || p.activeWeekdays.includes(weekdayOf(todayYmd)))
+    // A step of an auto rule limited to hours of the day applies only inside them (property time zone).
+    .filter((p) => !isRuleStep(p) || isBookTimeNow(bookTimeOf(p.externalMeta), row.timezone))
     .sort((a, b) => b.discountPct - a.discountPct)[0];
   const today = price.data?.price ?? null;
   const currency = price.data?.currency;

@@ -14,6 +14,8 @@ import { PropertyPricingSettingsEntity } from './entities/property-pricing-setti
 import { targetingPctByProperty } from './pricing-targeting.util';
 
 export const PROMOTION_MAX_ATTEMPTS = 6;
+/** Targets taken per drain (one property at a time, with a pause between them). */
+const DRAIN_BATCH = 25;
 
 /** Retry delay after `attempts` failures: 1, 2, 4 … 60 min; throttling starts at 15 min. */
 export function promotionBackoffMs(attempts: number, kind: string): number {
@@ -96,13 +98,28 @@ export class PromotionQueueService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async drain(): Promise<void> {
-    const due = await this.targetRepo
-      .createQueryBuilder('t')
-      .where('t.needsPush = true')
-      .andWhere('(t.nextAttemptAt IS NULL OR t.nextAttemptAt <= :now)', { now: new Date() })
+    const now = new Date();
+    const dueQuery = () =>
+      this.targetRepo
+        .createQueryBuilder('t')
+        .where('t.needsPush = true')
+        .andWhere('(t.nextAttemptAt IS NULL OR t.nextAttemptAt <= :now)', { now });
+    // Switching a discount off always goes first: a pile of new promotions (a big auto rule, for example)
+    // must never delay stopping one.
+    const off = await dueQuery()
+      .andWhere("t.desiredState = 'off'")
       .orderBy('t.updatedAt', 'ASC')
-      .take(25)
+      .take(DRAIN_BATCH)
       .getMany();
+    const rest =
+      off.length < DRAIN_BATCH
+        ? await dueQuery()
+            .andWhere("t.desiredState <> 'off'")
+            .orderBy('t.updatedAt', 'ASC')
+            .take(DRAIN_BATCH - off.length)
+            .getMany()
+        : [];
+    const due = [...new Map([...off, ...rest].map((t) => [t.id, t] as const)).values()];
     for (let i = 0; i < due.length; i++) {
       await this.processOne(due[i]!.id);
       if (this.cfg.flags.gapMs > 0 && i < due.length - 1) {
@@ -177,6 +194,21 @@ export class PromotionQueueService implements OnModuleInit, OnModuleDestroy {
           message: `Временная ошибка ${outcome.retry.kind} — повторим через ${Math.round(delay / 60_000)} мин`,
         });
       }
+    }
+
+    // Zodomus calls take a while. If the user switched the target (or the whole promotion) on/off in the
+    // meantime, this result is for the old wish: keep the target in the queue instead of overwriting it.
+    const fresh = await this.targetRepo.findOne({
+      where: { id: target.id },
+      relations: ['promotion'],
+    });
+    if (
+      fresh &&
+      (fresh.desiredState !== target.desiredState || fresh.promotion?.status !== target.promotion?.status)
+    ) {
+      patch.needsPush = true;
+      patch.attempts = 0;
+      patch.nextAttemptAt = null;
     }
 
     await this.targetRepo.update(target.id, patch);

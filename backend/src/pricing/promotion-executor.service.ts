@@ -4,6 +4,7 @@ import { PropertyService } from '../property/property.service';
 import type { PropertyEntity } from '../property/entities/property.entity';
 import {
   buildBasicPromotionPayload,
+  buildLastMinutePromotionPayload,
   classifyPromotionError,
   extractPromotionId,
   parsePromotionsResponse,
@@ -18,6 +19,7 @@ import {
   extractZodomusInventoryDays,
 } from '../integrations/zodomus/zodomus-inventory.util';
 import { PricingConfig } from './pricing-config';
+import { parseRuleStepMeta, type RuleStepMeta } from './pricing-rules.util';
 import {
   addDaysYmd,
   guestPriceAfter,
@@ -100,6 +102,28 @@ export class PromotionExecutorService {
     if (promotion.source !== 'rentai') {
       return this.done({ needsPush: false }, []);
     }
+    // «Автоправила»: a step of a last-minute ladder. Everything below is shared with ordinary discounts.
+    const rule = promotion.promotionType === 'last_minute' ? parseRuleStepMeta(promotion.externalMeta) : null;
+    if (promotion.promotionType === 'last_minute') {
+      if (!this.cfg.flags.autoRules) {
+        // A step that is already live on Booking stays as it is (only switching it off is still possible).
+        if (target.externalPromotionId && target.state === 'on') {
+          return this.done({ needsPush: false }, [
+            {
+              action: 'skipped',
+              message: 'Автоправила выключены на сервере — шаг на Booking не менялся',
+            },
+          ]);
+        }
+        return this.skip(
+          'AUTORULES_DISABLED',
+          'Автоправила выключены (ZODOMUS_PROMOTIONS_AUTORULES_ENABLED=false) — на Booking ничего не отправлено',
+        );
+      }
+      if (!rule) {
+        return this.skip('RULE_INVALID', 'У шага правила нет корректных параметров «за N дней/часов»');
+      }
+    }
     if (!this.cfg.isInAllowlist(property.id, target.externalPropertyId)) {
       return this.skip(
         'NOT_IN_ALLOWLIST',
@@ -172,6 +196,7 @@ export class PromotionExecutorService {
       }
     }
 
+    // Ordinary discounts keep exactly the old fingerprint (a change would recreate live promotions).
     const hash = promotionHash({
       discountPct: promotion.discountPct,
       stayFrom: promotion.stayFrom,
@@ -179,13 +204,14 @@ export class PromotionExecutorService {
       weekdays: promotion.activeWeekdays ?? null,
       roomIds,
       rateIds,
+      ...(rule ? { type: 'last_minute', lastMinute: rule.lastMinute, bookTime: rule.bookTime } : {}),
     });
     const existingId = target.externalPromotionId;
     const recreate = !!existingId && target.pushedHash !== null && target.pushedHash !== hash;
     const reactivate = !!existingId && !recreate;
     const version = recreate ? target.version + 1 : target.version;
     const marker = promotionMarker(target.id, version);
-    const payload = buildBasicPromotionPayload({
+    const payloadInput = {
       channelId: target.channelId,
       externalPropertyId: target.externalPropertyId,
       marker,
@@ -195,7 +221,14 @@ export class PromotionExecutorService {
       weekdays: promotion.activeWeekdays,
       roomIds,
       rateIds,
-    });
+    };
+    const payload = rule
+      ? buildLastMinutePromotionPayload({
+          ...payloadInput,
+          lastMinute: rule.lastMinute,
+          bookTime: rule.bookTime,
+        })
+      : buildBasicPromotionPayload(payloadInput);
 
     if (!this.cfg.canWrite(property.id, target.externalPropertyId)) {
       const what = reactivate
@@ -303,7 +336,10 @@ export class PromotionExecutorService {
     patch.previousExternalIds = leftovers;
 
     if (this.cfg.flags.verify) {
-      Object.assign(patch, await this.verify(target, promotionId, promotion.discountPct, roomIds));
+      Object.assign(
+        patch,
+        await this.verify(target, promotionId, promotion.discountPct, roomIds, rule),
+      );
     }
 
     return this.done(
@@ -494,6 +530,7 @@ export class PromotionExecutorService {
     promotionId: string,
     discountPct: number,
     roomIds: string[],
+    rule: RuleStepMeta | null = null,
   ): Promise<Pick<PricePromotionTargetEntity, 'verifiedAt' | 'verifyNote'>> {
     try {
       const list = parsePromotionsResponse(
@@ -509,6 +546,30 @@ export class PromotionExecutorService {
       const problems: string[] = [];
       if (hit.discountPct !== null && hit.discountPct !== discountPct) {
         problems.push(`скидка на Booking ${hit.discountPct}% вместо ${discountPct}%`);
+      }
+      if (rule) {
+        // A rule step must come back as a last-minute deal with the same window. A missing field is a
+        // mismatch too: if Booking dropped «за N» or the booking hours, the step would apply to every
+        // date / all day, which is not what was asked for.
+        if (hit.type && !/^last[_ -]?minute$/i.test(hit.type)) {
+          problems.push(`на Booking тип «${hit.type}» вместо last_minute`);
+        }
+        const lm = hit.lastMinute;
+        if (!lm) {
+          problems.push('Booking не вернул параметр «за N до заезда»');
+        } else if (lm.unit !== rule.lastMinute.unit || lm.value !== rule.lastMinute.value) {
+          problems.push(
+            `на Booking «${lm.value} ${lm.unit}» вместо «${rule.lastMinute.value} ${rule.lastMinute.unit}»`,
+          );
+        }
+        const bt = hit.bookTime;
+        if (rule.bookTime && !bt) {
+          problems.push('Booking не вернул часы бронирования');
+        } else if (rule.bookTime && bt && (bt.start !== rule.bookTime.start || bt.end !== rule.bookTime.end)) {
+          problems.push(
+            `время бронирования на Booking ${bt.start}–${bt.end} вместо ${rule.bookTime.start}–${rule.bookTime.end}`,
+          );
+        }
       }
       const missingRooms = roomIds.filter((r) => !hit.roomIds.includes(r));
       if (hit.roomIds.length > 0 && missingRooms.length > 0) {

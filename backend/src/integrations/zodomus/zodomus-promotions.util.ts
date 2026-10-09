@@ -38,6 +38,8 @@ export type ParsedPromotion = {
   roomIds: string[];
   rateIds: string[];
   lastMinute: { unit: string; value: number } | null;
+  /** Hours of the day (property time zone, 0–24) when the deal can be booked; null = any time. */
+  bookTime: { start: number; end: number } | null;
   earlyBookerDays: number | null;
   stats: ParsedPromotionStats | null;
 };
@@ -148,6 +150,9 @@ export function parsePromotion(node: unknown): ParsedPromotion | null {
   const lmUnit = str(lmA.unit);
   const lmValue = num(lmA.value);
   const ebA = attrs(pick(node, 'early_booker', 'earlyBooker'));
+  const btA = attrs(pick(node, 'book_time', 'bookTime'));
+  const btStart = num(btA.start);
+  const btEnd = num(btA.end);
 
   const activeRaw = str(a.active);
   return {
@@ -164,6 +169,7 @@ export function parsePromotion(node: unknown): ParsedPromotion | null {
     roomIds: idsFrom(pick(node, 'rooms'), 'room'),
     rateIds: idsFrom(pick(node, 'parent_rates', 'parentRates'), 'parent_rate'),
     lastMinute: lmUnit && lmValue !== null ? { unit: lmUnit, value: lmValue } : null,
+    bookTime: btStart !== null && btEnd !== null ? { start: btStart, end: btEnd } : null,
     earlyBookerDays: num(ebA.value),
     stats: parseStats(pick(node, 'stats')),
   };
@@ -247,6 +253,31 @@ export function buildBasicPromotionPayload(input: BasicPromotionInput): Record<s
     rooms: input.roomIds.map((id) => ({ id })),
     parentRates: input.rateIds.map((id) => ({ id })),
     discount: String(input.discountPct),
+  };
+}
+
+export type LastMinutePromotionInput = BasicPromotionInput & {
+  /** Booking «Last-minute»: bookable only this long before check-in (1–1000 days or hours). */
+  lastMinute: { unit: 'day' | 'hour'; value: number };
+  /** Optional hours of the day (property time zone, integers 0–24) when guests can book it. */
+  bookTime: { start: number; end: number } | null;
+};
+
+/**
+ * Body for POST /promotions — Booking «Last-minute deal» (`last_minute` + optional `book_time`;
+ * book_date is not allowed for this type). Same audience / room / rate fields as the basic deal.
+ * Booking XML: `<last_minute unit="hour" value="5"/>`, `<book_time start="11" end="13"/>`.
+ */
+export function buildLastMinutePromotionPayload(
+  input: LastMinutePromotionInput,
+): Record<string, unknown> {
+  return {
+    ...buildBasicPromotionPayload(input),
+    type: 'last_minute',
+    lastMinute: { unit: input.lastMinute.unit, value: String(input.lastMinute.value) },
+    ...(input.bookTime
+      ? { bookTime: { start: String(input.bookTime.start), end: String(input.bookTime.end) } }
+      : {}),
   };
 }
 

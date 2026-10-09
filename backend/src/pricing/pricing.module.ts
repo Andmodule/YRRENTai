@@ -6,6 +6,8 @@ import { UserModule } from '../user/user.module';
 import { PricingConfig } from './pricing-config';
 import { PricingController } from './pricing.controller';
 import { PricingService } from './pricing.service';
+import { PricingRulesController } from './pricing-rules.controller';
+import { PricingRulesService } from './pricing-rules.service';
 import { PromotionExecutorService } from './promotion-executor.service';
 import { PromotionQueueService } from './promotion-queue.service';
 import { PromotionSyncService } from './promotion-sync.service';
@@ -30,13 +32,14 @@ import { PropertyPricingSettingsEntity } from './entities/property-pricing-setti
     PropertyModule,
     UserModule,
   ],
-  controllers: [PricingController],
+  controllers: [PricingController, PricingRulesController],
   providers: [
     PricingConfig,
     PromotionExecutorService,
     PromotionQueueService,
     PromotionSyncService,
     PricingService,
+    PricingRulesService,
   ],
 })
 export class PricingModule {}
