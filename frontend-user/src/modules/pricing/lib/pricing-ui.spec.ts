@@ -18,6 +18,8 @@ import {
   MAX_RULE_STEPS,
   nightsCount,
   normalizeWeekdays,
+  occupancyAction,
+  parseOccupancyDraft,
   presetRange,
   promotionsForCell,
   ruleTemplate,
@@ -219,6 +221,67 @@ describe('hourlyLadder — «каждые N часов на Y%»', () => {
     const steps = [{ discountPct: 8, unit: 'day' as const, value: 1, bookTime: null }, ...hourlyLadder({ ...base, toHour: 12 })];
     // 8-9 −5%, 9-10 −6%, 10-11 −7%, 11-12 −8% are all covered by «1 day before, all day −8%»
     assert.deepEqual(findShadowedSteps(steps).map(([hidden]) => hidden), [1, 2, 3, 4]);
+  });
+});
+
+describe('parseOccupancyDraft — the thresholds editor', () => {
+  const tier = (below: string, pct: string, key = `${below}-${pct}`) => ({ key, below, pct });
+  const good = [tier('10', '12'), tier('20', '8'), tier('30', '5')];
+
+  it('valid input → settings ready to save, lowest threshold first', () => {
+    assert.deepEqual(parseOccupancyDraft('30', [good[2]!, good[0]!, good[1]!]), {
+      value: { horizonDays: 30, tiers: [{ belowPct: 10, discountPct: 12 }, { belowPct: 20, discountPct: 8 }, { belowPct: 30, discountPct: 5 }] },
+      problem: null,
+    });
+  });
+
+  it('the edges are accepted', () => {
+    assert.equal(parseOccupancyDraft('7', good).problem, null);
+    assert.equal(parseOccupancyDraft('120', good).problem, null);
+    assert.equal(parseOccupancyDraft('30', [tier('100', '99')]).problem, null);
+    assert.equal(parseOccupancyDraft('30', [tier('1', '1')]).problem, null);
+    assert.equal(parseOccupancyDraft('30', [tier('10', '7'), tier('20', '7')]).problem, null); // equal discounts
+  });
+
+  it('names what is wrong', () => {
+    const problem = (h: string, t: Parameters<typeof parseOccupancyDraft>[1]) => parseOccupancyDraft(h, t).problem;
+    for (const h of ['', '6', '121', '30.5', 'abc']) assert.equal(problem(h, good), 'horizon', h);
+    assert.equal(problem('30', []), 'count');
+    assert.equal(problem('30', Array.from({ length: 7 }, (_, i) => tier(String(10 + i), String(20 - i)))), 'count');
+    for (const below of ['', '0', '101', '12.5']) assert.equal(problem('30', [tier(below, '5')]), 'threshold', below);
+    for (const pct of ['', '0', '100', '7.5']) assert.equal(problem('30', [tier('10', pct)]), 'discount', pct);
+    assert.equal(problem('30', [tier('10', '12', 'a'), tier('10', '8', 'b')]), 'duplicate');
+    assert.equal(problem('30', [tier('10', '5'), tier('20', '8')]), 'order');
+  });
+
+  it('an invalid draft never produces a value', () => {
+    assert.equal(parseOccupancyDraft('30', [tier('10', '5'), tier('20', '8')]).value, null);
+  });
+});
+
+describe('occupancyAction — what a row offers', () => {
+  const current = (discountPct: number) => ({ promotionId: 'p', name: 'Basic Deal', discountPct, source: 'booking' as const });
+
+  it('nothing suggested → nothing offered', () => {
+    assert.deepEqual(occupancyAction({ suggestedPct: null, current: current(10), blocked: null }), { kind: 'none' });
+  });
+
+  it('no discount yet → apply', () => {
+    assert.deepEqual(occupancyAction({ suggestedPct: 8, current: null, blocked: null }), { kind: 'apply', pct: 8, currentPct: null });
+  });
+
+  it('a smaller discount is on → apply, and say so', () => {
+    assert.deepEqual(occupancyAction({ suggestedPct: 8, current: current(5), blocked: null }), { kind: 'apply', pct: 8, currentPct: 5 });
+  });
+
+  it('an equal or bigger discount is on → a new one would be invisible, do not offer it', () => {
+    assert.deepEqual(occupancyAction({ suggestedPct: 8, current: current(8), blocked: null }), { kind: 'covered', currentPct: 8 });
+    assert.deepEqual(occupancyAction({ suggestedPct: 8, current: current(10), blocked: 'NOT_IN_PILOT' }), { kind: 'covered', currentPct: 10 });
+  });
+
+  it('outside the pilot list or without access → shown, not applicable', () => {
+    assert.deepEqual(occupancyAction({ suggestedPct: 12, current: null, blocked: 'NOT_IN_PILOT' }), { kind: 'blocked', pct: 12, reason: 'NOT_IN_PILOT' });
+    assert.deepEqual(occupancyAction({ suggestedPct: 12, current: current(5), blocked: 'NO_ACCESS' }), { kind: 'blocked', pct: 12, reason: 'NO_ACCESS' });
   });
 });
 

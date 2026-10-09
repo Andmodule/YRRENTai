@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 import { useTranslations } from 'next-intl';
-import { Percent, ShieldCheck, Workflow } from 'lucide-react';
+import { BarChart3, Percent, ShieldCheck, Workflow } from 'lucide-react';
 import { Link, usePathname } from '@/i18n/navigation';
 import { cn } from '@/lib/utils';
 import { usePricingAccess, usePricingProperties, useRules } from '../hooks';
@@ -10,6 +10,7 @@ import { usePricingAccess, usePricingProperties, useRules } from '../hooks';
 const LINKS = [
   { href: '/dashboard/pricing', segment: '', icon: Percent, key: 'promotions' as const },
   { href: '/dashboard/pricing/rules', segment: 'rules', icon: Workflow, key: 'rules' as const },
+  { href: '/dashboard/pricing/occupancy', segment: 'occupancy', icon: BarChart3, key: 'occupancy' as const },
   { href: '/dashboard/pricing/min-prices', segment: 'min-prices', icon: ShieldCheck, key: 'minPrices' as const },
 ];
 
@@ -18,11 +19,11 @@ export function PricingTabs() {
   const t = useTranslations('pricing.tabs');
   const pathname = usePathname();
   const { data: rows } = usePricingProperties(true);
-  const { autoRules, enabled } = usePricingAccess();
+  const { autoRules, occupancy, enabled } = usePricingAccess();
   // With the auto-rules switch off the tab stays while rules exist: they must remain visible and stoppable.
   const { data: rules } = useRules(enabled && !autoRules);
   const showRules = autoRules || (rules?.length ?? 0) > 0;
-  const links = LINKS.filter((l) => l.key !== 'rules' || showRules);
+  const links = LINKS.filter((l) => (l.key !== 'rules' || showRules) && (l.key !== 'occupancy' || occupancy));
 
   /** Booking objects without access to promotions (or a failed check) or without a minimum price. */
   const attention = useMemo(

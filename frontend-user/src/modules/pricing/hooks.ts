@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/use-auth';
 import {
   pricingApi,
+  type OccupancySettingsInput,
   type PromotionDetail,
   type PromotionInput,
   type RuleInput,
@@ -19,6 +20,7 @@ export const pricingKeys = {
   priceToday: (propertyId: string) => ['pricing', 'price-today', propertyId] as const,
   calendar: (from: string, to: string) => ['pricing', 'calendar', from, to] as const,
   rules: ['pricing', 'rules'] as const,
+  occupancy: ['pricing', 'occupancy'] as const,
 };
 
 const MANAGER_ROLES = new Set(['OWNER', 'MANAGER']);
@@ -41,6 +43,7 @@ export function usePricingAccess() {
     pilot: status.data?.pilot ?? false,
     /** «Автоправила» tab: needs the promotions feature and its own switch on the server. */
     autoRules: canManage && status.data?.enabled === true && status.data?.autoRules === true,
+    occupancy: canManage && status.data?.enabled === true && status.data?.occupancy === true,
     isLoading: canManage && status.isLoading,
   };
 }
@@ -132,6 +135,26 @@ export function usePricingMutations() {
   });
   const accessCheck = useMutation({ mutationFn: (ids?: string[]) => pricingApi.accessCheck(ids) });
   return { create, update, setActive, targetAction, saveSettings, accessCheck };
+}
+
+/** «Заполненность»: thresholds + a suggestion per property. Counted on the server from bookings. */
+export function useOccupancy(enabled: boolean) {
+  return useQuery({
+    queryKey: pricingKeys.occupancy,
+    queryFn: pricingApi.occupancy.get,
+    enabled,
+    staleTime: 60_000,
+    retry: false,
+  });
+}
+
+export function useOccupancyMutations() {
+  const qc = useQueryClient();
+  const save = useMutation({
+    mutationFn: (input: OccupancySettingsInput) => pricingApi.occupancy.saveSettings(input),
+    onSuccess: (overview) => qc.setQueryData(pricingKeys.occupancy, overview),
+  });
+  return { save };
 }
 
 export function useRulesMutations() {

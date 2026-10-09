@@ -8,6 +8,10 @@ import { PricingController } from './pricing.controller';
 import { PricingService } from './pricing.service';
 import { PricingRulesController } from './pricing-rules.controller';
 import { PricingRulesService } from './pricing-rules.service';
+import { PricingOccupancyController } from './pricing-occupancy.controller';
+import { PricingOccupancyService } from './pricing-occupancy.service';
+import { BookingEntity } from '../booking/entities/booking.entity';
+import { PricingOccupancySettingsEntity } from './entities/pricing-occupancy-settings.entity';
 import { PromotionExecutorService } from './promotion-executor.service';
 import { PromotionQueueService } from './promotion-queue.service';
 import { PromotionSyncService } from './promotion-sync.service';
@@ -27,12 +31,15 @@ import { PropertyPricingSettingsEntity } from './entities/property-pricing-setti
       PricePromotionTargetEntity,
       PricePromotionEventEntity,
       PropertyPricingSettingsEntity,
+      PricingOccupancySettingsEntity,
+      // read-only here: booked nights for «Заполненность»
+      BookingEntity,
     ]),
     ZodomusModule,
     PropertyModule,
     UserModule,
   ],
-  controllers: [PricingController, PricingRulesController],
+  controllers: [PricingController, PricingRulesController, PricingOccupancyController],
   providers: [
     PricingConfig,
     PromotionExecutorService,
@@ -40,6 +47,7 @@ import { PropertyPricingSettingsEntity } from './entities/property-pricing-setti
     PromotionSyncService,
     PricingService,
     PricingRulesService,
+    PricingOccupancyService,
   ],
 })
 export class PricingModule {}

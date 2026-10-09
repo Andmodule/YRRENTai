@@ -129,6 +129,7 @@ export class PricingService {
       pilot: f.allowlist.size > 0,
       channelId: f.channelId,
       autoRules: f.autoRules,
+      occupancy: f.occupancy,
     };
   }
 
