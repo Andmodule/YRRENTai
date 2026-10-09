@@ -14,6 +14,43 @@ export interface PricingStatus {
   channelId: number;
   /** «Автоправила» switched on (ZODOMUS_PROMOTIONS_AUTORULES_ENABLED). */
   autoRules?: boolean;
+  /** «Заполненность» switched on (ZODOMUS_PROMOTIONS_OCCUPANCY_ENABLED). */
+  occupancy?: boolean;
+}
+
+/** «Сдано меньше belowPct% ночей → скидка discountPct%». */
+export interface OccupancyTier {
+  belowPct: number;
+  discountPct: number;
+}
+
+export interface OccupancySettingsInput {
+  /** Nights ahead that are counted, from today. */
+  horizonDays: number;
+  tiers: OccupancyTier[];
+}
+
+export interface OccupancyRow {
+  propertyId: string;
+  name: string;
+  /** Inclusive yyyy-MM-dd window that was counted. */
+  from: string;
+  to: string;
+  totalNights: number;
+  bookedNights: number;
+  occupancyPct: number;
+  /** null = full enough, nothing suggested. */
+  suggestedPct: number | null;
+  /** Largest seasonal discount already on Booking inside the window. */
+  current: { promotionId: string; name: string; discountPct: number; source: PromotionSource } | null;
+  /** Why a suggested discount cannot be applied. */
+  blocked: 'NOT_IN_PILOT' | 'NO_ACCESS' | null;
+}
+
+export interface OccupancyOverview {
+  settings: OccupancySettingsInput & { isDefault: boolean };
+  properties: OccupancyRow[];
+  notOnBooking: number;
 }
 
 export interface PromotionStatsSummary {
@@ -262,5 +299,10 @@ export const pricingApi = {
         apiClient.post(`/pricing/rules/${groupId}/properties/${propertyId}/${on ? 'activate' : 'deactivate'}`),
       ),
     resend: (groupId: string) => unwrap<RuleView>(apiClient.post(`/pricing/rules/${groupId}/resend`)),
+  },
+  occupancy: {
+    get: () => unwrap<OccupancyOverview>(apiClient.get('/pricing/occupancy')),
+    saveSettings: (input: OccupancySettingsInput) =>
+      unwrap<OccupancyOverview>(apiClient.patch('/pricing/occupancy/settings', input)),
   },
 };

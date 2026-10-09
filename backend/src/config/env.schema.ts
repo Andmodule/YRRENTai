@@ -138,6 +138,15 @@ const zodomusEnvFields = z.object({
     .enum(['true', 'false', '1', '0', 'yes', 'no'])
     .default('false')
     .transform((v) => v === 'true' || v === '1' || v === 'yes'),
+  /**
+   * «Цены → Заполненность»: discount suggestions by how many nights are booked. Off by default; needs
+   * ZODOMUS_PROMOTIONS_ENABLED=true and the migration 1778400000000-pricing-occupancy-settings. While off
+   * the API answers 503, the UI tab is hidden and the new table is never read.
+   */
+  ZODOMUS_PROMOTIONS_OCCUPANCY_ENABLED: z
+    .enum(['true', 'false', '1', '0', 'yes', 'no'])
+    .default('false')
+    .transform((v) => v === 'true' || v === '1' || v === 'yes'),
   /** After create: read the promotion back and check rooms/rate were applied. Default: true. */
   ZODOMUS_PROMOTIONS_VERIFY: z
     .enum(['true', 'false', '1', '0', 'yes', 'no'])

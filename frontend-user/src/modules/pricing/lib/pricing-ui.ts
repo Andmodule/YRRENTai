@@ -8,6 +8,8 @@ import type {
   BookingWeekday,
   BookTime,
   CalendarPromotion,
+  OccupancyRow,
+  OccupancySettingsInput,
   PromotionSummary,
   PromotionTargetState,
   RuleStepInput,
@@ -237,6 +239,64 @@ export function stayNights(checkIn: string, checkOut: string): string[] {
   const out: string[] = [];
   for (let d = checkIn.slice(0, 10); d < to && out.length < 400; d = addDaysYmd(d, 1)) out.push(d);
   return out;
+}
+
+// ─── «Заполненность» (same limits and rules as backend pricing-occupancy.util.ts) ───
+
+export const OCCUPANCY_HORIZON_MIN = 7;
+export const OCCUPANCY_HORIZON_MAX = 120;
+export const OCCUPANCY_MAX_TIERS = 6;
+export const OCCUPANCY_DEFAULTS: OccupancySettingsInput = {
+  horizonDays: 30,
+  tiers: [
+    { belowPct: 10, discountPct: 12 },
+    { belowPct: 20, discountPct: 8 },
+    { belowPct: 30, discountPct: 5 },
+  ],
+};
+
+/** A threshold row while it is being typed. */
+export type OccupancyTierDraft = { key: string; below: string; pct: string };
+export type OccupancyDraftProblem = 'horizon' | 'count' | 'threshold' | 'discount' | 'duplicate' | 'order';
+
+const wholeNumber = (s: string): number => (/^\d+$/.test(s.trim()) ? Number(s.trim()) : Number.NaN);
+
+/** What is typed in the editor → settings ready to save (lowest threshold first), or what is wrong. */
+export function parseOccupancyDraft(
+  horizon: string,
+  tiers: readonly OccupancyTierDraft[],
+): { value: OccupancySettingsInput | null; problem: OccupancyDraftProblem | null } {
+  const fail = (problem: OccupancyDraftProblem) => ({ value: null, problem });
+  const horizonDays = wholeNumber(horizon);
+  if (!(horizonDays >= OCCUPANCY_HORIZON_MIN && horizonDays <= OCCUPANCY_HORIZON_MAX)) return fail('horizon');
+  if (tiers.length < 1 || tiers.length > OCCUPANCY_MAX_TIERS) return fail('count');
+  const parsed = tiers.map((t) => ({ belowPct: wholeNumber(t.below), discountPct: wholeNumber(t.pct) }));
+  if (parsed.some((t) => !(t.belowPct >= 1 && t.belowPct <= 100))) return fail('threshold');
+  if (parsed.some((t) => !(t.discountPct >= 1 && t.discountPct <= 99))) return fail('discount');
+  const sorted = [...parsed].sort((a, b) => a.belowPct - b.belowPct);
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i]!.belowPct === sorted[i - 1]!.belowPct) return fail('duplicate');
+    // an emptier property must not get a smaller discount than a fuller one
+    if (sorted[i]!.discountPct > sorted[i - 1]!.discountPct) return fail('order');
+  }
+  return { value: { horizonDays, tiers: sorted }, problem: null };
+}
+
+export type OccupancyAction =
+  | { kind: 'none' }
+  | { kind: 'covered'; currentPct: number }
+  | { kind: 'blocked'; pct: number; reason: NonNullable<OccupancyRow['blocked']> }
+  | { kind: 'apply'; pct: number; currentPct: number | null };
+
+/**
+ * What the row offers. A discount of the same category that is already as big hides a new one on
+ * Booking, so nothing is offered then; a smaller one stays and the guest sees the bigger.
+ */
+export function occupancyAction(row: Pick<OccupancyRow, 'suggestedPct' | 'current' | 'blocked'>): OccupancyAction {
+  if (row.suggestedPct == null) return { kind: 'none' };
+  if (row.current && row.current.discountPct >= row.suggestedPct) return { kind: 'covered', currentPct: row.current.discountPct };
+  if (row.blocked) return { kind: 'blocked', pct: row.suggestedPct, reason: row.blocked };
+  return { kind: 'apply', pct: row.suggestedPct, currentPct: row.current?.discountPct ?? null };
 }
 
 export type CampaignHealth = 'ok' | 'not_sent' | 'unconfirmed';
