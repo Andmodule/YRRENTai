@@ -104,6 +104,16 @@ export function OccupancyScreen() {
     if (action.kind === 'covered') {
       return <span className="text-sm text-muted-foreground">{t('covered', { pct: action.currentPct })}</span>;
     }
+    if (action.kind === 'not_sent') {
+      return (
+        <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+          <span className="text-amber-700 dark:text-amber-400">{t('notSent', { pct: action.pct })}</span>
+          <Button size="sm" variant="outline" onClick={() => router.push(`/dashboard/pricing?promotion=${action.promotionId}`)}>
+            {t('open')}
+          </Button>
+        </span>
+      );
+    }
     if (action.kind === 'blocked') {
       return (
         <span className="text-sm">

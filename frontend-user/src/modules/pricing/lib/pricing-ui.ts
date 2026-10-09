@@ -285,16 +285,23 @@ export function parseOccupancyDraft(
 export type OccupancyAction =
   | { kind: 'none' }
   | { kind: 'covered'; currentPct: number }
+  | { kind: 'not_sent'; pct: number; promotionId: string }
   | { kind: 'blocked'; pct: number; reason: NonNullable<OccupancyRow['blocked']> }
   | { kind: 'apply'; pct: number; currentPct: number | null };
 
 /**
  * What the row offers. A discount of the same category that is already as big hides a new one on
- * Booking, so nothing is offered then; a smaller one stays and the guest sees the bigger.
+ * Booking, so nothing is offered then; a smaller one stays and the guest sees the bigger. A suggestion
+ * that was already created but did not reach Booking is pointed at instead of being created once more.
  */
-export function occupancyAction(row: Pick<OccupancyRow, 'suggestedPct' | 'current' | 'blocked'>): OccupancyAction {
+export function occupancyAction(
+  row: Pick<OccupancyRow, 'suggestedPct' | 'current' | 'blocked' | 'notSent'>,
+): OccupancyAction {
   if (row.suggestedPct == null) return { kind: 'none' };
   if (row.current && row.current.discountPct >= row.suggestedPct) return { kind: 'covered', currentPct: row.current.discountPct };
+  if (row.notSent && row.notSent.discountPct >= row.suggestedPct) {
+    return { kind: 'not_sent', pct: row.notSent.discountPct, promotionId: row.notSent.promotionId };
+  }
   if (row.blocked) return { kind: 'blocked', pct: row.suggestedPct, reason: row.blocked };
   return { kind: 'apply', pct: row.suggestedPct, currentPct: row.current?.discountPct ?? null };
 }

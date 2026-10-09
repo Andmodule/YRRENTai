@@ -45,11 +45,12 @@ function makeDb() {
   };
   // Equality, TypeORM Not(...) and an array of alternatives (OR) — all the find() filters the services use.
   const matchOne = (row: Row, where?: Record<string, unknown>) =>
-    Object.entries(where ?? {}).every(([k, v]) =>
-      v && typeof v === 'object' && (v as { type?: string }).type === 'not'
-        ? row[k] !== (v as { value: unknown }).value
-        : row[k] === v,
-    );
+    Object.entries(where ?? {}).every(([k, v]) => {
+      const op = v && typeof v === 'object' ? (v as { type?: string; value?: unknown }) : null;
+      if (op?.type === 'not') return row[k] !== op.value;
+      if (op?.type === 'in') return (op.value as unknown[]).includes(row[k]);
+      return row[k] === v;
+    });
   const match = (row: Row, where?: Record<string, unknown> | Record<string, unknown>[]) =>
     Array.isArray(where) ? where.some((w) => matchOne(row, w)) : matchOne(row, where);
   const put = (table: 'promotions' | 'targets' | 'events') => (r: Row) => {
@@ -82,6 +83,7 @@ function makeDb() {
   };
   const targetRepo = {
     create: (x: Row) => ({ ...x }),
+    find: jest.fn(async (o: { where?: Record<string, unknown> }) => db.targets.filter((t) => match(t, o.where))),
     save: jest.fn(async (x: Row | Row[]) => {
       (Array.isArray(x) ? x : [x]).forEach(put('targets'));
       return x;
@@ -403,6 +405,29 @@ describe('PricingService — calendar and property views', () => {
     expect(forA).toHaveLength(1);
     expect(forA[0]).toMatchObject({ id: 'p1', target: { propertyId: 'a', state: 'on' } });
     expect(await svc.list(OWNER, 'c')).toEqual([]);
+  });
+
+  it('the property card finds its discounts through its own targets, live ones first', async () => {
+    const { svc, db, promotionRepo, targetRepo } = makeService();
+    seedPromotion(db);
+    // a discount of ANOTHER property must not take a place in the limited list
+    db.promotions.push({ id: 'other', ownerId: 'owner-1', name: 'Чужая', source: 'rentai', promotionType: 'basic', discountPct: 5, stayFrom: FROM, stayTo: TO, status: 'active', createdAt: new Date() });
+    db.targets.push({ id: 't-other', promotionId: 'other', propertyId: 'd', desiredState: 'on', state: 'on' });
+
+    const forA = await svc.list(OWNER, 'a');
+    expect(forA.map((p) => p.id)).toEqual(['p1']);
+    expect(targetRepo.find).toHaveBeenCalledWith({ where: { propertyId: 'a' }, select: ['promotionId'] });
+    const query = promotionRepo.find.mock.calls.at(-1)![0] as { where: { id: { value: string[] } }; order: unknown; take: number };
+    expect(query.where.id.value).toEqual(['p1']);
+    // 'active' sorts before 'off': switched-off steps of replaced rules are the ones the limit drops
+    expect(query.order).toEqual({ status: 'ASC', createdAt: 'DESC' });
+    expect(query.take).toBe(200);
+  });
+
+  it('a property that takes part in nothing gets an empty list without asking for promotions', async () => {
+    const { svc, promotionRepo } = makeService();
+    expect(await svc.list(OWNER, 'c')).toEqual([]);
+    expect(promotionRepo.find).not.toHaveBeenCalled();
   });
 
   it('calendar returns active discounts per property, without manually switched-off ones', async () => {

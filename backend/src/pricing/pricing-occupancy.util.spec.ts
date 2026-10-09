@@ -100,10 +100,26 @@ describe('bookedNights', () => {
 });
 
 describe('display helpers', () => {
-  it('rounds occupancy to a whole percent', () => {
+  it('shows occupancy as a whole percent, rounded down', () => {
     expect(occupancyPct(3, 30)).toBe(10);
-    expect(occupancyPct(2, 30)).toBe(7);
+    expect(occupancyPct(2, 30)).toBe(6);
+    expect(occupancyPct(29, 30)).toBe(96);
+    expect(occupancyPct(30, 30)).toBe(100);
     expect(occupancyPct(0, 0)).toBe(0);
+  });
+
+  it('the shown percent never contradicts the tier that was picked', () => {
+    // 2 of 21 nights is 9.5%: «below 10%» — and it must not be displayed as 10%
+    expect(occupancyPct(2, 21)).toBe(9);
+    expect(suggestTier(TIERS, 2, 21)?.belowPct).toBe(10);
+    for (let total = 7; total <= 120; total++) {
+      for (let booked = 0; booked <= total; booked++) {
+        const tier = suggestTier(TIERS, booked, total);
+        const shown = occupancyPct(booked, total);
+        if (tier) expect(shown).toBeLessThan(tier.belowPct);
+        else expect(shown).toBeGreaterThanOrEqual(30);
+      }
+    }
   });
 
   it('a stored instant becomes the calendar day of the property', () => {

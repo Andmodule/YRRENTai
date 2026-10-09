@@ -82,9 +82,12 @@ export function suggestTier(
   return sortTiers(tiers).find((t) => booked * 100 < t.belowPct * total) ?? null;
 }
 
-/** Whole percent for display. */
+/**
+ * Whole percent for display, rounded DOWN: with whole-number thresholds «shown below X%» is then exactly
+ * «gets the below-X% discount» (2 of 21 nights is 9%, not a rounded-up 10%).
+ */
 export function occupancyPct(booked: number, total: number): number {
-  return total > 0 ? Math.round((booked * 100) / total) : 0;
+  return total > 0 ? Math.floor((booked * 100) / total) : 0;
 }
 
 /** Calendar day of an instant in the property time zone; UTC for an unknown zone. */

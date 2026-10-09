@@ -5,6 +5,7 @@ import {
   PROMOTION_MAX_ATTEMPTS,
   PromotionQueueService,
   promotionBackoffMs,
+  promotionMaxAttempts,
 } from './promotion-queue.service';
 import type { ExecutorOutcome, PromotionExecutorService } from './promotion-executor.service';
 import type { PropertyService } from '../property/property.service';
@@ -183,6 +184,51 @@ describe('PromotionQueueService', () => {
     expect(targetRepo.createQueryBuilder).not.toHaveBeenCalled();
     expect(executor.process).not.toHaveBeenCalled();
     svc.onModuleDestroy();
+  });
+
+  it('an answer we cannot classify is tried twice, everything else six times', async () => {
+    expect(promotionMaxAttempts('UNKNOWN')).toBe(2);
+    for (const kind of ['TRANSIENT', 'RATE_LIMITED']) expect(promotionMaxAttempts(kind)).toBe(PROMOTION_MAX_ATTEMPTS);
+
+    const unknown = { patch: {}, retry: { kind: 'UNKNOWN', message: 'Something unexpected' }, events: [] };
+    const first = setup(unknown);
+    await first.svc.processOne('t1');
+    expect(first.targetRepo.update.mock.calls[0]![1]).toMatchObject({ attempts: 1 });
+    expect(first.targetRepo.update.mock.calls[0]![1].state).toBeUndefined(); // still queued
+
+    const second = setup(unknown, { attempts: 1 });
+    await second.svc.processOne('t1');
+    expect(second.targetRepo.update.mock.calls[0]![1]).toMatchObject({
+      state: 'error',
+      needsPush: false,
+      attempts: 2,
+      lastErrorCode: 'UNKNOWN',
+    });
+  });
+
+  it('processOne reports a temporary failure, and nothing when it went through', async () => {
+    const failed = setup({ patch: {}, retry: { kind: 'RATE_LIMITED', message: 'slow down' }, events: [] });
+    expect(await failed.svc.processOne('t1')).toBe('RATE_LIMITED');
+    const fine = setup({ patch: { state: 'on', needsPush: false }, retry: null, events: [] });
+    expect(await fine.svc.processOne('t1')).toBeNull();
+  });
+
+  it('when Booking asks to slow down the rest of the batch waits for the next tick', async () => {
+    const { svc, executor, targetRepo } = setup({ patch: {}, retry: { kind: 'RATE_LIMITED', message: 'slow down' }, events: [] });
+    const qb = targetRepo.createQueryBuilder() as unknown as { getMany: jest.Mock };
+    const row = (await targetRepo.findOne()) as Record<string, unknown>;
+    qb.getMany.mockResolvedValue([{ ...row, id: 't1' }, { ...row, id: 't2' }, { ...row, id: 't3' }]);
+    await svc.tick();
+    expect(executor.process).toHaveBeenCalledTimes(1);
+  });
+
+  it('other temporary failures do not stop the batch', async () => {
+    const { svc, executor, targetRepo } = setup({ patch: {}, retry: { kind: 'TRANSIENT', message: 'timeout' }, events: [] });
+    const qb = targetRepo.createQueryBuilder() as unknown as { getMany: jest.Mock };
+    const row = (await targetRepo.findOne()) as Record<string, unknown>;
+    qb.getMany.mockResolvedValueOnce([]).mockResolvedValueOnce([{ ...row, id: 't1' }, { ...row, id: 't2' }]);
+    await svc.tick();
+    expect(executor.process).toHaveBeenCalledTimes(2);
   });
 
   it('drains due targets when enabled', async () => {
