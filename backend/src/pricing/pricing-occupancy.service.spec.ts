@@ -1,4 +1,5 @@
 import { ServiceUnavailableException } from '@nestjs/common';
+import { QueryFailedError } from 'typeorm';
 import type { ConfigService } from '@nestjs/config';
 import type { Repository } from 'typeorm';
 import { PricingConfig } from './pricing-config';
@@ -77,6 +78,7 @@ function setup(
     }),
   };
   const params: Record<string, unknown> = {};
+  const sql: string[] = [];
   type Qb = {
     select: jest.Mock;
     where: (sql: string, p: Record<string, unknown>) => Qb;
@@ -85,8 +87,8 @@ function setup(
   };
   const qb: Qb = {
     select: jest.fn().mockReturnThis(),
-    where: (_sql, p) => (Object.assign(params, p), qb),
-    andWhere: (_sql, p) => (Object.assign(params, p), qb),
+    where: (text, p) => (sql.push(text), Object.assign(params, p), qb),
+    andWhere: (text, p) => (sql.push(text), Object.assign(params, p), qb),
     getMany: async () => {
       // what the SQL filter would do
       const free = params.free as string[];
@@ -112,7 +114,7 @@ function setup(
     bookingRepo as unknown as Repository<BookingEntity>,
     promotionRepo as unknown as Repository<PricePromotionEntity>,
   );
-  return { svc, settingsRepo, bookingRepo, promotionRepo, pricing, params };
+  return { svc, settingsRepo, bookingRepo, promotionRepo, pricing, params, sql };
 }
 
 describe('PricingOccupancyService — switches', () => {
@@ -130,6 +132,21 @@ describe('PricingOccupancyService — switches', () => {
   it('needs promotions to be enabled as well', async () => {
     const { svc } = setup({ env: { ZODOMUS_PROMOTIONS_ENABLED: false } });
     await expect(svc.overview(OWNER)).rejects.toBeInstanceOf(ServiceUnavailableException);
+  });
+
+  it('flag on before the migration: a clear 503 naming the migration, not a bare 500', async () => {
+    const { svc, settingsRepo } = setup();
+    const missing = new QueryFailedError('SELECT', [], Object.assign(new Error('relation "pricing_occupancy_settings" does not exist'), { code: '42P01' }));
+    settingsRepo.findOne.mockRejectedValue(missing);
+    await expect(svc.overview(OWNER)).rejects.toThrow('1778400000000-pricing-occupancy-settings');
+    await expect(svc.overview(OWNER)).rejects.toBeInstanceOf(ServiceUnavailableException);
+  });
+
+  it('any other database failure is not disguised', async () => {
+    const { svc, settingsRepo } = setup();
+    const other = new QueryFailedError('SELECT', [], Object.assign(new Error('connection lost'), { code: '08006' }));
+    settingsRepo.findOne.mockRejectedValue(other);
+    await expect(svc.overview(OWNER)).rejects.toBe(other);
   });
 
   it('the flag is off unless it is set', () => {
@@ -213,8 +230,15 @@ describe('PricingOccupancyService — counting nights', () => {
   });
 
   it('asks for bookings of the listed properties only, with slack for time zones', async () => {
-    const { svc, params } = setup({ rows: [row({ id: 'a' }), row({ id: 'b' })] });
+    const { svc, params, sql } = setup({ rows: [row({ id: 'a' }), row({ id: 'b' })] });
     await svc.overview(OWNER);
+    // the overlap test itself: starts before the window ends AND ends after it starts
+    expect(sql).toEqual([
+      'b.propertyId IN (:...ids)',
+      'b.checkIn < :end',
+      'b.checkOut > :start',
+      'b.status NOT IN (:...free)',
+    ]);
     expect(params.ids).toEqual(['a', 'b']);
     expect((params.start as Date).getTime()).toBeLessThan(Date.parse(`${TODAY}T00:00:00.000Z`));
     expect((params.end as Date).getTime()).toBeGreaterThan(Date.parse(`${day(30)}T00:00:00.000Z`));
@@ -288,6 +312,30 @@ describe('PricingOccupancyService — the discount that is already there', () =>
   ])('ignores %s', async (_label, p) => {
     const { svc } = setup({ promos: [p] });
     expect((await svc.overview(OWNER)).properties[0]!.current).toBeNull();
+  });
+
+  it('a suggestion that was created but did not reach Booking is reported, so it is not created again', async () => {
+    const attempt = (state: string, discountPct = 12) =>
+      promo({ id: `try-${state}`, name: 'Заполненность −12%', discountPct, targets: [on('a', state)] });
+    for (const state of ['skipped', 'error', 'dry_run']) {
+      const { svc } = setup({ promos: [attempt(state)] });
+      const p = (await svc.overview(OWNER)).properties[0]!;
+      expect(p.notSent).toEqual({ promotionId: `try-${state}`, name: 'Заполненность −12%', discountPct: 12, source: 'rentai' });
+      expect(p.current).toBeNull();
+    }
+  });
+
+  it('…but not an extranet deal, a live one, or one switched off by hand', async () => {
+    const cases = [
+      promo({ source: 'booking', targets: [on('a', 'skipped')] }),
+      promo({ targets: [on('a', 'on')] }),
+      promo({ targets: [{ propertyId: 'a', desiredState: 'off', state: 'skipped' }] }),
+      promo({ promotionType: 'last_minute', targets: [on('a', 'skipped')] }),
+    ];
+    for (const p of cases) {
+      const { svc } = setup({ promos: [p] });
+      expect((await svc.overview(OWNER)).properties[0]!.notSent).toBeNull();
+    }
   });
 
   it('reads only active discounts of this tenant', async () => {

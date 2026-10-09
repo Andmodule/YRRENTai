@@ -43,6 +43,8 @@ export interface OccupancyRow {
   suggestedPct: number | null;
   /** Largest seasonal discount already on Booking inside the window. */
   current: { promotionId: string; name: string; discountPct: number; source: PromotionSource } | null;
+  /** A discount of ours for these dates that was created but is not on Booking (skipped, failed, test). */
+  notSent?: { promotionId: string; name: string; discountPct: number } | null;
   /** Why a suggested discount cannot be applied. */
   blocked: 'NOT_IN_PILOT' | 'NO_ACCESS' | null;
 }

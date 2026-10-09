@@ -7,7 +7,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Not, Repository } from 'typeorm';
+import { DataSource, In, Not, Repository } from 'typeorm';
 import type { JwtPayload } from '../common/decorators/current-user.decorator';
 import { UserService } from '../user/user.service';
 import { PropertyService } from '../property/property.service';
@@ -287,20 +287,19 @@ export class PricingService {
     this.assertEnabled();
     const { ownerId } = await this.actor(user);
     const [promos, props] = await Promise.all([
-      this.promotionRepo.find({
-        // The ordinary list leaves out steps of auto rules (they have their own tab) — filtered here, not
-        // after `take`, so many rule steps can never push ordinary discounts out of the first 200.
-        // With a property id the property card still wants the steps.
-        where: propertyId
-          ? { ownerId }
-          : [
+      propertyId
+        ? this.promotionsOfProperty(ownerId, propertyId)
+        : this.promotionRepo.find({
+            // The ordinary list leaves out steps of auto rules (they have their own tab) — filtered here,
+            // not after `take`, so many rule steps can never push ordinary discounts out of the first 200.
+            where: [
               { ownerId, source: 'booking' },
               { ownerId, source: 'rentai', promotionType: Not('last_minute') },
             ],
-        relations: ['targets'],
-        order: { createdAt: 'DESC' },
-        take: 200,
-      }),
+            relations: ['targets'],
+            order: { createdAt: 'DESC' },
+            take: 200,
+          }),
       this.propertyService.findAllByOwner(ownerId),
     ]);
     const byId = new Map(props.map((p) => [p.id, p]));
@@ -321,6 +320,27 @@ export class PricingService {
           },
         },
       ];
+    });
+  }
+
+  /**
+   * Everything the property takes part in (the property card wants rule steps too). Found through the
+   * property's own targets and with active ones first, so neither other properties' discounts nor the
+   * switched-off steps of replaced rules (24 per edit) can push a live discount out of the limit.
+   */
+  private async promotionsOfProperty(
+    ownerId: string,
+    propertyId: string,
+  ): Promise<PricePromotionEntity[]> {
+    const targets = await this.targetRepo.find({ where: { propertyId }, select: ['promotionId'] });
+    const ids = [...new Set(targets.map((t) => t.promotionId))];
+    if (ids.length === 0) return [];
+    return this.promotionRepo.find({
+      where: { ownerId, id: In(ids) },
+      relations: ['targets'],
+      // 'active' sorts before 'off'
+      order: { status: 'ASC', createdAt: 'DESC' },
+      take: 200,
     });
   }
 

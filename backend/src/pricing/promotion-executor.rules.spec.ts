@@ -222,6 +222,113 @@ describe('PromotionExecutorService — auto rule steps', () => {
     expect(out.patch.verifyNote).toContain('0–24');
   });
 
+  it('a step Booking stored with a wider reach is switched off at once, not left live', async () => {
+    const z = makeZodomus();
+    // came back as a plain all-day deal: every step of a ladder would then apply all day
+    z.getPromotions.mockResolvedValueOnce({ promotions: [] }).mockResolvedValueOnce({
+      promotions: [
+        {
+          '@attributes': { id: 'VR-LM1', name: 'x', type: 'basic' },
+          rooms: { room: { '@attributes': { id: ROOM } } },
+          discount: { '@attributes': { value: '10' } },
+        },
+      ],
+    });
+    const ex = new PromotionExecutorService(z as unknown as ZodomusService, propertyService, makeCfg());
+    const out = await ex.process(ctx());
+
+    expect(z.deactivatePromotion).toHaveBeenCalledWith(1, EXT, 'VR-LM1');
+    expect(out.patch).toMatchObject({
+      state: 'error',
+      needsPush: false,
+      lastErrorCode: 'RULE_MISMATCH',
+      verifiedAt: null,
+      externalPromotionId: 'VR-LM1', // kept: «Повторить» and the sync must know which deal it was
+    });
+    expect(out.patch.lastError).toContain('basic');
+    expect(out.events.map((e) => e.action)).toEqual(['created', 'error']);
+    expect(out.retry).toBeNull();
+  });
+
+  it('if Booking refuses that switch-off the step stays «on» with its warning — it really is live', async () => {
+    const z = makeZodomus();
+    z.getPromotions.mockResolvedValueOnce({ promotions: [] }).mockResolvedValueOnce({
+      promotions: [{ '@attributes': { id: 'VR-LM1', name: 'x', type: 'basic' }, discount: { '@attributes': { value: '10' } } }],
+    });
+    z.deactivatePromotion.mockRejectedValue(new Error('Zodomus API unreachable'));
+    const ex = new PromotionExecutorService(z as unknown as ZodomusService, propertyService, makeCfg());
+    const out = await ex.process(ctx());
+
+    expect(out.patch).toMatchObject({ state: 'on', verifiedAt: null });
+    expect(out.patch.verifyNote).toMatch(/^MISMATCH:/);
+    expect(out.events.map((e) => e.action)).toEqual(['created', 'warning']);
+    expect(out.events[1]!.message).toContain('экстранете');
+  });
+
+  it('a step that matches is left on (nothing is switched off)', async () => {
+    const z = makeZodomus();
+    z.getPromotions.mockResolvedValueOnce({ promotions: [] }).mockResolvedValueOnce({
+      promotions: [
+        {
+          '@attributes': { id: 'VR-LM1', name: 'x', type: 'last_minute' },
+          rooms: { room: { '@attributes': { id: ROOM } } },
+          discount: { '@attributes': { value: '10' } },
+          last_minute: { '@attributes': { unit: 'hour', value: '12' } },
+          book_time: { '@attributes': { start: '6', end: '12' } },
+        },
+      ],
+    });
+    const ex = new PromotionExecutorService(z as unknown as ZodomusService, propertyService, makeCfg());
+    const out = await ex.process(ctx());
+    expect(z.deactivatePromotion).not.toHaveBeenCalled();
+    expect(out.patch).toMatchObject({ state: 'on', verifyNote: null });
+  });
+
+  it('pilot list: a step for a property outside it is never sent, by either kind of id', async () => {
+    const outside = makeZodomus();
+    const skipped = await new PromotionExecutorService(
+      outside as unknown as ZodomusService,
+      propertyService,
+      makeCfg({ ZODOMUS_PROMOTIONS_PROPERTY_ALLOWLIST: '99999999' }),
+    ).process(ctx());
+    expect(skipped.patch).toMatchObject({ state: 'skipped', lastErrorCode: 'NOT_IN_ALLOWLIST' });
+    for (const fn of Object.values(outside)) expect(fn).not.toHaveBeenCalled();
+
+    const inside = makeZodomus();
+    await new PromotionExecutorService(
+      inside as unknown as ZodomusService,
+      propertyService,
+      makeCfg({ ZODOMUS_PROMOTIONS_PROPERTY_ALLOWLIST: EXT, ZODOMUS_PROMOTIONS_VERIFY: false }),
+    ).process(ctx());
+    expect(inside.createPromotion).toHaveBeenCalledTimes(1);
+  });
+
+  it('minimum price counts Genius and the Mobile rate for a step too', async () => {
+    const z = makeZodomus(); // 420 a night
+    const ex = new PromotionExecutorService(z as unknown as ZodomusService, propertyService, makeCfg({ ZODOMUS_PROMOTIONS_VERIFY: false }));
+    const settings = { minPriceMinor: 31000, geniusPct: 10 } as never;
+    // 420 · 0.9 · 0.9 = 340.2 ≥ 310 → sent; with a 10% Mobile rate 306.18 < 310 → not sent
+    const sent = await ex.process({ ...ctx(), settings });
+    expect(sent.patch).toMatchObject({ state: 'on' });
+    const blocked = await ex.process({ ...ctx(), settings, targetingPct: 10 });
+    expect(blocked.patch).toMatchObject({ state: 'skipped', lastErrorCode: 'BELOW_MIN_PRICE' });
+    expect(z.createPromotion).toHaveBeenCalledTimes(1);
+  });
+
+  it('all steps of a rule share one price lookup for the minimum-price check', async () => {
+    const z = makeZodomus();
+    const ex = new PromotionExecutorService(z as unknown as ZodomusService, propertyService, makeCfg({ ZODOMUS_PROMOTIONS_VERIFY: false }));
+    const settings = { minPriceMinor: 10000, geniusPct: null } as never;
+    for (let hour = 8; hour < 12; hour++) {
+      await ex.process({
+        ...ctx({ promotion: { id: `step-${hour}`, externalMeta: { ...STEP_META, bookTime: { start: hour, end: hour + 1 } } } }),
+        settings,
+      });
+    }
+    expect(z.createPromotion).toHaveBeenCalledTimes(4);
+    expect(z.getAvailability).toHaveBeenCalledTimes(1);
+  });
+
   it('verify: a deal that came back without «за N» / booking hours / last_minute type is a mismatch', async () => {
     const run = async (answer: Record<string, unknown>) => {
       const z = makeZodomus();

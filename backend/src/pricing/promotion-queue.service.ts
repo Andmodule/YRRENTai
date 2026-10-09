@@ -14,6 +14,14 @@ import { PropertyPricingSettingsEntity } from './entities/property-pricing-setti
 import { targetingPctByProperty } from './pricing-targeting.util';
 
 export const PROMOTION_MAX_ATTEMPTS = 6;
+
+/**
+ * An answer we cannot classify is most likely a plain refusal that will repeat: two tries, not six
+ * (a 24-step rule would otherwise send 144 rejected requests for one property).
+ */
+export function promotionMaxAttempts(kind: string): number {
+  return kind === 'UNKNOWN' ? 2 : PROMOTION_MAX_ATTEMPTS;
+}
 /** Targets taken per drain (one property at a time, with a pause between them). */
 const DRAIN_BATCH = 25;
 
@@ -121,7 +129,12 @@ export class PromotionQueueService implements OnModuleInit, OnModuleDestroy {
         : [];
     const due = [...new Map([...off, ...rest].map((t) => [t.id, t] as const)).values()];
     for (let i = 0; i < due.length; i++) {
-      await this.processOne(due[i]!.id);
+      const retryKind = await this.processOne(due[i]!.id);
+      // Booking asked to slow down: do not push the rest of the batch into a throttled account.
+      if (retryKind === 'RATE_LIMITED') {
+        this.logger.warn(`promotions queue paused: rate limited, ${due.length - i - 1} left for the next tick`);
+        break;
+      }
       if (this.cfg.flags.gapMs > 0 && i < due.length - 1) {
         await new Promise((r) => setTimeout(r, this.cfg.flags.gapMs));
       }
@@ -137,12 +150,13 @@ export class PromotionQueueService implements OnModuleInit, OnModuleDestroy {
     return targetingPctByProperty(targets).get(propertyId) ?? null;
   }
 
-  async processOne(targetId: string): Promise<void> {
+  /** Returns the kind of a temporary failure (the target stays queued), or null. */
+  async processOne(targetId: string): Promise<string | null> {
     const target = await this.targetRepo.findOne({
       where: { id: targetId },
       relations: ['promotion'],
     });
-    if (!target || !target.needsPush) return;
+    if (!target || !target.needsPush) return null;
 
     const property = await this.propertyService.findByIdBare(target.propertyId);
     let outcome: ExecutorOutcome;
@@ -177,7 +191,7 @@ export class PromotionQueueService implements OnModuleInit, OnModuleDestroy {
       patch.attempts = attempts;
       patch.lastErrorCode = outcome.retry.kind;
       patch.lastError = outcome.retry.message;
-      if (attempts >= PROMOTION_MAX_ATTEMPTS) {
+      if (attempts >= promotionMaxAttempts(outcome.retry.kind)) {
         patch.state = 'error';
         patch.needsPush = false;
         patch.nextAttemptAt = null;
@@ -227,5 +241,6 @@ export class PromotionQueueService implements OnModuleInit, OnModuleDestroy {
         ),
       );
     }
+    return outcome.retry?.kind ?? null;
   }
 }

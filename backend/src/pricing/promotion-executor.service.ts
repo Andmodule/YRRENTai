@@ -69,6 +69,9 @@ class StepError extends Error {
 
 /** Longest stay window checked against the minimum price (one GET /availability). */
 const FLOOR_CHECK_MAX_NIGHTS = 120;
+/** How long a Booking price read for the minimum-price check is reused (a rule sends up to 24 steps in a row). */
+const LOWEST_PRICE_TTL_MS = 5 * 60_000;
+const LOWEST_PRICE_CACHE_MAX = 200;
 
 /**
  * Applies the desired state of ONE target (one property inside a discount) to Booking via Zodomus.
@@ -77,6 +80,10 @@ const FLOOR_CHECK_MAX_NIGHTS = 120;
 @Injectable()
 export class PromotionExecutorService {
   private readonly logger = new Logger(PromotionExecutorService.name);
+  private readonly lowestPriceCache = new Map<
+    string,
+    { at: number; value: { price: number; date: string } | null }
+  >();
 
   constructor(
     private readonly zodomus: ZodomusService,
@@ -336,10 +343,15 @@ export class PromotionExecutorService {
     patch.previousExternalIds = leftovers;
 
     if (this.cfg.flags.verify) {
-      Object.assign(
-        patch,
-        await this.verify(target, promotionId, promotion.discountPct, roomIds, rule),
-      );
+      const check = await this.verify(target, promotionId, promotion.discountPct, roomIds, rule);
+      Object.assign(patch, check);
+      // A ladder step that Booking stored with a wider reach than asked (no «за N», no booking hours,
+      // another type or size) would hand its discount to dates and hours it was never meant for — and
+      // with many steps the guest gets the largest one all day. Take it down rather than leave it live.
+      if (rule && check.verifyNote?.startsWith('MISMATCH')) {
+        const withdrawn = await this.withdrawMismatchedStep(ctx, promotionId, patch, events, check.verifyNote);
+        if (withdrawn) return withdrawn;
+      }
     }
 
     return this.done(
@@ -351,6 +363,52 @@ export class PromotionExecutorService {
         nextAttemptAt: null,
         lastErrorCode: null,
         lastError: null,
+      },
+      events,
+    );
+  }
+
+  /**
+   * Switches off a rule step that Booking saved differently from what was sent. Returns null when
+   * Booking refuses the switch-off: then the step stays «on» with its MISMATCH note, as it really is live.
+   */
+  private async withdrawMismatchedStep(
+    ctx: ExecutorContext,
+    promotionId: string,
+    patch: PromotionTargetPatch,
+    events: ExecutorEvent[],
+    note: string,
+  ): Promise<ExecutorOutcome | null> {
+    const what = note.replace(/^MISMATCH:\s*/, '');
+    try {
+      await this.zodomus.deactivatePromotion(
+        ctx.target.channelId,
+        ctx.target.externalPropertyId,
+        promotionId,
+      );
+    } catch (e) {
+      const c = classifyPromotionError(e);
+      events.push({
+        action: 'warning',
+        message: `Booking сохранил шаг иначе (${what}), а выключить акцию ${promotionId} не удалось: ${c.kind}. Выключите её в экстранете`,
+        details: { error: c.message },
+      });
+      return null;
+    }
+    events.push({
+      action: 'error',
+      message: `Booking сохранил шаг иначе (${what}) — акция ${promotionId} выключена, чтобы скидка не действовала шире, чем задано`,
+    });
+    return this.done(
+      {
+        ...patch,
+        state: 'error',
+        needsPush: false,
+        attempts: 0,
+        nextAttemptAt: null,
+        verifiedAt: null,
+        lastErrorCode: 'RULE_MISMATCH',
+        lastError: `Booking сохранил шаг иначе: ${what}`,
       },
       events,
     );
@@ -461,6 +519,10 @@ export class PromotionExecutorService {
     weekdays: PricePromotionEntity['activeWeekdays'],
   ): Promise<{ price: number; date: string } | null> {
     const cappedTo = [to, addDaysYmd(from, FLOOR_CHECK_MAX_NIGHTS - 1)].sort()[0]!;
+    // Every step of a rule asks for the same window: one GET /availability serves them all.
+    const cacheKey = [channelId, externalPropertyId, roomId, rateId, from, cappedTo, (weekdays ?? []).join('')].join('|');
+    const cached = this.lowestPriceCache.get(cacheKey);
+    if (cached && Date.now() - cached.at < LOWEST_PRICE_TTL_MS) return cached.value;
     let raw: unknown;
     try {
       raw = await this.zodomus.getAvailability(
@@ -481,6 +543,8 @@ export class PromotionExecutorService {
       if (p !== undefined && p > 0 && (!lowest || p < lowest.price))
         lowest = { price: p, date: night };
     }
+    if (this.lowestPriceCache.size >= LOWEST_PRICE_CACHE_MAX) this.lowestPriceCache.clear();
+    this.lowestPriceCache.set(cacheKey, { at: Date.now(), value: lowest });
     return lowest;
   }
 

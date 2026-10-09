@@ -1,6 +1,6 @@
 import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { QueryFailedError, Repository } from 'typeorm';
 import type { JwtPayload } from '../common/decorators/current-user.decorator';
 import { BookingEntity } from '../booking/entities/booking.entity';
 import { PricingConfig } from './pricing-config';
@@ -18,8 +18,14 @@ import {
   type OccupancySettings,
 } from './pricing-occupancy.util';
 import { PricePromotionEntity } from './entities/price-promotion.entity';
+import type { PromotionTargetState } from './entities/price-promotion-target.entity';
 import { PricingOccupancySettingsEntity } from './entities/pricing-occupancy-settings.entity';
 import type { OccupancySettingsDto } from './dto/pricing-occupancy.dto';
+
+/** On Booking, or on its way there. */
+const LIVE_STATES: readonly PromotionTargetState[] = ['on', 'pending'];
+/** Saved in RentAI, but Booking does not have it. */
+const NOT_SENT_STATES: readonly PromotionTargetState[] = ['skipped', 'error', 'dry_run'];
 
 /** Bookings are stored as an instant near noon of the property day; widen the query like the calendar does. */
 const TZ_SLACK_MS = 14 * 60 * 60 * 1000;
@@ -42,6 +48,11 @@ export type OccupancyRow = {
     discountPct: number;
     source: PricePromotionEntity['source'];
   } | null;
+  /**
+   * A discount of ours for these dates that was created but is NOT on Booking (skipped, failed or only
+   * simulated). Shown instead of «Применить» so the same suggestion is not created again and again.
+   */
+  notSent: { promotionId: string; name: string; discountPct: number } | null;
   /** Why a suggested discount cannot be applied from here. */
   blocked: 'NOT_IN_PILOT' | 'NO_ACCESS' | null;
 };
@@ -82,7 +93,18 @@ export class PricingOccupancyService {
   }
 
   private async settingsOf(ownerId: string): Promise<OccupancyOverview['settings']> {
-    const row = await this.settingsRepo.findOne({ where: { ownerId } });
+    let row: PricingOccupancySettingsEntity | null;
+    try {
+      row = await this.settingsRepo.findOne({ where: { ownerId } });
+    } catch (e) {
+      // The flag was switched on before the migration: say so instead of a bare 500.
+      if (e instanceof QueryFailedError && (e as { driverError?: { code?: string } }).driverError?.code === '42P01') {
+        throw new ServiceUnavailableException(
+          'Таблица настроек заполненности не создана: запустите миграцию 1778400000000-pricing-occupancy-settings',
+        );
+      }
+      throw e;
+    }
     if (!row) {
       return {
         horizonDays: DEFAULT_OCCUPANCY_SETTINGS.horizonDays,
@@ -162,7 +184,13 @@ export class PricingOccupancyService {
         bookedNights: booked,
         occupancyPct: occupancyPct(booked, settings.horizonDays),
         suggestedPct: tier?.discountPct ?? null,
-        current: this.currentDiscount(promos, r.id, w),
+        current: this.seasonalDiscount(promos, r.id, w, LIVE_STATES),
+        notSent: this.seasonalDiscount(
+          promos.filter((p) => p.source === 'rentai'),
+          r.id,
+          w,
+          NOT_SENT_STATES,
+        ),
         blocked:
           r.promotionsAccess === 'denied' ? 'NO_ACCESS' : r.inPilot ? null : 'NOT_IN_PILOT',
       };
@@ -172,27 +200,26 @@ export class PricingOccupancyService {
   }
 
   /**
-   * The seasonal discount a new one would compete with: Booking shows only the largest deal of the
-   * category. Last-minute steps (they depend on the time left to arrival) and Mobile / Country rates
-   * (another category, they stack) are not it.
+   * The largest seasonal discount inside the window whose target for the property is in one of `states`.
+   * With LIVE_STATES it is the one a new discount would compete with (Booking shows only the largest deal
+   * of the category). Last-minute steps (they depend on the time left to arrival) and Mobile / Country
+   * rates (another category, they stack) are not it.
    */
-  private currentDiscount(
+  private seasonalDiscount(
     promos: PricePromotionEntity[],
     propertyId: string,
     window: { from: string; to: string },
+    states: readonly PromotionTargetState[],
   ): OccupancyRow['current'] {
     let best: OccupancyRow['current'] = null;
     for (const p of promos) {
       if (!p.stayFrom || !p.stayTo || !(p.discountPct > 0)) continue;
       if (p.promotionType === 'last_minute' || isTargetingRateType(p.promotionType)) continue;
       if (!intersectRanges(window, { from: p.stayFrom, to: p.stayTo })) continue;
-      const live = (p.targets ?? []).some(
-        (t) =>
-          t.propertyId === propertyId &&
-          t.desiredState === 'on' &&
-          (t.state === 'on' || t.state === 'pending'),
+      const matches = (p.targets ?? []).some(
+        (t) => t.propertyId === propertyId && t.desiredState === 'on' && states.includes(t.state),
       );
-      if (!live) continue;
+      if (!matches) continue;
       if (!best || p.discountPct > best.discountPct) {
         best = { promotionId: p.id, name: p.name, discountPct: p.discountPct, source: p.source };
       }

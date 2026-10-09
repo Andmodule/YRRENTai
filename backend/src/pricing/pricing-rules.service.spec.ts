@@ -37,11 +37,12 @@ function makeDb() {
   const db = { promotions: [] as Row[], targets: [] as Row[], events: [] as Row[] };
   // Equality, TypeORM Not(...) and an array of alternatives (OR) — all the find() filters the services use.
   const matchOne = (row: Row, where?: Record<string, unknown>) =>
-    Object.entries(where ?? {}).every(([k, v]) =>
-      v && typeof v === 'object' && (v as { type?: string }).type === 'not'
-        ? row[k] !== (v as { value: unknown }).value
-        : row[k] === v,
-    );
+    Object.entries(where ?? {}).every(([k, v]) => {
+      const op = v && typeof v === 'object' ? (v as { type?: string; value?: unknown }) : null;
+      if (op?.type === 'not') return row[k] !== op.value;
+      if (op?.type === 'in') return (op.value as unknown[]).includes(row[k]);
+      return row[k] === v;
+    });
   const match = (row: Row, where?: Record<string, unknown> | Record<string, unknown>[]) =>
     Array.isArray(where) ? where.some((w) => matchOne(row, w)) : matchOne(row, where);
   const put = (table: 'promotions' | 'targets' | 'events') => (r: Row) => {
@@ -74,6 +75,7 @@ function makeDb() {
   };
   const targetRepo = {
     create: (x: Row) => ({ ...x }),
+    find: jest.fn(async (o: { where?: Record<string, unknown> }) => db.targets.filter((t) => match(t, o.where))),
     save: jest.fn(async (x: Row | Row[]) => {
       (Array.isArray(x) ? x : [x]).forEach(put('targets'));
       return x;
@@ -520,6 +522,17 @@ describe('createRuleSchema', () => {
       bookTime: { start: h, end: h + 1 },
     }));
     expect(createRuleSchema.safeParse({ ...ok, steps }).success).toBe(true);
+  });
+
+  it('«0–24» is the same as no booking hours: such a pair is a duplicate', () => {
+    const steps = [
+      { discountPct: 5, unit: 'hour', value: 5 },
+      { discountPct: 8, unit: 'hour', value: 5, bookTime: { start: 0, end: 24 } },
+    ];
+    expect(createRuleSchema.safeParse({ ...ok, steps }).success).toBe(false);
+    // …while a real window next to «any time» is fine
+    const real = [steps[0], { ...steps[1], bookTime: { start: 6, end: 12 } }];
+    expect(createRuleSchema.safeParse({ ...ok, steps: real }).success).toBe(true);
   });
 
   it('the same window with a different time of day is a different step', () => {

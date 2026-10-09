@@ -7,7 +7,8 @@ import { PricingRulesService } from './pricing-rules.service';
 import { CreateRuleDto } from './dto/pricing-rules.dto';
 
 /**
- * «Цены → Автоправила». Every route answers 503 while ZODOMUS_PROMOTIONS_AUTORULES_ENABLED=false.
+ * «Цены → Автоправила». While ZODOMUS_PROMOTIONS_AUTORULES_ENABLED=false everything that could put a
+ * discount on Booking answers 503; reading the rules and switching them off keeps working.
  */
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 @Roles('OWNER', 'MANAGER')

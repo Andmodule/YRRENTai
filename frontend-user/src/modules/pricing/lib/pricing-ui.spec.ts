@@ -279,6 +279,19 @@ describe('occupancyAction — what a row offers', () => {
     assert.deepEqual(occupancyAction({ suggestedPct: 8, current: current(10), blocked: 'NOT_IN_PILOT' }), { kind: 'covered', currentPct: 10 });
   });
 
+  it('already created but not on Booking → point at it instead of creating it again', () => {
+    const notSent = { promotionId: 'try', name: 'Заполненность −12%', discountPct: 12 };
+    assert.deepEqual(occupancyAction({ suggestedPct: 12, current: null, blocked: null, notSent }), { kind: 'not_sent', pct: 12, promotionId: 'try' });
+    // the reason it was not sent is on the discount itself, so this wins over «not in the pilot list»
+    assert.deepEqual(occupancyAction({ suggestedPct: 8, current: null, blocked: 'NOT_IN_PILOT', notSent }), { kind: 'not_sent', pct: 12, promotionId: 'try' });
+    // a smaller failed attempt does not stand in the way of a bigger suggestion
+    assert.deepEqual(occupancyAction({ suggestedPct: 15, current: null, blocked: null, notSent }), { kind: 'apply', pct: 15, currentPct: null });
+    // a live discount that is big enough still comes first
+    assert.deepEqual(occupancyAction({ suggestedPct: 12, current: current(12), blocked: null, notSent }), { kind: 'covered', currentPct: 12 });
+    // an older API without the field behaves as before
+    assert.deepEqual(occupancyAction({ suggestedPct: 12, current: null, blocked: null }), { kind: 'apply', pct: 12, currentPct: null });
+  });
+
   it('outside the pilot list or without access → shown, not applicable', () => {
     assert.deepEqual(occupancyAction({ suggestedPct: 12, current: null, blocked: 'NOT_IN_PILOT' }), { kind: 'blocked', pct: 12, reason: 'NOT_IN_PILOT' });
     assert.deepEqual(occupancyAction({ suggestedPct: 12, current: current(5), blocked: 'NO_ACCESS' }), { kind: 'blocked', pct: 12, reason: 'NO_ACCESS' });

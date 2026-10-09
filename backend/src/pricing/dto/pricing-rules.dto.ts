@@ -55,7 +55,10 @@ export const createRuleSchema = z
   .strict()
   .refine(
     (r) => {
-      const keys = r.steps.map((s) => `${s.unit}:${s.value}:${s.bookTime?.start ?? ''}-${s.bookTime?.end ?? ''}`);
+      // «0–24» is stored as «any time», so it must clash with a step that has no window at all.
+      const window = (t: { start: number; end: number } | null | undefined) =>
+        !t || (t.start === 0 && t.end === 24) ? '' : `${t.start}-${t.end}`;
+      const keys = r.steps.map((s) => `${s.unit}:${s.value}:${window(s.bookTime)}`);
       return new Set(keys).size === keys.length;
     },
     { message: 'Steps must differ', path: ['steps'] },
