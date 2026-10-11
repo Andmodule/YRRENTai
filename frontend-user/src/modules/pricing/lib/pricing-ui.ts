@@ -186,6 +186,61 @@ export function cellPrice(rack: number | null | undefined, promotions: readonly 
   return { price: Math.round(guestPrice(rack, live.discountPct)), rack: Math.round(rack) };
 }
 
+/** The deal a regular guest gets on a night: live, confirmed by Booking, not a Mobile / Country rate. */
+export function liveDeal(promotions: readonly CellPromotion[]): CellPromotion | null {
+  return promotions.find((p) => p.state === 'on' && p.confirmed && !isTargetingType(p.promotionType) && p.discountPct > 0) ?? null;
+}
+
+export type NightPrices = {
+  /** The deal behind `regular` (null = no live deal, the guest pays the rack price). */
+  deal: CellPromotion | null;
+  /** Regular guest — the price the calendar cell shows. */
+  regular: number;
+  /** Genius member: Genius first, then the deal. */
+  genius: number;
+  /** Genius member in the app / country: Mobile or Country rate on top. Null when the property has none. */
+  app: number | null;
+};
+
+/**
+ * What different guests pay for one night, from the rack price of the Standard rate.
+ * Taxes and fees of Booking are not included.
+ */
+export function nightPrices(
+  rack: number,
+  promotions: readonly CellPromotion[],
+  geniusPct: number | null,
+  targetingPct: number | null,
+): NightPrices {
+  const deal = liveDeal(promotions);
+  const pct = deal?.discountPct ?? 0;
+  return {
+    deal,
+    regular: roundMoney(guestPrice(rack, pct)),
+    genius: roundMoney(guestPrice(rack, pct, geniusPct)),
+    app: targetingPct && targetingPct > 0 ? roundMoney(guestPrice(rack, pct, geniusPct, targetingPct)) : null,
+  };
+}
+
+/**
+ * Mobile / Country rate that applies to THIS night: the biggest live one in the night's list; when the
+ * list has none (an extranet rate without dates is not in the calendar list) the property-wide percent.
+ */
+export function nightTargetingPct(promotions: readonly CellPromotion[], propertyPct: number | null): number | null {
+  const live = promotions.filter((p) => p.state === 'on' && isTargetingType(p.promotionType) && p.discountPct > 0);
+  if (live.length > 0) return Math.max(...live.map((p) => p.discountPct));
+  return propertyPct && propertyPct > 0 ? propertyPct : null;
+}
+
+/**
+ * The night price came from a rate that is not «Standard» — or the rate could not be told at all
+ * (Booking sent no rate list, so the code fell back to the cheapest rate). `rate` is null when nothing is known.
+ */
+export function isNotStandardRate(rate: { name: string | null } | null | undefined): boolean {
+  if (!rate) return false;
+  return !rate.name || !/standard/i.test(rate.name);
+}
+
 /** Key of one night of one property (`busy` / `halfBusy` sets of the calendar prices). */
 export const cellKey = (propertyId: string, ymd: string) => `${propertyId}:${ymd}`;
 

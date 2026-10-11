@@ -4,7 +4,7 @@ import { useMemo } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { cn } from '@/lib/utils';
 import type { CalendarPromotion } from '../../api';
-import { addDaysYmd, cellKey, cellPriceLabels, isNotSent, promotionsForCell } from '../../lib/pricing-ui';
+import { addDaysYmd, cellKey, cellPriceLabels, isNotSent, isTargetingType, promotionsForCell } from '../../lib/pricing-ui';
 
 export type CellRect = { r1: number; r2: number; d1: number; d2: number };
 
@@ -92,7 +92,8 @@ export function CalendarPromotionsLayer({
       for (let day = 0; day < numDays; day++) {
         const ymd = addDaysYmd(firstDay, day);
         const list = promotionsForCell(promotions, propertyId, ymd);
-        const top = list[0];
+        // The badge is the deal a regular guest gets: a Mobile / Country rate is for a part of the guests only.
+        const top = list.find((p) => !isTargetingType(p.promotionType)) ?? list[0];
         if (!top) continue;
         const tone: keyof typeof BADGE_TONE = isNotSent(top.state)
           ? 'not_sent'

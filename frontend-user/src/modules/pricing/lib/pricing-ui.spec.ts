@@ -12,6 +12,9 @@ import {
   hoursBefore,
   isBelowMin,
   isBookTimeNow,
+  isNotStandardRate,
+  nightPrices,
+  nightTargetingPct,
   isNotSent,
   isRuleStep,
   isTargetingType,
@@ -372,6 +375,65 @@ describe('promotionsForCell', () => {
   it('respects weekdays, dates and properties', () => {
     assert.deepEqual(promotionsForCell(promos, 'a', '2026-10-13').map((p) => p.id), []);
     assert.deepEqual(promotionsForCell(promos, 'b', '2026-10-06'), []);
+  });
+});
+
+describe('night prices for different guests', () => {
+  const promo = (over: Partial<CellPromotion>): CellPromotion => ({
+    id: 'p',
+    name: 'Basic Deal',
+    discountPct: 10,
+    source: 'booking',
+    promotionType: 'basic',
+    state: 'on',
+    confirmed: true,
+    errorCode: null,
+    ...over,
+  });
+
+  it('the administrator case: Standard 270 with Basic Deal 10 %, Genius 10 %, Mobile 10 %', () => {
+    const p = nightPrices(270, [promo({})], 10, 10);
+    assert.equal(p.regular, 243); // = the extranet's Non-refundable rate, which is Standard −10 %
+    assert.equal(p.genius, 218.7);
+    assert.equal(p.app, 196.83);
+    assert.equal(p.deal?.discountPct, 10);
+  });
+
+  it('a Mobile rate is never «the» deal, however big', () => {
+    const p = nightPrices(300, [promo({ id: 'm', promotionType: 'mobile_rate', discountPct: 15 }), promo({ discountPct: 10 })], null, null);
+    assert.equal(p.deal?.id, 'p');
+    assert.equal(p.regular, 270);
+    assert.equal(p.app, null);
+  });
+
+  it('a discount Booking has not confirmed (or that was not sent) does not change the price', () => {
+    assert.equal(nightPrices(300, [promo({ confirmed: false })], null, null).regular, 300);
+    assert.equal(nightPrices(300, [promo({ state: 'skipped' })], null, null).regular, 300);
+    assert.equal(nightPrices(300, [promo({ state: 'pending' })], null, null).deal, null);
+  });
+
+  it('only a Mobile rate: no deal, the app price is below the regular one', () => {
+    const p = nightPrices(200, [promo({ promotionType: 'mobile_rate', discountPct: 10 })], 10, 10);
+    assert.deepEqual([p.regular, p.genius, p.app], [200, 180, 162]);
+  });
+
+  it('tells a price taken from another rate than Standard', () => {
+    assert.equal(isNotStandardRate({ name: 'Standard Rate' }), false);
+    assert.equal(isNotStandardRate({ name: 'Non-refundable Rate' }), true);
+    // The failure the warning exists for: the rate list did not come, the code took the cheapest rate, no name.
+    assert.equal(isNotStandardRate({ name: null }), true);
+    // No information at all (old data): no warning.
+    assert.equal(isNotStandardRate(null), false);
+  });
+
+  it('Mobile / Country rate of the night: the night list first, the property percent otherwise', () => {
+    const mobile = (pct: number, state: CellPromotion['state'] = 'on') => promo({ id: 'm' + pct, promotionType: 'mobile_rate', discountPct: pct, state });
+    assert.equal(nightTargetingPct([promo({}), mobile(10), mobile(15)], 5), 15);
+    assert.equal(nightTargetingPct([promo({}), mobile(15, 'skipped')], 10), 10);
+    // an undated extranet rate is not in the night list: the property percent
+    assert.equal(nightTargetingPct([promo({})], 10), 10);
+    assert.equal(nightTargetingPct([promo({})], null), null);
+    assert.equal(nightTargetingPct([], 0), null);
   });
 });
 
