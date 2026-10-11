@@ -304,7 +304,7 @@ export function CalendarView({
       currency: prop?.otaCurrency ?? prop?.currency ?? null,
       geniusPct: pricingRows.data?.find((r) => r.id === promoCell.propertyId)?.geniusPct ?? null,
       targetingPct: pricingRows.data?.find((r) => r.id === promoCell.propertyId)?.targetingPct ?? null,
-      rateName: prop?.otaNightlyPriceMeta?.[promoCell.ymd]?.rateName ?? null,
+      rate: prop?.otaNightlyPriceMeta?.[promoCell.ymd] ? { name: prop.otaNightlyPriceMeta[promoCell.ymd]!.rateName ?? null } : null,
     };
   }, [promoCell, properties, calendarPromotions.data, pricingRows.data]);
 
@@ -395,7 +395,7 @@ export function CalendarView({
               currency={promoCellView.currency}
               geniusPct={promoCellView.geniusPct}
               targetingPct={promoCellView.targetingPct}
-              rateName={promoCellView.rateName}
+              rate={promoCellView.rate}
             />
           ) : null}
         </>

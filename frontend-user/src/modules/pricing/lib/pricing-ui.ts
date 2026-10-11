@@ -222,9 +222,23 @@ export function nightPrices(
   };
 }
 
-/** True when the price of a night was taken from a rate other than «Standard» (e.g. the cheapest one). */
-export function isNotStandardRate(rateName: string | null | undefined): boolean {
-  return !!rateName && !/standard/i.test(rateName);
+/**
+ * Mobile / Country rate that applies to THIS night: the biggest live one in the night's list; when the
+ * list has none (an extranet rate without dates is not in the calendar list) the property-wide percent.
+ */
+export function nightTargetingPct(promotions: readonly CellPromotion[], propertyPct: number | null): number | null {
+  const live = promotions.filter((p) => p.state === 'on' && isTargetingType(p.promotionType) && p.discountPct > 0);
+  if (live.length > 0) return Math.max(...live.map((p) => p.discountPct));
+  return propertyPct && propertyPct > 0 ? propertyPct : null;
+}
+
+/**
+ * The night price came from a rate that is not «Standard» — or the rate could not be told at all
+ * (Booking sent no rate list, so the code fell back to the cheapest rate). `rate` is null when nothing is known.
+ */
+export function isNotStandardRate(rate: { name: string | null } | null | undefined): boolean {
+  if (!rate) return false;
+  return !rate.name || !/standard/i.test(rate.name);
 }
 
 /** Key of one night of one property (`busy` / `halfBusy` sets of the calendar prices). */

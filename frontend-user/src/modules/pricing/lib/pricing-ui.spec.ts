@@ -14,6 +14,7 @@ import {
   isBookTimeNow,
   isNotStandardRate,
   nightPrices,
+  nightTargetingPct,
   isNotSent,
   isRuleStep,
   isTargetingType,
@@ -417,9 +418,22 @@ describe('night prices for different guests', () => {
   });
 
   it('tells a price taken from another rate than Standard', () => {
-    assert.equal(isNotStandardRate('Standard Rate'), false);
-    assert.equal(isNotStandardRate('Non-refundable Rate'), true);
+    assert.equal(isNotStandardRate({ name: 'Standard Rate' }), false);
+    assert.equal(isNotStandardRate({ name: 'Non-refundable Rate' }), true);
+    // The failure the warning exists for: the rate list did not come, the code took the cheapest rate, no name.
+    assert.equal(isNotStandardRate({ name: null }), true);
+    // No information at all (old data): no warning.
     assert.equal(isNotStandardRate(null), false);
+  });
+
+  it('Mobile / Country rate of the night: the night list first, the property percent otherwise', () => {
+    const mobile = (pct: number, state: CellPromotion['state'] = 'on') => promo({ id: 'm' + pct, promotionType: 'mobile_rate', discountPct: pct, state });
+    assert.equal(nightTargetingPct([promo({}), mobile(10), mobile(15)], 5), 15);
+    assert.equal(nightTargetingPct([promo({}), mobile(15, 'skipped')], 10), 10);
+    // an undated extranet rate is not in the night list: the property percent
+    assert.equal(nightTargetingPct([promo({})], 10), 10);
+    assert.equal(nightTargetingPct([promo({})], null), null);
+    assert.equal(nightTargetingPct([], 0), null);
   });
 });
 

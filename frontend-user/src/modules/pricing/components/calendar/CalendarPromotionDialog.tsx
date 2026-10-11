@@ -8,7 +8,7 @@ import { Link } from '@/i18n/navigation';
 import { getApiErrorMessage } from '@/lib/api/error-message';
 import { cn } from '@/lib/utils';
 import type { CellPromotion } from '../../lib/pricing-ui';
-import { isNotSent, isNotStandardRate, isTargetingType, nightPrices } from '../../lib/pricing-ui';
+import { isNotSent, isNotStandardRate, isTargetingType, liveDeal, nightPrices, nightTargetingPct } from '../../lib/pricing-ui';
 import { usePricingMutations } from '../../hooks';
 import { useErrorLabel, usePriceFormatter, useStayRangeFormatter } from '../shared';
 
@@ -24,7 +24,7 @@ export function CalendarPromotionDialog({
   currency,
   geniusPct,
   targetingPct,
-  rateName,
+  rate,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -37,8 +37,8 @@ export function CalendarPromotionDialog({
   geniusPct: number | null;
   /** Mobile / Country rate of the property (%), null when it has none. */
   targetingPct: number | null;
-  /** Rate the night price was taken from (Booking rate name), when known. */
-  rateName: string | null;
+  /** The rate the night price came from; `name` null = Booking did not say which; null = nothing known. */
+  rate: { name: string | null } | null;
 }) {
   const t = useTranslations('pricing.calendar');
   const fmtPrice = usePriceFormatter();
@@ -50,12 +50,24 @@ export function CalendarPromotionDialog({
   const top = first && !isNotSent(first.state) ? first : undefined;
   /** The deal behind the regular price: a Mobile / Country rate applies to a part of the guests only. */
   const dealRow = promotions.find((p) => !isNotSent(p.state) && !isTargetingType(p.promotionType));
-  const prices = rackPrice != null ? nightPrices(rackPrice, promotions, geniusPct, targetingPct) : null;
+  /** The deal that is really on Booking now (the same one the calendar cell uses). */
+  const live = liveDeal(promotions);
+  const targeting = nightTargetingPct(promotions, targetingPct);
+  const prices = rackPrice != null ? nightPrices(rackPrice, promotions, geniusPct, targeting) : null;
+  const titleDeal = live ?? dealRow;
 
   return (
     <ResponsiveModal open={open} onOpenChange={onOpenChange}>
       <ResponsiveModalContent
-        title={dealRow ?? top ? t('dialogTitle', { pct: (dealRow ?? top)!.discountPct }) : first ? t('dialogNotSent') : t('dialogEmpty')}
+        title={
+          titleDeal
+            ? t(titleDeal === live ? 'dialogTitle' : 'dialogTitleSoon', { pct: titleDeal.discountPct })
+            : top
+              ? t('dialogTargeting', { pct: top.discountPct })
+              : first
+                ? t('dialogNotSent')
+                : t('dialogEmpty')
+        }
         description={`${propertyTitle} · ${fmtRange(ymd, ymd)}`}
       >
         {first ? (
@@ -66,7 +78,7 @@ export function CalendarPromotionDialog({
                   <div className={cn('rounded-xl px-3.5 py-3', prices.deal ? 'bg-emerald-50 dark:bg-emerald-500/10' : 'bg-muted')}>
                     <p className="text-xs text-muted-foreground">{t('regularGuest')}</p>
                     <p>
-                      {prices.deal ? <s className="text-sm text-muted-foreground">{fmtPrice(rackPrice)}</s> : null}{' '}
+                      {prices.deal ? <s className="text-sm text-muted-foreground">{fmtPrice(rackPrice, currency)}</s> : null}{' '}
                       <strong className={cn('text-lg', prices.deal && 'text-emerald-800 dark:text-emerald-300')}>
                         {fmtPrice(prices.regular, currency)}
                       </strong>
@@ -77,19 +89,19 @@ export function CalendarPromotionDialog({
                     <strong className="text-lg">{fmtPrice(prices.genius, currency)}</strong>
                   </div>
                 </div>
-                {prices.app != null && targetingPct ? (
+                {prices.app != null && targeting ? (
                   <div className="rounded-xl bg-muted px-3.5 py-3">
-                    <p className="text-xs text-muted-foreground">{t('appGuestPct', { pct: targetingPct })}</p>
+                    <p className="text-xs text-muted-foreground">{t(geniusPct ? 'appGuestPct' : 'appOnlyPct', { pct: targeting })}</p>
                     <strong className="text-lg">{fmtPrice(prices.app, currency)}</strong>
                   </div>
                 ) : null}
                 <p className="text-xs text-muted-foreground">
-                  {rateName ? `${t('rateLine', { name: rateName })} ` : ''}
+                  {rate?.name ? `${t('rateLine', { rack: fmtPrice(rackPrice, currency), name: rate.name })} ` : ''}
                   {t('noTaxes')}
                 </p>
-                {isNotStandardRate(rateName) ? (
+                {isNotStandardRate(rate) ? (
                   <p className="rounded-xl border border-amber-300/70 bg-amber-50 px-3.5 py-2.5 text-sm text-amber-950 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
-                    {t('rateNotStandard', { name: rateName ?? '' })}
+                    {rate?.name ? t('rateNotStandard', { name: rate.name }) : t('rateUnknown')}
                   </p>
                 ) : null}
               </div>
@@ -98,9 +110,12 @@ export function CalendarPromotionDialog({
               {promotions.map((p, i) => {
                 const notSent = isNotSent(p.state);
                 const onTop = isTargetingType(p.promotionType);
-                const visible = !onTop && p.id === dealRow?.id;
-                const visibleLabel =
-                  p.state === 'on' ? (p.confirmed ? t('visible') : t('visibleUnconfirmed')) : p.state === 'pending' ? t('visibleSoon') : t('visibleDry');
+                // Only the deal that is live now is «visible»; a bigger one that is still pending / unconfirmed /
+                // in test mode is labelled by its state (it replaces the live one once Booking confirms it).
+                const visible = !onTop && p.id === live?.id;
+                const notYet = !visible && !onTop && !notSent && p.id === dealRow?.id;
+                const notYetLabel =
+                  p.state === 'on' ? t('visibleUnconfirmed') : p.state === 'pending' ? t('visibleSoon') : t('visibleDry');
                 const canOff = p.source === 'rentai';
                 return (
                   <li
@@ -133,10 +148,10 @@ export function CalendarPromotionDialog({
                         <p
                           className={cn(
                             'mt-0.5 text-xs font-semibold',
-                            visible && (p.state !== 'on' || p.confirmed) ? 'text-emerald-700 dark:text-emerald-400' : 'text-amber-700 dark:text-amber-400',
+                            visible ? 'text-emerald-700 dark:text-emerald-400' : 'text-amber-700 dark:text-amber-400',
                           )}
                         >
-                          {visible ? visibleLabel : t('hidden')}
+                          {visible ? t('visible') : notYet ? notYetLabel : t('hidden')}
                         </p>
                       )}
                     </div>
