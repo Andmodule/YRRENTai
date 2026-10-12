@@ -50,7 +50,7 @@ export type PushRatesResult = {
   targets: PushRatesTargetResult[];
 };
 
-type PushTarget = { channelId: number; extProp: string; storedRoomId: string | null };
+export type PushTarget = { channelId: number; extProp: string; storedRoomId: string | null };
 
 @Injectable()
 export class ZodomusRatesPushService {
@@ -286,7 +286,8 @@ export class ZodomusRatesPushService {
     };
   }
 
-  private buildPushTargets(property: PropertyEntity): PushTarget[] {
+  /** Linked OTA listings of the property (also used by «Открыть / закрыть даты»). */
+  buildPushTargets(property: PropertyEntity): PushTarget[] {
     const targets: PushTarget[] = [];
     for (const row of property.channelListings ?? []) {
       const ch = row.otaPlatform?.zodomusChannelId;
@@ -312,7 +313,7 @@ export class ZodomusRatesPushService {
     return targets;
   }
 
-  private async resolveRoomId(
+  async resolveRoomId(
     property: PropertyEntity,
     target: PushTarget,
   ): Promise<string | null> {
@@ -332,7 +333,7 @@ export class ZodomusRatesPushService {
    * CRM nights that already block inventory — skip when pushing rates
    * (do not hard-fail the whole range).
    */
-  private async collectCrmBlockedNightKeys(
+  async collectCrmBlockedNightKeys(
     property: PropertyEntity,
     dateFrom: string,
     dateToExclusive: string,

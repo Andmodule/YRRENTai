@@ -214,6 +214,11 @@ export class ZodomusService {
     currencyCode: string;
     price: number | string;
     priceSingle?: number | string;
+    /**
+     * Rate restriction «closed» (Booking «закрыто» on this rate). Omitted = Booking keeps what it has;
+     * false opens nights that were never opened (Booking sends them back as closed with a placeholder price).
+     */
+    closed?: boolean;
   }): Promise<unknown> {
     const prices: Record<string, string> = {
       price: String(params.price),
@@ -230,6 +235,7 @@ export class ZodomusService {
       dateTo: params.dateToExclusive,
       currencyCode: params.currencyCode,
       prices,
+      ...(params.closed != null ? { closed: params.closed ? '1' : '0' } : {}),
     });
   }
 

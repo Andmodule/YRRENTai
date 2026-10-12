@@ -5,7 +5,7 @@ import { useTheme } from 'next-themes';
 import { format, startOfDay } from 'date-fns';
 import { toast } from 'sonner';
 import { useTranslations } from 'next-intl';
-import { Percent, X } from 'lucide-react';
+import { LockOpen, Percent, X } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { ResponsiveModal, ResponsiveModalContent } from '@/components/ui/responsive-modal';
@@ -26,6 +26,8 @@ import { TimelineNavBar, buildCalendarWindowAround } from './components/Timeline
 import { SmartCreateSheet } from '@/modules/tasks/components/manager/SmartCreateSheet';
 import { NewBookingSheet } from './components/NewBookingSheet';
 import { SetOtaPriceSheet } from './components/SetOtaPriceSheet';
+import { CalendarDatesSheet } from './components/CalendarDatesSheet';
+import { useCalendarDatesAccess } from './calendar-dates-api';
 import { CalendarCellActionsDialog } from './components/CalendarCellActionsDialog';
 import { ReservationDetailPanel, ReservationDetailPanelFooter } from './components/ReservationDetailPanel';
 import { CalendarPlanbyGrid, type CalendarPricingProps } from './components/CalendarPlanbyGrid';
@@ -228,6 +230,19 @@ export function CalendarView({
     }
   }, []);
 
+  // «Открыть / закрыть даты на Booking» (server switch ZODOMUS_CALENDAR_DATES_ENABLED).
+  const datesAccess = useCalendarDatesAccess();
+  const [datesOpen, setDatesOpen] = useState(false);
+  const [datesInitial, setDatesInitial] = useState<{ propertyId: string | null; from: string | null; to: string | null }>({
+    propertyId: null,
+    from: null,
+    to: null,
+  });
+  const openDates = useCallback((propertyId: string | null, from: string | null, to: string | null) => {
+    setDatesInitial({ propertyId, from, to });
+    setDatesOpen(true);
+  }, []);
+
   // «Цены → Скидки» in the calendar: badges, range selection, discount sheet (owners / managers, feature on).
   const tp = useTranslations('pricing.calendar');
   const fmtStayRange = useStayRangeFormatter();
@@ -379,7 +394,22 @@ export function CalendarView({
                 })
             : undefined
         }
+        onOpenDates={
+          datesAccess.enabled
+            ? () => openDates(newBookingPropertyId, newBookingGridDates?.checkIn ?? null, null)
+            : undefined
+        }
       />
+      {datesAccess.enabled ? (
+        <CalendarDatesSheet
+          open={datesOpen}
+          onOpenChange={setDatesOpen}
+          properties={properties}
+          initialPropertyId={datesInitial.propertyId}
+          initialFrom={datesInitial.from}
+          initialTo={datesInitial.to}
+        />
+      ) : null}
       {pricingOn ? (
         <>
           <PromotionFormSheet open={discountOpen} onOpenChange={onDiscountOpenChange} initial={discountInitial} />
@@ -658,6 +688,22 @@ export function CalendarView({
               <Percent className="h-4 w-4" aria-hidden />
               {tp('discountSelected')}
             </Button>
+            {datesAccess.enabled && selectionInfo.bookingIds.length === 1 ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-10 gap-2 border border-zinc-700 px-3 text-white hover:bg-zinc-800 hover:text-white dark:hover:bg-zinc-700"
+                disabled={selectionInfo.past}
+                onClick={() => {
+                  openDates(selectionInfo.bookingIds[0]!, selectionInfo.from, selectionInfo.to);
+                  setSelection(null);
+                }}
+              >
+                <LockOpen className="h-4 w-4" aria-hidden />
+                {tp('datesSelected')}
+              </Button>
+            ) : null}
             <Button
               type="button"
               size="sm"
