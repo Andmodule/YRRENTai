@@ -38,9 +38,12 @@ export class CalendarAutoOpenSettingsEntity {
   @Column({ type: 'smallint' })
   horizonDays!: number;
 
-  /** Price of a newly opened night, minor units of the Booking currency. */
-  @Column({ type: 'integer' })
-  priceMinor!: number;
+  /**
+   * Price of a newly opened night, minor units of the Booking currency. null = never set up: the row
+   * only remembers nights closed by hand (written by «Закрыть продажи» before auto-extension is used).
+   */
+  @Column({ type: 'integer', nullable: true })
+  priceMinor!: number | null;
 
   /** Friday and Saturday nights; null = `priceMinor`. */
   @Column({ type: 'integer', nullable: true })

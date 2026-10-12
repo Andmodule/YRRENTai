@@ -49,11 +49,19 @@ function nights(list: Array<Partial<RateNight> & { date: string }>): Map<string,
 }
 
 describe('calendar-dates.util — dates', () => {
-  it('validates yyyy-MM-dd', () => {
+  it('accepts only real calendar dates between 2000 and 2100', () => {
     expect(isYmd('2026-11-01')).toBe(true);
-    expect(isYmd('2026-13-01')).toBe(false);
-    expect(isYmd('2026-11-1')).toBe(false);
+    expect(isYmd('2028-02-29')).toBe(true);
+    for (const bad of ['2026-13-01', '2026-11-1', '2026-02-30', '2027-02-29', '9999-99-99', '2999-12-31', '1999-12-31', '2026-00-10', '']) {
+      expect(isYmd(bad)).toBe(false);
+    }
     expect(isYmd(20261101)).toBe(false);
+  });
+
+  it('refuses to loop over a range that is not made of real dates', () => {
+    expect(() => nightKeys('2026-11-01', '9999-99-99')).toThrow(RangeError);
+    expect(() => splitWindows('2026-11-01', '2999-99-99')).toThrow(RangeError);
+    expect(Number.isNaN(nightsBetween('2026-11-01', '9999-99-99'))).toBe(true);
   });
 
   it('adds days across month and year ends and DST', () => {
@@ -102,8 +110,8 @@ describe('extractRateNights', () => {
       ROOM,
       RATE,
     );
-    expect(m.get('2026-10-31')).toEqual({ date: '2026-10-31', closed: false, price: 330, booked: 0 });
-    expect(m.get('2026-11-01')).toEqual({ date: '2026-11-01', closed: true, price: 1180, booked: 0 });
+    expect(m.get('2026-10-31')).toEqual({ date: '2026-10-31', closed: false, price: 330, booked: 0, availability: 1 });
+    expect(m.get('2026-11-01')).toEqual({ date: '2026-11-01', closed: true, price: 1180, booked: 0, availability: 1 });
     expect(m.get('2026-11-02')?.booked).toBe(1);
   });
 
@@ -210,6 +218,27 @@ describe('planCalendarDates — open', () => {
     expect(p.skipped).toMatchObject({ crm: 1, booked: 1 });
   });
 
+  it('leaves nights with no room for sale (availability 0) alone', () => {
+    const p = planCalendarDates(nights([{ date: '2026-11-01', closed: true, availability: 0 }, { date: '2026-11-02', closed: true, availability: null }]), {
+      action: 'open',
+      dateFrom: '2026-11-01',
+      dateToExclusive: '2026-11-03',
+    });
+    expect(p.changes.map((c) => c.date)).toEqual(['2026-11-02']);
+    expect(p.skipped.booked).toBe(1);
+  });
+
+  it('«as on Booking» never opens a night below the minimum price', () => {
+    const n = nights([
+      { date: '2026-11-01', closed: true, price: 100 },
+      { date: '2026-11-02', closed: true, price: 300 },
+      { date: '2026-11-03', closed: false, price: 100 },
+    ]);
+    const p = planCalendarDates(n, { action: 'open', dateFrom: '2026-11-01', dateToExclusive: '2026-11-04' }, { minPrice: 300 });
+    expect(p.changes.map((c) => c.date)).toEqual(['2026-11-02']);
+    expect(p.skipped).toMatchObject({ belowMin: 1, unchanged: 1 });
+  });
+
   it('skips a night without a price when keeping prices', () => {
     const p = planCalendarDates(nights([{ date: '2026-11-01', closed: true, price: null }]), {
       action: 'open',
@@ -270,7 +299,26 @@ describe('planCalendarDates — close', () => {
       ['2026-11-03', 420, true],
     ]);
     expect(p.skipped.unchanged).toBe(1);
+    expect(p.alreadyClosed).toEqual(['2026-11-02']);
     expect(countChanges(p.changes)).toEqual({ open: 0, close: 2, price: 0 });
+  });
+
+  it('closing ignores the minimum price (the price stays as it is)', () => {
+    const p = planCalendarDates(nights([{ date: '2026-11-01', closed: false, price: 100 }]), {
+      action: 'close',
+      dateFrom: '2026-11-01',
+      dateToExclusive: '2026-11-02',
+    }, { minPrice: 300 });
+    expect(p.changes.map((c) => [c.date, c.price, c.closed])).toEqual([['2026-11-01', 100, true]]);
+  });
+
+  it('opening never reports «already closed»', () => {
+    const p = planCalendarDates(nights([{ date: '2026-11-01', closed: true }]), {
+      action: 'open',
+      dateFrom: '2026-11-01',
+      dateToExclusive: '2026-11-02',
+    });
+    expect(p.alreadyClosed).toEqual([]);
   });
 
   it('does not close a sold night (nothing to close) and ignores the «leave closed» list', () => {

@@ -16,6 +16,8 @@ export type RateNight = {
   price: number | null;
   /** Rooms sold on the channel that night (date or rate level, whichever is larger). */
   booked: number;
+  /** Rooms for sale that night (date level); null = Booking sent none. */
+  availability?: number | null;
 };
 
 export type NightChange = {
@@ -30,8 +32,10 @@ export type NightChange = {
 export type SkipReason =
   /** A booking or block in RentAI covers the night. */
   | 'crm'
-  /** Sold on the channel. */
+  /** Sold on the channel, or no room for sale that night (availability 0). */
   | 'booked'
+  /** «Как сейчас на Booking», but that price is below the property's minimum price. */
+  | 'belowMin'
   /** Booking did not report the night for this rate. */
   | 'missing'
   /** Its day of the week is not selected. */
@@ -63,6 +67,11 @@ export type CalendarDatesPlan = {
   nights: number;
   changes: NightChange[];
   skipped: Record<SkipReason, number>;
+  /**
+   * «close»: nights that are closed on Booking already (nothing to send). Auto-extension still has to
+   * remember them as closed by hand, or it would open them when its edge gets there.
+   */
+  alreadyClosed: string[];
 };
 
 /** A run of consecutive nights sent in one POST /rates. */
@@ -88,10 +97,6 @@ export const WEEKEND_NIGHTS: readonly number[] = [5, 6];
 
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 
-export function isYmd(v: unknown): v is string {
-  return typeof v === 'string' && YMD.test(v) && !Number.isNaN(Date.parse(`${v}T12:00:00.000Z`));
-}
-
 function utcNoon(ymd: string): number {
   return Date.parse(`${ymd}T12:00:00.000Z`);
 }
@@ -100,12 +105,29 @@ export function addDaysYmd(ymd: string, days: number): string {
   return new Date(utcNoon(ymd) + days * 86_400_000).toISOString().slice(0, 10);
 }
 
-/** Nights in [from, toExclusive). */
+/**
+ * A real calendar date between 2000 and 2100. The round trip rejects «2026-02-30» (JS rolls it over to
+ * March) and «9999-99-99»; the year bounds keep every loop over dates short.
+ */
+export function isYmd(v: unknown): v is string {
+  if (typeof v !== 'string' || !YMD.test(v)) return false;
+  const year = Number(v.slice(0, 4));
+  if (year < 2000 || year > 2100 || Number.isNaN(utcNoon(v))) return false;
+  return addDaysYmd(v, 0) === v;
+}
+
+/** Nights in [from, toExclusive); NaN when a date is not a real date. */
 export function nightsBetween(from: string, toExclusive: string): number {
+  if (!isYmd(from) || !isYmd(toExclusive)) return Number.NaN;
   return Math.max(0, Math.round((utcNoon(toExclusive) - utcNoon(from)) / 86_400_000));
 }
 
+function assertRange(from: string, toExclusive: string): void {
+  if (!isYmd(from) || !isYmd(toExclusive)) throw new RangeError(`Not a date range: ${from} → ${toExclusive}`);
+}
+
 export function nightKeys(from: string, toExclusive: string): string[] {
+  assertRange(from, toExclusive);
   const out: string[] = [];
   for (let cur = from; cur < toExclusive; cur = addDaysYmd(cur, 1)) out.push(cur);
   return out;
@@ -126,6 +148,7 @@ export function splitWindows(
   toExclusive: string,
   max = MAX_WINDOW_NIGHTS,
 ): { dateFrom: string; dateToExclusive: string }[] {
+  assertRange(from, toExclusive);
   const out: { dateFrom: string; dateToExclusive: string }[] = [];
   let cur = from;
   while (cur < toExclusive) {
@@ -202,6 +225,7 @@ export function extractRateNights(body: unknown, roomId: string, rateId: string)
       closed: isClosedFlag(rate.closed),
       price: price != null && price > 0 ? price : null,
       booked: Math.max(toNum(node.booked) ?? 0, toNum(rate.booked) ?? 0),
+      availability: toNum(node.availability),
     });
   }
   return out;
@@ -217,23 +241,25 @@ export function samePrice(a: number | null, b: number | null): boolean {
 }
 
 export function emptySkipped(): Record<SkipReason, number> {
-  return { crm: 0, booked: 0, missing: 0, weekday: 0, unchanged: 0, noPrice: 0, keepClosed: 0 };
+  return { crm: 0, booked: 0, belowMin: 0, missing: 0, weekday: 0, unchanged: 0, noPrice: 0, keepClosed: 0 };
 }
 
 /**
- * Which nights change and why the others do not. Never touches a night that is sold on the channel
- * or covered by a booking / block in RentAI.
+ * Which nights change and why the others do not. Never touches a night that is sold on the channel,
+ * has no room for sale, or is covered by a booking / block in RentAI; never opens a night below
+ * `minPrice` (a price that was typed in is refused before planning — this catches «as on Booking»).
  */
 export function planCalendarDates(
   nights: ReadonlyMap<string, RateNight>,
   input: CalendarDatesPlanInput,
-  opts: { crmBlocked?: ReadonlySet<string>; keepClosed?: ReadonlySet<string> } = {},
+  opts: { crmBlocked?: ReadonlySet<string>; keepClosed?: ReadonlySet<string>; minPrice?: number | null } = {},
 ): CalendarDatesPlan {
   const skipped = emptySkipped();
   const days = input.weekdays && input.weekdays.length > 0 ? new Set(input.weekdays) : null;
   const wantClosed = input.action === 'close';
   const keys = nightKeys(input.dateFrom, input.dateToExclusive);
   const changes: NightChange[] = [];
+  const alreadyClosed: string[] = [];
 
   for (const date of keys) {
     if (days && !days.has(weekdayOf(date))) {
@@ -249,7 +275,7 @@ export function planCalendarDates(
       skipped.missing++;
       continue;
     }
-    if (night.booked > 0) {
+    if (night.booked > 0 || night.availability === 0) {
       skipped.booked++;
       continue;
     }
@@ -270,7 +296,12 @@ export function planCalendarDates(
       continue;
     }
     if (night.closed === wantClosed && samePrice(night.price, price)) {
+      if (wantClosed) alreadyClosed.push(date);
       skipped.unchanged++;
+      continue;
+    }
+    if (!wantClosed && opts.minPrice != null && price < opts.minPrice) {
+      skipped.belowMin++;
       continue;
     }
     changes.push({
@@ -281,7 +312,7 @@ export function planCalendarDates(
       fromClosed: night.closed,
     });
   }
-  return { nights: keys.length, changes, skipped };
+  return { nights: keys.length, changes, skipped, alreadyClosed };
 }
 
 /** Consecutive nights with the same price and state → one POST /rates each (at most `max` nights). */

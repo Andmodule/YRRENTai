@@ -10,6 +10,8 @@ import type { DatesAction, DatesRequestBody, SkipReason } from './lib/calendar-d
 export interface CalendarDatesStatus {
   /** ZODOMUS_CALENDAR_DATES_ENABLED. */
   enabled: boolean;
+  /** Nights ahead (from today) that may be opened — RentAI pushes availability only that far. */
+  horizonDays?: number;
   auto: { enabled: boolean; dryRun: boolean; hourUtc: number };
 }
 
@@ -24,6 +26,7 @@ export interface DatesRange {
 
 export interface CalendarDatesPreview {
   propertyId: string;
+  propertyName: string;
   action: DatesAction;
   dateFrom: string;
   dateToExclusive: string;
@@ -37,6 +40,8 @@ export interface CalendarDatesPreview {
   estimateSeconds: number;
   tooMany: boolean;
   ranges: DatesRange[];
+  /** «close»: nights closed on Booking already — RentAI remembers them for auto-extension. */
+  alreadyClosed: number;
 }
 
 export interface CalendarDatesJob {
@@ -51,7 +56,10 @@ export interface CalendarDatesJob {
   total: number;
   sent: number;
   failed: { dateFrom: string; dateToExclusive: string; detail: string }[];
+  /** Planned. */
   changes: { open: number; close: number; price: number };
+  /** Accepted by Booking; null while sending. */
+  applied: { open: number; close: number; price: number } | null;
   verify: { checked: number; mismatched: string[]; error?: string } | null;
   startedAt: string;
   finishedAt: string | null;
@@ -76,7 +84,8 @@ export interface AutoOpenView {
   settings: {
     enabled: boolean;
     horizonDays: number;
-    price: number;
+    /** null: only «closed by hand» nights are kept, auto-extension was never set up. */
+    price: number | null;
     weekendPrice: number | null;
     openedUntil: string | null;
     keepClosed: number;
@@ -131,6 +140,7 @@ export function useCalendarDatesAccess() {
     enabled: canUse && status.data?.enabled === true,
     auto: canUse && status.data?.enabled === true && status.data.auto.enabled === true,
     autoDryRun: status.data?.auto.dryRun ?? true,
+    horizonDays: status.data?.horizonDays ?? 366,
   };
 }
 

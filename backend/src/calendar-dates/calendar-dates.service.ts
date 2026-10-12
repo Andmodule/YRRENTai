@@ -18,7 +18,11 @@ import { PropertyPricingSettingsEntity } from '../pricing/entities/property-pric
 import { ZodomusService } from '../integrations/zodomus/zodomus.service';
 import { ZodomusSyncService } from '../integrations/zodomus/zodomus-sync.service';
 import { ZodomusRatesPushService, type PushTarget } from '../integrations/zodomus/zodomus-rates-push.service';
-import { buildRateNameMapFromRoomRates, pickPrimaryRateId } from '../integrations/zodomus/zodomus-room-rates.util';
+import {
+  buildRateNameMapFromRoomRates,
+  extractRoomsFromRoomRatesBody,
+  pickPrimaryRateId,
+} from '../integrations/zodomus/zodomus-room-rates.util';
 import { formatZodomusHttpException } from '../integrations/zodomus/zodomus-status.util';
 import {
   extractCurrencyFromZodomusPayload,
@@ -85,6 +89,8 @@ export type CalendarDatesRequest = CalendarDatesPlanInput & { propertyId: string
 
 export type CalendarDatesPreview = {
   propertyId: string;
+  /** Shown next to the confirmation, so the wrong property cannot slip through. */
+  propertyName: string;
   action: CalendarDatesAction;
   dateFrom: string;
   dateToExclusive: string;
@@ -101,6 +107,8 @@ export type CalendarDatesPreview = {
   /** More writes than one run may send: ask for a shorter range or one price. */
   tooMany: boolean;
   ranges: ChangeRange[];
+  /** «close»: nights already closed on Booking — nothing to send, auto-extension will leave them closed. */
+  alreadyClosed: number;
 };
 
 export type CalendarDatesJobState = 'running' | 'done' | 'failed' | 'stopped';
@@ -118,18 +126,25 @@ export type CalendarDatesJob = {
   total: number;
   sent: number;
   failed: { dateFrom: string; dateToExclusive: string; detail: string }[];
+  /** Planned. */
   changes: { open: number; close: number; price: number };
+  /** Accepted by Booking (null while sending). */
+  applied: { open: number; close: number; price: number } | null;
   /** Read back from Booking after the writes. null = not done (yet) or could not be read. */
   verify: { checked: number; mismatched: string[]; error?: string } | null;
   startedAt: string;
   finishedAt: string | null;
 };
 
-/** Called after a run with the nights Booking accepted (auto-extension keeps its «leave closed» list). */
+/**
+ * Called after a run with the nights Booking accepted and, on «close», the nights that were closed
+ * already (auto-extension keeps its «leave closed» list).
+ */
 export type CalendarDatesAppliedListener = (
   propertyId: string,
   action: CalendarDatesAction,
   applied: NightChange[],
+  alreadyClosed: string[],
 ) => Promise<void>;
 
 /**
@@ -175,6 +190,20 @@ export class CalendarDatesService {
     return Number.isFinite(n) && n > 0 ? n : 20;
   }
 
+  /**
+   * RentAI pushes availability (and sends availability 0 for new bookings) only up to this many days
+   * ahead. A night opened further than that could be sold twice: never open beyond it.
+   */
+  get availabilityHorizonDays(): number {
+    const n = Number(this.config.get('ZODOMUS_AVAILABILITY_HORIZON_DAYS') ?? 366);
+    return Number.isInteger(n) && n > 0 ? n : 366;
+  }
+
+  /** Exclusive end of what may be opened for a property today. */
+  horizonEnd(tz: string | null | undefined): string {
+    return addDaysYmd(todayInTz(tz), this.availabilityHorizonDays);
+  }
+
   setAppliedListener(fn: CalendarDatesAppliedListener): void {
     this.appliedListener = fn;
   }
@@ -201,9 +230,16 @@ export class CalendarDatesService {
     if (!property) throw new NotFoundException('Объект не найден');
     const target = this.ratesPush.buildPushTargets(property).find((t) => t.channelId === this.channelId);
     if (!target) throw new BadRequestException('Объект не подключён к Booking через Zodomus');
+    const ratesRaw = await this.zodomus.getRoomRatesRaw(target.channelId, target.extProp);
+    // Without a saved room the first Booking room would be taken — the wrong one if there are several.
+    const stored = target.storedRoomId?.trim();
+    if ((!stored || stored === target.extProp) && extractRoomsFromRoomRatesBody(ratesRaw).length > 1) {
+      throw new BadRequestException(
+        'У объекта на Booking несколько номеров — укажите номер Zodomus (room id) в карточке объекта',
+      );
+    }
     const roomId = await this.ratesPush.resolveRoomId(property, target);
     if (!roomId) throw new BadRequestException('Booking не вернул номер объекта (GET /room-rates)');
-    const ratesRaw = await this.zodomus.getRoomRatesRaw(target.channelId, target.extProp);
     const rateId = pickPrimaryRateId(ratesRaw, roomId);
     if (!rateId) throw new BadRequestException('Booking не вернул тариф объекта (GET /room-rates)');
     const rateName = buildRateNameMapFromRoomRates(ratesRaw)[rateId] ?? null;
@@ -233,12 +269,22 @@ export class CalendarDatesService {
   }
 
   private validate(ctx: Ctx, input: CalendarDatesPlanInput): void {
+    const nights = nightsBetween(input.dateFrom, input.dateToExclusive);
+    if (!Number.isFinite(nights) || nights < 1) {
+      throw new BadRequestException('Неверные даты');
+    }
     const today = todayInTz(ctx.tz);
     if (input.dateFrom < today) {
       throw new BadRequestException(`Прошедшие даты не меняются: начните с ${today} или позже`);
     }
-    if (nightsBetween(input.dateFrom, input.dateToExclusive) > MAX_RANGE_NIGHTS) {
+    if (nights > MAX_RANGE_NIGHTS) {
       throw new BadRequestException(`Не больше ${MAX_RANGE_NIGHTS} ночей за один раз`);
+    }
+    const end = this.horizonEnd(ctx.tz);
+    if (input.dateToExclusive > end) {
+      throw new BadRequestException(
+        `Не дальше ${addDaysYmd(end, -1)}: дальше RentAI не выгружает наличие на Booking, и открытая дата могла бы продаться дважды`,
+      );
     }
     if (input.action === 'open' && ctx.minPrice != null) {
       for (const p of [input.price, input.weekendPrice]) {
@@ -268,6 +314,7 @@ export class CalendarDatesService {
         body = hit.body;
       } else {
         body = await this.zodomus.getAvailability(ctx.target.channelId, ctx.target.extProp, w.dateFrom, w.dateToExclusive);
+        this.pruneWindowCache();
         this.windowCache.set(key, { at: Date.now(), body });
       }
       if (!currencySeen) {
@@ -289,6 +336,13 @@ export class CalendarDatesService {
     }
   }
 
+  private pruneWindowCache(): void {
+    const now = Date.now();
+    for (const [key, hit] of this.windowCache) {
+      if (now - hit.at >= WINDOW_CACHE_TTL_MS) this.windowCache.delete(key);
+    }
+  }
+
   private async plan(
     ctx: Ctx,
     input: CalendarDatesPlanInput,
@@ -296,7 +350,7 @@ export class CalendarDatesService {
   ): Promise<{ plan: CalendarDatesPlan; ranges: ChangeRange[] }> {
     const nights = await this.readNights(ctx, input.dateFrom, input.dateToExclusive, false);
     const crmBlocked = await this.ratesPush.collectCrmBlockedNightKeys(ctx.property, input.dateFrom, input.dateToExclusive);
-    const plan = planCalendarDates(nights, input, { crmBlocked, keepClosed: opts.keepClosed });
+    const plan = planCalendarDates(nights, input, { crmBlocked, keepClosed: opts.keepClosed, minPrice: ctx.minPrice });
     return { plan, ranges: mergeChangesToRanges(plan.changes) };
   }
 
@@ -316,6 +370,7 @@ export class CalendarDatesService {
     const { plan, ranges } = await this.plan(ctx, input);
     return {
       propertyId: ctx.property.id,
+      propertyName: ctx.property.name,
       action: input.action,
       dateFrom: input.dateFrom,
       dateToExclusive: input.dateToExclusive,
@@ -329,6 +384,7 @@ export class CalendarDatesService {
       estimateSeconds: ranges.length ? this.estimateSeconds(ranges.length, input.dateFrom, input.dateToExclusive) : 0,
       tooMany: ranges.length > MAX_WRITE_REQUESTS,
       ranges: ranges.slice(0, PREVIEW_RANGES),
+      alreadyClosed: plan.alreadyClosed.length,
     };
   }
 
@@ -348,7 +404,7 @@ export class CalendarDatesService {
     // The checks above awaited Booking: another run may have started meanwhile.
     this.assertIdle(input.propertyId);
     const job = this.newJob(ctx, input, 'manual', plan, ranges);
-    void this.execute(ctx, job, plan.changes, ranges).catch((e) => {
+    void this.execute(ctx, job, plan.changes, ranges, plan.alreadyClosed).catch((e) => {
       job.state = 'failed';
       job.phase = 'finished';
       job.finishedAt = new Date().toISOString();
@@ -387,10 +443,12 @@ export class CalendarDatesService {
     const ctx = await this.context(propertyId);
     const today = todayInTz(ctx.tz);
     const from = input.dateFrom < today ? today : input.dateFrom;
-    if (from >= input.dateToExclusive) {
-      return { plan: { nights: 0, changes: [], skipped: emptySkipped() }, ranges: [], job: null };
+    const horizon = this.horizonEnd(ctx.tz);
+    const to = input.dateToExclusive > horizon ? horizon : input.dateToExclusive;
+    if (from >= to) {
+      return { plan: { nights: 0, changes: [], skipped: emptySkipped(), alreadyClosed: [] }, ranges: [], job: null };
     }
-    const scoped = { ...input, dateFrom: from };
+    const scoped = { ...input, dateFrom: from, dateToExclusive: to };
     // Checked when the settings are saved too; the minimum may have been raised since.
     if (ctx.minPrice != null && [scoped.price, scoped.weekendPrice].some((p) => p != null && p < ctx.minPrice!)) {
       throw new BadRequestException(`Цена автопродления ниже минимальной цены объекта (${ctx.minPrice})`);
@@ -428,6 +486,7 @@ export class CalendarDatesService {
       sent: 0,
       failed: [],
       changes: countChanges(plan.changes),
+      applied: null,
       verify: null,
       startedAt: new Date().toISOString(),
       finishedAt: null,
@@ -436,7 +495,13 @@ export class CalendarDatesService {
     return job;
   }
 
-  private async execute(ctx: Ctx, job: CalendarDatesJob, changes: NightChange[], ranges: ChangeRange[]): Promise<void> {
+  private async execute(
+    ctx: Ctx,
+    job: CalendarDatesJob,
+    changes: NightChange[],
+    ranges: ChangeRange[],
+    alreadyClosed: string[] = [],
+  ): Promise<void> {
     const sentRanges: ChangeRange[] = [];
     let failuresInRow = 0;
     for (const r of ranges) {
@@ -471,6 +536,7 @@ export class CalendarDatesService {
 
     const inSent = (date: string) => sentRanges.some((r) => date >= r.dateFrom && date < r.dateToExclusive);
     const applied = changes.filter((c) => inSent(c.date));
+    job.applied = countChanges(applied);
     this.dropWindowCache(ctx.property.id);
     if (applied.length > 0) {
       this.zodomusSync.invalidateCalendarOverlay(ctx.property.id);
@@ -484,12 +550,12 @@ export class CalendarDatesService {
       } catch (e) {
         job.verify = { checked: 0, mismatched: [], error: formatZodomusHttpException(e) };
       }
-      if (this.appliedListener) {
-        try {
-          await this.appliedListener(ctx.property.id, job.action, applied);
-        } catch (e) {
-          this.logger.warn(`calendar dates listener failed: ${e instanceof Error ? e.message : String(e)}`);
-        }
+    }
+    if (this.appliedListener && (applied.length > 0 || alreadyClosed.length > 0)) {
+      try {
+        await this.appliedListener(ctx.property.id, job.action, applied, alreadyClosed);
+      } catch (e) {
+        this.logger.warn(`calendar dates listener failed: ${e instanceof Error ? e.message : String(e)}`);
       }
     }
     if (job.state === 'running') job.state = job.sent === 0 && job.total > 0 ? 'failed' : 'done';

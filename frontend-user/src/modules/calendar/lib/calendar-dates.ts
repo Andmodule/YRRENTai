@@ -65,16 +65,24 @@ export type DatesRequestBody = {
   onlyClosed?: boolean;
 };
 
-export type DatesFormError = 'property' | 'dates' | 'past' | 'tooLong' | 'weekdays' | 'price' | 'weekendPrice';
+export type DatesFormError = 'property' | 'dates' | 'past' | 'tooLong' | 'tooFar' | 'weekdays' | 'price' | 'weekendPrice';
+
+/** Last night that may be opened: RentAI pushes availability `horizonDays` ahead, today included. */
+export function lastAllowedNight(today: string, horizonDays: number): string {
+  return addDaysYmd(today, horizonDays - 1);
+}
 
 export function buildDatesRequest(
   s: DatesFormState,
   today: string,
+  /** Inclusive; see `lastAllowedNight`. */
+  lastNight?: string,
 ): { ok: true; body: DatesRequestBody } | { ok: false; error: DatesFormError } {
   if (!s.propertyId) return { ok: false, error: 'property' };
   if (!s.from || !s.to || s.from > s.to) return { ok: false, error: 'dates' };
   if (s.from < today) return { ok: false, error: 'past' };
   if (nightsCount(s.from, s.to) > MAX_RANGE_NIGHTS) return { ok: false, error: 'tooLong' };
+  if (lastNight && s.to > lastNight) return { ok: false, error: 'tooFar' };
   if (s.weekdays.size === 0) return { ok: false, error: 'weekdays' };
   const body: DatesRequestBody = {
     propertyId: s.propertyId,
@@ -113,8 +121,8 @@ export function requestKey(body: DatesRequestBody): string {
   ]);
 }
 
-export type SkipReason = 'crm' | 'booked' | 'missing' | 'weekday' | 'unchanged' | 'noPrice' | 'keepClosed';
-const SKIP_ORDER: readonly SkipReason[] = ['booked', 'crm', 'unchanged', 'weekday', 'noPrice', 'keepClosed', 'missing'];
+export type SkipReason = 'crm' | 'booked' | 'belowMin' | 'missing' | 'weekday' | 'unchanged' | 'noPrice' | 'keepClosed';
+const SKIP_ORDER: readonly SkipReason[] = ['booked', 'crm', 'belowMin', 'unchanged', 'weekday', 'noPrice', 'keepClosed', 'missing'];
 
 /** Non-zero skip reasons, most telling first. */
 export function skippedList(skipped: Partial<Record<SkipReason, number>>): [SkipReason, number][] {

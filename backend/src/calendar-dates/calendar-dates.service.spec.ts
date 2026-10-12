@@ -60,6 +60,8 @@ function setup(opts: {
   minPriceMinor?: number | null;
   targets?: unknown[];
   crmBlocked?: string[];
+  /** Rooms GET /room-rates returns. */
+  rooms?: number;
 } = {}) {
   const booking = fakeBooking(opts.nights ?? closedNights('2026-11-01', '2026-11-08'));
   const env: Record<string, unknown> = { ZODOMUS_CALENDAR_DATES_ENABLED: true, ...opts.env };
@@ -68,7 +70,12 @@ function setup(opts: {
     isEnabled: true,
     getAvailability: booking.getAvailability,
     setRates: booking.setRates,
-    getRoomRatesRaw: jest.fn().mockResolvedValue({ rooms: [{ id: ROOM, rates: [{ id: RATE, name: 'Standard Rate' }] }] }),
+    getRoomRatesRaw: jest.fn().mockResolvedValue({
+      rooms: Array.from({ length: opts.rooms ?? 1 }, (_, i) => ({
+        id: i === 0 ? ROOM : `${ROOM}${i}`,
+        rates: [{ id: RATE, name: 'Standard Rate' }],
+      })),
+    }),
   } as unknown as ZodomusService;
   const ratesPush = {
     buildPushTargets: jest.fn().mockReturnValue(opts.targets ?? [{ channelId: 1, extProp: EXT, storedRoomId: ROOM }]),
@@ -78,7 +85,7 @@ function setup(opts: {
   const sync = { invalidateCalendarOverlay: jest.fn() } as unknown as ZodomusSyncService;
   const propertyService = { findOneForUser: jest.fn().mockResolvedValue({ id: PROPERTY_ID }) } as unknown as PropertyService;
   const propertyRepo = {
-    findOne: jest.fn().mockResolvedValue({ id: PROPERTY_ID, timezone: 'Europe/Warsaw', currency: 'PLN', channelListings: [] }),
+    findOne: jest.fn().mockResolvedValue({ id: PROPERTY_ID, name: 'K22 Andersa', timezone: 'Europe/Warsaw', currency: 'PLN', channelListings: [] }),
   } as unknown as Repository<PropertyEntity>;
   const settingsRepo = {
     findOne: jest.fn().mockResolvedValue(opts.minPriceMinor != null ? { minPriceMinor: opts.minPriceMinor } : null),
@@ -140,12 +147,37 @@ describe('CalendarDatesService — switch and checks', () => {
   });
 
   it('refuses more than 366 nights, accepts exactly 366', async () => {
-    const { svc } = setup({ nights: {} });
+    const { svc } = setup({ nights: {}, env: { ZODOMUS_AVAILABILITY_HORIZON_DAYS: 800 } });
     await expect(
       svc.preview(USER, { ...OPEN, dateFrom: '2026-11-01', dateToExclusive: addDaysYmd('2026-11-01', 367) }),
     ).rejects.toThrow('366');
     const p = await svc.preview(USER, { ...OPEN, dateFrom: '2026-11-01', dateToExclusive: addDaysYmd('2026-11-01', 366) });
     expect(p.nights).toBe(366);
+  });
+
+  it('refuses dates that are not real dates without looping over them', async () => {
+    const { svc, booking } = setup();
+    for (const dateToExclusive of ['9999-99-99', '2999-99-99', '2026-02-30', '2026-13-01']) {
+      await expect(svc.preview(USER, { ...OPEN, dateToExclusive })).rejects.toThrow('Неверные даты');
+    }
+    await expect(svc.preview(USER, { ...OPEN, dateFrom: '2026-11-05', dateToExclusive: '2026-11-05' })).rejects.toThrow('Неверные даты');
+    expect(booking.getAvailability).not.toHaveBeenCalled();
+  });
+
+  it('never opens beyond the availability horizon (RentAI would not close a later booking there)', async () => {
+    const { svc } = setup({ nights: closedNights('2026-11-01', '2026-11-08'), env: { ZODOMUS_AVAILABILITY_HORIZON_DAYS: 25 } });
+    // today 2026-10-12 + 25 → the last night allowed is 2026-11-05
+    await expect(svc.preview(USER, { ...OPEN, dateToExclusive: '2026-11-07' })).rejects.toThrow('2026-11-05');
+    await expect(svc.preview(USER, { ...OPEN, dateToExclusive: '2026-11-06' })).resolves.toBeDefined();
+  });
+
+  it('refuses a Booking property with several rooms and no saved room', async () => {
+    const { svc } = setup({ targets: [{ channelId: 1, extProp: EXT, storedRoomId: null }], rooms: 2 });
+    await expect(svc.preview(USER, OPEN)).rejects.toThrow('несколько номеров');
+    const saved = setup({ targets: [{ channelId: 1, extProp: EXT, storedRoomId: ROOM }], rooms: 2 });
+    await expect(saved.svc.preview(USER, OPEN)).resolves.toBeDefined();
+    const single = setup({ targets: [{ channelId: 1, extProp: EXT, storedRoomId: null }], rooms: 1 });
+    await expect(single.svc.preview(USER, OPEN)).resolves.toBeDefined();
   });
 
   it('refuses an open price below the minimum price, also on weekends; keeping prices is allowed', async () => {
@@ -154,6 +186,18 @@ describe('CalendarDatesService — switch and checks', () => {
     await expect(svc.preview(USER, { ...OPEN, price: 200, weekendPrice: 159 })).rejects.toThrow('ниже минимальной');
     await expect(svc.preview(USER, { ...OPEN, price: 160 })).resolves.toBeDefined();
     await expect(svc.preview(USER, OPEN)).resolves.toBeDefined();
+  });
+
+  it('«as on Booking» skips closed nights whose Booking price is below the minimum', async () => {
+    const nights = closedNights('2026-11-01', '2026-11-04', 100);
+    nights['2026-11-03'] = { closed: true, price: 500, booked: 0 };
+    const { svc, booking } = setup({ nights, minPriceMinor: 30000 });
+    const p = await svc.preview(USER, { ...OPEN, dateToExclusive: '2026-11-04' });
+    expect(p.changes.open).toBe(1);
+    expect(p.skipped.belowMin).toBe(2);
+    await svc.start(USER, { ...OPEN, dateToExclusive: '2026-11-04' });
+    await finished(svc);
+    expect(booking.setRates.mock.calls.map((c) => c[0].dateFrom)).toEqual(['2026-11-03']);
   });
 });
 
@@ -212,6 +256,50 @@ describe('CalendarDatesService — run', () => {
     expect(booking.setRates.mock.calls[0]![0]).toMatchObject({ channelId: 1, propertyId: EXT, roomId: ROOM, rateId: RATE, currencyCode: 'PLN' });
     expect(booking.state.get('2026-11-01')).toEqual({ closed: false, price: 1000, booked: 0 });
     expect(sync.invalidateCalendarOverlay).toHaveBeenCalledWith(PROPERTY_ID);
+    expect(job.applied).toEqual({ open: 7, close: 0, price: 0 });
+  });
+
+  it('closing nights that are closed already sends nothing but tells the listener', async () => {
+    const nights = closedNights('2026-11-01', '2026-11-03');
+    nights['2026-11-03'] = { closed: false, price: 400, booked: 0 };
+    const { svc, booking } = setup({ nights });
+    const listener = jest.fn().mockResolvedValue(undefined);
+    svc.setAppliedListener(listener);
+    const p = await svc.preview(USER, { ...OPEN, action: 'close', dateToExclusive: '2026-11-04' });
+    expect(p).toMatchObject({ alreadyClosed: 2, changes: { open: 0, close: 1, price: 0 }, propertyName: 'K22 Andersa' });
+    await svc.start(USER, { ...OPEN, action: 'close', dateToExclusive: '2026-11-04' });
+    await finished(svc);
+    expect(booking.setRates).toHaveBeenCalledTimes(1);
+    expect(listener).toHaveBeenCalledWith(PROPERTY_ID, 'close', [expect.objectContaining({ date: '2026-11-03' })], ['2026-11-01', '2026-11-02']);
+  });
+
+  it('closing only closed nights still reaches the listener (nothing to send)', async () => {
+    const { svc, booking } = setup({ nights: closedNights('2026-11-01', '2026-11-03') });
+    const listener = jest.fn().mockResolvedValue(undefined);
+    svc.setAppliedListener(listener);
+    await svc.start(USER, { ...OPEN, action: 'close', dateToExclusive: '2026-11-03' });
+    const job = await finished(svc);
+    expect(job).toMatchObject({ state: 'done', total: 0 });
+    expect(booking.setRates).not.toHaveBeenCalled();
+    expect(listener).toHaveBeenCalledWith(PROPERTY_ID, 'close', [], ['2026-11-01', '2026-11-02']);
+  });
+
+  it('leaves nights with no room for sale (availability 0) alone', async () => {
+    const { svc, booking } = setup();
+    booking.getAvailability.mockImplementationOnce(async () => ({
+      rooms: [
+        {
+          id: ROOM,
+          dates: [
+            { date: '2026-11-01', availability: '0', booked: '', rates: [{ rateId: RATE, closed: '1', price: '1180', booked: '0' }] },
+            { date: '2026-11-02', availability: '1', booked: '', rates: [{ rateId: RATE, closed: '1', price: '1180', booked: '0' }] },
+          ],
+        },
+      ],
+    }));
+    const p = await svc.preview(USER, { ...OPEN, dateToExclusive: '2026-11-03' });
+    expect(p.changes.open).toBe(1);
+    expect(p.skipped.booked).toBe(1);
   });
 
   it('closes nights keeping their price', async () => {
@@ -312,10 +400,12 @@ describe('CalendarDatesService — run', () => {
     svc.setAppliedListener(listener);
     await svc.start(USER, { ...OPEN, action: 'open', dateToExclusive: '2026-11-03' });
     await finished(svc);
-    expect(listener).toHaveBeenCalledWith(PROPERTY_ID, 'open', [
-      expect.objectContaining({ date: '2026-11-01', closed: false }),
-      expect.objectContaining({ date: '2026-11-02', closed: false }),
-    ]);
+    expect(listener).toHaveBeenCalledWith(
+      PROPERTY_ID,
+      'open',
+      [expect.objectContaining({ date: '2026-11-01', closed: false }), expect.objectContaining({ date: '2026-11-02', closed: false })],
+      [],
+    );
   });
 
   it('a failing listener does not break the run', async () => {

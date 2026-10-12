@@ -42,7 +42,8 @@ export type AutoOpenView = {
   settings: {
     enabled: boolean;
     horizonDays: number;
-    price: number;
+    /** null: the row only keeps «closed by hand» nights, auto-extension was never set up. */
+    price: number | null;
     weekendPrice: number | null;
     openedUntil: string | null;
     keepClosed: number;
@@ -99,7 +100,9 @@ export class CalendarAutoOpenService implements OnModuleInit, OnModuleDestroy {
   }
 
   onModuleInit(): void {
-    this.dates.setAppliedListener((propertyId, action, applied) => this.rememberManual(propertyId, action, applied));
+    this.dates.setAppliedListener((propertyId, action, applied, alreadyClosed) =>
+      this.rememberManual(propertyId, action, applied, alreadyClosed),
+    );
     if (!this.enabled) return;
     this.logger.log(
       `Calendar auto-extension ENABLED — daily at ${String(this.hourUtc).padStart(2, '0')}:00 UTC, dryRun=${this.dryRun}`,
@@ -126,35 +129,53 @@ export class CalendarAutoOpenService implements OnModuleInit, OnModuleDestroy {
     const day = now.toISOString().slice(0, 10);
     if (this.lastRunUtcDate === day) return;
     this.lastRunUtcDate = day;
-    await this.runAll();
+    try {
+      await this.runAll();
+    } catch (e) {
+      // Called from setInterval: an escaping rejection would take the whole process down.
+      this.logger.error(`auto-extension run failed: ${e instanceof Error ? e.stack : String(e)}`);
+    }
   }
 
   async runAll(): Promise<void> {
     if (this.running) return;
     this.running = true;
     try {
-      let rows: CalendarAutoOpenSettingsEntity[];
+      let ids: string[];
       try {
-        rows = await this.repo.find({ where: { enabled: true } });
+        ids = (await this.repo.find({ where: { enabled: true }, select: { propertyId: true } })).map((r) => r.propertyId);
       } catch (e) {
         this.logger.error(`auto-extension: settings unreadable (migration 1778500000000 not run?): ${String(e)}`);
         return;
       }
-      for (const row of rows) {
-        await this.runOne(row);
+      for (const id of ids) {
+        try {
+          await this.runOne(id);
+        } catch (e) {
+          this.logger.error(`auto-extension property=${id} failed: ${e instanceof Error ? e.stack : String(e)}`);
+        }
       }
     } finally {
       this.running = false;
     }
   }
 
-  private async runOne(row: CalendarAutoOpenSettingsEntity): Promise<void> {
-    const property = await this.propertyRepo.findOne({ where: { id: row.propertyId } });
+  /**
+   * One property. Reads its settings right now (they may have changed since the run started) and writes
+   * back only what the run owns — the person may be editing the same row meanwhile.
+   */
+  private async runOne(propertyId: string): Promise<void> {
+    const row = await this.repo.findOne({ where: { propertyId } });
+    if (!row || !row.enabled || row.priceMinor == null) return;
+    const property = await this.propertyRepo.findOne({ where: { id: propertyId } });
     if (!property) return;
     const today = todayInTz(property.timezone);
-    const end = addDaysYmd(today, row.horizonDays);
+    const wanted = addDaysYmd(today, row.horizonDays);
+    const cap = this.dates.horizonEnd(property.timezone);
+    const end = wanted > cap ? cap : wanted;
     const start = row.openedUntil && row.openedUntil > today ? row.openedUntil : today;
     const keepClosed = new Set((row.keepClosed ?? []).filter((d) => d >= today));
+    let openedUntil: string | null = null;
     const result: AutoOpenResult = {
       at: new Date().toISOString(),
       dryRun: this.dryRun,
@@ -169,7 +190,7 @@ export class CalendarAutoOpenService implements OnModuleInit, OnModuleDestroy {
     if (start < end) {
       try {
         const res = await this.dates.runAuto(
-          row.propertyId,
+          propertyId,
           {
             action: 'open',
             dateFrom: start,
@@ -194,37 +215,72 @@ export class CalendarAutoOpenService implements OnModuleInit, OnModuleDestroy {
             result.failed = failedNights;
             result.opened = res.plan.changes.length - failedNights;
             result.mismatched = res.job.verify?.mismatched.length ?? 0;
-            if (res.job.state === 'done' && res.job.failed.length === 0) row.openedUntil = end;
+            if (res.job.state === 'done' && res.job.failed.length === 0) openedUntil = end;
           } else {
             // Nothing to open: every night is already open, sold or kept closed.
-            row.openedUntil = end;
+            openedUntil = end;
           }
         }
       } catch (e) {
         result.error = e instanceof Error ? e.message : String(e);
-        this.logger.warn(`auto-extension property=${row.propertyId} failed: ${result.error}`);
+        this.logger.warn(`auto-extension property=${propertyId} failed: ${result.error}`);
       }
     }
 
-    row.keepClosed = [...keepClosed].sort();
-    row.lastRunAt = new Date();
-    row.lastResult = result;
-    await this.repo.save(row);
+    await this.repo.update(
+      { propertyId },
+      {
+        lastRunAt: new Date(),
+        lastResult: result as never,
+        ...(openedUntil ? { openedUntil } : {}),
+      },
+    );
   }
 
-  /** Nights closed by hand beyond the edge stay closed; opening them by hand forgets that. */
-  private async rememberManual(propertyId: string, action: CalendarDatesAction, applied: NightChange[]): Promise<void> {
-    if (!this.enabled) return;
-    const row = await this.repo.findOne({ where: { propertyId } });
-    if (!row) return;
-    const edge = row.openedUntil ?? '';
-    const set = new Set(row.keepClosed ?? []);
-    for (const c of applied) {
-      if (action === 'close' && c.closed && c.date >= edge) set.add(c.date);
-      if (action === 'open' && !c.closed) set.delete(c.date);
+  /**
+   * Nights closed by hand at or beyond the edge stay closed; opening them by hand forgets that.
+   * Recorded whenever the dates tool is on and the table exists — also before auto-extension is
+   * switched on, so dates closed meanwhile are not opened later. A property without settings gets a
+   * switched-off row just for this list.
+   */
+  private async rememberManual(
+    propertyId: string,
+    action: CalendarDatesAction,
+    applied: NightChange[],
+    alreadyClosed: string[],
+  ): Promise<void> {
+    if (!this.dates.enabled) return;
+    const closedNow = action === 'close' ? [...applied.filter((c) => c.closed).map((c) => c.date), ...alreadyClosed] : [];
+    const openedNow = action === 'open' ? applied.filter((c) => !c.closed).map((c) => c.date) : [];
+    if (closedNow.length === 0 && openedNow.length === 0) return;
+    const recent = addDaysYmd(new Date().toISOString().slice(0, 10), -1);
+    try {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const row = await this.repo.findOne({ where: { propertyId } });
+        const edge = row?.openedUntil ?? '';
+        const set = new Set((row?.keepClosed ?? []).filter((d) => d >= recent));
+        for (const d of closedNow) if (d >= edge) set.add(d);
+        for (const d of openedNow) set.delete(d);
+        const keepClosed = [...set].sort();
+        if (row) {
+          await this.repo.update({ propertyId }, { keepClosed });
+          return;
+        }
+        if (keepClosed.length === 0) return;
+        try {
+          await this.repo.insert({ propertyId, enabled: false, horizonDays: 90, priceMinor: null, keepClosed, openedUntil: null });
+          return;
+        } catch (e) {
+          // Created by «Сохранить» meanwhile: read it again and update.
+          if (attempt > 0) throw e;
+        }
+      }
+    } catch (e) {
+      const missing =
+        e instanceof QueryFailedError && (e as { driverError?: { code?: string } }).driverError?.code === '42P01';
+      if (missing) this.logger.debug('auto-extension table missing: closed nights not remembered');
+      else this.logger.warn(`auto-extension: could not remember nights closed by hand: ${String(e)}`);
     }
-    row.keepClosed = [...set].sort();
-    await this.repo.save(row);
   }
 
   // ─── settings API ──────────────────────────────────────────────────────────
@@ -251,7 +307,7 @@ export class CalendarAutoOpenService implements OnModuleInit, OnModuleDestroy {
         ? {
             enabled: row.enabled,
             horizonDays: row.horizonDays,
-            price: toMajor(row.priceMinor),
+            price: row.priceMinor != null ? toMajor(row.priceMinor) : null,
             weekendPrice: row.weekendPriceMinor != null ? toMajor(row.weekendPriceMinor) : null,
             openedUntil: row.openedUntil,
             keepClosed: (row.keepClosed ?? []).length,
@@ -273,22 +329,33 @@ export class CalendarAutoOpenService implements OnModuleInit, OnModuleDestroy {
     await this.dates.assertAccess(user, input.propertyId);
     const property = await this.propertyRepo.findOne({ where: { id: input.propertyId } });
     if (!property) throw new NotFoundException('Объект не найден');
-    const min = await this.dates.minPriceOf(input.propertyId);
-    for (const p of [input.price, input.weekendPrice]) {
-      if (p != null && min != null && p < min) {
-        throw new BadRequestException(`Цена ${p} ниже минимальной цены объекта (${min}) — «Цены → Минимальные цены»`);
+    // Switching off must always work, even when the minimum price was raised since.
+    if (input.enabled) {
+      const min = await this.dates.minPriceOf(input.propertyId);
+      for (const p of [input.price, input.weekendPrice]) {
+        if (p != null && min != null && p < min) {
+          throw new BadRequestException(`Цена ${p} ниже минимальной цены объекта (${min}) — «Цены → Минимальные цены»`);
+        }
       }
     }
     const existing = await this.settingsRow(input.propertyId);
-    const today = todayInTz(property.timezone);
-    const row = existing ?? this.repo.create({ propertyId: input.propertyId, keepClosed: [], openedUntil: null });
-    // Switching on starts from the far edge: nights before it are opened by hand («Открыть даты»).
-    if (input.enabled && !existing?.enabled) row.openedUntil = addDaysYmd(today, input.horizonDays);
-    row.enabled = input.enabled;
-    row.horizonDays = input.horizonDays;
-    row.priceMinor = toMinor(input.price);
-    row.weekendPriceMinor = input.weekendPrice != null ? toMinor(input.weekendPrice) : null;
-    await this.repo.save(row);
+    const fields = {
+      enabled: input.enabled,
+      horizonDays: input.horizonDays,
+      priceMinor: toMinor(input.price),
+      weekendPriceMinor: input.weekendPrice != null ? toMinor(input.weekendPrice) : null,
+      // Switching on starts from the far edge: nights before it are opened by hand («Открыть даты»).
+      ...(input.enabled && !existing?.enabled
+        ? { openedUntil: minYmd(addDaysYmd(todayInTz(property.timezone), input.horizonDays), this.dates.horizonEnd(property.timezone)) }
+        : {}),
+    };
+    // Only these fields: the «keep closed» list may be written by a manual run at the same time.
+    if (existing) await this.repo.update({ propertyId: input.propertyId }, fields);
+    else await this.repo.insert({ propertyId: input.propertyId, keepClosed: [], openedUntil: null, ...fields });
     return this.view(await this.settingsRow(input.propertyId));
   }
+}
+
+function minYmd(a: string, b: string): string {
+  return a < b ? a : b;
 }

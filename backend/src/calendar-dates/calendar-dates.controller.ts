@@ -47,6 +47,8 @@ export class CalendarDatesController {
     return {
       data: {
         enabled: this.dates.enabled,
+        /** Nights ahead (from today) that may be opened: RentAI pushes availability only that far. */
+        horizonDays: this.dates.availabilityHorizonDays,
         auto: { enabled: this.auto.enabled, dryRun: this.auto.dryRun, hourUtc: this.auto.hourUtc },
       },
     };

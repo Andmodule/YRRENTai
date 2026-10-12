@@ -1,7 +1,9 @@
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
+import { isYmd } from '../calendar-dates.util';
 
-const ymd = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected yyyy-MM-dd');
+/** A real calendar date (2000–2100), not just the pattern: «9999-99-99» must never reach a date loop. */
+const ymd = z.string().refine(isYmd, 'Expected a real date yyyy-MM-dd');
 /** Nightly price in major units of the Booking currency (e.g. 1180 PLN). */
 const price = z.coerce.number().positive().max(1_000_000);
 

@@ -29,6 +29,7 @@ import {
   RANGE_PRESETS,
   buildDatesRequest,
   estimateParts,
+  lastAllowedNight,
   parsePrice,
   presetLastNight,
   requestKey,
@@ -96,8 +97,14 @@ export function CalendarDatesSheet({
   // Reset every time the sheet opens.
   useEffect(() => {
     if (!open) return;
-    const preferred =
-      initialPropertyId && linked.some((p) => p.uuid === initialPropertyId) ? initialPropertyId : (linked[0]?.uuid ?? '');
+    // Opened for a property that is not on Booking: make the person pick one, never slip in another.
+    const preferred = initialPropertyId
+      ? linked.some((p) => p.uuid === initialPropertyId)
+        ? initialPropertyId
+        : ''
+      : linked.length === 1
+        ? linked[0]!.uuid
+        : '';
     setPropertyId(preferred);
     setStep('form');
     setAction('open');
@@ -122,9 +129,11 @@ export function CalendarDatesSheet({
 
   const property = linked.find((p) => p.uuid === propertyId);
   const currency = shown?.data.currency ?? property?.otaCurrency ?? property?.currency ?? null;
+  const lastNight = lastAllowedNight(today, access.horizonDays);
   const request = buildDatesRequest(
     { propertyId, action, from, to, weekdays: days, priceMode, price, weekendPrice, repriceOpen },
     today,
+    lastNight,
   );
   const key = request.ok ? requestKey(request.body) : null;
   const fresh = shown && key && shown.key === key ? shown.data : null;
@@ -169,7 +178,9 @@ export function CalendarDatesSheet({
   };
 
   const changesTotal = fresh ? fresh.changes.open + fresh.changes.close + fresh.changes.price : 0;
-  const canSubmit = !!fresh && changesTotal > 0 && !fresh.tooMany && !apply.isPending && !running;
+  // «Закрыть» on dates that are closed already sends nothing, but remembers them for auto-extension.
+  const remembersOnly = !!fresh && action === 'close' && fresh.alreadyClosed > 0;
+  const canSubmit = !!fresh && (changesTotal > 0 || remembersOnly) && !fresh.tooMany && !apply.isPending && !running;
 
   const footer =
     step === 'form' ? (
@@ -290,6 +301,7 @@ export function CalendarDatesSheet({
                   <Input
                     type="date"
                     min={today}
+                    max={lastNight}
                     value={from}
                     onChange={(e) => {
                       const v = e.target.value;
@@ -305,7 +317,7 @@ export function CalendarDatesSheet({
                   <Input
                     type="date"
                     min={from}
-                    max={addDaysYmd(from, 365)}
+                    max={addDaysYmd(from, 365) < lastNight ? addDaysYmd(from, 365) : lastNight}
                     value={to}
                     onChange={(e) => {
                       if (!e.target.value) return;
@@ -417,16 +429,24 @@ function PreviewCard({ data, stale, currency }: { data: CalendarDatesPreview; st
   return (
     <section className={cn('space-y-3 rounded-xl border border-border px-3.5 py-3', stale && 'opacity-50')}>
       <SectionTitle>{t('previewTitle')}</SectionTitle>
+      <p className="text-sm">
+        <span className="text-muted-foreground">{t('previewProperty')} </span>
+        <strong>{data.propertyName}</strong>
+        <span className="text-muted-foreground"> · {fmtRange(data.dateFrom, addDaysYmd(data.dateToExclusive, -1))}</span>
+      </p>
       {stale ? <p className="text-xs text-amber-700 dark:text-amber-400">{t('stale')}</p> : null}
-      {total === 0 ? (
+      {total === 0 && !(data.action === 'close' && data.alreadyClosed > 0) ? (
         <p className="text-sm">{t('nothing')}</p>
-      ) : (
+      ) : total === 0 ? null : (
         <ul className="space-y-1 text-sm">
           {data.changes.open > 0 ? <li className="font-semibold text-emerald-700 dark:text-emerald-400">{t('changeOpen', { count: data.changes.open })}</li> : null}
           {data.changes.close > 0 ? <li className="font-semibold text-red-700 dark:text-red-400">{t('changeClose', { count: data.changes.close })}</li> : null}
           {data.changes.price > 0 ? <li className="font-semibold text-amber-700 dark:text-amber-400">{t('changePrice', { count: data.changes.price })}</li> : null}
         </ul>
       )}
+      {data.action === 'close' && data.alreadyClosed > 0 ? (
+        <p className="text-sm">{t('alreadyClosed', { count: data.alreadyClosed })}</p>
+      ) : null}
       {skipped.length > 0 ? (
         <div className="space-y-0.5 text-xs text-muted-foreground">
           <p>{t('skippedTitle')}</p>
@@ -467,6 +487,8 @@ function RunReport({ job, loading }: { job: CalendarDatesJob | null; loading: bo
   const running = job.state === 'running';
   const pct = job.total ? Math.round(((job.sent + job.failed.length) / job.total) * 100) : 100;
   const mismatched = job.verify?.mismatched ?? [];
+  /** What Booking accepted; the plan only while it is still being sent. */
+  const counts = job.applied ?? job.changes;
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
@@ -506,15 +528,15 @@ function RunReport({ job, loading }: { job: CalendarDatesJob | null; loading: bo
                 : job.state === 'failed'
                   ? t('failedTitle')
                   : job.total === 0
-                    ? t('doneNothing')
+                    ? t(job.action === 'close' ? 'doneRemembered' : 'doneNothing')
                     : t(job.action === 'open' ? 'doneOpen' : 'doneClose')}
             </p>
             {job.total > 0 ? (
               <p className="text-sm text-muted-foreground">
                 {[
-                  job.changes.open ? t('changeOpenDone', { count: job.changes.open }) : null,
-                  job.changes.close ? t('changeCloseDone', { count: job.changes.close }) : null,
-                  job.changes.price ? t('changePriceDone', { count: job.changes.price }) : null,
+                  counts.open ? t('changeOpenDone', { count: counts.open }) : null,
+                  counts.close ? t('changeCloseDone', { count: counts.close }) : null,
+                  counts.price ? t('changePriceDone', { count: counts.price }) : null,
                 ]
                   .filter(Boolean)
                   .join(' · ')}
@@ -568,9 +590,11 @@ function AutoOpenCard({ propertyId, currency }: { propertyId: string; currency: 
   useEffect(() => {
     setEnabled(s?.enabled ?? false);
     setHorizon(s?.horizonDays ?? 90);
-    setPrice(s ? String(s.price) : '');
+    setPrice(s?.price != null ? String(s.price) : '');
     setWeekend(s?.weekendPrice != null ? String(s.weekendPrice) : '');
   }, [s, propertyId]);
+  /** A longer horizon while switched on: the next night opens the whole difference at once. */
+  const grows = !!s?.enabled && enabled && horizon > s.horizonDays;
 
   const priceNum = parsePrice(price);
   const weekendNum = weekend.trim() ? parsePrice(weekend) : null;
@@ -614,7 +638,7 @@ function AutoOpenCard({ propertyId, currency }: { propertyId: string; currency: 
           <div className="grid grid-cols-2 gap-3">
             <label className="space-y-1.5 text-xs font-medium text-muted-foreground">
               {t('price', { currency: currency ?? '' })}
-              <Input inputMode="decimal" value={price} placeholder="1180" onChange={(e) => setPrice(e.target.value)} />
+              <Input inputMode="decimal" value={price} placeholder="0" onChange={(e) => setPrice(e.target.value)} />
             </label>
             <label className="space-y-1.5 text-xs font-medium text-muted-foreground">
               {t('weekendPrice', { currency: currency ?? '' })}
@@ -636,6 +660,7 @@ function AutoOpenCard({ propertyId, currency }: { propertyId: string; currency: 
             </p>
           ) : null}
           {s && s.keepClosed > 0 ? <p className="text-xs text-muted-foreground">{t('keepClosed', { count: s.keepClosed })}</p> : null}
+          {grows ? <p className={WARN_BOX}>{t('horizonGrows', { days: horizon - s!.horizonDays })}</p> : null}
           {auto.data?.dryRun ? <p className={WARN_BOX}>{t('dryRunNote')}</p> : null}
           {priceNum != null ? (
             <p className="text-xs text-muted-foreground">

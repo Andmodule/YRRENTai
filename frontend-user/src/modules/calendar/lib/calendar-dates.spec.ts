@@ -5,6 +5,7 @@ import {
   RANGE_PRESETS,
   buildDatesRequest,
   estimateParts,
+  lastAllowedNight,
   parsePrice,
   presetLastNight,
   requestKey,
@@ -110,6 +111,14 @@ describe('buildDatesRequest', () => {
     assert.deepEqual(buildDatesRequest(form({ from: '2026-10-11' }), TODAY), { ok: false, error: 'past' });
   });
 
+  it('not beyond the availability horizon (last night included)', () => {
+    const last = lastAllowedNight(TODAY, 366);
+    assert.equal(last, '2027-10-12');
+    assert.ok(buildDatesRequest(form({ from: '2027-10-01', to: last }), TODAY, last).ok);
+    assert.deepEqual(buildDatesRequest(form({ from: '2027-10-01', to: '2027-10-13' }), TODAY, last), { ok: false, error: 'tooFar' });
+    assert.ok(buildDatesRequest(form({ from: '2027-10-01', to: '2027-10-13' }), TODAY).ok);
+  });
+
   it('366 nights are allowed, 367 are not', () => {
     assert.ok(buildDatesRequest(form({ to: addDaysYmd('2026-11-01', MAX_RANGE_NIGHTS - 1) }), TODAY).ok);
     assert.deepEqual(buildDatesRequest(form({ to: addDaysYmd('2026-11-01', MAX_RANGE_NIGHTS) }), TODAY), { ok: false, error: 'tooLong' });
@@ -143,9 +152,10 @@ describe('requestKey', () => {
 
 describe('skippedList', () => {
   it('keeps only non-zero reasons, sold and RentAI bookings first', () => {
-    assert.deepEqual(skippedList({ missing: 1, crm: 2, booked: 3, unchanged: 0 }), [
+    assert.deepEqual(skippedList({ missing: 1, crm: 2, booked: 3, unchanged: 0, belowMin: 4 }), [
       ['booked', 3],
       ['crm', 2],
+      ['belowMin', 4],
       ['missing', 1],
     ]);
     assert.deepEqual(skippedList({}), []);
