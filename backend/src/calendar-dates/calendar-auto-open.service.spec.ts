@@ -326,7 +326,11 @@ describe('CalendarAutoOpenService — settings', () => {
     await svc.save(USER, { propertyId: PID, enabled: false, horizonDays: 120, price: 1000 });
     expect(rows.get(PID)!.enabled).toBe(false);
     await svc.save(USER, { propertyId: PID, enabled: true, horizonDays: 30, price: 1000 });
-    expect(rows.get(PID)!.openedUntil).toBe(addDaysYmd('2026-10-12', 30));
+    // Never moves back: nights closed by hand before the old edge were not remembered.
+    expect(rows.get(PID)!.openedUntil).toBe('2027-01-02');
+    await svc.save(USER, { propertyId: PID, enabled: false, horizonDays: 30, price: 1000 });
+    await svc.save(USER, { propertyId: PID, enabled: true, horizonDays: 120, price: 1000 });
+    expect(rows.get(PID)!.openedUntil).toBe(addDaysYmd('2026-10-12', 120));
   });
 
   it('refuses a price below the minimum price when switching on, but always lets it be switched off', async () => {

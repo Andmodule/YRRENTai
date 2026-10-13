@@ -345,8 +345,14 @@ export class CalendarAutoOpenService implements OnModuleInit, OnModuleDestroy {
       priceMinor: toMinor(input.price),
       weekendPriceMinor: input.weekendPrice != null ? toMinor(input.weekendPrice) : null,
       // Switching on starts from the far edge: nights before it are opened by hand («Открыть даты»).
+      // Never back: nights before the old edge were not remembered when closed by hand.
       ...(input.enabled && !existing?.enabled
-        ? { openedUntil: minYmd(addDaysYmd(todayInTz(property.timezone), input.horizonDays), this.dates.horizonEnd(property.timezone)) }
+        ? {
+            openedUntil: maxYmd(
+              existing?.openedUntil ?? null,
+              minYmd(addDaysYmd(todayInTz(property.timezone), input.horizonDays), this.dates.horizonEnd(property.timezone)),
+            ),
+          }
         : {}),
     };
     // Only these fields: the «keep closed» list may be written by a manual run at the same time.
@@ -354,6 +360,10 @@ export class CalendarAutoOpenService implements OnModuleInit, OnModuleDestroy {
     else await this.repo.insert({ propertyId: input.propertyId, keepClosed: [], openedUntil: null, ...fields });
     return this.view(await this.settingsRow(input.propertyId));
   }
+}
+
+function maxYmd(a: string | null, b: string): string {
+  return a && a > b ? a : b;
 }
 
 function minYmd(a: string, b: string): string {
