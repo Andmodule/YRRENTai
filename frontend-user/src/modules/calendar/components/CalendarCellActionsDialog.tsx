@@ -1,7 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { CalendarPlus, Coins, Percent } from 'lucide-react';
+import { CalendarPlus, Coins, LockOpen, Percent } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   ResponsiveModal,
@@ -17,6 +17,8 @@ interface CalendarCellActionsDialogProps {
   onSetOtaPrice: () => void;
   /** «Цены → Скидки» enabled: discount for this property and day. */
   onSetDiscount?: () => void;
+  /** «Открыть / закрыть даты на Booking» enabled on the server. */
+  onOpenDates?: () => void;
 }
 
 export function CalendarCellActionsDialog({
@@ -27,6 +29,7 @@ export function CalendarCellActionsDialog({
   onNewBooking,
   onSetOtaPrice,
   onSetDiscount,
+  onOpenDates,
 }: CalendarCellActionsDialogProps) {
   const t = useTranslations('calendar.cellActions');
 
@@ -65,6 +68,23 @@ export function CalendarCellActionsDialog({
             <Coins className="h-4 w-4" />
             {t('setOtaPrice')}
           </Button>
+          {onOpenDates ? (
+            <Button
+              type="button"
+              variant="secondary"
+              className="h-11 justify-start gap-2"
+              onClick={() => {
+                onOpenChange(false);
+                onOpenDates();
+              }}
+            >
+              <LockOpen className="h-4 w-4" />
+              <span className="flex-1 text-left">{t('openDates')}</span>
+              <span className="rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary-foreground">
+                {t('newBadge')}
+              </span>
+            </Button>
+          ) : null}
           {onSetDiscount ? (
             <Button
               type="button"

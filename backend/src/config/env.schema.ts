@@ -147,6 +147,30 @@ const zodomusEnvFields = z.object({
     .enum(['true', 'false', '1', '0', 'yes', 'no'])
     .default('false')
     .transform((v) => v === 'true' || v === '1' || v === 'yes'),
+  /**
+   * «Открыть / закрыть даты на Booking» in the calendar: opens (or closes) nights on the main Booking rate
+   * with POST /rates `closed`, at the price the person gives. Off by default: API answers 503, UI hidden.
+   */
+  ZODOMUS_CALENDAR_DATES_ENABLED: z
+    .enum(['true', 'false', '1', '0', 'yes', 'no'])
+    .default('false')
+    .transform((v) => v === 'true' || v === '1' || v === 'yes'),
+  /**
+   * «Автопродление календаря»: once a day opens the nights that newly enter «today + N days», per property.
+   * Off by default; needs ZODOMUS_CALENDAR_DATES_ENABLED=true and the migration
+   * 1778500000000-calendar-auto-open-settings.
+   */
+  ZODOMUS_CALENDAR_AUTO_OPEN_ENABLED: z
+    .enum(['true', 'false', '1', '0', 'yes', 'no'])
+    .default('false')
+    .transform((v) => v === 'true' || v === '1' || v === 'yes'),
+  /** Auto-extension only reports what it would open (default true). */
+  ZODOMUS_CALENDAR_AUTO_OPEN_DRY_RUN: z
+    .enum(['true', 'false', '1', '0', 'yes', 'no'])
+    .default('true')
+    .transform((v) => v === 'true' || v === '1' || v === 'yes'),
+  /** UTC hour of the daily auto-extension run (after the 03:00 availability reconcile). Default: 4. */
+  ZODOMUS_CALENDAR_AUTO_OPEN_HOUR_UTC: z.coerce.number().int().min(0).max(23).default(4),
   /** After create: read the promotion back and check rooms/rate were applied. Default: true. */
   ZODOMUS_PROMOTIONS_VERIFY: z
     .enum(['true', 'false', '1', '0', 'yes', 'no'])

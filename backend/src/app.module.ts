@@ -39,6 +39,7 @@ import { AutomationsModule } from './modules/automations/automations.module';
 import { RedisModule } from './modules/redis/redis.module';
 import { AiChatModule } from './modules/ai-chat/ai-chat.module';
 import { PricingModule } from './pricing/pricing.module';
+import { CalendarDatesModule } from './calendar-dates/calendar-dates.module';
 
 @Module({
   imports: [
@@ -122,6 +123,7 @@ import { PricingModule } from './pricing/pricing.module';
     AutomationsModule,
     AiChatModule,
     PricingModule,
+    CalendarDatesModule,
   ],
   providers: [
     {
