@@ -36,12 +36,14 @@ export class CalendarController {
     @Query('from') fromParam: string | undefined,
     @Query('to') toParam: string | undefined,
     @CurrentUser() user: JwtPayload,
+    /** One property only (calendar of one property): Booking is read for it alone. */
+    @Query('propertyId') propertyIdParam?: string,
   ) {
     const today = new Date();
     const from = fromParam?.trim() || format(addDays(today, -3), 'yyyy-MM-dd');
     const to = toParam?.trim() || format(addDays(today, 18), 'yyyy-MM-dd');
     const ownerId = await this.userService.resolveTenantOwnerId(user.sub, user.role);
-    const payload = await this.calendarService.getCalendarData(ownerId, from, to);
+    const payload = await this.calendarService.getCalendarData(ownerId, from, to, propertyIdParam?.trim() || undefined);
     return { data: payload };
   }
 }

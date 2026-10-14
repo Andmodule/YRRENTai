@@ -45,6 +45,7 @@ import {
   resolveZodomusCurrency,
 } from './zodomus-reservation-price.util';
 import { buildRateNameMapFromRoomRates, pickPrimaryRateId } from './zodomus-room-rates.util';
+import { overlayAvailabilityWindows } from './zodomus-overlay-windows.util';
 
 /** Zodomus queue status codes per official docs (inbound only — see ZODOMUS_BOOKING_FLOW). */
 const QUEUE_STATUS = {
@@ -636,19 +637,18 @@ export class ZodomusSyncService {
               `calendar overlay room-rates skip property=${property.id} ch=${channelId}: ${formatZodomusHttpException(e)}`,
             );
           }
-          const raw = await this.zodomus.getAvailability(channelId, extId, dateFromYmd, dateToYmd);
-          if (otaCurrency == null) {
-            otaCurrency = resolveOtaChannelCurrency({
-              fromAri: extractCurrencyFromZodomusPayload(raw),
-              propertyCurrency: property.currency,
-              timezone: property.timezone,
-            });
+          const days: ReturnType<typeof extractZodomusInventoryDays> = [];
+          for (const w of overlayAvailabilityWindows(dateFromYmd, dateToYmd)) {
+            const raw = await this.zodomus.getAvailability(channelId, extId, w.dateFrom, w.dateToExclusive);
+            if (otaCurrency == null) {
+              otaCurrency = resolveOtaChannelCurrency({
+                fromAri: extractCurrencyFromZodomusPayload(raw),
+                propertyCurrency: property.currency,
+                timezone: property.timezone,
+              });
+            }
+            days.push(...extractZodomusInventoryDays(raw, { preferRoomId, preferRateId, rateNamesById }));
           }
-          const days = extractZodomusInventoryDays(raw, {
-            preferRoomId,
-            preferRateId,
-            rateNamesById,
-          });
           const blockedDays = collectOtaBlockedDays(days);
           for (const d of blockedDays) blocked.add(d);
           this.logger.debug(
