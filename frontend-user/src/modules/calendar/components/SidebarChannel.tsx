@@ -4,6 +4,7 @@ import { memo } from 'react';
 import type { Channel } from 'planby';
 import { Building2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import { Link } from '@/i18n/navigation';
 import { cn } from '@/lib/utils';
 import { ZodomusStatusBadge } from '@/components/property/zodomus-status-badge';
 import type { ZodomusPropertyStatus } from '@rentai/shared';
@@ -35,13 +36,16 @@ export const SidebarChannel = memo(function SidebarChannel({ channel, meta, isMo
   const ariUnavailable = Boolean(linked && property?.ariUnavailable);
 
   return (
-    <div
+    <Link
+      href={`/dashboard/calendar/${channel.uuid}`}
+      title={t('openPropertyMonth')}
       className={cn(
         'box-border flex h-full max-h-full min-h-0 w-full items-center gap-2 overflow-hidden px-2',
         'text-foreground transition-colors hover:bg-muted/50',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
         isMobile ? 'justify-center px-1' : '',
       )}
-      aria-label={isMobile ? title : undefined}
+      aria-label={isMobile ? `${title} — ${t('openPropertyMonth')}` : undefined}
     >
       {avatarSrc ? (
         <img
@@ -94,6 +98,6 @@ export const SidebarChannel = memo(function SidebarChannel({ channel, meta, isMo
           {showStatusBadge && status ? ` — ${status}` : ''}
         </span>
       )}
-    </div>
+    </Link>
   );
 });

@@ -199,7 +199,8 @@ export function Header() {
 
       {/* Right: календарь — фильтр; объекты/персонал — «+» */}
       <div className="flex justify-end">
-        {isCalendar && (
+        {/* Filters belong to the all-properties grid, not to the month of one property. */}
+        {isCalendar && !/\/dashboard\/calendar\/[^/]+/.test(pathname) && (
           <Button
             variant="ghost"
             size="icon"

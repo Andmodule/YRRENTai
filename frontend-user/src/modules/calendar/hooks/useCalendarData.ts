@@ -78,15 +78,16 @@ function withOtaBlockedBars(data: CalendarApiResponse): CalendarApiResponse {
   return { properties: data.properties, reservations: [...data.reservations, ...extras] };
 }
 
-export function useCalendarData(dateRange: CalendarDateRange) {
+/** `propertyId` — one property only (its month calendar): Booking is read for it alone. */
+export function useCalendarData(dateRange: CalendarDateRange, propertyId?: string) {
   const from = format(dateRange.start, 'yyyy-MM-dd');
   const to = format(dateRange.end, 'yyyy-MM-dd');
 
   return useQuery({
-    queryKey: ['calendar', from, to],
+    queryKey: propertyId ? ['calendar', from, to, propertyId] : ['calendar', from, to],
     queryFn: async (): Promise<CalendarApiResponse> => {
       const res = await apiClient.get<{ data: CalendarApiResponse } | CalendarApiResponse>('/calendar', {
-        params: { from, to },
+        params: propertyId ? { from, to, propertyId } : { from, to },
       });
       const body = res.data;
       let raw: CalendarApiResponse = { properties: [], reservations: [] };

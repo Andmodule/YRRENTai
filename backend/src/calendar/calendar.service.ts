@@ -104,8 +104,11 @@ export class CalendarService {
     userId: string,
     from: string,
     to: string,
+    /** Only this property of the owner (none when it is not theirs). */
+    onlyPropertyId?: string,
   ): Promise<{ properties: CalendarPropertyDto[]; reservations: CalendarReservationDto[] }> {
-    const properties = await this.propertyService.findAllByOwner(userId);
+    const owned = await this.propertyService.findAllByOwner(userId);
+    const properties = onlyPropertyId ? owned.filter((p) => p.id === onlyPropertyId) : owned;
     if (properties.length === 0) {
       return { properties: [], reservations: [] };
     }
