@@ -130,6 +130,7 @@ export class PricingService {
       channelId: f.channelId,
       autoRules: f.autoRules,
       occupancy: f.occupancy,
+      guestPrice: f.guestPrice,
     };
   }
 

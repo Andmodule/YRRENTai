@@ -119,6 +119,20 @@ API (`/api/v1/pricing/occupancy`, OWNER и MANAGER; при выключенно�
 
 Откат: `ZODOMUS_PROMOTIONS_OCCUPANCY_ENABLED=false`. Скидки, уже созданные по подсказке, — обычные скидки, выключаются во вкладке «Скидки».
 
+## Цена для гостя (календарь объекта по месяцам)
+
+Сколько гость **реально** заплатит за выделенные ночи на Booking и на Airbnb, строками, как в «Данные бронирования» у Booking: тариф → каждая скидка → уборка → НДС → итог; разница между площадками в %. **Ничего не отправляет ни в Booking, ни в Airbnb.** Цены Booking берутся из того, что календарь уже получил (`otaNightlyPrices` — Standard, `otaNightlyPricesFrom` — самый дешёвый тариф), лишних запросов к Zodomus нет.
+
+- Booking, «самый выгодный»: самый дешёвый тариф → Genius (настройка объекта) → скидки, которые RentAI не видит и которые ввели руками в профиле → акция, которую видит гость → Mobile / Country. «Обычный гость»: Standard → акция. Уборка без скидок; НДС — только с номера (сверено с разбивкой Booking 2026-10-22: 284 → 241,40 → −45,87 → −19,55 → −17,60, + 59 = 217,38, НДС 11,73).
+- Airbnb (до подключения по API): цена ночи — введённая на дату, иначе из профиля (будни / пт–сб); скидка за неделю (7+) или месяц (28+) — только на ночи; уборка.
+- Сверка: итог со скриншота площадки → сервер пересчитывает тот же расчёт сам и хранит обе суммы; расхождение > 1 % — предупреждение «есть скидка или сбор, которых RentAI не знает». Если расчёт в браузере и на сервере разошёлся больше чем на 0,01 — `guest price drift` в логах сервера.
+
+Включается **отдельным флагом**, по умолчанию выключено: `ZODOMUS_PROMOTIONS_GUEST_PRICE_ENABLED=true` (нужен и `ZODOMUS_PROMOTIONS_ENABLED=true`). **Сначала миграция** `1778600000000-pricing-guest-price` (три новые таблицы `property_channel_profiles`, `property_channel_night_prices`, `price_observations`; существующие не трогает; есть откат). Пока флаг выключен, таблицы не читаются, API отвечает 503, панель скрыта — выкладывать код до миграции безопасно.
+
+API (`/api/v1/pricing/guest-price`, OWNER и MANAGER; при выключенном флаге — 503): `GET /:propertyId?from&to` (≤ 120 дней) · `PUT /:propertyId/profiles/:channel` · `PUT /:propertyId/night-prices` (только `airbnb`; `price: null` — удалить) · `POST /:propertyId/observations`. Код: `guest-price.util.ts`, `pricing-guest-price.*.ts`; в браузере — `frontend-user/src/modules/pricing/lib/guest-price.ts` (держать в одном виде с серверным). Тесты: `*guest-price*.spec.ts`.
+
+Откат: `ZODOMUS_PROMOTIONS_GUEST_PRICE_ENABLED=false`.
+
 ## Осторожно
 
 - Не запускать локальный backend с `NODE_ENV=development` на боевой БД: TypeORM `synchronize` изменит схему.

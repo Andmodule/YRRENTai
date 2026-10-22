@@ -4,6 +4,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/use-auth';
 import {
   pricingApi,
+  type ChannelProfileInput,
+  type GuestPriceChannel,
+  type ObservationInput,
   type OccupancySettingsInput,
   type PromotionDetail,
   type PromotionInput,
@@ -21,6 +24,8 @@ export const pricingKeys = {
   calendar: (from: string, to: string) => ['pricing', 'calendar', from, to] as const,
   rules: ['pricing', 'rules'] as const,
   occupancy: ['pricing', 'occupancy'] as const,
+  guestPrice: (propertyId: string, from?: string, to?: string) =>
+    (from && to ? ['pricing', 'guest-price', propertyId, from, to] : ['pricing', 'guest-price', propertyId]) as readonly string[],
 };
 
 const MANAGER_ROLES = new Set(['OWNER', 'MANAGER']);
@@ -44,6 +49,8 @@ export function usePricingAccess() {
     /** «Автоправила» tab: needs the promotions feature and its own switch on the server. */
     autoRules: canManage && status.data?.enabled === true && status.data?.autoRules === true,
     occupancy: canManage && status.data?.enabled === true && status.data?.occupancy === true,
+    /** «Цена для гостя» panel in the calendar of one property. */
+    guestPrice: canManage && status.data?.enabled === true && status.data?.guestPrice === true,
     isLoading: canManage && status.isLoading,
   };
 }
@@ -155,6 +162,37 @@ export function useOccupancyMutations() {
     onSuccess: (overview) => qc.setQueryData(pricingKeys.occupancy, overview),
   });
   return { save };
+}
+
+/** «Цена для гостя»: channel profiles, typed Airbnb prices and calibrations for [from, to]. Database only. */
+export function useGuestPrice(propertyId: string, from: string, to: string, enabled: boolean) {
+  return useQuery({
+    queryKey: pricingKeys.guestPrice(propertyId, from, to),
+    queryFn: () => pricingApi.guestPrice.get(propertyId, from, to),
+    enabled,
+    staleTime: 60_000,
+    retry: false,
+  });
+}
+
+export function useGuestPriceMutations(propertyId: string) {
+  const qc = useQueryClient();
+  const refresh = () => void qc.invalidateQueries({ queryKey: pricingKeys.guestPrice(propertyId) });
+  const saveProfile = useMutation({
+    mutationFn: ({ channel, input }: { channel: GuestPriceChannel; input: ChannelProfileInput }) =>
+      pricingApi.guestPrice.saveProfile(propertyId, channel, input),
+    onSuccess: refresh,
+  });
+  const setNightPrices = useMutation({
+    mutationFn: (input: { from: string; to: string; price: number | null }) =>
+      pricingApi.guestPrice.setNightPrices(propertyId, { channel: 'airbnb', ...input }),
+    onSuccess: refresh,
+  });
+  const addObservation = useMutation({
+    mutationFn: (input: ObservationInput) => pricingApi.guestPrice.addObservation(propertyId, input),
+    onSuccess: refresh,
+  });
+  return { saveProfile, setNightPrices, addObservation };
 }
 
 export function useRulesMutations() {

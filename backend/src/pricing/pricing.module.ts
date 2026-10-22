@@ -19,6 +19,11 @@ import { PricePromotionEntity } from './entities/price-promotion.entity';
 import { PricePromotionTargetEntity } from './entities/price-promotion-target.entity';
 import { PricePromotionEventEntity } from './entities/price-promotion-event.entity';
 import { PropertyPricingSettingsEntity } from './entities/property-pricing-settings.entity';
+import { PricingGuestPriceController } from './pricing-guest-price.controller';
+import { PricingGuestPriceService } from './pricing-guest-price.service';
+import { PropertyChannelProfileEntity } from './entities/property-channel-profile.entity';
+import { PropertyChannelNightPriceEntity } from './entities/property-channel-night-price.entity';
+import { PriceObservationEntity } from './entities/price-observation.entity';
 
 /**
  * «Цены»: Booking.com promotions via Zodomus + minimum price protection.
@@ -32,6 +37,9 @@ import { PropertyPricingSettingsEntity } from './entities/property-pricing-setti
       PricePromotionEventEntity,
       PropertyPricingSettingsEntity,
       PricingOccupancySettingsEntity,
+      PropertyChannelProfileEntity,
+      PropertyChannelNightPriceEntity,
+      PriceObservationEntity,
       // read-only here: booked nights for «Заполненность»
       BookingEntity,
     ]),
@@ -39,7 +47,12 @@ import { PropertyPricingSettingsEntity } from './entities/property-pricing-setti
     PropertyModule,
     UserModule,
   ],
-  controllers: [PricingController, PricingRulesController, PricingOccupancyController],
+  controllers: [
+    PricingController,
+    PricingRulesController,
+    PricingOccupancyController,
+    PricingGuestPriceController,
+  ],
   providers: [
     PricingConfig,
     PromotionExecutorService,
@@ -48,6 +61,7 @@ import { PropertyPricingSettingsEntity } from './entities/property-pricing-setti
     PricingService,
     PricingRulesService,
     PricingOccupancyService,
+    PricingGuestPriceService,
   ],
 })
 export class PricingModule {}

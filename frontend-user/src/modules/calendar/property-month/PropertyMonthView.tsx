@@ -38,6 +38,7 @@ import {
 } from '../lib/property-month';
 import { MonthGrid } from './MonthGrid';
 import { NightPanel } from './NightPanel';
+import { GuestPricePanel } from './GuestPricePanel';
 
 /** Calendar of one property by months (Airbnb-like): the month on the left, actions and prices on the right. */
 export function PropertyMonthView({ propertyId }: { propertyId: string }) {
@@ -65,7 +66,9 @@ export function PropertyMonthView({ propertyId }: { propertyId: string }) {
   const currency = property?.otaCurrency ?? property?.currency ?? null;
 
   const { properties: allProperties } = useProperties();
-  const pricingOn = usePricingAccess().enabled;
+  const pricingAccess = usePricingAccess();
+  const pricingOn = pricingAccess.enabled;
+  const guestPriceOn = pricingAccess.guestPrice;
   const promotions = useCalendarPromotions(from, to, pricingOn);
   const pricingRows = usePricingProperties(pricingOn);
   const pricingRow = pricingRows.data?.find((r) => r.id === propertyId) ?? null;
@@ -100,6 +103,10 @@ export function PropertyMonthView({ propertyId }: { propertyId: string }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [selection]);
   const onPick = useCallback((ymd: string) => setSelection((s) => nextSelection(s, ymd)), []);
+  const pickedNights = useMemo(
+    () => (selection ? nights.filter((n) => n.ymd >= selection.from && n.ymd <= selection.to) : []),
+    [nights, selection],
+  );
   /** Below `lg` the panel sits under the month; a button takes there (no auto-scroll: a second tap makes a range). */
   const panelRef = useRef<HTMLElement>(null);
 
@@ -218,6 +225,19 @@ export function PropertyMonthView({ propertyId }: { propertyId: string }) {
               linked={linked}
               ariUnavailable={Boolean(property.ariUnavailable)}
               onClear={() => setSelection(null)}
+              guestPrice={
+                guestPriceOn && selection ? (
+                  <GuestPricePanel
+                    propertyId={propertyId}
+                    from={from}
+                    to={to}
+                    picked={pickedNights}
+                    geniusPct={pricingRow?.geniusPct ?? null}
+                    minPrice={pricingRow?.minPrice ?? null}
+                    currency={currency}
+                  />
+                ) : null
+              }
               actions={{
                 onSetPrice: linked ? withDates(setPriceOpen) : undefined,
                 onDiscount:

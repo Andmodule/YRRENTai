@@ -148,6 +148,16 @@ const zodomusEnvFields = z.object({
     .default('false')
     .transform((v) => v === 'true' || v === '1' || v === 'yes'),
   /**
+   * «Цена для гостя» in the calendar of one property: what a guest really pays on Booking and Airbnb
+   * (discounts, cleaning, VAT) and calibration against the channel. Read-only towards the channels.
+   * Off by default; needs ZODOMUS_PROMOTIONS_ENABLED=true and the migration 1778600000000-pricing-guest-price.
+   * While off the API answers 503, the panel is hidden and the new tables are never read.
+   */
+  ZODOMUS_PROMOTIONS_GUEST_PRICE_ENABLED: z
+    .enum(['true', 'false', '1', '0', 'yes', 'no'])
+    .default('false')
+    .transform((v) => v === 'true' || v === '1' || v === 'yes'),
+  /**
    * «Открыть / закрыть даты на Booking» in the calendar: opens (or closes) nights on the main Booking rate
    * with POST /rates `closed`, at the price the person gives. Off by default: API answers 503, UI hidden.
    */
