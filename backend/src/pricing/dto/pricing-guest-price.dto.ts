@@ -5,6 +5,8 @@ import { isYmd } from '../pricing-math.util';
 const ymd = z.string().refine(isYmd, 'Дата в формате yyyy-MM-dd');
 const money = z.coerce.number().min(0).max(1_000_000);
 const optMoney = money.nullable().optional();
+/** Discount names come from Booking (extranet deals) and from RentAI (up to 120 characters). */
+const lineLabel = z.string().max(120);
 const optPct = (max: number) => z.coerce.number().int().min(0).max(max).nullable().optional();
 
 /** Every field is optional: what is not sent stays as it was; null clears it. */
@@ -50,7 +52,7 @@ export class NightPricesDto extends createZodDto(nightPricesSchema) {}
 const guestDiscountSchema = z
   .object({
     kind: z.enum(['rate_plan', 'genius', 'extra', 'deal', 'targeting', 'length_of_stay']),
-    label: z.string().max(60),
+    label: lineLabel,
     pct: z.coerce.number().min(0).max(100),
   })
   .strict();
@@ -68,12 +70,12 @@ export const guestPriceInputSchema = z
     fees: z
       .array(
         z
-          .object({ kind: z.enum(['cleaning', 'pets', 'other']), label: z.string().max(60), amount: money })
+          .object({ kind: z.enum(['cleaning', 'pets', 'other']), label: lineLabel, amount: money })
           .strict(),
       )
       .max(5)
       .optional(),
-    taxesOnTop: z.array(z.object({ label: z.string().max(60), amount: money }).strict()).max(5).optional(),
+    taxesOnTop: z.array(z.object({ label: lineLabel, amount: money }).strict()).max(5).optional(),
     vatIncludedPct: z.coerce.number().min(0).max(50).nullable().optional(),
   })
   .strict();

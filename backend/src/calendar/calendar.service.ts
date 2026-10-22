@@ -45,6 +45,8 @@ export interface CalendarPropertyDto {
    * Approximate Booking "from" rack without Genius.
    */
   otaNightlyPricesFrom?: Record<string, number>;
+  /** Cheapest rate that is open for sale that night — what a guest can book (no closed rates). */
+  otaNightlyPricesFromOpen?: Record<string, number>;
   /** Which rate won for `otaNightlyPrices` per night. */
   otaNightlyPriceMeta?: Record<string, OtaNightlyPriceMeta>;
   /** Channel currency for rack display / push-rates (ARI when present, else resolved). */
@@ -180,6 +182,7 @@ export class CalendarService {
         restrictions: OtaCalendarRestrictionHint[];
         nightlyPrices: Record<string, number>;
         nightlyPricesFrom: Record<string, number>;
+        nightlyPricesFromOpen: Record<string, number>;
         nightlyPriceMeta: Record<string, OtaNightlyPriceMeta>;
         otaCurrency: string | null;
         ariUnavailable: boolean;
@@ -219,6 +222,7 @@ export class CalendarService {
           restrictions: [],
           nightlyPrices: {},
           nightlyPricesFrom: {},
+          nightlyPricesFromOpen: {},
           nightlyPriceMeta: {},
           otaCurrency: null,
           ariUnavailable: true,
@@ -228,6 +232,7 @@ export class CalendarService {
         dto.otaRestrictions = overlay.restrictions;
         dto.otaNightlyPrices = overlay.nightlyPrices;
         dto.otaNightlyPricesFrom = overlay.nightlyPricesFrom;
+        dto.otaNightlyPricesFromOpen = overlay.nightlyPricesFromOpen;
         dto.otaNightlyPriceMeta = overlay.nightlyPriceMeta;
         dto.otaCurrency = overlay.otaCurrency;
         dto.ariUnavailable = overlay.ariUnavailable;

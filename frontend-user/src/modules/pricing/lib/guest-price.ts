@@ -144,13 +144,18 @@ export type BookingNightSource = {
   /** Cheapest open rate (often non-refundable). */
   rackFrom: number | null;
   rateName: string | null;
+  /** Free and open on Booking; a booked or closed night has no price a guest could pay. */
+  onSale: boolean;
   promotions: readonly CellPromotion[];
   targetingPct: number | null;
 };
 
+/** The server accepts line labels up to this length (Booking and RentAI discount names). */
+const LABEL_MAX = 120;
+
 export type StayQuoteInput = {
   input: GuestPriceInput;
-  /** Nights left out: no price known for them. */
+  /** Nights left out: no price known for them (or not on sale) — the total is not for the whole stay. */
   missing: string[];
 };
 
@@ -182,7 +187,7 @@ export function bookingStayInput(p: {
   const missing: string[] = [];
   for (const n of p.nights) {
     const rack = p.scenario === 'min' ? (n.rackFrom ?? n.rack) : n.rack;
-    if (rack == null || !(rack > 0)) {
+    if (!n.onSale || rack == null || !(rack > 0)) {
       missing.push(n.ymd);
       continue;
     }
@@ -190,9 +195,9 @@ export function bookingStayInput(p: {
     const discounts: GuestDiscount[] = [];
     if (p.scenario === 'min' && p.geniusPct) discounts.push({ kind: 'genius', label: 'Genius', pct: p.geniusPct });
     if (p.scenario === 'min') {
-      for (const x of p.profile?.extraDiscounts ?? []) if (x.pct) discounts.push({ kind: 'extra', label: x.label, pct: x.pct });
+      for (const x of p.profile?.extraDiscounts ?? []) if (x.pct) discounts.push({ kind: 'extra', label: x.label.slice(0, LABEL_MAX), pct: x.pct });
     }
-    if (deal) discounts.push({ kind: 'deal', label: deal.name, pct: deal.discountPct });
+    if (deal) discounts.push({ kind: 'deal', label: deal.name.slice(0, LABEL_MAX), pct: deal.discountPct });
     if (p.scenario === 'min' && n.targetingPct) discounts.push({ kind: 'targeting', label: p.labels.mobile, pct: n.targetingPct });
     nights.push({ date: n.ymd, rack, discounts });
   }

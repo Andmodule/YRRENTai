@@ -91,7 +91,7 @@ export type MonthNight = {
   rack: number | null;
   /** Rate the price came from, null = not known. */
   rateName: string | null;
-  /** Cheapest open rate on Booking (often non-refundable), null = none. */
+  /** Cheapest rate open for sale on Booking (often non-refundable), null = none. */
   rackFrom: number | null;
   promotions: CellPromotion[];
   /** Mobile / Country rate on this night, %. */
@@ -109,7 +109,7 @@ export function buildMonthNights(input: {
   today: string;
   property: Pick<
     Property,
-    'uuid' | 'otaBlockedDays' | 'otaNightlyPrices' | 'otaNightlyPricesFrom' | 'otaNightlyPriceMeta' | 'otaRestrictions'
+    'uuid' | 'otaBlockedDays' | 'otaNightlyPrices' | 'otaNightlyPricesFromOpen' | 'otaNightlyPriceMeta' | 'otaRestrictions'
   >;
   reservations: readonly Reservation[];
   promotions: readonly CalendarPromotion[];
@@ -143,7 +143,7 @@ export function buildMonthNights(input: {
     const res = byNight.get(ymd) ?? null;
     const rawRack = property.otaNightlyPrices?.[ymd];
     const rack = rawRack != null && Number.isFinite(rawRack) && rawRack > 0 ? rawRack : null;
-    const rawFrom = property.otaNightlyPricesFrom?.[ymd];
+    const rawFrom = property.otaNightlyPricesFromOpen?.[ymd];
     const rackFrom = rawFrom != null && Number.isFinite(rawFrom) && rawFrom > 0 ? rawFrom : null;
     const kind: MonthNightKind = res
       ? res.r.status === 'blocked'

@@ -26,6 +26,8 @@ import type { ChannelProfileDto, NightPricesDto, ObservationDto } from './dto/pr
 export const GUEST_PRICE_MAX_RANGE_DAYS = 120;
 /** Observations returned with the overview, newest first. */
 const OBSERVATIONS_SHOWN = 10;
+/** Totals are stored in minor units in `integer` columns. */
+const MAX_TOTAL = 10_000_000;
 /** Grosz / cents: a bigger gap between the panel's total and the server's means the two calculations drifted. */
 const DRIFT_TOLERANCE = 0.01;
 
@@ -273,6 +275,9 @@ export class PricingGuestPriceService {
       }
     }
     const calculated = guestPriceBreakdown(input).total;
+    if (calculated > MAX_TOTAL || dto.observedTotal > MAX_TOTAL) {
+      throw new BadRequestException(`Итог больше ${MAX_TOTAL.toLocaleString('ru-RU')} — проверьте цифры`);
+    }
     if (Math.abs(calculated - dto.clientTotal) > DRIFT_TOLERANCE) {
       // Not the guest's problem — the panel and the server price differently. Keep the server's number.
       this.logger.warn(

@@ -113,6 +113,7 @@ export function GuestPricePanel({
             rack: n.rack,
             rackFrom: n.rackFrom,
             rateName: n.rateName,
+            onSale: n.kind === 'open',
             promotions: n.promotions,
             targetingPct: n.targetingPct,
           })),
@@ -139,7 +140,9 @@ export function GuestPricePanel({
     [picked, profiles, airbnbPrices, guests, labels],
   );
 
-  const gap = booking.breakdown && airbnb.breakdown ? gapPct(booking.breakdown.total, airbnb.breakdown.total) : null;
+  // Totals over different sets of nights cannot be compared.
+  const complete = booking.missing.length === 0 && airbnb.missing.length === 0;
+  const gap = complete && booking.breakdown && airbnb.breakdown ? gapPct(booking.breakdown.total, airbnb.breakdown.total) : null;
   const below = scenario === 'min' && booking.breakdown ? nightsBelowMinPrice(booking.breakdown, minPrice) : [];
   const lastCheck = data.data?.observations.find((o) => o.channel === 'booking' && o.scenario === scenario) ?? null;
   const notOnSale = picked.filter((n) => n.kind !== 'open').length;
@@ -319,6 +322,10 @@ export function GuestPricePanel({
             const q = channel === 'booking' ? booking : airbnb;
             if (!q.breakdown) {
               toast.error(t('observeNoCalc'));
+              return;
+            }
+            if (q.missing.length > 0) {
+              toast.error(t('observeMissing'));
               return;
             }
             mutations.addObservation.mutate(

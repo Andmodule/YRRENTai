@@ -30,6 +30,7 @@ import {
   collectOtaNightlyPriceMeta,
   collectOtaNightlyPrices,
   collectOtaNightlyPricesFrom,
+  collectOtaNightlyPricesFromOpen,
   collectOtaRestrictionHints,
   evaluateStayAgainstInventory,
   extractZodomusInventoryDays,
@@ -68,6 +69,7 @@ export class ZodomusSyncService {
         restrictions: OtaCalendarRestrictionHint[];
         nightlyPrices: Record<string, number>;
         nightlyPricesFrom: Record<string, number>;
+        nightlyPricesFromOpen: Record<string, number>;
         nightlyPriceMeta: Record<string, OtaNightlyPriceMeta>;
         otaCurrency: string | null;
         ariUnavailable: boolean;
@@ -573,6 +575,8 @@ export class ZodomusSyncService {
     restrictions: OtaCalendarRestrictionHint[];
     nightlyPrices: Record<string, number>;
     nightlyPricesFrom: Record<string, number>;
+    /** Cheapest rate that is open for sale, per night. */
+    nightlyPricesFromOpen: Record<string, number>;
     nightlyPriceMeta: Record<string, OtaNightlyPriceMeta>;
     /** ISO currency from ARI when Zodomus sends it (often null). */
     otaCurrency: string | null;
@@ -584,6 +588,7 @@ export class ZodomusSyncService {
       restrictions: [] as OtaCalendarRestrictionHint[],
       nightlyPrices: {} as Record<string, number>,
       nightlyPricesFrom: {} as Record<string, number>,
+      nightlyPricesFromOpen: {} as Record<string, number>,
       nightlyPriceMeta: {} as Record<string, OtaNightlyPriceMeta>,
       otaCurrency: null as string | null,
       ariUnavailable: false,
@@ -614,6 +619,7 @@ export class ZodomusSyncService {
       const restrictions: OtaCalendarRestrictionHint[] = [];
       const nightlyPrices: Record<string, number> = {};
       const nightlyPricesFrom: Record<string, number> = {};
+      const nightlyPricesFromOpen: Record<string, number> = {};
       const nightlyPriceMeta: Record<string, OtaNightlyPriceMeta> = {};
       const seenHint = new Set<string>();
       let otaCurrency: string | null = null;
@@ -667,6 +673,9 @@ export class ZodomusSyncService {
           for (const [date, price] of Object.entries(collectOtaNightlyPricesFrom(days))) {
             if (nightlyPricesFrom[date] == null) nightlyPricesFrom[date] = price;
           }
+          for (const [date, price] of Object.entries(collectOtaNightlyPricesFromOpen(days))) {
+            if (nightlyPricesFromOpen[date] == null) nightlyPricesFromOpen[date] = price;
+          }
           for (const [date, meta] of Object.entries(collectOtaNightlyPriceMeta(days))) {
             if (nightlyPriceMeta[date] == null) nightlyPriceMeta[date] = meta;
           }
@@ -683,6 +692,7 @@ export class ZodomusSyncService {
         restrictions,
         nightlyPrices,
         nightlyPricesFrom,
+        nightlyPricesFromOpen,
         nightlyPriceMeta,
         otaCurrency,
         ariUnavailable: attempted > 0 && succeeded === 0,

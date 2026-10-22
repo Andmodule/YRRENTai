@@ -352,3 +352,24 @@ describe('guest price DTOs', () => {
     expect(observationSchema.safeParse(observation({ observedTotal: 0 })).success).toBe(false);
   });
 });
+
+describe('guest price — review fixes', () => {
+  it('a deal name up to 120 characters (as Booking and RentAI allow) passes; 121 does not', () => {
+    const named = (label: string): GuestPriceInput => ({
+      nights: [{ date: '2026-10-25', rack: 284, discounts: [{ kind: 'deal', label, pct: 10 }] }],
+    });
+    expect(observationSchema.safeParse(observation({ input: named('x'.repeat(120)) })).success).toBe(true);
+    expect(observationSchema.safeParse(observation({ input: named('x'.repeat(121)) })).success).toBe(false);
+  });
+
+  it('a total too big for the integer columns is refused with 400 before saving', async () => {
+    const s = setup();
+    const many: GuestPriceInput = {
+      nights: Array.from({ length: 11 }, (_, i) => ({ date: addDaysYmd('2026-10-01', i), rack: 1_000_000, discounts: [] })),
+    };
+    await expect(s.svc.addObservation(OWNER, PROP, observation({ input: many, clientTotal: 11_000_000 }))).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(s.observationRepo.save).not.toHaveBeenCalled();
+  });
+});

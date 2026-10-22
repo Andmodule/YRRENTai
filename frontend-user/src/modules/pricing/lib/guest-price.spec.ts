@@ -46,7 +46,7 @@ function promo(over: Partial<CellPromotion> = {}): CellPromotion {
 }
 
 function night(over: Partial<BookingNightSource> & { ymd: string }): BookingNightSource {
-  return { rack: null, rackFrom: null, rateName: null, promotions: [], targetingPct: null, ...over };
+  return { rack: null, rackFrom: null, rateName: null, onSale: true, promotions: [], targetingPct: null, ...over };
 }
 
 describe('guestPriceBreakdown (same cases as the backend copy)', () => {
@@ -157,6 +157,31 @@ describe('bookingStayInput', () => {
     });
     assert.deepEqual(missing, ['2026-10-25', '2026-10-26']);
     assert.equal(input.nights.length, 1);
+  });
+
+  it('a booked or closed night is left out even when Booking sent a price for it', () => {
+    const { input, missing } = bookingStayInput({
+      nights: [night({ ymd: '2026-10-25', rack: 284, onSale: false }), night({ ymd: '2026-10-26', rack: 290 })],
+      scenario: 'min',
+      geniusPct: 10,
+      profile: null,
+      guests: 2,
+      labels,
+    });
+    assert.deepEqual(missing, ['2026-10-25']);
+    assert.deepEqual(input.nights.map((n) => n.date), ['2026-10-26']);
+  });
+
+  it('a deal name longer than the server takes is cut to 120 characters', () => {
+    const { input } = bookingStayInput({
+      nights: [night({ ymd: '2026-10-25', rack: 284, promotions: [promo({ name: 'x'.repeat(200) })] })],
+      scenario: 'regular',
+      geniusPct: null,
+      profile: null,
+      guests: 2,
+      labels,
+    });
+    assert.equal(input.nights[0]!.discounts[0]!.label.length, 120);
   });
 
   it('city tax is per guest per priced night', () => {
