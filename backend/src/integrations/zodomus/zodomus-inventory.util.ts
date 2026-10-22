@@ -35,6 +35,11 @@ export type ZodomusInventoryDay = {
    */
   priceFrom?: number | null;
   priceFromRateId?: string | null;
+  /**
+   * Same as `priceFrom`, but only from rates that are open for sale that night — what a guest can
+   * actually book. `priceFrom` also takes closed rates (booked nights need their rack for totals).
+   */
+  priceFromOpen?: number | null;
 };
 
 export type OtaNightlyPriceMeta = {
@@ -185,6 +190,7 @@ function mergeRateIntoDay(
     day.priceFrom = price;
     day.priceFromRateId = rateId || null;
   }
+  if (day.priceFromOpen == null || price < day.priceFromOpen) day.priceFromOpen = price;
 }
 
 function mergeInventoryScalars(
@@ -280,6 +286,7 @@ export function extractZodomusInventoryDays(
         priceRateName: null,
         priceFrom: null,
         priceFromRateId: null,
+        priceFromOpen: null,
       };
       byDate.set(date, d);
     }
@@ -466,6 +473,17 @@ export function collectOtaNightlyPricesFrom(days: ZodomusInventoryDay[]): Record
   for (const d of days) {
     if (d.priceFrom != null && d.priceFrom > 0) {
       out[d.date] = d.priceFrom;
+    }
+  }
+  return out;
+}
+
+/** Per-night cheapest eligible rate that is open for sale (what a guest can book). */
+export function collectOtaNightlyPricesFromOpen(days: ZodomusInventoryDay[]): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const d of days) {
+    if (d.priceFromOpen != null && d.priceFromOpen > 0) {
+      out[d.date] = d.priceFromOpen;
     }
   }
   return out;

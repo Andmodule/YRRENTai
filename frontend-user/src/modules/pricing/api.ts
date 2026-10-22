@@ -1,4 +1,5 @@
 import { apiClient } from '@/lib/api/client';
+import type { GuestPriceInput } from './lib/guest-price';
 
 /** Mirrors backend `backend/src/pricing` DTOs (`/api/v1/pricing`). */
 
@@ -16,6 +17,59 @@ export interface PricingStatus {
   autoRules?: boolean;
   /** «Заполненность» switched on (ZODOMUS_PROMOTIONS_OCCUPANCY_ENABLED). */
   occupancy?: boolean;
+  /** «Цена для гостя» switched on (ZODOMUS_PROMOTIONS_GUEST_PRICE_ENABLED). */
+  guestPrice?: boolean;
+}
+
+export type GuestPriceChannel = 'booking' | 'airbnb';
+
+/** What a channel adds to or takes from the guest's price, per property (null = not set). */
+export interface ChannelProfile {
+  channel: GuestPriceChannel;
+  cleaningFee: number | null;
+  vatIncludedPct: number | null;
+  cityTaxPerGuestNight: number | null;
+  /** Booking: discounts RentAI cannot read, typed in by hand. */
+  extraDiscounts: { label: string; pct: number }[];
+  weeklyPct: number | null;
+  monthlyPct: number | null;
+  /** Airbnb nightly prices until the API: weekday / Fri–Sat. */
+  nightly: number | null;
+  weekendNightly: number | null;
+  isDefault: boolean;
+}
+
+export type ChannelProfileInput = Partial<Omit<ChannelProfile, 'channel' | 'isDefault'>>;
+
+export interface PriceObservation {
+  id: string;
+  channel: GuestPriceChannel;
+  scenario: 'min' | 'regular';
+  checkIn: string;
+  nights: number;
+  guests: number;
+  observedTotal: number;
+  calculatedTotal: number;
+  deltaPct: number;
+  withinTolerance: boolean;
+  createdAt: string;
+}
+
+export interface GuestPriceOverview {
+  profiles: Record<GuestPriceChannel, ChannelProfile>;
+  /** Hand-typed nightly prices: yyyy-MM-dd → price. */
+  nightPrices: Record<GuestPriceChannel, Record<string, number>>;
+  /** Newest first. */
+  observations: PriceObservation[];
+}
+
+export interface ObservationInput {
+  channel: GuestPriceChannel;
+  scenario: 'min' | 'regular';
+  guests: number;
+  observedTotal: number;
+  clientTotal: number;
+  input: GuestPriceInput;
 }
 
 /** «Сдано меньше belowPct% ночей → скидка discountPct%». */
@@ -306,5 +360,15 @@ export const pricingApi = {
     get: () => unwrap<OccupancyOverview>(apiClient.get('/pricing/occupancy')),
     saveSettings: (input: OccupancySettingsInput) =>
       unwrap<OccupancyOverview>(apiClient.patch('/pricing/occupancy/settings', input)),
+  },
+  guestPrice: {
+    get: (propertyId: string, from: string, to: string) =>
+      unwrap<GuestPriceOverview>(apiClient.get(`/pricing/guest-price/${propertyId}`, { params: { from, to } })),
+    saveProfile: (propertyId: string, channel: GuestPriceChannel, input: ChannelProfileInput) =>
+      unwrap<ChannelProfile>(apiClient.put(`/pricing/guest-price/${propertyId}/profiles/${channel}`, input)),
+    setNightPrices: (propertyId: string, input: { channel: 'airbnb'; from: string; to: string; price: number | null }) =>
+      unwrap<Record<string, number>>(apiClient.put(`/pricing/guest-price/${propertyId}/night-prices`, input)),
+    addObservation: (propertyId: string, input: ObservationInput) =>
+      unwrap<PriceObservation>(apiClient.post(`/pricing/guest-price/${propertyId}/observations`, input)),
   },
 };

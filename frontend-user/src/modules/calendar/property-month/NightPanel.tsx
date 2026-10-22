@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { format } from 'date-fns';
 import { useTranslations } from 'next-intl';
 import { CalendarPlus, Coins, Info, LockOpen, Percent, X } from 'lucide-react';
@@ -34,6 +34,7 @@ export function NightPanel({
   ariUnavailable,
   actions,
   onClear,
+  guestPrice,
 }: {
   nights: readonly MonthNight[];
   selection: NightSelection | null;
@@ -45,6 +46,8 @@ export function NightPanel({
   ariUnavailable: boolean;
   actions: NightPanelActions;
   onClear: () => void;
+  /** «Цена для гостя» for the picked nights — shown under the table when the feature is on. */
+  guestPrice?: ReactNode;
 }) {
   const t = useTranslations('calendar.propertyMonth');
   const dateLocale = useDateLocale();
@@ -298,6 +301,8 @@ export function NightPanel({
           ) : null}
         </section>
       ) : null}
+
+      {selection && picked.length > 0 ? guestPrice : null}
 
       <PriceLegend geniusPct={geniusPct} />
     </div>

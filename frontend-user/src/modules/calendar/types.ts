@@ -28,6 +28,8 @@ export interface Property {
   otaNightlyPrices?: Record<string, number>;
   /** Cheapest open eligible rate (excludes weekly/monthly/LOS); still without Genius. */
   otaNightlyPricesFrom?: Record<string, number>;
+  /** Cheapest rate that is open for sale that night — what a guest can book (no closed rates). */
+  otaNightlyPricesFromOpen?: Record<string, number>;
   /** Rate that won for otaNightlyPrices per night. */
   otaNightlyPriceMeta?: Record<string, { rateId: string | null; rateName: string | null }>;
   /** Currency from Zodomus ARI when present. */
