@@ -200,7 +200,12 @@ export class PricingBasePriceService {
       .filter(([date]) => !has.has(date))
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([date, price]) => ({ propertyId: property.id, date, priceMinor: toMinor(price) }));
-    if (rows.length > 0) await this.tables(() => this.baseRepo.upsert(rows, ['propertyId', 'date']));
+    // ON CONFLICT DO NOTHING: a base price saved while Booking was being read is not overwritten.
+    if (rows.length > 0) {
+      await this.tables(() =>
+        this.baseRepo.createQueryBuilder().insert().into(PropertyBasePriceEntity).values(rows).orIgnore().execute(),
+      );
+    }
     const kept = [...open.keys()].filter((d) => has.has(d)).length;
     return { filled: rows.length, kept, notOpen: Math.max(0, this.futureNights(property, dto.from, dto.to) - open.size) };
   }

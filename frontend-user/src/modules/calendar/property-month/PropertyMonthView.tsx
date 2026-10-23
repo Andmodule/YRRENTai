@@ -281,7 +281,10 @@ export function PropertyMonthView({ propertyId }: { propertyId: string }) {
                     minPrice={pricingRow?.minPrice ?? null}
                     belowMin={
                       pricingRow?.minPrice
-                        ? pickedNights.filter((n) => (cellRows?.get(n.ymd)?.booking?.minGuest ?? Number.POSITIVE_INFINITY) < pricingRow.minPrice!).length
+                        ? pickedNights.filter(
+                            // only nights a run would re-price: from today, open on Booking
+                            (n) => !n.past && n.kind === 'open' && (cellRows?.get(n.ymd)?.booking?.minGuest ?? Number.POSITIVE_INFINITY) < pricingRow.minPrice!,
+                          ).length
                         : 0
                     }
                   />

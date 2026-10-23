@@ -1730,9 +1730,8 @@
         "typedCleared": "Цена площадки снова считается от базовой.",
         "sendTitle": "Отправить в Booking",
         "check": "Проверить, что изменится ({range})",
-        "previewChanges": "Изменится цена: {count, plural, one {# ночь} few {# ночи} many {# ночей} other {# ночей}}, запросов к Booking: {requests}. Открытые и закрытые даты останутся как есть.",
+        "previewChanges": "Изменится цена: {count, plural, one {# ночь} few {# ночи} many {# ночей} other {# ночей}}, запросов к Booking: {requests}. Меняются только открытые для продажи ночи; закрытые не трогаются (цену им ставит «Открыть продажи»).",
         "previewNothing": "В Booking уже эти цены — отправлять нечего.",
-        "stillClosed": "дата закрыта, останется закрытой",
         "tooMany": "Слишком много разных цен для одной отправки — выберите диапазон короче.",
         "send": "Отправить в Booking ({count, plural, one {# ночь} few {# ночи} many {# ночей} other {# ночей}})",
         "sendStarted": "Отправка в Booking началась.",
@@ -1752,6 +1751,7 @@
         },
         "skipped": {
           "unchanged": "уже такая цена: {count, plural, one {# ночь} few {# ночи} many {# ночей} other {# ночей}}",
+          "closed": "закрыто на Booking, не трогаем: {count, plural, one {# ночь} few {# ночи} many {# ночей} other {# ночей}}",
           "crm": "бронь или блок в RentAI: {count, plural, one {# ночь} few {# ночи} many {# ночей} other {# ночей}}",
           "booked": "продано на Booking: {count, plural, one {# ночь} few {# ночи} many {# ночей} other {# ночей}}",
           "belowMin": "ниже минимальной цены: {count, plural, one {# ночь} few {# ночи} many {# ночей} other {# ночей}}",
@@ -2132,6 +2132,7 @@
         "weekday": "{count} — другие дни недели",
         "noPrice": "{count} — на Booking нет цены (укажите цену)",
         "keepClosed": "{count} — закрыты вручную",
+        "closed": "{count} — закрыты на Booking",
         "missing": "{count} — Booking их не показал",
         "belowMin": "{count} — цена на Booking ниже минимальной цены объекта (укажите цену)"
       },

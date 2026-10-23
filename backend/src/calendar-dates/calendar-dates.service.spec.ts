@@ -478,7 +478,7 @@ describe('CalendarDatesService — re-pricing nights («базовая цена�
   const open = (price: number, extra: Partial<Night> = {}): Night => ({ closed: false, price, booked: 0, ...extra });
   const prices = (m: Record<string, number>) => new Map(Object.entries(m));
 
-  it('preview lists only the nights whose price changes, open / closed state kept', async () => {
+  it('preview lists only open nights whose price changes; closed nights are left alone', async () => {
     const { svc, booking } = setup({
       nights: { '2026-11-01': open(500), '2026-11-02': open(500), '2026-11-03': { closed: true, price: 1180, booked: 0 } },
     });
@@ -486,13 +486,9 @@ describe('CalendarDatesService — re-pricing nights («базовая цена�
     expect(p.action).toBe('price');
     expect(p.dateFrom).toBe('2026-11-01');
     expect(p.dateToExclusive).toBe('2026-11-04');
-    expect(p.changes).toEqual({ open: 0, close: 0, price: 2 });
-    expect(p.skipped.unchanged).toBe(1);
-    // 02 is open, 03 closed: same price, different state → two requests, nothing opened
-    expect(p.ranges.map((r) => [r.dateFrom, r.dateToExclusive, r.price, r.closed])).toEqual([
-      ['2026-11-02', '2026-11-03', 520, false],
-      ['2026-11-03', '2026-11-04', 520, true],
-    ]);
+    expect(p.changes).toEqual({ open: 0, close: 0, price: 1 });
+    expect(p.skipped).toMatchObject({ unchanged: 1, closed: 1 });
+    expect(p.ranges.map((r) => [r.dateFrom, r.dateToExclusive, r.price, r.closed])).toEqual([['2026-11-02', '2026-11-03', 520, false]]);
     expect(booking.setRates).not.toHaveBeenCalled();
   });
 
@@ -515,7 +511,7 @@ describe('CalendarDatesService — re-pricing nights («базовая цена�
     await expect(svc.previewPrices(USER, PROPERTY_ID, prices({ '2026-10-01': 600 }))).rejects.toBeInstanceOf(BadRequestException);
   });
 
-  it('send writes the new prices, keeps closed nights closed, and reads them back', async () => {
+  it('send writes the new prices of open nights, never touches a closed one, and reads them back', async () => {
     const { svc, booking, sync } = setup({
       nights: { '2026-11-01': open(500), '2026-11-02': open(500), '2026-11-03': { closed: true, price: 1180, booked: 0 } },
     });
@@ -523,13 +519,24 @@ describe('CalendarDatesService — re-pricing nights («базовая цена�
     expect(job.action).toBe('price');
     const done = await finished(svc);
     expect(done.state).toBe('done');
-    expect(done.applied).toEqual({ open: 0, close: 0, price: 3 });
-    expect(done.verify).toEqual({ checked: 3, mismatched: [] });
+    expect(done.applied).toEqual({ open: 0, close: 0, price: 2 });
+    expect(done.verify).toEqual({ checked: 2, mismatched: [] });
     expect(booking.state.get('2026-11-01')).toEqual(open(520));
-    expect(booking.state.get('2026-11-03')).toEqual({ closed: true, price: 520, booked: 0 });
-    // the open / closed state is not sent at all — Booking keeps whatever it has
-    expect(booking.setRates.mock.calls.map((c) => c[0].closed)).toEqual([undefined, undefined]);
+    expect(booking.state.get('2026-11-03')).toEqual({ closed: true, price: 1180, booked: 0 });
+    // one request for 01–02; the open / closed state is not sent at all
+    expect(booking.setRates.mock.calls.map((c) => [c[0].dateFrom, c[0].dateToExclusive, c[0].closed])).toEqual([
+      ['2026-11-01', '2026-11-03', undefined],
+    ]);
     expect(sync.invalidateCalendarOverlay).toHaveBeenCalledWith(PROPERTY_ID);
+  });
+
+  it('a month that is all closed: nothing to send → 400, Booking untouched', async () => {
+    const { svc, booking } = setup({ nights: closedNights('2026-11-01', '2026-11-08') });
+    const p = await svc.previewPrices(USER, PROPERTY_ID, prices({ '2026-11-01': 300, '2026-11-02': 300 }));
+    expect(p.changes.price).toBe(0);
+    expect(p.skipped.closed).toBe(2);
+    await expect(svc.startPrices(USER, PROPERTY_ID, prices({ '2026-11-01': 300 }))).rejects.toThrow('Отправлять нечего');
+    expect(booking.setRates).not.toHaveBeenCalled();
   });
 
   it('a night closed meanwhile by someone else is no «mismatch»: only the price is checked back', async () => {

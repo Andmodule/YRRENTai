@@ -69,7 +69,24 @@ function setup(
       (opts.base ?? []).filter((b) => inRange(b.date, where)),
     ),
     upsert: jest.fn(async () => undefined),
+    inserted: [] as unknown[],
+    createQueryBuilder: jest.fn(),
   };
+  type Qb = {
+    insert: () => Qb;
+    into: () => Qb;
+    values: (v: unknown[]) => Qb;
+    orIgnore: jest.Mock<Qb, []>;
+    execute: jest.Mock<Promise<{ raw: unknown[] }>, []>;
+  };
+  const qb: Qb = {
+    insert: () => qb,
+    into: () => qb,
+    values: (v: unknown[]) => ((baseRepo.inserted = v), qb),
+    orIgnore: jest.fn(() => qb),
+    execute: jest.fn(async () => ({ raw: [] })),
+  };
+  baseRepo.createQueryBuilder.mockReturnValue(qb);
   let rules = (opts.rules ?? []).map((r) => ({ ...r })) as PropertyChannelPricingEntity[];
   const channelRepo = {
     find: jest.fn(async () => rules),
@@ -100,7 +117,7 @@ function setup(
     channelRepo as unknown as Repository<PropertyChannelPricingEntity>,
     nightPriceRepo as unknown as Repository<PropertyChannelNightPriceEntity>,
   );
-  return { svc, baseRepo, channelRepo, nightPriceRepo, dates, tx, dataSource, sync };
+  return { svc, baseRepo, qb, channelRepo, nightPriceRepo, dates, tx, dataSource, sync };
 }
 
 const NOV = { from: '2026-11-01', to: '2026-11-04' };
@@ -230,13 +247,13 @@ describe('PricingBasePriceService — «Заполнить из Booking»', () =
     });
     const r = await s.svc.fillFromBooking(OWNER, PROP, NOV);
     expect(s.dates.readOpenRatePrices).toHaveBeenCalledWith(OWNER, PROP, '2026-11-01', '2026-11-05');
-    expect(s.baseRepo.upsert).toHaveBeenCalledWith(
-      [
-        { propertyId: PROP, date: '2026-11-01', priceMinor: 28400 },
-        { propertyId: PROP, date: '2026-11-04', priceMinor: 8990 },
-      ],
-      ['propertyId', 'date'],
-    );
+    expect(s.baseRepo.inserted).toEqual([
+      { propertyId: PROP, date: '2026-11-01', priceMinor: 28400 },
+      { propertyId: PROP, date: '2026-11-04', priceMinor: 8990 },
+    ]);
+    // a base saved meanwhile is never overwritten
+    expect(s.qb.orIgnore).toHaveBeenCalled();
+    expect(s.baseRepo.upsert).not.toHaveBeenCalled();
     // 4 nights: 2 filled, 1 kept (had a base), 1 not open (11-03 closed or sold)
     expect(r).toEqual({ filled: 2, kept: 1, notOpen: 1 });
   });
@@ -244,7 +261,7 @@ describe('PricingBasePriceService — «Заполнить из Booking»', () =
   it('nothing open → nothing written', async () => {
     const s = setup({ open: {} });
     expect(await s.svc.fillFromBooking(OWNER, PROP, NOV)).toEqual({ filled: 0, kept: 0, notOpen: 4 });
-    expect(s.baseRepo.upsert).not.toHaveBeenCalled();
+    expect(s.qb.execute).not.toHaveBeenCalled();
   });
 
   it('past nights do not count as «not open»', async () => {

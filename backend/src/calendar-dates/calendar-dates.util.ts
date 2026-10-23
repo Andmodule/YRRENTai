@@ -48,7 +48,9 @@ export type SkipReason =
   /** «Оставить цену», but Booking has no price for the night. */
   | 'noPrice'
   /** Closed by hand beyond the auto-extension edge — auto-extension leaves it closed. */
-  | 'keepClosed';
+  | 'keepClosed'
+  /** Re-pricing: closed on Booking — not for sale, left alone (opening it sets its price). */
+  | 'closed';
 
 export type CalendarDatesPlanInput = {
   action: CalendarDatesAction;
@@ -244,7 +246,7 @@ export function samePrice(a: number | null, b: number | null): boolean {
 }
 
 export function emptySkipped(): Record<SkipReason, number> {
-  return { crm: 0, booked: 0, belowMin: 0, missing: 0, weekday: 0, unchanged: 0, noPrice: 0, keepClosed: 0 };
+  return { crm: 0, booked: 0, belowMin: 0, missing: 0, weekday: 0, unchanged: 0, noPrice: 0, keepClosed: 0, closed: 0 };
 }
 
 /**
@@ -319,9 +321,11 @@ export function planCalendarDates(
 }
 
 /**
- * Re-price nights to the given prices, keeping each night open or closed as Booking has it. The same
- * guards as opening: never a night sold on the channel, with no room for sale, or covered by a booking /
- * block in RentAI; never below `minPrice`. Nights without a target are not looked at.
+ * Re-price nights that are open for sale to the given prices. A closed night is left alone: it is not on
+ * sale, «Открыть даты» sets its price when it opens, and a write to it could not be shown to keep it closed
+ * (the run does not send the open / closed state). The same guards as opening: never a night sold on the
+ * channel, with no room for sale, or covered by a booking / block in RentAI; never below `minPrice`.
+ * Nights without a target are not looked at.
  */
 export function planPriceTargets(
   nights: ReadonlyMap<string, RateNight>,
@@ -346,6 +350,10 @@ export function planPriceTargets(
       skipped.booked++;
       continue;
     }
+    if (night.closed) {
+      skipped.closed++;
+      continue;
+    }
     if (!Number.isFinite(price) || !(price > 0)) {
       skipped.noPrice++;
       continue;
@@ -358,7 +366,7 @@ export function planPriceTargets(
       skipped.belowMin++;
       continue;
     }
-    changes.push({ date, price: round2(price), closed: night.closed, fromPrice: night.price, fromClosed: night.closed });
+    changes.push({ date, price: round2(price), closed: false, fromPrice: night.price, fromClosed: false });
   }
   return { nights: dates.length, changes, skipped, alreadyClosed: [] };
 }

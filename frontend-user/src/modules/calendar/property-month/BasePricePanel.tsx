@@ -219,7 +219,6 @@ export function BasePricePanel({
                   <li key={r.dateFrom}>
                     {format(ymdToDate(r.dateFrom), 'dd.MM')}
                     {r.nights > 1 ? `–${format(ymdToDate(addDays(r.dateToExclusive, -1)), 'dd.MM')}` : ''} → {fmt.format(r.price)} {preview.currency}
-                    {r.closed ? ` · ${t('stillClosed')}` : ''}
                   </li>
                 ))}
                 {preview.requests > preview.ranges.length ? <li>…</li> : null}
@@ -280,7 +279,7 @@ function addDays(ymd: string, days: number): string {
 
 function SkippedLine({ skipped }: { skipped: CalendarDatesPreview['skipped'] }) {
   const t = useTranslations('calendar.propertyMonth.basePrice.skipped');
-  const parts = (['unchanged', 'crm', 'booked', 'belowMin', 'missing'] as const)
+  const parts = (['unchanged', 'closed', 'crm', 'booked', 'belowMin', 'missing'] as const)
     .filter((k) => skipped[k] > 0)
     .map((k) => t(k, { count: skipped[k] }));
   return parts.length ? <p className="text-muted-foreground">{parts.join(' · ')}</p> : null;

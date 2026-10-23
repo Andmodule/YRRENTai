@@ -417,16 +417,19 @@ describe('planPriceTargets', () => {
   const night = (date: string, over: Partial<RateNight> = {}): RateNight => ({ date, closed: false, price: 500, booked: 0, availability: 1, ...over });
   const nights = (list: RateNight[]) => new Map(list.map((n) => [n.date, n]));
 
-  it('re-prices open and closed nights alike, keeping the state', () => {
+  it('re-prices open nights only; a closed night is left alone and counted', () => {
     const plan = planPriceTargets(
       nights([night('2026-11-01'), night('2026-11-02', { closed: true, price: 1180 })]),
       new Map([['2026-11-01', 520], ['2026-11-02', 520]]),
     );
-    expect(plan.changes).toEqual([
-      { date: '2026-11-01', price: 520, closed: false, fromPrice: 500, fromClosed: false },
-      { date: '2026-11-02', price: 520, closed: true, fromPrice: 1180, fromClosed: true },
-    ]);
-    expect(countChanges(plan.changes)).toEqual({ open: 0, close: 0, price: 2 });
+    expect(plan.changes).toEqual([{ date: '2026-11-01', price: 520, closed: false, fromPrice: 500, fromClosed: false }]);
+    expect(plan.skipped.closed).toBe(1);
+    expect(countChanges(plan.changes)).toEqual({ open: 0, close: 0, price: 1 });
+  });
+
+  it('a sold closed night counts as sold, not closed', () => {
+    const plan = planPriceTargets(nights([night('2026-11-01', { closed: true, booked: 1 })]), new Map([['2026-11-01', 520]]));
+    expect(plan.skipped).toMatchObject({ booked: 1, closed: 0 });
   });
 
   it('skips: same price, sold, no room, RentAI booking, missing, below the minimum, no price', () => {
