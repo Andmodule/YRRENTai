@@ -391,16 +391,21 @@ export const pricingApi = {
       unwrap<BasePriceOverview>(apiClient.get(`/pricing/base-prices/${propertyId}`, { params: { from, to } })),
     setRange: (propertyId: string, input: { from: string; to: string; price: number | null }) =>
       unwrap<Record<string, number>>(apiClient.put(`/pricing/base-prices/${propertyId}`, input)),
-    setNights: (propertyId: string, prices: Record<string, number>) =>
-      unwrap<Record<string, number>>(apiClient.put(`/pricing/base-prices/${propertyId}/nights`, { prices })),
+    fillFromBooking: (propertyId: string, input: { from: string; to: string }) =>
+      unwrap<{ filled: number; kept: number; notOpen: number }>(
+        apiClient.post(`/pricing/base-prices/${propertyId}/fill-from-booking`, input),
+      ),
     saveChannel: (
       propertyId: string,
       channel: GuestPriceChannel,
       input: Partial<Pick<ChannelPricing, 'markupPct' | 'singleGuestPct' | 'extraGuestPct'>>,
     ) => unwrap<ChannelPricing>(apiClient.put(`/pricing/base-prices/${propertyId}/channels/${channel}`, input)),
     previewBooking: (propertyId: string, input: { from: string; to: string }) =>
-      unwrap<CalendarDatesPreview>(apiClient.post(`/pricing/base-prices/${propertyId}/booking/preview`, input)),
-    sendBooking: (propertyId: string, input: { from: string; to: string }) =>
+      unwrap<CalendarDatesPreview & { fingerprint: string }>(
+        apiClient.post(`/pricing/base-prices/${propertyId}/booking/preview`, input),
+      ),
+    /** `fingerprint` from the preview: the server refuses (409) when the prices changed since. */
+    sendBooking: (propertyId: string, input: { from: string; to: string; fingerprint: string }) =>
       unwrap<CalendarDatesJob>(apiClient.post(`/pricing/base-prices/${propertyId}/booking/send`, input)),
   },
   guestPrice: {

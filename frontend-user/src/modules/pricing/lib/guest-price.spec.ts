@@ -277,6 +277,10 @@ describe('base price helpers (same as backend base-price.util)', () => {
     assert.equal(channelPriceFromBase(290, -15), 247);
     assert.equal(channelPriceFromBase(500, null), 500);
     assert.equal(channelPriceFromBase(500, Number.NaN), 500);
+    // no markup: the base as it is (a euro price 89,90 must not become 90)
+    assert.equal(channelPriceFromBase(89.9, 0), 89.9);
+    assert.equal(channelPriceFromBase(89.9, null), 89.9);
+    assert.equal(channelPriceFromBase(89.9, 10), 99);
   });
 
   it('channelNightPrice: typed wins, else base × markup, else null', () => {

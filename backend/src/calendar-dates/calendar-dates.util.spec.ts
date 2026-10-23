@@ -402,6 +402,17 @@ describe('findMismatches', () => {
   });
 });
 
+describe('findMismatches — price only', () => {
+  it('a price run compares the price, not the state', () => {
+    const change = { date: '2026-11-01', price: 520, closed: false, fromPrice: 500, fromClosed: false };
+    const after = new Map([['2026-11-01', { date: '2026-11-01', closed: true, price: 520, booked: 0 }]]);
+    expect(findMismatches([change], after)).toEqual(['2026-11-01']);
+    expect(findMismatches([change], after, { priceOnly: true })).toEqual([]);
+    const wrong = new Map([['2026-11-01', { date: '2026-11-01', closed: false, price: 500, booked: 0 }]]);
+    expect(findMismatches([change], wrong, { priceOnly: true })).toEqual(['2026-11-01']);
+  });
+});
+
 describe('planPriceTargets', () => {
   const night = (date: string, over: Partial<RateNight> = {}): RateNight => ({ date, closed: false, price: 500, booked: 0, availability: 1, ...over });
   const nights = (list: RateNight[]) => new Map(list.map((n) => [n.date, n]));

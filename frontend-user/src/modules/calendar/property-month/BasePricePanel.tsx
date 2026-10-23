@@ -1,6 +1,7 @@
 'use client';
 
-import { useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { useLocale, useTranslations } from 'next-intl';
 import { toast } from 'sonner';
@@ -9,11 +10,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { getApiErrorMessage } from '@/lib/api/error-message';
 import { cn } from '@/lib/utils';
-import { useBasePriceMutations, useGuestPriceMutations } from '@/modules/pricing/hooks';
+import { pricingKeys, useBasePriceMutations, useGuestPriceMutations } from '@/modules/pricing/hooks';
 import type { BasePriceOverview, GuestPriceChannel } from '@/modules/pricing/api';
 import { ymdToDate } from '@/modules/pricing/lib/pricing-ui';
 import { useCalendarDatesJob, type CalendarDatesPreview } from '../calendar-dates-api';
 import type { MonthNight } from '../lib/property-month';
+
+type Preview = CalendarDatesPreview & { fingerprint: string };
 
 /** «12,5» / «12.5» → 12.5; empty → null; anything else → NaN. */
 function parseNumber(s: string): number | null {
@@ -31,29 +34,50 @@ function parseNumber(s: string): number | null {
 export function BasePricePanel({
   propertyId,
   picked,
-  monthNights,
+  monthFrom,
+  monthTo,
   today,
   data,
   typed,
   currency,
+  minPrice,
+  belowMin,
 }: {
   propertyId: string;
   picked: readonly MonthNight[];
-  /** All nights of the month on screen — «Заполнить из Booking» takes them. */
-  monthNights: readonly MonthNight[];
+  /** The month on screen — «Заполнить из Booking» fills it (from today on). */
+  monthFrom: string;
+  monthTo: string;
   today: string;
   data: BasePriceOverview;
   /** Prices typed per night and channel (from «Цена для гостя»). */
   typed: Record<GuestPriceChannel, Record<string, number>>;
   currency: string | null;
+  minPrice: number | null;
+  /** Picked nights whose lowest Booking guest price would fall below `minPrice`. */
+  belowMin: number;
 }) {
   const t = useTranslations('calendar.propertyMonth.basePrice');
   const locale = useLocale();
   const fmt = useMemo(() => new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }), [locale]);
   const base = useBasePriceMutations(propertyId);
   const guest = useGuestPriceMutations(propertyId);
-  const job = useCalendarDatesJob(propertyId, true);
-  const [preview, setPreview] = useState<CalendarDatesPreview | null>(null);
+  const qc = useQueryClient();
+  // The dates tool off: no runs to poll (the server would answer 503 on every pick).
+  const job = useCalendarDatesJob(propertyId, data.bookingSend !== 'DATES_OFF');
+  const [preview, setPreview] = useState<Preview | null>(null);
+  // A preview shows the prices of the moment: any change of base, markups or typed prices drops it.
+  useEffect(() => setPreview(null), [data, typed]);
+  // When a run ends, the calendar re-reads Booking (the «not sent» dots go away).
+  const lastState = useRef<string | null>(null);
+  useEffect(() => {
+    const s = job.data?.state ?? null;
+    if (lastState.current === 'running' && s && s !== 'running') {
+      void qc.invalidateQueries({ queryKey: ['calendar'] });
+      void qc.invalidateQueries({ queryKey: pricingKeys.basePrice(propertyId) });
+    }
+    lastState.current = s;
+  }, [job.data?.state, qc, propertyId]);
   const [showRules, setShowRules] = useState(false);
 
   const from = picked[0]?.ymd ?? today;
@@ -63,15 +87,8 @@ export function BasePricePanel({
   const withoutBase = picked.length - values.length;
   const min = values.length ? Math.min(...values) : null;
   const max = values.length ? Math.max(...values) : null;
-  // «Заполнить из Booking»: free nights of the month from today on that have a Booking price and no base yet.
-  const fillable = useMemo(() => {
-    const out: Record<string, number> = {};
-    for (const n of monthNights) {
-      if (n.ymd >= today && n.rack != null && n.rack > 0 && data.base[n.ymd] == null) out[n.ymd] = n.rack;
-    }
-    return out;
-  }, [monthNights, today, data.base]);
-  const fillCount = Object.keys(fillable).length;
+  const fillFrom = monthFrom < today ? today : monthFrom;
+  const datesOff = data.bookingSend === 'DATES_OFF';
 
   const fail = (e: unknown) => toast.error(getApiErrorMessage(e) ?? t('saveError'));
   const running = job.data?.state === 'running';
@@ -111,16 +128,16 @@ export function BasePricePanel({
           type="button"
           size="sm"
           variant="outline"
-          disabled={fillCount === 0 || base.setNights.isPending}
+          disabled={datesOff || fillFrom > monthTo || base.fillFromBooking.isPending}
           onClick={() =>
-            base.setNights.mutate(fillable, {
-              onSuccess: () => toast.success(t('filled', { count: fillCount })),
-              onError: fail,
-            })
+            base.fillFromBooking.mutate(
+              { from: fillFrom, to: monthTo },
+              { onSuccess: (r) => toast.success(t('filled', { filled: r.filled, kept: r.kept, notOpen: r.notOpen })), onError: fail },
+            )
           }
         >
-          {base.setNights.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : null}
-          {t('fillFromBooking', { count: fillCount })}
+          {base.fillFromBooking.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : null}
+          {t('fillFromBooking')}
         </Button>
         <Button type="button" size="sm" variant="ghost" onClick={() => setShowRules((v) => !v)} aria-expanded={showRules}>
           {t('rulesToggle')}
@@ -176,7 +193,7 @@ export function BasePricePanel({
           type="button"
           size="sm"
           variant="outline"
-          disabled={base.previewBooking.isPending || running}
+          disabled={datesOff || base.previewBooking.isPending || running}
           onClick={() =>
             base.previewBooking.mutate({ from, to }, { onSuccess: (p) => setPreview(p), onError: (e) => { setPreview(null); fail(e); } })
           }
@@ -184,6 +201,12 @@ export function BasePricePanel({
           {base.previewBooking.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : null}
           {t('check', { range })}
         </Button>
+
+        {belowMin > 0 && minPrice ? (
+          <p className="rounded-lg border border-amber-300/70 bg-amber-50 px-3 py-2 text-xs text-amber-950 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
+            {t('belowMinWarn', { count: belowMin, min: fmt.format(minPrice), currency: currency ?? '' })}
+          </p>
+        ) : null}
 
         {preview ? (
           <div className="space-y-1.5 rounded-lg bg-muted/50 p-3 text-xs">
@@ -212,7 +235,7 @@ export function BasePricePanel({
                 disabled={!!sendBlock || base.sendBooking.isPending || running}
                 onClick={() =>
                   base.sendBooking.mutate(
-                    { from, to },
+                    { from, to, fingerprint: preview.fingerprint },
                     { onSuccess: () => { setPreview(null); toast.success(t('sendStarted')); }, onError: fail },
                   )
                 }
@@ -228,7 +251,7 @@ export function BasePricePanel({
           <p
             className={cn(
               'rounded-lg px-3 py-2 text-xs',
-              job.data.state === 'done' && !(job.data.verify?.mismatched.length)
+              job.data.state === 'done' && job.data.failed.length === 0 && !job.data.verify?.mismatched.length
                 ? 'bg-emerald-50 text-emerald-900 dark:bg-emerald-500/10 dark:text-emerald-200'
                 : job.data.state === 'running'
                   ? 'bg-muted'

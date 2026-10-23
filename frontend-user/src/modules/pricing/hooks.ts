@@ -218,8 +218,8 @@ export function useBasePriceMutations(propertyId: string) {
     mutationFn: (input: { from: string; to: string; price: number | null }) => pricingApi.basePrice.setRange(propertyId, input),
     onSuccess: refresh,
   });
-  const setNights = useMutation({
-    mutationFn: (prices: Record<string, number>) => pricingApi.basePrice.setNights(propertyId, prices),
+  const fillFromBooking = useMutation({
+    mutationFn: (input: { from: string; to: string }) => pricingApi.basePrice.fillFromBooking(propertyId, input),
     onSuccess: refresh,
   });
   const saveChannel = useMutation({
@@ -231,10 +231,10 @@ export function useBasePriceMutations(propertyId: string) {
     mutationFn: (input: { from: string; to: string }) => pricingApi.basePrice.previewBooking(propertyId, input),
   });
   const sendBooking = useMutation({
-    mutationFn: (input: { from: string; to: string }) => pricingApi.basePrice.sendBooking(propertyId, input),
+    mutationFn: (input: { from: string; to: string; fingerprint: string }) => pricingApi.basePrice.sendBooking(propertyId, input),
     onSuccess: (job) => qc.setQueryData(calendarDatesKeys.job(job.propertyId), job),
   });
-  return { setRange, setNights, saveChannel, previewBooking, sendBooking };
+  return { setRange, fillFromBooking, saveChannel, previewBooking, sendBooking };
 }
 
 export function useRulesMutations() {

@@ -527,13 +527,43 @@ describe('CalendarDatesService — re-pricing nights («базовая цена�
     expect(done.verify).toEqual({ checked: 3, mismatched: [] });
     expect(booking.state.get('2026-11-01')).toEqual(open(520));
     expect(booking.state.get('2026-11-03')).toEqual({ closed: true, price: 520, booked: 0 });
-    expect(booking.setRates.mock.calls.map((c) => c[0].closed)).toEqual([false, true]);
+    // the open / closed state is not sent at all — Booking keeps whatever it has
+    expect(booking.setRates.mock.calls.map((c) => c[0].closed)).toEqual([undefined, undefined]);
     expect(sync.invalidateCalendarOverlay).toHaveBeenCalledWith(PROPERTY_ID);
+  });
+
+  it('a night closed meanwhile by someone else is no «mismatch»: only the price is checked back', async () => {
+    const { svc, booking } = setup({ nights: { '2026-11-01': open(500) } });
+    booking.setRates.mockImplementationOnce(async (p) => {
+      booking.state.set('2026-11-01', { closed: true, price: Number(p.price), booked: 0 });
+      return { status: { returnCode: 200 } };
+    });
+    await svc.startPrices(USER, PROPERTY_ID, prices({ '2026-11-01': 520 }));
+    const done = await finished(svc);
+    expect(done.verify).toEqual({ checked: 1, mismatched: [] });
+  });
+
+  it('the run plans from a fresh read of Booking, not the preview’s cache', async () => {
+    const { svc, booking } = setup({ nights: { '2026-11-01': open(500) } });
+    await svc.previewPrices(USER, PROPERTY_ID, prices({ '2026-11-01': 520 }));
+    const reads = booking.getAvailability.mock.calls.length;
+    booking.state.set('2026-11-01', open(500, { booked: 1 }));
+    await expect(svc.startPrices(USER, PROPERTY_ID, prices({ '2026-11-01': 520 }))).rejects.toThrow('Отправлять нечего');
+    expect(booking.getAvailability.mock.calls.length).toBeGreaterThan(reads);
+  });
+
+  it('readOpenRatePrices: open nights of the main rate from today on, closed ones left out', async () => {
+    const { svc } = setup({
+      nights: { '2026-10-11': open(300), '2026-10-12': open(310), '2026-10-13': { closed: true, price: 1180, booked: 0 }, '2026-10-14': open(320, { booked: 1 }) },
+    });
+    const m = await svc.readOpenRatePrices(USER, PROPERTY_ID, '2026-10-01', '2026-10-15');
+    expect([...m]).toEqual([['2026-10-12', 310], ['2026-10-14', 320]]);
+    expect([...(await svc.readOpenRatePrices(USER, PROPERTY_ID, '2026-09-01', '2026-10-01'))]).toEqual([]);
   });
 
   it('nothing to change → 400 instead of an empty run', async () => {
     const { svc, booking } = setup({ nights: { '2026-11-01': open(500) } });
-    await expect(svc.startPrices(USER, PROPERTY_ID, prices({ '2026-11-01': 500 }))).rejects.toThrow('уже эти цены');
+    await expect(svc.startPrices(USER, PROPERTY_ID, prices({ '2026-11-01': 500 }))).rejects.toThrow('Отправлять нечего');
     expect(booking.setRates).not.toHaveBeenCalled();
   });
 

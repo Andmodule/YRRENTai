@@ -386,12 +386,19 @@ export function mergeChangesToRanges(changes: readonly NightChange[], max = MAX_
   return out;
 }
 
-/** Nights Booking reports differently from what was sent (read back after the writes). */
-export function findMismatches(changes: readonly NightChange[], after: ReadonlyMap<string, RateNight>): string[] {
+/**
+ * Nights Booking reports differently from what was sent (read back after the writes). `priceOnly`: a
+ * re-pricing run does not send the open / closed state, so only the price is compared.
+ */
+export function findMismatches(
+  changes: readonly NightChange[],
+  after: ReadonlyMap<string, RateNight>,
+  opts: { priceOnly?: boolean } = {},
+): string[] {
   const out: string[] = [];
   for (const c of changes) {
     const n = after.get(c.date);
-    if (!n || n.closed !== c.closed || !samePrice(n.price, c.price)) out.push(c.date);
+    if (!n || (!opts.priceOnly && n.closed !== c.closed) || !samePrice(n.price, c.price)) out.push(c.date);
   }
   return out;
 }

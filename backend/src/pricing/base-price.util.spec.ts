@@ -3,6 +3,9 @@ import { channelPriceFromBase, channelTargets } from './base-price.util';
 describe('channelPriceFromBase', () => {
   it.each([
     [500, 0, 500],
+    [89.9, 0, 89.9], // no markup: the base as it is, not rounded
+    [89.9, null, 89.9],
+    [89.9, 10, 99], // 98.89 → 99
     [500, 10, 550],
     [500, -5, 475],
     [284, 10, 312], // 312.4 → 312
@@ -11,6 +14,7 @@ describe('channelPriceFromBase', () => {
     [500, null, 500],
     [500, undefined, 500],
     [500, Number.NaN, 500],
+    [284.444, 0, 284.44],
   ])('%p with %p %% → %p', (base, pct, want) => {
     expect(channelPriceFromBase(base, pct as number | null | undefined)).toBe(want);
   });

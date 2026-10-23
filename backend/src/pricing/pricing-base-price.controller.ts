@@ -4,7 +4,7 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { CurrentUser, JwtPayload } from '../common/decorators/current-user.decorator';
 import { PricingBasePriceService } from './pricing-base-price.service';
-import { BasePriceNightsDto, BasePriceRangeDto, BookingSendDto, ChannelPricingDto } from './dto/pricing-base-price.dto';
+import { BasePriceRangeDto, BookingSendConfirmDto, BookingSendDto, ChannelPricingDto } from './dto/pricing-base-price.dto';
 
 /**
  * «Цены → базовая цена» in the calendar of one property. Every route answers 503 while
@@ -37,13 +37,14 @@ export class PricingBasePriceController {
     return { data: await this.basePrice.setRange(user, propertyId, body) };
   }
 
-  @Put(':propertyId/nights')
-  async setNights(
+  /** Nights of [from, to] without a base price get Booking's price — open nights only. Reads Booking. */
+  @Post(':propertyId/fill-from-booking')
+  async fillFromBooking(
     @CurrentUser() user: JwtPayload,
     @Param('propertyId', ParseUUIDPipe) propertyId: string,
-    @Body() body: BasePriceNightsDto,
+    @Body() body: BookingSendDto,
   ) {
-    return { data: await this.basePrice.setNights(user, propertyId, body) };
+    return { data: await this.basePrice.fillFromBooking(user, propertyId, body) };
   }
 
   @Put(':propertyId/channels/:channel')
@@ -69,7 +70,7 @@ export class PricingBasePriceController {
   async sendBooking(
     @CurrentUser() user: JwtPayload,
     @Param('propertyId', ParseUUIDPipe) propertyId: string,
-    @Body() body: BookingSendDto,
+    @Body() body: BookingSendConfirmDto,
   ) {
     return { data: await this.basePrice.sendBooking(user, propertyId, body) };
   }

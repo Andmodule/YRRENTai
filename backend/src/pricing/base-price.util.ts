@@ -8,9 +8,13 @@
 export const MARKUP_MIN = -50;
 export const MARKUP_MAX = 200;
 
-/** base × (100 + markupPct) / 100, rounded to whole units of the currency (zł, €). */
+/**
+ * base × (100 + markupPct) / 100, rounded to whole units of the currency (zł, €). Without a markup the
+ * base goes as it is (89,90 € stays 89,90 — «Заполнить из Booking» then changes nothing on Booking).
+ */
 export function channelPriceFromBase(base: number, markupPct: number | null | undefined): number {
   const pct = Number.isFinite(markupPct) ? (markupPct as number) : 0;
+  if (pct === 0) return Math.round(base * 100) / 100;
   return Math.round((base * (100 + pct)) / 100);
 }
 

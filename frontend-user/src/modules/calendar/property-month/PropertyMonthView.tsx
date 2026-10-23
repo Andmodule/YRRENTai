@@ -272,11 +272,18 @@ export function PropertyMonthView({ propertyId }: { propertyId: string }) {
                     key={`${selection.from}|${selection.to}`}
                     propertyId={propertyId}
                     picked={pickedNights}
-                    monthNights={nights}
+                    monthFrom={from}
+                    monthTo={to}
                     today={today}
                     data={basePrices.data}
                     typed={guestPrices.data.nightPrices}
                     currency={currency}
+                    minPrice={pricingRow?.minPrice ?? null}
+                    belowMin={
+                      pricingRow?.minPrice
+                        ? pickedNights.filter((n) => (cellRows?.get(n.ymd)?.booking?.minGuest ?? Number.POSITIVE_INFINITY) < pricingRow.minPrice!).length
+                        : 0
+                    }
                   />
                 ) : null
               }

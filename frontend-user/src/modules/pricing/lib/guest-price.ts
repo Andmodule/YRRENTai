@@ -265,9 +265,10 @@ export function countBookedOrClosed(nights: readonly { kind: string }[]): number
 
 // ─── «Базовая цена» — same as backend base-price.util.ts ──────────────────────
 
-/** base × (100 + markupPct) / 100, rounded to whole units of the currency. */
+/** base × (100 + markupPct) / 100, rounded to whole units; without a markup the base as it is (89,90 stays). */
 export function channelPriceFromBase(base: number, markupPct: number | null | undefined): number {
   const pct = Number.isFinite(markupPct) ? (markupPct as number) : 0;
+  if (pct === 0) return Math.round(base * 100) / 100;
   return Math.round((base * (100 + pct)) / 100);
 }
 

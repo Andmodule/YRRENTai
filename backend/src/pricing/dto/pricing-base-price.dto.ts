@@ -1,6 +1,7 @@
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
-import { isYmd } from '../pricing-math.util';
+// The strict check: «2026-02-30» is refused here, not by the database.
+import { isYmd } from '../../calendar-dates/calendar-dates.util';
 import { MARKUP_MAX, MARKUP_MIN } from '../base-price.util';
 
 const ymd = z.string().refine(isYmd, 'Дата в формате yyyy-MM-dd');
@@ -14,17 +15,6 @@ export const basePriceRangeSchema = z
 
 export class BasePriceRangeDto extends createZodDto(basePriceRangeSchema) {}
 
-/** Base prices night by night (e.g. taken from Booking for a month): yyyy-MM-dd → price. */
-export const basePriceNightsSchema = z
-  .object({
-    prices: z
-      .record(z.string(), price)
-      .refine((m) => Object.keys(m).length >= 1 && Object.keys(m).length <= 62, 'От 1 до 62 ночей за раз')
-      .refine((m) => Object.keys(m).every(isYmd), 'Даты в формате yyyy-MM-dd'),
-  })
-  .strict();
-
-export class BasePriceNightsDto extends createZodDto(basePriceNightsSchema) {}
 
 /** Every field optional: what is not sent stays; null clears the guest percents. */
 export const channelPricingSchema = z
@@ -44,3 +34,11 @@ export const bookingSendSchema = z
   .refine((v) => v.from <= v.to, { message: '«С» позже «по»', path: ['to'] });
 
 export class BookingSendDto extends createZodDto(bookingSendSchema) {}
+
+/** «Отправить» after «Проверить»: the preview's fingerprint — the prices must still be the same. */
+export const bookingSendConfirmSchema = z
+  .object({ from: ymd, to: ymd, fingerprint: z.string().regex(/^[0-9a-f]{40}$/, 'Отпечаток проверки') })
+  .strict()
+  .refine((v) => v.from <= v.to, { message: '«С» позже «по»', path: ['to'] });
+
+export class BookingSendConfirmDto extends createZodDto(bookingSendConfirmSchema) {}

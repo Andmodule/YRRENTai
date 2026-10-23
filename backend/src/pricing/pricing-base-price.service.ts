@@ -1,4 +1,5 @@
-import { BadRequestException, Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { createHash } from 'crypto';
+import { BadRequestException, ConflictException, Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Between, DataSource, QueryFailedError, Repository } from 'typeorm';
 import type { JwtPayload } from '../common/decorators/current-user.decorator';
@@ -9,12 +10,14 @@ import { PricingConfig } from './pricing-config';
 import { PricingService } from './pricing.service';
 import { PromotionSyncService } from './promotion-sync.service';
 import { channelTargets } from './base-price.util';
-import { addDaysYmd, isYmd, nightsCount, toMinor } from './pricing-math.util';
+import { addDaysYmd, nightsCount, toMinor, todayInTz } from './pricing-math.util';
+// The strict check: «2026-02-30» is refused, not left to the database.
+import { isYmd } from '../calendar-dates/calendar-dates.util';
 import { PropertyBasePriceEntity } from './entities/property-base-price.entity';
 import { PropertyChannelPricingEntity } from './entities/property-channel-pricing.entity';
 import { PropertyChannelNightPriceEntity } from './entities/property-channel-night-price.entity';
 import { GUEST_PRICE_CHANNELS, type GuestPriceChannel } from './entities/property-channel-profile.entity';
-import type { BasePriceNightsDto, BasePriceRangeDto, BookingSendDto, ChannelPricingDto } from './dto/pricing-base-price.dto';
+import type { BasePriceRangeDto, BookingSendConfirmDto, BookingSendDto, ChannelPricingDto } from './dto/pricing-base-price.dto';
 
 /** Longest range read, set or sent at once (a year, like the availability horizon). */
 export const BASE_PRICE_MAX_RANGE_DAYS = 366;
@@ -30,6 +33,24 @@ export type ChannelPricingView = {
 
 /** Why «Отправить в Booking» is not available; null = it is. */
 export type BookingSendBlock = 'DATES_OFF' | 'DRY_RUN' | 'NOT_ON_BOOKING' | 'NOT_IN_PILOT' | null;
+
+/** Preview of «Отправить в Booking» + the fingerprint «Отправить» must bring back. */
+export type BookingPreview = CalendarDatesPreview & { fingerprint: string };
+
+export type FillFromBookingResult = {
+  /** Nights that got Booking's price as their base. */
+  filled: number;
+  /** Had a base price already — kept. */
+  kept: number;
+  /** Closed, sold out or without a price on Booking — left without a base. */
+  notOpen: number;
+};
+
+/** Same targets ↔ same fingerprint (sorted night → price). */
+export function targetsFingerprint(targets: ReadonlyMap<string, number>): string {
+  const entries = [...targets].sort(([a], [b]) => a.localeCompare(b));
+  return createHash('sha1').update(JSON.stringify(entries)).digest('hex');
+}
 
 export type BasePriceOverview = {
   /** yyyy-MM-dd → base price, inside [from, to]. */
@@ -114,7 +135,8 @@ export class PricingBasePriceService {
     if (!this.dates.enabled) return 'DATES_OFF';
     const ext = this.sync.externalIdOf(property);
     if (!ext) return 'NOT_ON_BOOKING';
-    if (!this.cfg.isInAllowlist(property.id, ext)) return 'NOT_IN_PILOT';
+    // Unlike Booking promotions, an empty pilot list means «nobody»: prices go out only for named properties.
+    if (this.cfg.flags.allowlist.size === 0 || !this.cfg.isInAllowlist(property.id, ext)) return 'NOT_IN_PILOT';
     if (this.cfg.flags.dryRun) return 'DRY_RUN';
     return null;
   }
@@ -162,17 +184,32 @@ export class PricingBasePriceService {
     });
   }
 
-  /** Sets base prices night by night (e.g. «Заполнить из Booking»), other nights untouched. */
-  async setNights(user: JwtPayload, propertyId: string, dto: BasePriceNightsDto): Promise<Record<string, number>> {
+  /**
+   * «Заполнить из Booking»: nights of [from, to] from today on that have no base price get the price of
+   * Booking's main rate — only nights open for sale (a closed night carries Booking's placeholder price).
+   * Reads Booking, writes only RentAI.
+   */
+  async fillFromBooking(user: JwtPayload, propertyId: string, dto: BookingSendDto): Promise<FillFromBookingResult> {
     this.assertOn();
+    this.assertRange(dto.from, dto.to);
     const property = await this.owned(user, propertyId);
-    const rows = Object.entries(dto.prices)
+    const existing = await this.tables(() => this.baseRepo.find({ where: { propertyId: property.id, date: Between(dto.from, dto.to) } }));
+    const has = new Set(existing.map((b) => b.date));
+    const open = await this.dates.readOpenRatePrices(user, property.id, dto.from, addDaysYmd(dto.to, 1));
+    const rows = [...open]
+      .filter(([date]) => !has.has(date))
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([date, price]) => ({ propertyId: property.id, date, priceMinor: toMinor(price) }));
-    return this.tables(async () => {
-      await this.baseRepo.upsert(rows, ['propertyId', 'date']);
-      return Object.fromEntries(rows.map((r) => [r.date, r.priceMinor / 100]));
-    });
+    if (rows.length > 0) await this.tables(() => this.baseRepo.upsert(rows, ['propertyId', 'date']));
+    const kept = [...open.keys()].filter((d) => has.has(d)).length;
+    return { filled: rows.length, kept, notOpen: Math.max(0, this.futureNights(property, dto.from, dto.to) - open.size) };
+  }
+
+  /** Nights of [from, to] from today (property time zone) on. */
+  private futureNights(property: PropertyEntity, from: string, to: string): number {
+    const today = todayInTz(property.timezone);
+    const start = from < today ? today : from;
+    return start > to ? 0 : nightsCount(start, to);
   }
 
   async saveChannel(
@@ -218,17 +255,21 @@ export class PricingBasePriceService {
   }
 
   /** What «Отправить в Booking» would change for [from, to]. Reads Booking, writes nothing. */
-  async previewBooking(user: JwtPayload, propertyId: string, dto: BookingSendDto): Promise<CalendarDatesPreview> {
+  async previewBooking(user: JwtPayload, propertyId: string, dto: BookingSendDto): Promise<BookingPreview> {
     this.assertOn();
     this.assertRange(dto.from, dto.to);
     const property = await this.owned(user, propertyId);
     const targets = await this.tables(() => this.bookingTargets(property.id, dto.from, dto.to));
     if (targets.size === 0) throw new BadRequestException('На эти ночи нет базовой цены');
-    return this.dates.previewPrices(user, property.id, targets);
+    const preview = await this.dates.previewPrices(user, property.id, targets);
+    return { ...preview, fingerprint: targetsFingerprint(targets) };
   }
 
-  /** Sends the Booking prices of [from, to] — only on the person's command, only for the pilot. */
-  async sendBooking(user: JwtPayload, propertyId: string, dto: BookingSendDto): Promise<CalendarDatesJob> {
+  /**
+   * Sends the Booking prices of [from, to] — only on the person's command, only for the pilot, and only
+   * the prices the person saw in the preview (`fingerprint`); anything changed since → 409, check again.
+   */
+  async sendBooking(user: JwtPayload, propertyId: string, dto: BookingSendConfirmDto): Promise<CalendarDatesJob> {
     this.assertOn();
     this.assertRange(dto.from, dto.to);
     const property = await this.owned(user, propertyId);
@@ -244,6 +285,9 @@ export class PricingBasePriceService {
     }
     const targets = await this.tables(() => this.bookingTargets(property.id, dto.from, dto.to));
     if (targets.size === 0) throw new BadRequestException('На эти ночи нет базовой цены');
+    if (targetsFingerprint(targets) !== dto.fingerprint) {
+      throw new ConflictException('Цены изменились после проверки — нажмите «Проверить» ещё раз');
+    }
     return this.dates.startPrices(user, property.id, targets);
   }
 }
