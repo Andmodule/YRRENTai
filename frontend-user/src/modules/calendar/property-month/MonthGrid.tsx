@@ -146,9 +146,9 @@ export function MonthGrid({
                       ) : (
                         <span className="font-semibold text-foreground">
                           <span className="hidden sm:inline">—</span>
-                          {/* Phone shows one row: without a base price it is the Booking one. */}
-                          <span className="text-blue-700 dark:text-blue-300 sm:hidden">
-                            {row.booking ? fmt.format(row.booking.price) : '—'}
+                          {/* Phone shows one row: without a base price it is the guest price, as before base prices. */}
+                          <span className={cn('sm:hidden', deal && 'text-emerald-700 dark:text-emerald-400')}>
+                            {n?.prices ? fmt.format(n.prices.regular) : '—'}
                           </span>
                         </span>
                       )}
