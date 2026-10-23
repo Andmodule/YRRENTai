@@ -304,7 +304,7 @@ export type BookingCell = {
   price: number;
   /** Typed for this night (an exception), not from the base price. */
   typed: boolean;
-  /** Booking has another price now — the new one is not sent yet. */
+  /** Booking has another price now on a night open for sale — the new one is not sent yet. */
   pending: boolean;
   /** Lowest room price a guest can see for the night at that price (no cleaning). */
   minGuest: number;
@@ -340,7 +340,8 @@ export function bookingCell(
   return {
     price,
     typed: t != null && t > 0,
-    pending: n.rack != null && Math.abs(n.rack - price) >= 0.005,
+    // A closed / booked night is never re-priced by a run: no «not sent» mark for it.
+    pending: n.onSale && n.rack != null && Math.abs(n.rack - price) >= 0.005,
     minGuest,
   };
 }

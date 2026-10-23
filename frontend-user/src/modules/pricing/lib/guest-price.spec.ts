@@ -331,6 +331,13 @@ describe('base price helpers (same as backend base-price.util)', () => {
     assert.equal(bookingCell(n, { base: {}, typed: {}, markupPct: 0, geniusPct: null, profile: null }), null);
   });
 
+  it('bookingCell: no «not sent» mark on a night that is not on sale (closed placeholder price)', () => {
+    const closed = night({ ymd: '2026-11-02', rack: 1180, onSale: false });
+    const c = bookingCell(closed, { base: { '2026-11-02': 300 }, typed: {}, markupPct: 0, geniusPct: null, profile: null })!;
+    assert.equal(c.price, 300);
+    assert.equal(c.pending, false);
+  });
+
   it('bookingCell keeps a cheaper open rate in proportion (non-refundable −15 %)', () => {
     const n = night({ ymd: '2026-11-02', rack: 300, rackFrom: 255 });
     const c = bookingCell(n, { base: { '2026-11-02': 400 }, typed: {}, markupPct: 0, geniusPct: null, profile: null })!;
