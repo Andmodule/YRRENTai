@@ -35,6 +35,7 @@ export function NightPanel({
   actions,
   onClear,
   guestPrice,
+  basePrice,
 }: {
   nights: readonly MonthNight[];
   selection: NightSelection | null;
@@ -48,6 +49,8 @@ export function NightPanel({
   onClear: () => void;
   /** «Цена для гостя» for the picked nights — shown under the table when the feature is on. */
   guestPrice?: ReactNode;
+  /** «Базовая цена» for the picked nights — shown above «Цена для гостя» when the feature is on. */
+  basePrice?: ReactNode;
 }) {
   const t = useTranslations('calendar.propertyMonth');
   const dateLocale = useDateLocale();
@@ -302,6 +305,7 @@ export function NightPanel({
         </section>
       ) : null}
 
+      {selection && picked.length > 0 ? basePrice : null}
       {selection && picked.length > 0 ? guestPrice : null}
 
       <PriceLegend geniusPct={geniusPct} />

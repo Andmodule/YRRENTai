@@ -8,6 +8,9 @@
 
 export type CalendarDatesAction = 'open' | 'close';
 
+/** What a run does: open / close nights, or only re-price them («Цены → базовая цена»), state kept. */
+export type CalendarDatesJobAction = CalendarDatesAction | 'price';
+
 /** One night of the rate as Booking reports it. */
 export type RateNight = {
   date: string;
@@ -313,6 +316,51 @@ export function planCalendarDates(
     });
   }
   return { nights: keys.length, changes, skipped, alreadyClosed };
+}
+
+/**
+ * Re-price nights to the given prices, keeping each night open or closed as Booking has it. The same
+ * guards as opening: never a night sold on the channel, with no room for sale, or covered by a booking /
+ * block in RentAI; never below `minPrice`. Nights without a target are not looked at.
+ */
+export function planPriceTargets(
+  nights: ReadonlyMap<string, RateNight>,
+  targets: ReadonlyMap<string, number>,
+  opts: { crmBlocked?: ReadonlySet<string>; minPrice?: number | null } = {},
+): CalendarDatesPlan {
+  const skipped = emptySkipped();
+  const changes: NightChange[] = [];
+  const dates = [...targets.keys()].sort();
+  for (const date of dates) {
+    const price = targets.get(date)!;
+    if (opts.crmBlocked?.has(date)) {
+      skipped.crm++;
+      continue;
+    }
+    const night = nights.get(date);
+    if (!night) {
+      skipped.missing++;
+      continue;
+    }
+    if (night.booked > 0 || night.availability === 0) {
+      skipped.booked++;
+      continue;
+    }
+    if (!Number.isFinite(price) || !(price > 0)) {
+      skipped.noPrice++;
+      continue;
+    }
+    if (samePrice(night.price, price)) {
+      skipped.unchanged++;
+      continue;
+    }
+    if (opts.minPrice != null && price < opts.minPrice) {
+      skipped.belowMin++;
+      continue;
+    }
+    changes.push({ date, price: round2(price), closed: night.closed, fromPrice: night.price, fromClosed: night.closed });
+  }
+  return { nights: dates.length, changes, skipped, alreadyClosed: [] };
 }
 
 /** Consecutive nights with the same price and state → one POST /rates each (at most `max` nights). */

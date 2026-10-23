@@ -133,6 +133,20 @@ API (`/api/v1/pricing/guest-price`, OWNER и MANAGER; при выключенн�
 
 Откат: `ZODOMUS_PROMOTIONS_GUEST_PRICE_ENABLED=false`.
 
+## Базовая цена (календарь объекта по месяцам)
+
+Своя цена объекта за ночь (за двоих) — источник правды в RentAI; цена каждой площадки считается от неё: `база × (100 + процент) / 100`, до целого. Своя цена площадки на ночь — исключение, побеждает формулу («вернуть к формуле» — убрать её). В ячейке календаря три строки: базовая · `B цена / минимум для гостя` (точка — ещё не отправлено, ✎ — своя цена) · `A цена` (Airbnb: своя → от базовой → из настроек «Цены для гостя»).
+
+- «Заполнить из Booking» берёт текущий Standard из того, что календарь уже получил, для ночей месяца с сегодня без базовой цены — с процентом Booking 0 первая отправка ничего не меняет.
+- «Отправить в Booking» — только по команде: сначала проверка без отправки («было → станет»), потом прогон того же вида, что «Открыть / закрыть даты» (`action: price`): меняется только цена, открытая / закрытая ночь остаётся как есть; не трогаются проданные ночи, ночи с бронью / блоком в RentAI, цены ниже минимальной; очередь, перепроверка, отчёт в `GET /calendar-dates/job`. Отправка только для объекта из списка пилота при `ZODOMUS_PROMOTIONS_DRY_RUN=false` и включённом `ZODOMUS_CALENDAR_DATES_ENABLED`.
+- Airbnb в этом этапе только считается. «1 гость −%» и «гость сверх двух +%» учитываются в «Цене для гостя», в Booking не отправляются (модель цен Booking за число гостей не проверена).
+
+Включается флагом `ZODOMUS_PROMOTIONS_BASE_PRICE_ENABLED=true` (нужны `ZODOMUS_PROMOTIONS_ENABLED` и `ZODOMUS_PROMOTIONS_GUEST_PRICE_ENABLED`). **Сначала миграция** `1778700000000-pricing-base-price` (две новые таблицы `property_base_prices`, `property_channel_pricing`; существующие не трогает; есть откат). Пока флаг выключен, таблицы не читаются, API отвечает 503, строки и блок скрыты.
+
+API (`/api/v1/pricing/base-prices`, OWNER и MANAGER): `GET /:propertyId?from&to` · `PUT /:propertyId` (диапазон) · `PUT /:propertyId/nights` (по ночам) · `PUT /:propertyId/channels/:channel` · `POST /:propertyId/booking/preview` · `POST /:propertyId/booking/send`. Код: `base-price.util.ts`, `pricing-base-price.*.ts`, `calendar-dates.service.ts` (`previewPrices`, `startPrices`), `calendar-dates.util.ts` (`planPriceTargets`); в браузере — `guest-price.ts` (`channelPriceFromBase`, `bookingCell`), `BasePricePanel.tsx`, `MonthGrid.tsx`.
+
+Откат: `ZODOMUS_PROMOTIONS_BASE_PRICE_ENABLED=false`; уже отправленные цены остаются в Booking.
+
 ## Осторожно
 
 - Не запускать локальный backend с `NODE_ENV=development` на боевой БД: TypeORM `synchronize` изменит схему.

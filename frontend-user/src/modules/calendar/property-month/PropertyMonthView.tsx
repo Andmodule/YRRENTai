@@ -14,7 +14,7 @@ import { useDateLocale } from '@/hooks/useDateLocale';
 import { useProperties } from '@/hooks/use-properties';
 import { Link, usePathname, useRouter } from '@/i18n/navigation';
 import { SmartCreateSheet } from '@/modules/tasks/components/manager/SmartCreateSheet';
-import { useCalendarPromotions, usePricingAccess, usePricingProperties } from '@/modules/pricing/hooks';
+import { useBasePrices, useCalendarPromotions, useGuestPrice, usePricingAccess, usePricingProperties } from '@/modules/pricing/hooks';
 import { PromotionFormSheet, type PromotionFormInitial } from '@/modules/pricing/components/PromotionFormSheet';
 import { CalendarPromotionDialog } from '@/modules/pricing/components/calendar/CalendarPromotionDialog';
 import { addDaysYmd, localYmd, promotionsForCell, ymdToDate } from '@/modules/pricing/lib/pricing-ui';
@@ -39,6 +39,9 @@ import {
 import { MonthGrid } from './MonthGrid';
 import { NightPanel } from './NightPanel';
 import { GuestPricePanel } from './GuestPricePanel';
+import { BasePricePanel } from './BasePricePanel';
+import type { CellRows } from './MonthGrid';
+import { airbnbNightPrice, bookingCell } from '@/modules/pricing/lib/guest-price';
 
 /** Calendar of one property by months (Airbnb-like): the month on the left, actions and prices on the right. */
 export function PropertyMonthView({ propertyId }: { propertyId: string }) {
@@ -69,6 +72,10 @@ export function PropertyMonthView({ propertyId }: { propertyId: string }) {
   const pricingAccess = usePricingAccess();
   const pricingOn = pricingAccess.enabled;
   const guestPriceOn = pricingAccess.guestPrice;
+  // «Базовая цена» builds on «Цена для гостя» (the server switches it on only together).
+  const basePriceOn = pricingAccess.basePrice && guestPriceOn;
+  const basePrices = useBasePrices(propertyId, from, to, basePriceOn);
+  const guestPrices = useGuestPrice(propertyId, from, to, basePriceOn);
   const promotions = useCalendarPromotions(from, to, pricingOn);
   const pricingRows = usePricingProperties(pricingOn);
   const pricingRow = pricingRows.data?.find((r) => r.id === propertyId) ?? null;
@@ -91,6 +98,26 @@ export function PropertyMonthView({ propertyId }: { propertyId: string }) {
     [property, from, to, today, reservations, promotions.data, pricingRow],
   );
   const summary = useMemo(() => summarizeNights(nights), [nights]);
+
+  /** «Базовая цена»: base / Booking / Airbnb of every night of the month. */
+  const cellRows = useMemo(() => {
+    const b = basePrices.data;
+    const g = guestPrices.data;
+    if (!basePriceOn || !b || !g) return undefined;
+    const rows = new Map<string, CellRows>();
+    for (const n of nights) {
+      rows.set(n.ymd, {
+        base: b.base[n.ymd] ?? null,
+        booking: bookingCell(
+          { ymd: n.ymd, rack: n.rack, rackFrom: n.rackFrom, rateName: n.rateName, onSale: true, promotions: n.promotions, targetingPct: n.targetingPct },
+          { base: b.base, typed: g.nightPrices.booking, markupPct: b.channels.booking.markupPct, geniusPct: pricingRow?.geniusPct ?? null, profile: g.profiles.booking },
+        ),
+        airbnb: airbnbNightPrice(n.ymd, g.profiles.airbnb, g.nightPrices.airbnb, { base: b.base, markupPct: b.channels.airbnb.markupPct }),
+        airbnbTyped: g.nightPrices.airbnb[n.ymd] != null,
+      });
+    }
+    return rows;
+  }, [basePriceOn, basePrices.data, guestPrices.data, nights, pricingRow]);
 
   const [selection, setSelection] = useState<NightSelection | null>(null);
   useEffect(() => setSelection(null), [month, propertyId]);
@@ -198,7 +225,7 @@ export function PropertyMonthView({ propertyId }: { propertyId: string }) {
                 {t('ariUnavailable')}
               </p>
             ) : null}
-            <MonthGrid month={month} nights={nights} selection={selection} onPick={onPick} />
+            <MonthGrid month={month} nights={nights} selection={selection} onPick={onPick} rows={cellRows} />
             <p className="mt-2 text-xs text-muted-foreground">{t('gridHint')}</p>
             {selection ? (
               <div className="sticky bottom-2 z-10 mt-2 flex justify-center lg:hidden">
@@ -234,6 +261,21 @@ export function PropertyMonthView({ propertyId }: { propertyId: string }) {
                     picked={pickedNights}
                     geniusPct={pricingRow?.geniusPct ?? null}
                     minPrice={pricingRow?.minPrice ?? null}
+                    currency={currency}
+                    basePrices={basePriceOn ? (basePrices.data ?? null) : null}
+                  />
+                ) : null
+              }
+              basePrice={
+                basePriceOn && selection && basePrices.data && guestPrices.data ? (
+                  <BasePricePanel
+                    key={`${selection.from}|${selection.to}`}
+                    propertyId={propertyId}
+                    picked={pickedNights}
+                    monthNights={nights}
+                    today={today}
+                    data={basePrices.data}
+                    typed={guestPrices.data.nightPrices}
                     currency={currency}
                   />
                 ) : null

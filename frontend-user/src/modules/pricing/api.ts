@@ -1,5 +1,6 @@
 import { apiClient } from '@/lib/api/client';
 import type { GuestPriceInput } from './lib/guest-price';
+import type { CalendarDatesJob, CalendarDatesPreview } from '@/modules/calendar/calendar-dates-api';
 
 /** Mirrors backend `backend/src/pricing` DTOs (`/api/v1/pricing`). */
 
@@ -19,6 +20,30 @@ export interface PricingStatus {
   occupancy?: boolean;
   /** «Цена для гостя» switched on (ZODOMUS_PROMOTIONS_GUEST_PRICE_ENABLED). */
   guestPrice?: boolean;
+  /** «Базовая цена» switched on (ZODOMUS_PROMOTIONS_BASE_PRICE_ENABLED). */
+  basePrice?: boolean;
+}
+
+/** How a channel's price is made from the base price. */
+export interface ChannelPricing {
+  channel: GuestPriceChannel;
+  /** Channel price = base × (100 + markupPct) / 100, whole units. */
+  markupPct: number;
+  /** One guest pays this % less (shown in «Цена для гостя» only). */
+  singleGuestPct: number | null;
+  /** Each guest above two adds this % (shown in «Цена для гостя» only). */
+  extraGuestPct: number | null;
+  isDefault: boolean;
+}
+
+/** Why «Отправить в Booking» is not available; null = it is. */
+export type BookingSendBlock = 'DATES_OFF' | 'DRY_RUN' | 'NOT_ON_BOOKING' | 'NOT_IN_PILOT' | null;
+
+export interface BasePriceOverview {
+  /** yyyy-MM-dd → base price. */
+  base: Record<string, number>;
+  channels: Record<GuestPriceChannel, ChannelPricing>;
+  bookingSend: BookingSendBlock;
 }
 
 export type GuestPriceChannel = 'booking' | 'airbnb';
@@ -361,12 +386,29 @@ export const pricingApi = {
     saveSettings: (input: OccupancySettingsInput) =>
       unwrap<OccupancyOverview>(apiClient.patch('/pricing/occupancy/settings', input)),
   },
+  basePrice: {
+    get: (propertyId: string, from: string, to: string) =>
+      unwrap<BasePriceOverview>(apiClient.get(`/pricing/base-prices/${propertyId}`, { params: { from, to } })),
+    setRange: (propertyId: string, input: { from: string; to: string; price: number | null }) =>
+      unwrap<Record<string, number>>(apiClient.put(`/pricing/base-prices/${propertyId}`, input)),
+    setNights: (propertyId: string, prices: Record<string, number>) =>
+      unwrap<Record<string, number>>(apiClient.put(`/pricing/base-prices/${propertyId}/nights`, { prices })),
+    saveChannel: (
+      propertyId: string,
+      channel: GuestPriceChannel,
+      input: Partial<Pick<ChannelPricing, 'markupPct' | 'singleGuestPct' | 'extraGuestPct'>>,
+    ) => unwrap<ChannelPricing>(apiClient.put(`/pricing/base-prices/${propertyId}/channels/${channel}`, input)),
+    previewBooking: (propertyId: string, input: { from: string; to: string }) =>
+      unwrap<CalendarDatesPreview>(apiClient.post(`/pricing/base-prices/${propertyId}/booking/preview`, input)),
+    sendBooking: (propertyId: string, input: { from: string; to: string }) =>
+      unwrap<CalendarDatesJob>(apiClient.post(`/pricing/base-prices/${propertyId}/booking/send`, input)),
+  },
   guestPrice: {
     get: (propertyId: string, from: string, to: string) =>
       unwrap<GuestPriceOverview>(apiClient.get(`/pricing/guest-price/${propertyId}`, { params: { from, to } })),
     saveProfile: (propertyId: string, channel: GuestPriceChannel, input: ChannelProfileInput) =>
       unwrap<ChannelProfile>(apiClient.put(`/pricing/guest-price/${propertyId}/profiles/${channel}`, input)),
-    setNightPrices: (propertyId: string, input: { channel: 'airbnb'; from: string; to: string; price: number | null }) =>
+    setNightPrices: (propertyId: string, input: { channel: GuestPriceChannel; from: string; to: string; price: number | null }) =>
       unwrap<Record<string, number>>(apiClient.put(`/pricing/guest-price/${propertyId}/night-prices`, input)),
     addObservation: (propertyId: string, input: ObservationInput) =>
       unwrap<PriceObservation>(apiClient.post(`/pricing/guest-price/${propertyId}/observations`, input)),

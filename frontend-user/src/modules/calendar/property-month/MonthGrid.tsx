@@ -6,6 +6,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { useDateLocale } from '@/hooks/useDateLocale';
 import { cn } from '@/lib/utils';
 import { isNotSent, isTargetingType, liveDeal, ymdToDate } from '@/modules/pricing/lib/pricing-ui';
+import type { BookingCell } from '@/modules/pricing/lib/guest-price';
 import type { BookingChannel } from '../types';
 import { inSelection, type MonthNight, monthWeeks, type NightSelection } from '../lib/property-month';
 
@@ -31,17 +32,29 @@ function badgeTone(n: MonthNight): { pct: number; tone: string } | null {
   return { pct: top.discountPct, tone: 'border border-dashed border-violet-500 text-violet-800 dark:text-violet-200' };
 }
 
+/** «Базовая цена»: the three price rows of a cell. */
+export type CellRows = {
+  base: number | null;
+  booking: BookingCell | null;
+  /** Airbnb's price for the night (typed, from the base, or from the settings). */
+  airbnb: number | null;
+  airbnbTyped: boolean;
+};
+
 export function MonthGrid({
   month,
   nights,
   selection,
   onPick,
+  rows,
 }: {
   /** yyyy-MM */
   month: string;
   nights: readonly MonthNight[];
   selection: NightSelection | null;
   onPick: (ymd: string) => void;
+  /** When set, a free future night shows base / Booking / Airbnb instead of the single guest price. */
+  rows?: ReadonlyMap<string, CellRows>;
 }) {
   const t = useTranslations('calendar.propertyMonth');
   const dateLocale = useDateLocale();
@@ -79,6 +92,7 @@ export function MonthGrid({
               const res = n?.reservation ?? null;
               const busy = n?.kind === 'booked' || n?.kind === 'blocked';
               const deal = n?.prices?.deal ?? null;
+              const row = rows && n && !n.past && !busy ? rows.get(ymd) : undefined;
               return (
                 <button
                   key={ymd}
@@ -125,6 +139,29 @@ export function MonthGrid({
                     <span className="mt-1 truncate text-[10px] font-medium text-muted-foreground sm:text-[11px]">{t('closedShort')}</span>
                   ) : null}
 
+                  {row ? (
+                    <span className="mt-auto grid gap-px text-right text-[10px] leading-[14px] tabular-nums sm:text-[11px]">
+                      <span className="font-semibold text-foreground">
+                        {row.base != null ? fmt.format(row.base) : '—'}
+                      </span>
+                      <span className="hidden text-blue-700 dark:text-blue-300 sm:block" title={t('rowBookingTitle')}>
+                        {row.booking ? (
+                          <>
+                            {row.booking.pending ? <span className="mr-0.5 text-amber-600" aria-label={t('rowPending')}>●</span> : null}
+                            B {fmt.format(row.booking.price)}
+                            {row.booking.typed ? '✎' : ''}
+                            <span className="text-muted-foreground"> / {fmt.format(row.booking.minGuest)}</span>
+                          </>
+                        ) : (
+                          'B —'
+                        )}
+                      </span>
+                      <span className="hidden text-rose-700 dark:text-rose-300 sm:block" title={t('rowAirbnbTitle')}>
+                        A {row.airbnb != null ? fmt.format(row.airbnb) : '—'}
+                        {row.airbnbTyped ? '✎' : ''}
+                      </span>
+                    </span>
+                  ) : (
                   <span className="mt-auto flex flex-wrap items-baseline justify-end gap-x-1 text-right tabular-nums">
                     {n?.minStay ? <span className="mr-auto text-[10px] text-muted-foreground">{t('minStayShort', { n: n.minStay })}</span> : null}
                     {n?.kind === 'open' && n.prices ? (
@@ -140,6 +177,7 @@ export function MonthGrid({
                       <span className="text-[10px] text-muted-foreground sm:text-[11px]">{fmt.format(n.rack)}</span>
                     ) : null}
                   </span>
+                  )}
                 </button>
               );
             })}

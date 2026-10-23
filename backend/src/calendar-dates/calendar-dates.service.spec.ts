@@ -473,3 +473,84 @@ describe('CalendarDatesService — auto-extension run', () => {
     await expect(svc.runAuto(PROPERTY_ID, AUTO, { keepClosed: new Set(), dryRun: true })).rejects.toThrow('ниже минимальной');
   });
 });
+
+describe('CalendarDatesService — re-pricing nights («базовая цена»)', () => {
+  const open = (price: number, extra: Partial<Night> = {}): Night => ({ closed: false, price, booked: 0, ...extra });
+  const prices = (m: Record<string, number>) => new Map(Object.entries(m));
+
+  it('preview lists only the nights whose price changes, open / closed state kept', async () => {
+    const { svc, booking } = setup({
+      nights: { '2026-11-01': open(500), '2026-11-02': open(500), '2026-11-03': { closed: true, price: 1180, booked: 0 } },
+    });
+    const p = await svc.previewPrices(USER, PROPERTY_ID, prices({ '2026-11-01': 500, '2026-11-02': 520, '2026-11-03': 520 }));
+    expect(p.action).toBe('price');
+    expect(p.dateFrom).toBe('2026-11-01');
+    expect(p.dateToExclusive).toBe('2026-11-04');
+    expect(p.changes).toEqual({ open: 0, close: 0, price: 2 });
+    expect(p.skipped.unchanged).toBe(1);
+    // 02 is open, 03 closed: same price, different state → two requests, nothing opened
+    expect(p.ranges.map((r) => [r.dateFrom, r.dateToExclusive, r.price, r.closed])).toEqual([
+      ['2026-11-02', '2026-11-03', 520, false],
+      ['2026-11-03', '2026-11-04', 520, true],
+    ]);
+    expect(booking.setRates).not.toHaveBeenCalled();
+  });
+
+  it('never touches nights sold on Booking, covered in RentAI, or below the minimum price', async () => {
+    const { svc } = setup({
+      nights: { '2026-11-01': open(500, { booked: 1 }), '2026-11-02': open(500), '2026-11-03': open(500) },
+      crmBlocked: ['2026-11-02'],
+      minPriceMinor: 45000,
+    });
+    const p = await svc.previewPrices(USER, PROPERTY_ID, prices({ '2026-11-01': 600, '2026-11-02': 600, '2026-11-03': 400, '2026-11-04': 600 }));
+    expect(p.changes.price).toBe(0);
+    expect(p.skipped).toMatchObject({ booked: 1, crm: 1, belowMin: 1, missing: 1 });
+  });
+
+  it('past nights and nights beyond the horizon are left out; none left → 400', async () => {
+    const { svc } = setup({ nights: { '2026-10-12': open(500), '2026-10-13': open(500) } });
+    const p = await svc.previewPrices(USER, PROPERTY_ID, prices({ '2026-10-11': 600, '2026-10-12': 600, '2027-12-01': 600 }));
+    expect(p.dateFrom).toBe('2026-10-12');
+    expect(p.dateToExclusive).toBe('2026-10-13');
+    await expect(svc.previewPrices(USER, PROPERTY_ID, prices({ '2026-10-01': 600 }))).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('send writes the new prices, keeps closed nights closed, and reads them back', async () => {
+    const { svc, booking, sync } = setup({
+      nights: { '2026-11-01': open(500), '2026-11-02': open(500), '2026-11-03': { closed: true, price: 1180, booked: 0 } },
+    });
+    const job = await svc.startPrices(USER, PROPERTY_ID, prices({ '2026-11-01': 520, '2026-11-02': 520, '2026-11-03': 520 }));
+    expect(job.action).toBe('price');
+    const done = await finished(svc);
+    expect(done.state).toBe('done');
+    expect(done.applied).toEqual({ open: 0, close: 0, price: 3 });
+    expect(done.verify).toEqual({ checked: 3, mismatched: [] });
+    expect(booking.state.get('2026-11-01')).toEqual(open(520));
+    expect(booking.state.get('2026-11-03')).toEqual({ closed: true, price: 520, booked: 0 });
+    expect(booking.setRates.mock.calls.map((c) => c[0].closed)).toEqual([false, true]);
+    expect(sync.invalidateCalendarOverlay).toHaveBeenCalledWith(PROPERTY_ID);
+  });
+
+  it('nothing to change → 400 instead of an empty run', async () => {
+    const { svc, booking } = setup({ nights: { '2026-11-01': open(500) } });
+    await expect(svc.startPrices(USER, PROPERTY_ID, prices({ '2026-11-01': 500 }))).rejects.toThrow('уже эти цены');
+    expect(booking.setRates).not.toHaveBeenCalled();
+  });
+
+  it('one run per property at a time, prices or dates alike', async () => {
+    const { svc, booking } = setup({ nights: { '2026-11-01': open(500), '2026-11-02': open(500) } });
+    let release: () => void = () => undefined;
+    booking.setRates.mockImplementationOnce(() => new Promise((r) => (release = () => r({ status: { returnCode: 200 } }))));
+    await svc.startPrices(USER, PROPERTY_ID, prices({ '2026-11-01': 520 }));
+    await expect(svc.startPrices(USER, PROPERTY_ID, prices({ '2026-11-02': 520 }))).rejects.toBeInstanceOf(ConflictException);
+    await expect(svc.start(USER, OPEN)).rejects.toBeInstanceOf(ConflictException);
+    release();
+    await finished(svc);
+  });
+
+  it('answers 503 while the dates tool is off', async () => {
+    const { svc } = setup({ env: { ZODOMUS_CALENDAR_DATES_ENABLED: false } });
+    await expect(svc.previewPrices(USER, PROPERTY_ID, prices({ '2026-11-01': 520 }))).rejects.toBeInstanceOf(ServiceUnavailableException);
+    await expect(svc.startPrices(USER, PROPERTY_ID, prices({ '2026-11-01': 520 }))).rejects.toBeInstanceOf(ServiceUnavailableException);
+  });
+});

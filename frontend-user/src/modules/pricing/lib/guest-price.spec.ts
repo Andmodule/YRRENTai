@@ -6,6 +6,10 @@ import {
   airbnbStayInput,
   bookingStayInput,
   countBookedOrClosed,
+  bookingCell,
+  channelNightPrice,
+  channelPriceFromBase,
+  occupancyFactor,
   compareWithObserved,
   gapPct,
   guestPriceBreakdown,
@@ -262,5 +266,70 @@ describe('countBookedOrClosed', () => {
     assert.equal(countBookedOrClosed(kinds), 3);
     assert.equal(countBookedOrClosed([{ kind: 'unknown' }, { kind: 'open' }]), 0);
     assert.equal(countBookedOrClosed([]), 0);
+  });
+});
+
+describe('base price helpers (same as backend base-price.util)', () => {
+  it('channelPriceFromBase rounds to whole units, half up', () => {
+    assert.equal(channelPriceFromBase(500, 10), 550);
+    assert.equal(channelPriceFromBase(500, -5), 475);
+    assert.equal(channelPriceFromBase(284, 10), 312);
+    assert.equal(channelPriceFromBase(290, -15), 247);
+    assert.equal(channelPriceFromBase(500, null), 500);
+    assert.equal(channelPriceFromBase(500, Number.NaN), 500);
+  });
+
+  it('channelNightPrice: typed wins, else base × markup, else null', () => {
+    const base = { '2026-11-01': 500, '2026-11-02': 500 };
+    const typed = { '2026-11-02': 450, '2026-11-03': 480 };
+    assert.equal(channelNightPrice('2026-11-01', base, typed, 10), 550);
+    assert.equal(channelNightPrice('2026-11-02', base, typed, 10), 450);
+    assert.equal(channelNightPrice('2026-11-03', base, typed, 10), 480);
+    assert.equal(channelNightPrice('2026-11-04', base, typed, 10), null);
+  });
+
+  it('occupancyFactor: 1 guest − single %, each above two + extra %, no rule = 1', () => {
+    const rule = { singleGuestPct: 10, extraGuestPct: 20 };
+    assert.equal(occupancyFactor(1, rule), 0.9);
+    assert.equal(occupancyFactor(2, rule), 1);
+    assert.equal(occupancyFactor(3, rule), 1.2);
+    assert.equal(occupancyFactor(4, rule), 1.4);
+    assert.equal(occupancyFactor(1, null), 1);
+    assert.equal(occupancyFactor(1, { singleGuestPct: null, extraGuestPct: null }), 1);
+  });
+
+  it('occupancy scales the rack of Booking and Airbnb nights', () => {
+    const b = bookingStayInput({ nights: [night({ ymd: '2026-11-01', rack: 500 })], scenario: 'regular', geniusPct: null, profile: null, guests: 1, labels, occupancy: 0.9 });
+    assert.equal(b.input.nights[0]!.rack, 450);
+    const a = airbnbStayInput({ dates: ['2026-11-02'], profile: profile({ nightly: 300 }), nightPrices: {}, guests: 1, labels, occupancy: 0.9 });
+    assert.equal(a.input.nights[0]!.rack, 270);
+  });
+
+  it('airbnbNightPrice: typed → base × Airbnb markup → profile price', () => {
+    const p = profile({ channel: 'airbnb', nightly: 290, weekendNightly: 350 });
+    const fromBase = { base: { '2026-11-02': 500 }, markupPct: -5 };
+    assert.equal(airbnbNightPrice('2026-11-02', p, { '2026-11-02': 400 }, fromBase), 400);
+    assert.equal(airbnbNightPrice('2026-11-02', p, {}, fromBase), 475);
+    assert.equal(airbnbNightPrice('2026-11-03', p, {}, fromBase), 290);
+    assert.equal(airbnbNightPrice('2026-11-03', p, {}, null), 290);
+  });
+
+  it('bookingCell: price, pending against Booking, typed, cheapest guest (room only)', () => {
+    const n = night({ ymd: '2026-11-02', rack: 500, rackFrom: 500, promotions: [promo({ discountPct: 20 })], targetingPct: 10 });
+    const c = bookingCell(n, { base: { '2026-11-02': 500 }, typed: {}, markupPct: 0, geniusPct: 10, profile: null })!;
+    // 500 → Genius −10 % → 450 → deal −20 % → 360 → mobile −10 % → 324
+    assert.deepEqual(c, { price: 500, typed: false, pending: false, minGuest: 324 });
+    const up = bookingCell(n, { base: { '2026-11-02': 500 }, typed: {}, markupPct: 10, geniusPct: 10, profile: null })!;
+    assert.equal(up.price, 550);
+    assert.equal(up.pending, true);
+    const typedCell = bookingCell(n, { base: {}, typed: { '2026-11-02': 600 }, markupPct: 0, geniusPct: null, profile: null })!;
+    assert.equal(typedCell.typed, true);
+    assert.equal(bookingCell(n, { base: {}, typed: {}, markupPct: 0, geniusPct: null, profile: null }), null);
+  });
+
+  it('bookingCell keeps a cheaper open rate in proportion (non-refundable −15 %)', () => {
+    const n = night({ ymd: '2026-11-02', rack: 300, rackFrom: 255 });
+    const c = bookingCell(n, { base: { '2026-11-02': 400 }, typed: {}, markupPct: 0, geniusPct: null, profile: null })!;
+    assert.equal(c.minGuest, 340);
   });
 });

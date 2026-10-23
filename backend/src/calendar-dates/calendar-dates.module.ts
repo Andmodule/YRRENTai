@@ -24,5 +24,7 @@ import { CalendarAutoOpenSettingsEntity } from './entities/calendar-auto-open-se
   ],
   controllers: [CalendarDatesController],
   providers: [CalendarDatesService, CalendarAutoOpenService],
+  // «Цены → базовая цена» sends its prices to Booking through the same runs.
+  exports: [CalendarDatesService],
 })
 export class CalendarDatesModule {}

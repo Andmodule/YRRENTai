@@ -39,8 +39,10 @@ import {
   mergeChangesToRanges,
   nightsBetween,
   planCalendarDates,
+  planPriceTargets,
   splitWindows,
   type CalendarDatesAction,
+  type CalendarDatesJobAction,
   type CalendarDatesPlan,
   type CalendarDatesPlanInput,
   type ChangeRange,
@@ -91,7 +93,7 @@ export type CalendarDatesPreview = {
   propertyId: string;
   /** Shown next to the confirmation, so the wrong property cannot slip through. */
   propertyName: string;
-  action: CalendarDatesAction;
+  action: CalendarDatesJobAction;
   dateFrom: string;
   dateToExclusive: string;
   rate: { id: string; name: string | null };
@@ -117,7 +119,7 @@ export type CalendarDatesJob = {
   id: string;
   propertyId: string;
   source: 'manual' | 'auto';
-  action: CalendarDatesAction;
+  action: CalendarDatesJobAction;
   dateFrom: string;
   dateToExclusive: string;
   state: CalendarDatesJobState;
@@ -142,7 +144,7 @@ export type CalendarDatesJob = {
  */
 export type CalendarDatesAppliedListener = (
   propertyId: string,
-  action: CalendarDatesAction,
+  action: CalendarDatesJobAction,
   applied: NightChange[],
   alreadyClosed: string[],
 ) => Promise<void>;
@@ -464,11 +466,101 @@ export class CalendarDatesService {
     return { plan, ranges, job: { ...job } };
   }
 
+  // ─── «Цены → базовая цена»: re-price nights ────────────────────────────────
+
+  /**
+   * Target prices the run may touch: from today (property time zone) up to the availability horizon,
+   * at most MAX_RANGE_NIGHTS from the first to the last. Nothing left → 400.
+   */
+  private scopePriceTargets(ctx: Ctx, targets: ReadonlyMap<string, number>): {
+    targets: Map<string, number>;
+    dateFrom: string;
+    dateToExclusive: string;
+  } {
+    const today = todayInTz(ctx.tz);
+    const end = this.horizonEnd(ctx.tz);
+    const scoped = new Map([...targets].filter(([d]) => d >= today && d < end).sort(([a], [b]) => a.localeCompare(b)));
+    if (scoped.size === 0) {
+      throw new BadRequestException('Нет ночей с ценой от сегодняшнего дня до горизонта календаря');
+    }
+    const dates = [...scoped.keys()];
+    const dateFrom = dates[0]!;
+    const dateToExclusive = addDaysYmd(dates[dates.length - 1]!, 1);
+    if (nightsBetween(dateFrom, dateToExclusive) > MAX_RANGE_NIGHTS) {
+      throw new BadRequestException(`Не больше ${MAX_RANGE_NIGHTS} ночей за один раз`);
+    }
+    return { targets: scoped, dateFrom, dateToExclusive };
+  }
+
+  private async planPrices(
+    ctx: Ctx,
+    scope: { targets: Map<string, number>; dateFrom: string; dateToExclusive: string },
+  ): Promise<{ plan: CalendarDatesPlan; ranges: ChangeRange[] }> {
+    const nights = await this.readNights(ctx, scope.dateFrom, scope.dateToExclusive, false);
+    const crmBlocked = await this.ratesPush.collectCrmBlockedNightKeys(ctx.property, scope.dateFrom, scope.dateToExclusive);
+    const plan = planPriceTargets(nights, scope.targets, { crmBlocked, minPrice: ctx.minPrice });
+    return { plan, ranges: mergeChangesToRanges(plan.changes) };
+  }
+
+  /** What re-pricing to `targets` (night → price) would change on Booking. Reads Booking, writes nothing. */
+  async previewPrices(user: JwtPayload, propertyId: string, targets: ReadonlyMap<string, number>): Promise<CalendarDatesPreview> {
+    this.assertEnabled();
+    await this.assertAccess(user, propertyId);
+    const ctx = await this.context(propertyId);
+    const scope = this.scopePriceTargets(ctx, targets);
+    const { plan, ranges } = await this.planPrices(ctx, scope);
+    return {
+      propertyId: ctx.property.id,
+      propertyName: ctx.property.name,
+      action: 'price',
+      dateFrom: scope.dateFrom,
+      dateToExclusive: scope.dateToExclusive,
+      rate: { id: ctx.rateId, name: ctx.rateName },
+      currency: ctx.currency,
+      minPrice: ctx.minPrice,
+      nights: plan.nights,
+      changes: countChanges(plan.changes),
+      skipped: plan.skipped,
+      requests: ranges.length,
+      estimateSeconds: ranges.length ? this.estimateSeconds(ranges.length, scope.dateFrom, scope.dateToExclusive) : 0,
+      tooMany: ranges.length > MAX_WRITE_REQUESTS,
+      ranges: ranges.slice(0, PREVIEW_RANGES),
+      alreadyClosed: 0,
+    };
+  }
+
+  /** Re-prices the nights in the background, open / closed state kept; the report is read with `job()`. */
+  async startPrices(user: JwtPayload, propertyId: string, targets: ReadonlyMap<string, number>): Promise<CalendarDatesJob> {
+    this.assertEnabled();
+    await this.assertAccess(user, propertyId);
+    this.assertIdle(propertyId);
+    const ctx = await this.context(propertyId);
+    const scope = this.scopePriceTargets(ctx, targets);
+    const { plan, ranges } = await this.planPrices(ctx, scope);
+    if (ranges.length === 0) {
+      throw new BadRequestException('На Booking уже эти цены — отправлять нечего');
+    }
+    if (ranges.length > MAX_WRITE_REQUESTS) {
+      throw new BadRequestException(
+        `Слишком много разных цен: ${ranges.length} запросов к Booking (не больше ${MAX_WRITE_REQUESTS}) — выберите диапазон короче`,
+      );
+    }
+    this.assertIdle(propertyId);
+    const job = this.newJob(ctx, { action: 'price', dateFrom: scope.dateFrom, dateToExclusive: scope.dateToExclusive }, 'manual', plan, ranges);
+    void this.execute(ctx, job, plan.changes, ranges).catch((e) => {
+      job.state = 'failed';
+      job.phase = 'finished';
+      job.finishedAt = new Date().toISOString();
+      this.logger.error(`calendar prices run ${job.id} crashed: ${e instanceof Error ? e.stack : String(e)}`);
+    });
+    return { ...job };
+  }
+
   // ─── run ───────────────────────────────────────────────────────────────────
 
   private newJob(
     ctx: Ctx,
-    input: CalendarDatesPlanInput,
+    input: Pick<CalendarDatesPlanInput, 'dateFrom' | 'dateToExclusive'> & { action: CalendarDatesJobAction },
     source: CalendarDatesJob['source'],
     plan: CalendarDatesPlan,
     ranges: ChangeRange[],

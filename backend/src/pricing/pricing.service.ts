@@ -131,6 +131,7 @@ export class PricingService {
       autoRules: f.autoRules,
       occupancy: f.occupancy,
       guestPrice: f.guestPrice,
+      basePrice: f.basePrice,
     };
   }
 
