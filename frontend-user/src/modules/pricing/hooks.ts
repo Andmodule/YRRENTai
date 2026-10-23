@@ -13,6 +13,7 @@ import {
   type RuleInput,
   type SettingsItem,
 } from './api';
+import { calendarDatesKeys } from '@/modules/calendar/calendar-dates-api';
 
 export const pricingKeys = {
   all: ['pricing'] as const,
@@ -24,6 +25,8 @@ export const pricingKeys = {
   calendar: (from: string, to: string) => ['pricing', 'calendar', from, to] as const,
   rules: ['pricing', 'rules'] as const,
   occupancy: ['pricing', 'occupancy'] as const,
+  basePrice: (propertyId: string, from?: string, to?: string) =>
+    (from && to ? ['pricing', 'base-price', propertyId, from, to] : ['pricing', 'base-price', propertyId]) as readonly string[],
   guestPrice: (propertyId: string, from?: string, to?: string) =>
     (from && to ? ['pricing', 'guest-price', propertyId, from, to] : ['pricing', 'guest-price', propertyId]) as readonly string[],
 };
@@ -51,6 +54,8 @@ export function usePricingAccess() {
     occupancy: canManage && status.data?.enabled === true && status.data?.occupancy === true,
     /** «Цена для гостя» panel in the calendar of one property. */
     guestPrice: canManage && status.data?.enabled === true && status.data?.guestPrice === true,
+    /** «Базовая цена»: rows of channel prices in the calendar of one property. */
+    basePrice: canManage && status.data?.enabled === true && status.data?.basePrice === true,
     isLoading: canManage && status.isLoading,
   };
 }
@@ -184,8 +189,8 @@ export function useGuestPriceMutations(propertyId: string) {
     onSuccess: refresh,
   });
   const setNightPrices = useMutation({
-    mutationFn: (input: { from: string; to: string; price: number | null }) =>
-      pricingApi.guestPrice.setNightPrices(propertyId, { channel: 'airbnb', ...input }),
+    mutationFn: (input: { from: string; to: string; price: number | null; channel?: GuestPriceChannel }) =>
+      pricingApi.guestPrice.setNightPrices(propertyId, { ...input, channel: input.channel ?? 'airbnb' }),
     onSuccess: refresh,
   });
   const addObservation = useMutation({
@@ -193,6 +198,43 @@ export function useGuestPriceMutations(propertyId: string) {
     onSuccess: refresh,
   });
   return { saveProfile, setNightPrices, addObservation };
+}
+
+/** «Базовая цена» for [from, to] + channel markups. Database only. */
+export function useBasePrices(propertyId: string, from: string, to: string, enabled: boolean) {
+  return useQuery({
+    queryKey: pricingKeys.basePrice(propertyId, from, to),
+    queryFn: () => pricingApi.basePrice.get(propertyId, from, to),
+    enabled,
+    staleTime: 60_000,
+    retry: false,
+  });
+}
+
+export function useBasePriceMutations(propertyId: string) {
+  const qc = useQueryClient();
+  const refresh = () => void qc.invalidateQueries({ queryKey: pricingKeys.basePrice(propertyId) });
+  const setRange = useMutation({
+    mutationFn: (input: { from: string; to: string; price: number | null }) => pricingApi.basePrice.setRange(propertyId, input),
+    onSuccess: refresh,
+  });
+  const fillFromBooking = useMutation({
+    mutationFn: (input: { from: string; to: string }) => pricingApi.basePrice.fillFromBooking(propertyId, input),
+    onSuccess: refresh,
+  });
+  const saveChannel = useMutation({
+    mutationFn: ({ channel, input }: { channel: GuestPriceChannel; input: Parameters<typeof pricingApi.basePrice.saveChannel>[2] }) =>
+      pricingApi.basePrice.saveChannel(propertyId, channel, input),
+    onSuccess: refresh,
+  });
+  const previewBooking = useMutation({
+    mutationFn: (input: { from: string; to: string }) => pricingApi.basePrice.previewBooking(propertyId, input),
+  });
+  const sendBooking = useMutation({
+    mutationFn: (input: { from: string; to: string; fingerprint: string }) => pricingApi.basePrice.sendBooking(propertyId, input),
+    onSuccess: (job) => qc.setQueryData(calendarDatesKeys.job(job.propertyId), job),
+  });
+  return { setRange, fillFromBooking, saveChannel, previewBooking, sendBooking };
 }
 
 export function useRulesMutations() {

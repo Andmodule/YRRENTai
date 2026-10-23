@@ -24,6 +24,11 @@ import { PricingGuestPriceService } from './pricing-guest-price.service';
 import { PropertyChannelProfileEntity } from './entities/property-channel-profile.entity';
 import { PropertyChannelNightPriceEntity } from './entities/property-channel-night-price.entity';
 import { PriceObservationEntity } from './entities/price-observation.entity';
+import { PricingBasePriceController } from './pricing-base-price.controller';
+import { PricingBasePriceService } from './pricing-base-price.service';
+import { PropertyBasePriceEntity } from './entities/property-base-price.entity';
+import { PropertyChannelPricingEntity } from './entities/property-channel-pricing.entity';
+import { CalendarDatesModule } from '../calendar-dates/calendar-dates.module';
 
 /**
  * «Цены»: Booking.com promotions via Zodomus + minimum price protection.
@@ -40,18 +45,23 @@ import { PriceObservationEntity } from './entities/price-observation.entity';
       PropertyChannelProfileEntity,
       PropertyChannelNightPriceEntity,
       PriceObservationEntity,
+      PropertyBasePriceEntity,
+      PropertyChannelPricingEntity,
       // read-only here: booked nights for «Заполненность»
       BookingEntity,
     ]),
     ZodomusModule,
     PropertyModule,
     UserModule,
+    // «Отправить в Booking» of the base price runs through «Открыть / закрыть даты».
+    CalendarDatesModule,
   ],
   controllers: [
     PricingController,
     PricingRulesController,
     PricingOccupancyController,
     PricingGuestPriceController,
+    PricingBasePriceController,
   ],
   providers: [
     PricingConfig,
@@ -62,6 +72,7 @@ import { PriceObservationEntity } from './entities/price-observation.entity';
     PricingRulesService,
     PricingOccupancyService,
     PricingGuestPriceService,
+    PricingBasePriceService,
   ],
 })
 export class PricingModule {}

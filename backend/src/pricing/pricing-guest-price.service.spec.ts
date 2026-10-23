@@ -337,8 +337,9 @@ describe('guest price DTOs', () => {
     expect(channelProfileSchema.safeParse({ extraDiscounts: six }).success).toBe(false);
   });
 
-  it('nightly prices: Airbnb only, from ≤ to, a positive price or null', () => {
-    expect(nightPricesSchema.safeParse({ channel: 'booking', from: '2026-10-25', to: '2026-10-25', price: 1 }).success).toBe(false);
+  it('nightly prices: Booking or Airbnb, from ≤ to, a positive price or null', () => {
+    expect(nightPricesSchema.safeParse({ channel: 'booking', from: '2026-10-25', to: '2026-10-25', price: 1 }).success).toBe(true);
+    expect(nightPricesSchema.safeParse({ channel: 'expedia', from: '2026-10-25', to: '2026-10-25', price: 1 }).success).toBe(false);
     expect(nightPricesSchema.safeParse({ channel: 'airbnb', from: '2026-10-26', to: '2026-10-25', price: 1 }).success).toBe(false);
     expect(nightPricesSchema.safeParse({ channel: 'airbnb', from: '2026-10-25', to: '2026-10-25', price: 0 }).success).toBe(false);
     expect(nightPricesSchema.safeParse({ channel: 'airbnb', from: '2026-10-25', to: '2026-10-25', price: null }).success).toBe(true);

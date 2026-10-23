@@ -24,10 +24,13 @@ export interface DatesRange {
   nights: number;
 }
 
+/** A run opens / closes nights, or only re-prices them («Цены → базовая цена»). */
+export type DatesJobAction = DatesAction | 'price';
+
 export interface CalendarDatesPreview {
   propertyId: string;
   propertyName: string;
-  action: DatesAction;
+  action: DatesJobAction;
   dateFrom: string;
   dateToExclusive: string;
   rate: { id: string; name: string | null };
@@ -48,7 +51,7 @@ export interface CalendarDatesJob {
   id: string;
   propertyId: string;
   source: 'manual' | 'auto';
-  action: DatesAction;
+  action: DatesJobAction;
   dateFrom: string;
   dateToExclusive: string;
   state: 'running' | 'done' | 'failed' | 'stopped';

@@ -11,10 +11,11 @@ import { Select } from '@/components/ui/select';
 import { getApiErrorMessage } from '@/lib/api/error-message';
 import { cn } from '@/lib/utils';
 import { useGuestPrice, useGuestPriceMutations } from '@/modules/pricing/hooks';
-import type { ChannelProfile, ChannelProfileInput, GuestPriceChannel } from '@/modules/pricing/api';
+import type { BasePriceOverview, ChannelProfile, ChannelProfileInput, GuestPriceChannel } from '@/modules/pricing/api';
 import {
   airbnbStayInput,
   bookingStayInput,
+  occupancyFactor,
   countBookedOrClosed,
   gapPct,
   guestPriceBreakdown,
@@ -74,6 +75,7 @@ export function GuestPricePanel({
   geniusPct,
   minPrice,
   currency,
+  basePrices,
 }: {
   propertyId: string;
   /** Window of the month on screen — profiles and typed prices are loaded for it. */
@@ -83,6 +85,8 @@ export function GuestPricePanel({
   geniusPct: number | null;
   minPrice: number | null;
   currency: string | null;
+  /** «Базовая цена» when on: Airbnb nights without a typed price come from it; guest-count rules. */
+  basePrices?: BasePriceOverview | null;
 }) {
   const t = useTranslations('calendar.propertyMonth.guestPrice');
   const { money, pct } = useNumbers();
@@ -123,9 +127,10 @@ export function GuestPricePanel({
           profile: profiles?.booking ?? null,
           guests,
           labels,
+          occupancy: occupancyFactor(guests, basePrices?.channels.booking),
         }),
       ),
-    [picked, scenario, geniusPct, profiles, guests, labels],
+    [picked, scenario, geniusPct, profiles, guests, labels, basePrices],
   );
   const airbnb = useMemo(
     () =>
@@ -136,9 +141,11 @@ export function GuestPricePanel({
           nightPrices: airbnbPrices ?? {},
           guests,
           labels,
+          fromBase: basePrices ? { base: basePrices.base, markupPct: basePrices.channels.airbnb.markupPct } : null,
+          occupancy: occupancyFactor(guests, basePrices?.channels.airbnb),
         }),
       ),
-    [picked, profiles, airbnbPrices, guests, labels],
+    [picked, profiles, airbnbPrices, guests, labels, basePrices],
   );
 
   // Totals over different sets of nights cannot be compared.

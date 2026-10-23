@@ -158,6 +158,18 @@ const zodomusEnvFields = z.object({
     .default('false')
     .transform((v) => v === 'true' || v === '1' || v === 'yes'),
   /**
+   * «Цены → базовая цена» in the calendar of one property: the property's own nightly price, channel
+   * markups, prices typed per night, and «Отправить в Booking» (through the «Открыть / закрыть даты» runs —
+   * needs ZODOMUS_CALENDAR_DATES_ENABLED too; writes also need ZODOMUS_PROMOTIONS_DRY_RUN=false and the
+   * pilot list). Off by default; needs ZODOMUS_PROMOTIONS_ENABLED=true, ZODOMUS_PROMOTIONS_GUEST_PRICE_ENABLED=true
+   * and the migration
+   * 1778700000000-pricing-base-price. While off the API answers 503 and the new tables are never read.
+   */
+  ZODOMUS_PROMOTIONS_BASE_PRICE_ENABLED: z
+    .enum(['true', 'false', '1', '0', 'yes', 'no'])
+    .default('false')
+    .transform((v) => v === 'true' || v === '1' || v === 'yes'),
+  /**
    * «Открыть / закрыть даты на Booking» in the calendar: opens (or closes) nights on the main Booking rate
    * with POST /rates `closed`, at the price the person gives. Off by default: API answers 503, UI hidden.
    */

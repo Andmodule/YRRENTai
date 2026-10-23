@@ -8,6 +8,9 @@
 
 export type CalendarDatesAction = 'open' | 'close';
 
+/** What a run does: open / close nights, or only re-price them («Цены → базовая цена»), state kept. */
+export type CalendarDatesJobAction = CalendarDatesAction | 'price';
+
 /** One night of the rate as Booking reports it. */
 export type RateNight = {
   date: string;
@@ -45,7 +48,9 @@ export type SkipReason =
   /** «Оставить цену», but Booking has no price for the night. */
   | 'noPrice'
   /** Closed by hand beyond the auto-extension edge — auto-extension leaves it closed. */
-  | 'keepClosed';
+  | 'keepClosed'
+  /** Re-pricing: closed on Booking — not for sale, left alone (opening it sets its price). */
+  | 'closed';
 
 export type CalendarDatesPlanInput = {
   action: CalendarDatesAction;
@@ -241,7 +246,7 @@ export function samePrice(a: number | null, b: number | null): boolean {
 }
 
 export function emptySkipped(): Record<SkipReason, number> {
-  return { crm: 0, booked: 0, belowMin: 0, missing: 0, weekday: 0, unchanged: 0, noPrice: 0, keepClosed: 0 };
+  return { crm: 0, booked: 0, belowMin: 0, missing: 0, weekday: 0, unchanged: 0, noPrice: 0, keepClosed: 0, closed: 0 };
 }
 
 /**
@@ -315,6 +320,57 @@ export function planCalendarDates(
   return { nights: keys.length, changes, skipped, alreadyClosed };
 }
 
+/**
+ * Re-price nights that are open for sale to the given prices. A closed night is left alone: it is not on
+ * sale, «Открыть даты» sets its price when it opens, and a write to it could not be shown to keep it closed
+ * (the run does not send the open / closed state). The same guards as opening: never a night sold on the
+ * channel, with no room for sale, or covered by a booking / block in RentAI; never below `minPrice`.
+ * Nights without a target are not looked at.
+ */
+export function planPriceTargets(
+  nights: ReadonlyMap<string, RateNight>,
+  targets: ReadonlyMap<string, number>,
+  opts: { crmBlocked?: ReadonlySet<string>; minPrice?: number | null } = {},
+): CalendarDatesPlan {
+  const skipped = emptySkipped();
+  const changes: NightChange[] = [];
+  const dates = [...targets.keys()].sort();
+  for (const date of dates) {
+    const price = targets.get(date)!;
+    if (opts.crmBlocked?.has(date)) {
+      skipped.crm++;
+      continue;
+    }
+    const night = nights.get(date);
+    if (!night) {
+      skipped.missing++;
+      continue;
+    }
+    if (night.booked > 0 || night.availability === 0) {
+      skipped.booked++;
+      continue;
+    }
+    if (night.closed) {
+      skipped.closed++;
+      continue;
+    }
+    if (!Number.isFinite(price) || !(price > 0)) {
+      skipped.noPrice++;
+      continue;
+    }
+    if (samePrice(night.price, price)) {
+      skipped.unchanged++;
+      continue;
+    }
+    if (opts.minPrice != null && price < opts.minPrice) {
+      skipped.belowMin++;
+      continue;
+    }
+    changes.push({ date, price: round2(price), closed: false, fromPrice: night.price, fromClosed: false });
+  }
+  return { nights: dates.length, changes, skipped, alreadyClosed: [] };
+}
+
 /** Consecutive nights with the same price and state → one POST /rates each (at most `max` nights). */
 export function mergeChangesToRanges(changes: readonly NightChange[], max = MAX_WINDOW_NIGHTS): ChangeRange[] {
   const sorted = [...changes].sort((a, b) => a.date.localeCompare(b.date));
@@ -338,12 +394,19 @@ export function mergeChangesToRanges(changes: readonly NightChange[], max = MAX_
   return out;
 }
 
-/** Nights Booking reports differently from what was sent (read back after the writes). */
-export function findMismatches(changes: readonly NightChange[], after: ReadonlyMap<string, RateNight>): string[] {
+/**
+ * Nights Booking reports differently from what was sent (read back after the writes). `priceOnly`: a
+ * re-pricing run does not send the open / closed state, so only the price is compared.
+ */
+export function findMismatches(
+  changes: readonly NightChange[],
+  after: ReadonlyMap<string, RateNight>,
+  opts: { priceOnly?: boolean } = {},
+): string[] {
   const out: string[] = [];
   for (const c of changes) {
     const n = after.get(c.date);
-    if (!n || n.closed !== c.closed || !samePrice(n.price, c.price)) out.push(c.date);
+    if (!n || (!opts.priceOnly && n.closed !== c.closed) || !samePrice(n.price, c.price)) out.push(c.date);
   }
   return out;
 }

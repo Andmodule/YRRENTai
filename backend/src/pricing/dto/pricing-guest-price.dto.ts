@@ -39,7 +39,7 @@ export class ChannelProfileDto extends createZodDto(channelProfileSchema) {}
 /** Hand-typed nightly prices of a channel for [from, to] (inclusive); price null removes them. */
 export const nightPricesSchema = z
   .object({
-    channel: z.enum(['airbnb']),
+    channel: z.enum(['booking', 'airbnb']),
     from: ymd,
     to: ymd,
     price: money.positive().nullable(),

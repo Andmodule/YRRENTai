@@ -182,11 +182,15 @@ export function bookingStayInput(p: {
   profile: ChannelProfile | null;
   guests: number;
   labels: { cleaning: string; cityTax: string; mobile: string };
+  /** Price for this many guests vs the standard two (`occupancyFactor`); 1 = as Booking has it. */
+  occupancy?: number;
 }): StayQuoteInput {
+  const factor = p.occupancy ?? 1;
   const nights: StayNightInput[] = [];
   const missing: string[] = [];
   for (const n of p.nights) {
-    const rack = p.scenario === 'min' ? (n.rackFrom ?? n.rack) : n.rack;
+    const rate = p.scenario === 'min' ? (n.rackFrom ?? n.rack) : n.rack;
+    const rack = rate != null ? round2(rate * factor) : null;
     if (!n.onSale || rack == null || !(rack > 0)) {
       missing.push(n.ymd);
       continue;
@@ -204,14 +208,20 @@ export function bookingStayInput(p: {
   return { input: { nights, ...feesAndTaxes(p.profile, nights.length, p.guests, p.labels) }, missing };
 }
 
-/** Airbnb's price of a night until the API: typed for the date, else the profile's weekend (Fri, Sat) or weekday price. */
+/**
+ * Airbnb's price of a night: typed for the date; else the base price with the Airbnb markup (when the
+ * night has a base price); else the profile's weekend (Fri, Sat) or weekday price.
+ */
 export function airbnbNightPrice(
   ymd: string,
   profile: ChannelProfile | null,
   nightPrices: Readonly<Record<string, number>>,
+  fromBase?: { base: Readonly<Record<string, number>>; markupPct: number } | null,
 ): number | null {
   const typed = nightPrices[ymd];
   if (typed != null && typed > 0) return typed;
+  const b = fromBase?.base[ymd];
+  if (b != null && b > 0) return channelPriceFromBase(b, fromBase!.markupPct);
   const wd = weekdayOf(ymd);
   const weekend = wd === 'Fri' || wd === 'Sat' ? profile?.weekendNightly : null;
   return weekend ?? profile?.nightly ?? null;
@@ -224,13 +234,18 @@ export function airbnbStayInput(p: {
   nightPrices: Readonly<Record<string, number>>;
   guests: number;
   labels: { cleaning: string; cityTax: string; weekly: string; monthly: string };
+  fromBase?: { base: Readonly<Record<string, number>>; markupPct: number } | null;
+  /** Price for this many guests vs the standard two (`occupancyFactor`). */
+  occupancy?: number;
 }): StayQuoteInput {
+  const factor = p.occupancy ?? 1;
   const los = airbnbLengthOfStayDiscount(p.dates.length, p.profile ?? {});
   const losLabelled = los ? { ...los, label: los.label === 'Скидка за месяц' ? p.labels.monthly : p.labels.weekly } : null;
   const nights: StayNightInput[] = [];
   const missing: string[] = [];
   for (const ymd of p.dates) {
-    const rack = airbnbNightPrice(ymd, p.profile, p.nightPrices);
+    const price = airbnbNightPrice(ymd, p.profile, p.nightPrices, p.fromBase);
+    const rack = price != null ? round2(price * factor) : null;
     if (rack == null) {
       missing.push(ymd);
       continue;
@@ -246,6 +261,89 @@ export function airbnbStayInput(p: {
  */
 export function countBookedOrClosed(nights: readonly { kind: string }[]): number {
   return nights.filter((n) => n.kind === 'booked' || n.kind === 'blocked' || n.kind === 'closed').length;
+}
+
+// ─── «Базовая цена» — same as backend base-price.util.ts ──────────────────────
+
+/** base × (100 + markupPct) / 100, rounded to whole units; without a markup the base as it is (89,90 stays). */
+export function channelPriceFromBase(base: number, markupPct: number | null | undefined): number {
+  const pct = Number.isFinite(markupPct) ? (markupPct as number) : 0;
+  if (pct === 0) return Math.round(base * 100) / 100;
+  return Math.round((base * (100 + pct)) / 100);
+}
+
+/** What RentAI sets on a channel for a night: typed for it, else base × markup; null = neither. */
+export function channelNightPrice(
+  ymd: string,
+  base: Readonly<Record<string, number>>,
+  typed: Readonly<Record<string, number>>,
+  markupPct: number | null | undefined,
+): number | null {
+  const t = typed[ymd];
+  if (t != null && t > 0) return t;
+  const b = base[ymd];
+  return b != null && b > 0 ? channelPriceFromBase(b, markupPct) : null;
+}
+
+/**
+ * Price for `guests` against the standard two: one guest pays `singleGuestPct` less, each guest above
+ * two adds `extraGuestPct`. Without a rule (or for two guests) — 1.
+ */
+export function occupancyFactor(
+  guests: number,
+  rule: { singleGuestPct: number | null; extraGuestPct: number | null } | null | undefined,
+): number {
+  if (!rule) return 1;
+  if (guests <= 1) return rule.singleGuestPct ? (100 - rule.singleGuestPct) / 100 : 1;
+  if (guests > 2) return rule.extraGuestPct ? 1 + (rule.extraGuestPct * (guests - 2)) / 100 : 1;
+  return 1;
+}
+
+export type BookingCell = {
+  /** Price RentAI sets on Booking for the night. */
+  price: number;
+  /** Typed for this night (an exception), not from the base price. */
+  typed: boolean;
+  /** Booking has another price now on a night open for sale — the new one is not sent yet. */
+  pending: boolean;
+  /** Lowest room price a guest can see for the night at that price (no cleaning). */
+  minGuest: number;
+};
+
+/**
+ * One calendar cell, Booking row: the price RentAI sets and what the cheapest guest pays for it. A cheaper
+ * open rate Booking has (non-refundable) keeps its ratio to Standard.
+ */
+export function bookingCell(
+  n: BookingNightSource,
+  p: {
+    base: Readonly<Record<string, number>>;
+    typed: Readonly<Record<string, number>>;
+    markupPct: number;
+    geniusPct: number | null;
+    profile: ChannelProfile | null;
+  },
+): BookingCell | null {
+  const price = channelNightPrice(n.ymd, p.base, p.typed, p.markupPct);
+  if (price == null) return null;
+  const from = n.rack && n.rackFrom && n.rackFrom < n.rack ? round2((price * n.rackFrom) / n.rack) : null;
+  const q = bookingStayInput({
+    nights: [{ ...n, rack: price, rackFrom: from, onSale: true }],
+    scenario: 'min',
+    geniusPct: p.geniusPct,
+    profile: p.profile,
+    guests: 2,
+    labels: { cleaning: '', cityTax: '', mobile: '' },
+  });
+  const minGuest = guestPriceBreakdown(q.input).roomPerNight[0]?.amount ?? price;
+  const t = p.typed[n.ymd];
+  return {
+    price,
+    typed: t != null && t > 0,
+    // A closed / booked night is never re-priced by a run: no «not sent» mark for it.
+    pending: n.onSale && n.rack != null && Math.abs(n.rack - price) >= 0.005,
+    minGuest,
+  };
 }
 
 /** How much more (+) or less (−) `other` costs than `base`, in %; null when `base` is not a price. */

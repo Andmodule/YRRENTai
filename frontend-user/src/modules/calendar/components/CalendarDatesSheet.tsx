@@ -492,7 +492,7 @@ function RunReport({ job, loading }: { job: CalendarDatesJob | null; loading: bo
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
-        {fmtRange(job.dateFrom, addDaysYmd(job.dateToExclusive, -1))} · {t(job.action === 'open' ? 'actionOpen' : 'actionClose')}
+        {fmtRange(job.dateFrom, addDaysYmd(job.dateToExclusive, -1))} · {t(job.action === 'open' ? 'actionOpen' : job.action === 'close' ? 'actionClose' : 'actionPrice')}
         {job.source === 'auto' ? ` · ${t('sourceAuto')}` : ''}
       </p>
       {running ? (
@@ -529,7 +529,7 @@ function RunReport({ job, loading }: { job: CalendarDatesJob | null; loading: bo
                   ? t('failedTitle')
                   : job.total === 0
                     ? t(job.action === 'close' ? 'doneRemembered' : 'doneNothing')
-                    : t(job.action === 'open' ? 'doneOpen' : 'doneClose')}
+                    : t(job.action === 'open' ? 'doneOpen' : job.action === 'close' ? 'doneClose' : 'donePrice')}
             </p>
             {job.total > 0 ? (
               <p className="text-sm text-muted-foreground">

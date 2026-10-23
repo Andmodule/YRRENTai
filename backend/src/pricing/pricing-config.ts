@@ -19,6 +19,8 @@ export type PricingFlags = {
   occupancy: boolean;
   /** «Цена для гостя» (read-only): needs `enabled` plus ZODOMUS_PROMOTIONS_GUEST_PRICE_ENABLED. */
   guestPrice: boolean;
+  /** «Базовая цена»: needs `guestPrice` plus ZODOMUS_PROMOTIONS_BASE_PRICE_ENABLED; sending also `canWrite`. */
+  basePrice: boolean;
 };
 
 /** Env values arrive transformed by envSchema (booleans/numbers); strings are tolerated for safety. */
@@ -60,6 +62,11 @@ export class PricingConfig {
       autoRules: enabled && toBool(config.get('ZODOMUS_PROMOTIONS_AUTORULES_ENABLED'), false),
       occupancy: enabled && toBool(config.get('ZODOMUS_PROMOTIONS_OCCUPANCY_ENABLED'), false),
       guestPrice: enabled && toBool(config.get('ZODOMUS_PROMOTIONS_GUEST_PRICE_ENABLED'), false),
+      // Builds on «Цена для гостя» (profiles, prices typed per night): on only together with it.
+      basePrice:
+        enabled &&
+        toBool(config.get('ZODOMUS_PROMOTIONS_GUEST_PRICE_ENABLED'), false) &&
+        toBool(config.get('ZODOMUS_PROMOTIONS_BASE_PRICE_ENABLED'), false),
       // Default to dry run when the value is missing or unreadable.
       dryRun: toBool(config.get('ZODOMUS_PROMOTIONS_DRY_RUN'), true),
       allowlist: parseAllowlist(config.get('ZODOMUS_PROMOTIONS_PROPERTY_ALLOWLIST')),
@@ -71,7 +78,7 @@ export class PricingConfig {
     };
     if (this.flags.enabled) {
       this.logger.log(
-        `Booking promotions ENABLED — dryRun=${this.flags.dryRun}, allowlist=${this.flags.allowlist.size || 'all'}, channel=${this.flags.channelId}, autoRules=${this.flags.autoRules}, occupancy=${this.flags.occupancy}, guestPrice=${this.flags.guestPrice}`,
+        `Booking promotions ENABLED — dryRun=${this.flags.dryRun}, allowlist=${this.flags.allowlist.size || 'all'}, channel=${this.flags.channelId}, autoRules=${this.flags.autoRules}, occupancy=${this.flags.occupancy}, guestPrice=${this.flags.guestPrice}, basePrice=${this.flags.basePrice}`,
       );
     }
   }

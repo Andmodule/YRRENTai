@@ -10,6 +10,7 @@ import {
   nightKeys,
   nightsBetween,
   planCalendarDates,
+  planPriceTargets,
   splitWindows,
   weekdayOf,
   type NightChange,
@@ -398,5 +399,79 @@ describe('findMismatches', () => {
   it('accepts a price Booking rounded within a cent', () => {
     const after = nights(sent.map((c) => ({ date: c.date, closed: false, price: c.price + 0.001 })));
     expect(findMismatches(sent, after)).toEqual([]);
+  });
+});
+
+describe('findMismatches — price only', () => {
+  it('a price run compares the price, not the state', () => {
+    const change = { date: '2026-11-01', price: 520, closed: false, fromPrice: 500, fromClosed: false };
+    const after = new Map([['2026-11-01', { date: '2026-11-01', closed: true, price: 520, booked: 0 }]]);
+    expect(findMismatches([change], after)).toEqual(['2026-11-01']);
+    expect(findMismatches([change], after, { priceOnly: true })).toEqual([]);
+    const wrong = new Map([['2026-11-01', { date: '2026-11-01', closed: false, price: 500, booked: 0 }]]);
+    expect(findMismatches([change], wrong, { priceOnly: true })).toEqual(['2026-11-01']);
+  });
+});
+
+describe('planPriceTargets', () => {
+  const night = (date: string, over: Partial<RateNight> = {}): RateNight => ({ date, closed: false, price: 500, booked: 0, availability: 1, ...over });
+  const nights = (list: RateNight[]) => new Map(list.map((n) => [n.date, n]));
+
+  it('re-prices open nights only; a closed night is left alone and counted', () => {
+    const plan = planPriceTargets(
+      nights([night('2026-11-01'), night('2026-11-02', { closed: true, price: 1180 })]),
+      new Map([['2026-11-01', 520], ['2026-11-02', 520]]),
+    );
+    expect(plan.changes).toEqual([{ date: '2026-11-01', price: 520, closed: false, fromPrice: 500, fromClosed: false }]);
+    expect(plan.skipped.closed).toBe(1);
+    expect(countChanges(plan.changes)).toEqual({ open: 0, close: 0, price: 1 });
+  });
+
+  it('a sold closed night counts as sold, not closed', () => {
+    const plan = planPriceTargets(nights([night('2026-11-01', { closed: true, booked: 1 })]), new Map([['2026-11-01', 520]]));
+    expect(plan.skipped).toMatchObject({ booked: 1, closed: 0 });
+  });
+
+  it('skips: same price, sold, no room, RentAI booking, missing, below the minimum, no price', () => {
+    const plan = planPriceTargets(
+      nights([
+        night('2026-11-01'),
+        night('2026-11-02', { booked: 1 }),
+        night('2026-11-03', { availability: 0 }),
+        night('2026-11-04'),
+        night('2026-11-06'),
+        night('2026-11-07'),
+      ]),
+      new Map([
+        ['2026-11-01', 500],
+        ['2026-11-02', 600],
+        ['2026-11-03', 600],
+        ['2026-11-04', 600],
+        ['2026-11-05', 600],
+        ['2026-11-06', 100],
+        ['2026-11-07', Number.NaN],
+      ]),
+      { crmBlocked: new Set(['2026-11-04']), minPrice: 160 },
+    );
+    expect(plan.changes).toEqual([]);
+    expect(plan.nights).toBe(7);
+    expect(plan.skipped).toMatchObject({ unchanged: 1, booked: 2, crm: 1, missing: 1, belowMin: 1, noPrice: 1 });
+  });
+
+  it('a minimum equal to the price is allowed; nights without a target are not looked at', () => {
+    const plan = planPriceTargets(nights([night('2026-11-01'), night('2026-11-02')]), new Map([['2026-11-01', 160]]), { minPrice: 160 });
+    expect(plan.changes.map((c) => c.date)).toEqual(['2026-11-01']);
+    expect(plan.nights).toBe(1);
+  });
+
+  it('runs of the same price and state merge into one request each', () => {
+    const plan = planPriceTargets(
+      nights(nightKeys('2026-11-01', '2026-11-05').map((d) => night(d))),
+      new Map([['2026-11-01', 520], ['2026-11-02', 520], ['2026-11-03', 550], ['2026-11-04', 550]]),
+    );
+    expect(mergeChangesToRanges(plan.changes).map((r) => [r.dateFrom, r.dateToExclusive, r.price])).toEqual([
+      ['2026-11-01', '2026-11-03', 520],
+      ['2026-11-03', '2026-11-05', 550],
+    ]);
   });
 });

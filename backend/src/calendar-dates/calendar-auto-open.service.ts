@@ -13,7 +13,7 @@ import { QueryFailedError, Repository } from 'typeorm';
 import type { JwtPayload } from '../common/decorators/current-user.decorator';
 import { PropertyEntity } from '../property/entities/property.entity';
 import { CalendarDatesService, todayInTz } from './calendar-dates.service';
-import { addDaysYmd, type CalendarDatesAction, type NightChange } from './calendar-dates.util';
+import { addDaysYmd, type CalendarDatesJobAction, type NightChange } from './calendar-dates.util';
 import {
   CalendarAutoOpenSettingsEntity,
   type AutoOpenResult,
@@ -245,7 +245,7 @@ export class CalendarAutoOpenService implements OnModuleInit, OnModuleDestroy {
    */
   private async rememberManual(
     propertyId: string,
-    action: CalendarDatesAction,
+    action: CalendarDatesJobAction,
     applied: NightChange[],
     alreadyClosed: string[],
   ): Promise<void> {

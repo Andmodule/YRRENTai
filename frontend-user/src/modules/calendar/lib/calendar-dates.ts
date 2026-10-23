@@ -121,8 +121,9 @@ export function requestKey(body: DatesRequestBody): string {
   ]);
 }
 
-export type SkipReason = 'crm' | 'booked' | 'belowMin' | 'missing' | 'weekday' | 'unchanged' | 'noPrice' | 'keepClosed';
-const SKIP_ORDER: readonly SkipReason[] = ['booked', 'crm', 'belowMin', 'unchanged', 'weekday', 'noPrice', 'keepClosed', 'missing'];
+/** `closed`: a re-pricing run («Цены → базовая цена») leaves nights closed on Booking alone. */
+export type SkipReason = 'crm' | 'booked' | 'belowMin' | 'missing' | 'weekday' | 'unchanged' | 'noPrice' | 'keepClosed' | 'closed';
+const SKIP_ORDER: readonly SkipReason[] = ['booked', 'crm', 'belowMin', 'unchanged', 'weekday', 'noPrice', 'keepClosed', 'closed', 'missing'];
 
 /** Non-zero skip reasons, most telling first. */
 export function skippedList(skipped: Partial<Record<SkipReason, number>>): [SkipReason, number][] {
