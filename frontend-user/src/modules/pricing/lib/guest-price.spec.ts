@@ -328,7 +328,10 @@ describe('base price helpers (same as backend base-price.util)', () => {
     assert.equal(up.pending, true);
     const typedCell = bookingCell(n, { base: {}, typed: { '2026-11-02': 600 }, markupPct: 0, geniusPct: null, profile: null })!;
     assert.equal(typedCell.typed, true);
-    assert.equal(bookingCell(n, { base: {}, typed: {}, markupPct: 0, geniusPct: null, profile: null }), null);
+    // No base, no typed price: what Booking has now, nothing to send.
+    assert.deepEqual(bookingCell(n, { base: {}, typed: {}, markupPct: 0, geniusPct: 10, profile: null }), { price: 500, typed: false, pending: false, minGuest: 324 });
+    const unknown = night({ ymd: '2026-11-02', rack: null, rackFrom: null });
+    assert.equal(bookingCell(unknown, { base: {}, typed: {}, markupPct: 0, geniusPct: null, profile: null }), null);
   });
 
   it('bookingCell: no «not sent» mark on a night that is not on sale (closed placeholder price)', () => {

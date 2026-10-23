@@ -141,9 +141,17 @@ export function MonthGrid({
 
                   {row ? (
                     <span className="mt-auto grid gap-px text-right text-[10px] leading-[14px] tabular-nums sm:text-[11px]">
-                      <span className="font-semibold text-foreground">
-                        {row.base != null ? fmt.format(row.base) : '—'}
-                      </span>
+                      {row.base != null ? (
+                        <span className="font-semibold text-foreground">{fmt.format(row.base)}</span>
+                      ) : (
+                        <span className="font-semibold text-foreground">
+                          <span className="hidden sm:inline">—</span>
+                          {/* Phone shows one row: without a base price it is the guest price, as before base prices. */}
+                          <span className={cn('sm:hidden', deal && 'text-emerald-700 dark:text-emerald-400')}>
+                            {n?.prices ? fmt.format(n.prices.regular) : '—'}
+                          </span>
+                        </span>
+                      )}
                       <span className="hidden text-blue-700 dark:text-blue-300 sm:block" title={t('rowBookingTitle')}>
                         {row.booking ? (
                           <>
