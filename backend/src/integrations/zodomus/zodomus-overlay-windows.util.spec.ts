@@ -1,4 +1,4 @@
-import { overlayAvailabilityWindows } from './zodomus-overlay-windows.util';
+import { overlayAvailabilityWindows, overlayReadStart } from './zodomus-overlay-windows.util';
 
 describe('overlayAvailabilityWindows', () => {
   it('keeps the 14-day calendar window as one request', () => {
@@ -45,5 +45,27 @@ describe('overlayAvailabilityWindows', () => {
       { dateFrom: '2026-04-01', dateToExclusive: '2026-03-01' },
     ]);
     expect(overlayAvailabilityWindows('2026-04-01', '2026-04-01')).toHaveLength(1);
+  });
+});
+
+describe('overlayReadStart', () => {
+  it('moves a start in the past to yesterday', () => {
+    expect(overlayReadStart('2026-10-01', '2026-10-23')).toBe('2026-10-22');
+  });
+
+  it('keeps yesterday, today and later as they are', () => {
+    expect(overlayReadStart('2026-10-22', '2026-10-23')).toBe('2026-10-22');
+    expect(overlayReadStart('2026-10-23', '2026-10-23')).toBe('2026-10-23');
+    expect(overlayReadStart('2026-11-01', '2026-10-23')).toBe('2026-11-01');
+  });
+
+  it('crosses month and year ends', () => {
+    expect(overlayReadStart('2026-10-01', '2026-11-01')).toBe('2026-10-31');
+    expect(overlayReadStart('2026-12-01', '2027-01-01')).toBe('2026-12-31');
+  });
+
+  it('a bad date is left alone (the old behaviour)', () => {
+    expect(overlayReadStart('bad', '2026-10-23')).toBe('bad');
+    expect(overlayReadStart('2026-10-01', 'bad')).toBe('2026-10-01');
   });
 });

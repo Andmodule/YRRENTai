@@ -1,4 +1,19 @@
-import { isYmd, MAX_WINDOW_NIGHTS, nightsBetween, splitWindows } from '../../calendar-dates/calendar-dates.util';
+import { addDaysYmd, isYmd, MAX_WINDOW_NIGHTS, nightsBetween, splitWindows } from '../../calendar-dates/calendar-dates.util';
+
+/**
+ * Booking does not serve nights that are long gone: a GET /availability window that starts weeks in the
+ * past fails, and with it the whole channel (the calendar of one property showed «Booking не ответил» for
+ * the current month, which starts on the 1st). The overlay is read from yesterday on — where the main
+ * calendar starts anyway; earlier nights simply get no channel data.
+ */
+export const OVERLAY_PAST_DAYS = 1;
+
+/** First night to ask Zodomus for: `dateFrom`, but not before `today` − OVERLAY_PAST_DAYS (property time zone). */
+export function overlayReadStart(dateFrom: string, today: string): string {
+  if (!isYmd(dateFrom) || !isYmd(today)) return dateFrom;
+  const earliest = addDaysYmd(today, -OVERLAY_PAST_DAYS);
+  return dateFrom < earliest ? earliest : dateFrom;
+}
 
 /** Longest calendar overlay read in windows (a month view needs two); longer ones go as one request, as before. */
 export const OVERLAY_MAX_WINDOWS = 3;

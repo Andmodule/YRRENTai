@@ -48,6 +48,15 @@ function buildService(answer: (from: string, to: string) => unknown = availabili
 }
 
 describe('ZodomusSyncService calendar overlay — month view', () => {
+  // Only Date is faked: the ranges below are in the future of this «today».
+  beforeEach(() => {
+    jest.useFakeTimers({
+      now: new Date('2026-09-15T10:00:00Z'),
+      doNotFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'setImmediate', 'clearImmediate', 'nextTick', 'queueMicrotask'],
+    });
+  });
+  afterEach(() => jest.useRealTimers());
+
   it('the 14-day window of the main calendar is still one request', async () => {
     const { service, zodomus } = buildService();
     await service.getInventoryOverlayForProperty(property, '2026-11-01', '2026-11-15');
@@ -87,5 +96,68 @@ describe('ZodomusSyncService calendar overlay — month view', () => {
     await service.getInventoryOverlayForProperty(property, '2026-10-01', '2026-11-01');
     await service.getInventoryOverlayForProperty(property, '2026-10-01', '2026-11-01');
     expect(zodomus.getAvailability).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('ZodomusSyncService calendar overlay — nights in the past', () => {
+  function at(iso: string) {
+    jest.useFakeTimers({
+      now: new Date(iso),
+      doNotFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'setImmediate', 'clearImmediate', 'nextTick', 'queueMicrotask'],
+    });
+  }
+  afterEach(() => jest.useRealTimers());
+
+  it('the current month is read from yesterday on, not from the 1st (Booking refuses long-gone nights)', async () => {
+    at('2026-10-23T10:00:00Z');
+    const { service, zodomus } = buildService();
+    const o = await service.getInventoryOverlayForProperty(property, '2026-10-01', '2026-11-01');
+    expect(zodomus.getAvailability.mock.calls.map((c) => [c[2], c[3]])).toEqual([['2026-10-22', '2026-11-01']]);
+    expect(o.ariUnavailable).toBe(false);
+    expect(o.nightlyPrices['2026-10-21']).toBeUndefined();
+    expect(o.nightlyPrices['2026-10-22']).toBe(220);
+    expect(o.nightlyPrices['2026-10-31']).toBe(310);
+  });
+
+  it('«yesterday» follows the property time zone', async () => {
+    // 23:30 UTC on the 22nd is already the 23rd in Warsaw → read from the 22nd
+    at('2026-10-22T23:30:00Z');
+    const { service, zodomus } = buildService();
+    await service.getInventoryOverlayForProperty(property, '2026-10-01', '2026-11-01');
+    expect(zodomus.getAvailability.mock.calls[0]![2]).toBe('2026-10-22');
+  });
+
+  it('the main calendar, starting yesterday, asks exactly as before', async () => {
+    at('2026-10-22T10:00:00Z');
+    const { service, zodomus } = buildService();
+    await service.getInventoryOverlayForProperty(property, '2026-10-21', '2026-11-04');
+    expect(zodomus.getAvailability.mock.calls.map((c) => [c[2], c[3]])).toEqual([['2026-10-21', '2026-11-04']]);
+  });
+
+  it('a range wholly in the past makes no call and is not «Booking did not answer»', async () => {
+    at('2026-10-23T10:00:00Z');
+    const { service, zodomus } = buildService();
+    const o = await service.getInventoryOverlayForProperty(property, '2026-09-01', '2026-10-01');
+    expect(zodomus.getAvailability).not.toHaveBeenCalled();
+    expect(zodomus.getRoomRatesRaw).not.toHaveBeenCalled();
+    expect(o.ariUnavailable).toBe(false);
+    expect(o.nightlyPrices).toEqual({});
+  });
+
+  it('a range ending exactly at yesterday is wholly past', async () => {
+    at('2026-10-23T10:00:00Z');
+    const { service, zodomus } = buildService();
+    await service.getInventoryOverlayForProperty(property, '2026-10-01', '2026-10-22');
+    expect(zodomus.getAvailability).not.toHaveBeenCalled();
+  });
+
+  it('a range starting today or later is left alone', async () => {
+    at('2026-10-23T10:00:00Z');
+    const { service, zodomus } = buildService();
+    await service.getInventoryOverlayForProperty(property, '2026-11-01', '2026-12-01');
+    expect(zodomus.getAvailability.mock.calls.map((c) => [c[2], c[3]])).toEqual([
+      ['2026-11-01', '2026-11-29'],
+      ['2026-11-29', '2026-12-01'],
+    ]);
   });
 });

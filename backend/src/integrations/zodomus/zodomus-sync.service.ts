@@ -46,7 +46,8 @@ import {
   resolveZodomusCurrency,
 } from './zodomus-reservation-price.util';
 import { buildRateNameMapFromRoomRates, pickPrimaryRateId } from './zodomus-room-rates.util';
-import { overlayAvailabilityWindows } from './zodomus-overlay-windows.util';
+import { overlayAvailabilityWindows, overlayReadStart } from './zodomus-overlay-windows.util';
+import { todayInTz } from '../../pricing/pricing-math.util';
 
 /** Zodomus queue status codes per official docs (inbound only — see ZODOMUS_BOOKING_FLOW). */
 const QUEUE_STATUS = {
@@ -601,6 +602,12 @@ export class ZodomusSyncService {
       return empty;
     }
 
+    // Nights long gone are not asked for (Booking refuses them); a range wholly in the past needs no call.
+    const readFromYmd = overlayReadStart(dateFromYmd, todayInTz(property.timezone));
+    if (readFromYmd >= dateToYmd) {
+      return empty;
+    }
+
     const cacheKey = `${property.id}:${dateFromYmd}:${dateToYmd}:${channelIds.join(',')}`;
     const cached = this.availabilityOverlayCache.get(cacheKey);
     if (cached && Date.now() - cached.at < ZodomusSyncService.AVAILABILITY_OVERLAY_TTL_MS) {
@@ -644,7 +651,7 @@ export class ZodomusSyncService {
             );
           }
           const days: ReturnType<typeof extractZodomusInventoryDays> = [];
-          for (const w of overlayAvailabilityWindows(dateFromYmd, dateToYmd)) {
+          for (const w of overlayAvailabilityWindows(readFromYmd, dateToYmd)) {
             const raw = await this.zodomus.getAvailability(channelId, extId, w.dateFrom, w.dateToExclusive);
             if (otaCurrency == null) {
               otaCurrency = resolveOtaChannelCurrency({

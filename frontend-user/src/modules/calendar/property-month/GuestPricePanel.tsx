@@ -15,6 +15,7 @@ import type { ChannelProfile, ChannelProfileInput, GuestPriceChannel } from '@/m
 import {
   airbnbStayInput,
   bookingStayInput,
+  countBookedOrClosed,
   gapPct,
   guestPriceBreakdown,
   nightsBelowMinPrice,
@@ -145,7 +146,7 @@ export function GuestPricePanel({
   const gap = complete && booking.breakdown && airbnb.breakdown ? gapPct(booking.breakdown.total, airbnb.breakdown.total) : null;
   const below = scenario === 'min' && booking.breakdown ? nightsBelowMinPrice(booking.breakdown, minPrice) : [];
   const lastCheck = data.data?.observations.find((o) => o.channel === 'booking' && o.scenario === scenario) ?? null;
-  const notOnSale = picked.filter((n) => n.kind !== 'open').length;
+  const notOnSale = countBookedOrClosed(picked);
   const first = picked[0]?.ymd ?? from;
   const last = picked[picked.length - 1]?.ymd ?? to;
 

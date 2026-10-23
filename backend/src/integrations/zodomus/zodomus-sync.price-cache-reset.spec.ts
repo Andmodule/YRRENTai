@@ -45,6 +45,15 @@ function buildService() {
 }
 
 describe('ZodomusSyncService.invalidateCalendarOverlay', () => {
+  // The overlay skips long-gone nights; pin «today» to the day these ranges were written for.
+  beforeEach(() => {
+    jest.useFakeTimers({
+      now: new Date('2026-10-04T10:00:00Z'),
+      doNotFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'setImmediate', 'clearImmediate', 'nextTick', 'queueMicrotask'],
+    });
+  });
+  afterEach(() => jest.useRealTimers());
+
   it('without a reset the calendar keeps the cached overlay (no new Zodomus call)', async () => {
     const { service, zodomus } = buildService();
     const p = property('p1');

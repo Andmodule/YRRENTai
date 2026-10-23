@@ -5,6 +5,7 @@ import {
   airbnbNightPrice,
   airbnbStayInput,
   bookingStayInput,
+  countBookedOrClosed,
   compareWithObserved,
   gapPct,
   guestPriceBreakdown,
@@ -252,5 +253,14 @@ describe('gapPct', () => {
     assert.equal(gapPct(217.38, 335), 54.11);
     assert.equal(gapPct(100, 90), -10);
     assert.equal(gapPct(0, 90), null);
+  });
+});
+
+describe('countBookedOrClosed', () => {
+  it('counts booked, blocked and closed nights — not nights without a price', () => {
+    const kinds = ['booked', 'blocked', 'closed', 'open', 'unknown', 'unknown'].map((kind) => ({ kind }));
+    assert.equal(countBookedOrClosed(kinds), 3);
+    assert.equal(countBookedOrClosed([{ kind: 'unknown' }, { kind: 'open' }]), 0);
+    assert.equal(countBookedOrClosed([]), 0);
   });
 });

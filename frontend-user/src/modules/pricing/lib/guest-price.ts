@@ -240,6 +240,14 @@ export function airbnbStayInput(p: {
   return { input: { nights, ...feesAndTaxes(p.profile, nights.length, p.guests, p.labels) }, missing };
 }
 
+/**
+ * Nights a guest cannot buy on Booking: booked, blocked or closed there. A night with no price at all
+ * (`unknown` — Booking did not answer or sent nothing) is not one of them: it is only «no price».
+ */
+export function countBookedOrClosed(nights: readonly { kind: string }[]): number {
+  return nights.filter((n) => n.kind === 'booked' || n.kind === 'blocked' || n.kind === 'closed').length;
+}
+
 /** How much more (+) or less (−) `other` costs than `base`, in %; null when `base` is not a price. */
 export function gapPct(base: number, other: number): number | null {
   if (!(base > 0)) return null;
