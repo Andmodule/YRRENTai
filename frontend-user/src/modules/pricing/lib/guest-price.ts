@@ -324,7 +324,9 @@ export function bookingCell(
     profile: ChannelProfile | null;
   },
 ): BookingCell | null {
-  const price = channelNightPrice(n.ymd, p.base, p.typed, p.markupPct);
+  const own = channelNightPrice(n.ymd, p.base, p.typed, p.markupPct);
+  // No base and no typed price for the night: the row shows what Booking has now, nothing to send.
+  const price = own ?? (n.rack != null && n.rack > 0 ? n.rack : null);
   if (price == null) return null;
   const from = n.rack && n.rackFrom && n.rackFrom < n.rack ? round2((price * n.rackFrom) / n.rack) : null;
   const q = bookingStayInput({
@@ -341,7 +343,7 @@ export function bookingCell(
     price,
     typed: t != null && t > 0,
     // A closed / booked night is never re-priced by a run: no «not sent» mark for it.
-    pending: n.onSale && n.rack != null && Math.abs(n.rack - price) >= 0.005,
+    pending: own != null && n.onSale && n.rack != null && Math.abs(n.rack - price) >= 0.005,
     minGuest,
   };
 }
