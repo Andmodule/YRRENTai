@@ -19,7 +19,11 @@ import { useDateLocale } from '@/hooks/useDateLocale';
 const STEP_DAYS = 7;
 /** Visible window length in calendar days (inclusive). */
 export const CALENDAR_WINDOW_DAYS = 14;
-/** Days before the anchor (today / jump date) included in the window. */
+/**
+ * Days before the anchor (today / jump date) included in the window. Booking serves nights from yesterday
+ * on only (backend `OVERLAY_PAST_DAYS`, zodomus-overlay-windows.util.ts): a bigger value shows past nights
+ * without channel data.
+ */
 export const CALENDAR_WINDOW_PAST_DAYS = 1;
 
 export function buildCalendarWindowAround(anchor: Date): CalendarDateRange {
