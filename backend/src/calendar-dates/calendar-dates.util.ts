@@ -1,3 +1,4 @@
+import { activeBookings } from '../integrations/zodomus/zodomus-inventory.util';
 /**
  * «Открыть / закрыть даты на Booking» — pure planning over ONE Booking room + rate.
  *
@@ -17,7 +18,7 @@ export type RateNight = {
   closed: boolean;
   /** Price of this rate on this night (major units); null = Booking sent none. */
   price: number | null;
-  /** Rooms sold on the channel that night (date or rate level, whichever is larger). */
+  /** Rooms sold on the channel that night (date or rate level, whichever is larger; cancelled ones taken off — see activeBookings). */
   booked: number;
   /** Rooms for sale that night (date level); null = Booking sent none. */
   availability?: number | null;
@@ -165,17 +166,6 @@ export function splitWindows(
   return out;
 }
 
-/**
- * Booking counts every reservation in `booked` and keeps it after a cancellation, adding one to
- * `cancelled` (seen on prod: `booked:"1", cancelled:"1"` with `availability:"1"` after a guest cancelled).
- * The night is taken only by what is left. null when Booking sends no `booked`.
- */
-export function activeBookings(n: Record<string, unknown>): number | null {
-  const booked = toNum(n.booked);
-  if (booked == null) return null;
-  return Math.max(0, booked - (toNum(n.cancelled) ?? 0));
-}
-
 function toNum(v: unknown): number | null {
   if (v === undefined || v === null || v === '') return null;
   const n = Number(v);
@@ -236,12 +226,13 @@ export function extractRateNights(body: unknown, roomId: string, rateId: string)
     ) as Record<string, unknown> | undefined;
     if (!rate) continue;
     const price = toNum(rate.price);
+    const availability = toNum(node.availability);
     out.set(date, {
       date,
       closed: isClosedFlag(rate.closed),
       price: price != null && price > 0 ? price : null,
-      booked: Math.max(activeBookings(node) ?? 0, activeBookings(rate) ?? 0),
-      availability: toNum(node.availability),
+      booked: Math.max(activeBookings(node, availability) ?? 0, activeBookings(rate, availability) ?? 0),
+      availability,
     });
   }
   return out;

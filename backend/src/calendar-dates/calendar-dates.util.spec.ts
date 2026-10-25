@@ -1,6 +1,5 @@
 import {
   MAX_WINDOW_NIGHTS,
-  activeBookings,
   addDaysYmd,
   countChanges,
   extractRateNights,
@@ -17,6 +16,7 @@ import {
   type NightChange,
   type RateNight,
 } from './calendar-dates.util';
+import { activeBookings } from '../integrations/zodomus/zodomus-inventory.util';
 
 const ROOM = '1102139801';
 const RATE = '39993723';
@@ -169,7 +169,8 @@ describe('extractRateNights', () => {
         { date: '2026-10-28', booked: '1', cancelled: '3' }, // odd counters: never below zero
         { date: '2026-10-29', booked: '', dayBooked: '1', dayCancelled: '1' }, // date-level counters
         { date: '2026-10-30', booked: '', dayBooked: '1', dayCancelled: '0' },
-        { date: '2026-10-31', booked: '1', cancelled: '1', availability: '0' }, // no room left anyway
+        { date: '2026-10-31', booked: '1', cancelled: '1', availability: '0' }, // no room: booked as sent
+        { date: '2026-11-01', booked: '1', cancelled: '1', availability: '' }, // no availability: booked as sent
       ]),
       ROOM,
       RATE,
@@ -180,17 +181,20 @@ describe('extractRateNights', () => {
     expect(m.get('2026-10-28')?.booked).toBe(0);
     expect(m.get('2026-10-29')?.booked).toBe(0);
     expect(m.get('2026-10-30')?.booked).toBe(1);
-    expect(m.get('2026-10-31')).toMatchObject({ booked: 0, availability: 0 });
+    expect(m.get('2026-10-31')).toMatchObject({ booked: 1, availability: 0 });
+    expect(m.get('2026-11-01')).toMatchObject({ booked: 1, availability: null });
   });
 
-  it('activeBookings: booked minus cancelled, null without booked', () => {
-    expect(activeBookings({ booked: '1', cancelled: '1' })).toBe(0);
-    expect(activeBookings({ booked: 2, cancelled: 1 })).toBe(1);
-    expect(activeBookings({ booked: '1' })).toBe(1);
-    expect(activeBookings({ booked: '1', cancelled: '' })).toBe(1);
-    expect(activeBookings({ booked: '0', cancelled: '2' })).toBe(0);
-    expect(activeBookings({ booked: '', cancelled: '1' })).toBeNull();
-    expect(activeBookings({})).toBeNull();
+  it('activeBookings: booked minus cancelled only while a room is for sale, null without booked', () => {
+    expect(activeBookings({ booked: '1', cancelled: '1' }, 1)).toBe(0);
+    expect(activeBookings({ booked: 2, cancelled: 1 }, 1)).toBe(1);
+    expect(activeBookings({ booked: '1' }, 1)).toBe(1);
+    expect(activeBookings({ booked: '1', cancelled: '' }, 1)).toBe(1);
+    expect(activeBookings({ booked: '0', cancelled: '2' }, 1)).toBe(0);
+    expect(activeBookings({ booked: '1', cancelled: '1' }, 0)).toBe(1);
+    expect(activeBookings({ booked: '1', cancelled: '1' }, null)).toBe(1);
+    expect(activeBookings({ booked: '', cancelled: '1' }, 1)).toBeNull();
+    expect(activeBookings({}, 1)).toBeNull();
   });
 
   it('survives empty or odd bodies', () => {
@@ -219,6 +223,17 @@ describe('planCalendarDates — open', () => {
     );
     const p = planCalendarDates(read, { action: 'open', dateFrom: '2026-11-01', dateToExclusive: '2026-11-03' });
     expect(p.changes.map((c) => c.date)).toEqual(['2026-11-01']);
+    expect(p.skipped.booked).toBe(1);
+  });
+
+  it('does not open a night with a cancelled reservation when Booking sends no availability', () => {
+    const read = extractRateNights(
+      body([{ date: '2026-11-01', closed: '1', price: '1180.0', booked: '1', cancelled: '1', availability: '' }]),
+      ROOM,
+      RATE,
+    );
+    const p = planCalendarDates(read, { action: 'open', dateFrom: '2026-11-01', dateToExclusive: '2026-11-02' });
+    expect(p.changes).toEqual([]);
     expect(p.skipped.booked).toBe(1);
   });
 

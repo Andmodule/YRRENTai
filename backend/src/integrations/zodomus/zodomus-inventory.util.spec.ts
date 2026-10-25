@@ -316,7 +316,7 @@ describe('zodomus-inventory.util', () => {
     });
     expect(sumStayNightlyPrices(days, '2026-09-17', '2026-09-19')).toBeNull();
   });
-it('a cancelled reservation does not block the night in the calendar', () => {
+  it('a cancelled reservation does not block the night in the calendar', () => {
     const days = extractZodomusInventoryDays({
       rooms: [
         {
@@ -327,6 +327,9 @@ it('a cancelled reservation does not block the night in the calendar', () => {
             { date: '2026-10-27', availability: '1', booked: '1' },
             { date: '2026-10-28', availability: '0', booked: '1', cancelled: '1' },
             { date: '2026-10-29', availability: '1', booked: '', cancelled: '1' },
+            { date: '2026-10-30', booked: '1', cancelled: '1' }, // no availability: booked as sent
+            // the prod shape: counters on the rate only — the overlay reads date level, so the night is free
+            { date: '2026-10-31', availability: '1', booked: '', cancelled: '', rates: [{ rateId: 'std', booked: '1', cancelled: '1', closed: '0', price: '240.0' }] },
           ],
         },
       ],
@@ -336,7 +339,8 @@ it('a cancelled reservation does not block the night in the calendar', () => {
     expect(byDate.get('2026-10-26')?.booked).toBe(1);
     expect(byDate.get('2026-10-27')?.booked).toBe(1);
     expect(byDate.get('2026-10-29')?.booked).toBeNull();
-    expect(collectOtaBlockedDays(days)).toEqual(['2026-10-26', '2026-10-27', '2026-10-28']);
+    expect(byDate.get('2026-10-30')?.booked).toBe(1);
+    expect(byDate.get('2026-10-31')?.booked).toBeNull();
+    expect(collectOtaBlockedDays(days)).toEqual(['2026-10-26', '2026-10-27', '2026-10-28', '2026-10-30']);
   });
 });
-
