@@ -165,6 +165,17 @@ export function splitWindows(
   return out;
 }
 
+/**
+ * Booking counts every reservation in `booked` and keeps it after a cancellation, adding one to
+ * `cancelled` (seen on prod: `booked:"1", cancelled:"1"` with `availability:"1"` after a guest cancelled).
+ * The night is taken only by what is left. null when Booking sends no `booked`.
+ */
+export function activeBookings(n: Record<string, unknown>): number | null {
+  const booked = toNum(n.booked);
+  if (booked == null) return null;
+  return Math.max(0, booked - (toNum(n.cancelled) ?? 0));
+}
+
 function toNum(v: unknown): number | null {
   if (v === undefined || v === null || v === '') return null;
   const n = Number(v);
@@ -229,7 +240,7 @@ export function extractRateNights(body: unknown, roomId: string, rateId: string)
       date,
       closed: isClosedFlag(rate.closed),
       price: price != null && price > 0 ? price : null,
-      booked: Math.max(toNum(node.booked) ?? 0, toNum(rate.booked) ?? 0),
+      booked: Math.max(activeBookings(node) ?? 0, activeBookings(rate) ?? 0),
       availability: toNum(node.availability),
     });
   }

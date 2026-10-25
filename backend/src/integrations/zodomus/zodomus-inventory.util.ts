@@ -207,7 +207,9 @@ function mergeInventoryScalars(
   if (avail != null) {
     day.availability = day.availability == null ? avail : Math.min(day.availability, avail);
   }
-  const booked = toNum(n.booked);
+  // A cancelled reservation stays in `booked` and is counted again in `cancelled`.
+  const rawBooked = toNum(n.booked);
+  const booked = rawBooked == null ? null : Math.max(0, rawBooked - (toNum(n.cancelled) ?? 0));
   if (booked != null) {
     day.booked = day.booked == null ? booked : Math.max(day.booked, booked);
   }

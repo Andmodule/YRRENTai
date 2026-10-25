@@ -316,4 +316,27 @@ describe('zodomus-inventory.util', () => {
     });
     expect(sumStayNightlyPrices(days, '2026-09-17', '2026-09-19')).toBeNull();
   });
+it('a cancelled reservation does not block the night in the calendar', () => {
+    const days = extractZodomusInventoryDays({
+      rooms: [
+        {
+          id: 'r1',
+          dates: [
+            { date: '2026-10-25', availability: '1', booked: '1', cancelled: '1' },
+            { date: '2026-10-26', availability: '1', booked: '2', cancelled: '1' },
+            { date: '2026-10-27', availability: '1', booked: '1' },
+            { date: '2026-10-28', availability: '0', booked: '1', cancelled: '1' },
+            { date: '2026-10-29', availability: '1', booked: '', cancelled: '1' },
+          ],
+        },
+      ],
+    });
+    const byDate = new Map(days.map((d) => [d.date, d]));
+    expect(byDate.get('2026-10-25')?.booked).toBe(0);
+    expect(byDate.get('2026-10-26')?.booked).toBe(1);
+    expect(byDate.get('2026-10-27')?.booked).toBe(1);
+    expect(byDate.get('2026-10-29')?.booked).toBeNull();
+    expect(collectOtaBlockedDays(days)).toEqual(['2026-10-26', '2026-10-27', '2026-10-28']);
+  });
 });
+
