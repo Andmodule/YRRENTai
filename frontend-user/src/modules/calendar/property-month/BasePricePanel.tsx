@@ -305,7 +305,7 @@ export function BasePricePanel({
                     onSuccess: () => {
                       toast.success(price == null ? t('typedCleared') : t('typedSaved'));
                       // A Booking price changes what a send would do: check again at once.
-                      if (channel === 'booking' && canCheck) check(true);
+                      if (channel === 'booking' && price != null && canCheck) check(true);
                       else setPreview(null);
                     },
                     onError: fail,

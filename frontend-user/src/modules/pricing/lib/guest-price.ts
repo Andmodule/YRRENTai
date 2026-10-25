@@ -137,6 +137,24 @@ export function stayBelowMin(
   return total < floor ? { total, floor, nights } : null;
 }
 
+/**
+ * `stayBelowMin` for the picked nights at the prices RentAI sets (calendar cells): only nights a guest could book —
+ * from today, open on Booking, with a price; cleaning only when there is such a night.
+ */
+export function pickedStayBelowMin(
+  nights: readonly { ymd: string; past: boolean; open: boolean; minGuest: number | null }[],
+  cleaningFee: number | null | undefined,
+  minPrice: number | null | undefined,
+): { total: number; floor: number; nights: number } | null {
+  const room = nights
+    .filter((n) => !n.past && n.open && n.minGuest != null)
+    .map((n) => ({ date: n.ymd, amount: n.minGuest as number }));
+  return stayBelowMin(
+    { room: round2(room.reduce((s, r) => s + r.amount, 0)), fees: room.length > 0 ? (cleaningFee ?? 0) : 0, roomPerNight: room },
+    minPrice,
+  );
+}
+
 export function compareWithObserved(
   calculatedTotal: number,
   observedTotal: number,

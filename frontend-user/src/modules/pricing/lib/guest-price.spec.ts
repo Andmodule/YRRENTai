@@ -15,6 +15,7 @@ import {
   guestPriceBreakdown,
   nightsBelowMinPrice,
   stayBelowMin,
+  pickedStayBelowMin,
   type BookingNightSource,
 } from './guest-price';
 import type { CellPromotion } from './pricing-ui';
@@ -317,6 +318,26 @@ describe('base price helpers (same as backend base-price.util)', () => {
     assert.equal(airbnbNightPrice('2026-11-02', p, {}, fromBase), 475);
     assert.equal(airbnbNightPrice('2026-11-03', p, {}, fromBase), 290);
     assert.equal(airbnbNightPrice('2026-11-03', p, {}, null), 290);
+  });
+
+  it('pickedStayBelowMin: only bookable nights count; cleaning only with one of them', () => {
+    const n = (ymd: string, minGuest: number | null, o: { past?: boolean; open?: boolean } = {}) => ({
+      ymd,
+      past: o.past ?? false,
+      open: o.open ?? true,
+      minGuest,
+    });
+    // 2 open nights 139 + past + closed + no price: 278 + 59 = 337 ≥ 320 — fine
+    assert.equal(
+      pickedStayBelowMin([n('a', 139), n('b', 139), n('c', 50, { past: true }), n('d', 50, { open: false }), n('e', null)], 59, 160),
+      null,
+    );
+    // 3 open nights 139: 417 + 59 = 476 < 480
+    assert.deepEqual(pickedStayBelowMin([n('a', 139), n('b', 139), n('c', 139)], 59, 160), { total: 476, floor: 480, nights: 3 });
+    // no bookable night: no check, no cleaning on its own
+    assert.equal(pickedStayBelowMin([n('a', 100, { past: true }), n('b', 100, { open: false })], 59, 160), null);
+    // no cleaning in the profile
+    assert.deepEqual(pickedStayBelowMin([n('a', 150)], null, 160), { total: 150, floor: 160, nights: 1 });
   });
 
   it('stayBelowMin: room after discounts + cleaning against minimum × nights', () => {

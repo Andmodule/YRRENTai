@@ -328,7 +328,7 @@ function PriceLegend({ geniusPct }: { geniusPct: number | null }) {
   ];
   return (
     <details className="group space-y-2 rounded-xl border border-border bg-card p-4">
-      <summary className="flex cursor-pointer list-none items-center gap-1.5 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <summary className="flex cursor-pointer list-none items-center gap-1.5 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
         <Info className="h-4 w-4 text-muted-foreground" aria-hidden />
         {t('title')}
       </summary>

@@ -41,7 +41,7 @@ import { NightPanel } from './NightPanel';
 import { GuestPricePanel } from './GuestPricePanel';
 import { BasePricePanel } from './BasePricePanel';
 import type { CellRows } from './MonthGrid';
-import { airbnbNightPrice, bookingCell, round2, stayBelowMin } from '@/modules/pricing/lib/guest-price';
+import { airbnbNightPrice, bookingCell, pickedStayBelowMin } from '@/modules/pricing/lib/guest-price';
 
 /** Calendar of one property by months (Airbnb-like): the month on the left, actions and prices on the right. */
 export function PropertyMonthView({ propertyId }: { propertyId: string }) {
@@ -283,22 +283,17 @@ export function PropertyMonthView({ propertyId }: { propertyId: string }) {
                     typed={guestPrices.data.nightPrices}
                     currency={currency}
                     minPrice={pricingRow?.minPrice ?? null}
-                    belowMin={(() => {
-                      // The stay a guest could book: nights from today, open on Booking, at the prices RentAI sets;
-                      // room after every discount + cleaning against minimum × nights (decision 2026-10-25).
-                      const room = pickedNights
-                        .filter((n) => !n.past && n.kind === 'open')
-                        .map((n) => ({ date: n.ymd, amount: cellRows?.get(n.ymd)?.booking?.minGuest ?? null }))
-                        .filter((r): r is { date: string; amount: number } => r.amount != null);
-                      return stayBelowMin(
-                        {
-                          room: round2(room.reduce((s, r) => s + r.amount, 0)),
-                          fees: room.length > 0 ? (guestPrices.data?.profiles.booking?.cleaningFee ?? 0) : 0,
-                          roomPerNight: room,
-                        },
-                        pricingRow?.minPrice,
-                      );
-                    })()}
+                    belowMin={pickedStayBelowMin(
+                      // room after every discount + cleaning against minimum × nights (decision 2026-10-25)
+                      pickedNights.map((n) => ({
+                        ymd: n.ymd,
+                        past: n.past,
+                        open: n.kind === 'open',
+                        minGuest: cellRows?.get(n.ymd)?.booking?.minGuest ?? null,
+                      })),
+                      guestPrices.data.profiles.booking?.cleaningFee,
+                      pricingRow?.minPrice,
+                    )}
                   />
                 ) : null
               }

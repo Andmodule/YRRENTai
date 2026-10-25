@@ -1763,7 +1763,7 @@
         },
         "priceError": "Введите цену — число больше нуля.",
         "saveError": "Не удалось сохранить.",
-        "belowMinStay": "За {nights, plural, one {# ночь} few {# ночи} many {# ночей} other {# ночей}} гость со всеми скидками Booking и уборкой заплатит {total} {currency} — меньше минимума {floor} {currency} ({min} × {nights}). Отправка это не остановит — проверьте скидки или цену."
+        "belowMinStay": "По новой цене: за {nights, plural, one {# ночь} few {# ночи} many {# ночей} other {# ночей}} гость со всеми скидками Booking и уборкой заплатит {total} {currency} — меньше минимума {floor} {currency} ({min} × {nights}). Отправка это не остановит — проверьте скидки или цену."
       },
       "rowBookingTitle": "Booking: цена, которую ставит RentAI / минимум для гостя за ночь (номер, без уборки). «● 240→245» — на Booking сейчас 240, новая цена ещё не отправлена; ✎ — своя цена на эту ночь.",
       "rowAirbnbTitle": "Airbnb: цена ночи (✎ — своя цена на эту ночь).",
@@ -1798,7 +1798,7 @@
         "gapEqual": "Итог на площадках совпадает (разница до 1 %).",
         "gapAirbnbHigher": "Airbnb дороже Booking на {pct} %.",
         "gapAirbnbLower": "Airbnb дешевле Booking на {pct} %.",
-        "belowMinStay": "За {nights, plural, one {# ночь} few {# ночи} many {# ночей} other {# ночей}} гость со всеми скидками Booking и уборкой заплатит {total} — меньше минимума {floor} ({min} × {nights}).",
+        "belowMinStay": "По цене на Booking сейчас: за {nights, plural, one {# ночь} few {# ночи} many {# ночей} other {# ночей}} гость со всеми скидками Booking и уборкой заплатит {total} — меньше минимума {floor} ({min} × {nights}).",
         "notOnSale": "{count, plural, one {# ночь занята или закрыта} few {# ночи заняты или закрыты} many {# ночей заняты или закрыты} other {# ночей заняты или закрыты}} на Booking — гость их купить не может, в итог Booking они не вошли.",
         "actObserve": "Ввести итог со скриншота",
         "actAirbnbPrice": "Цена Airbnb на эти ночи",
