@@ -1,3 +1,4 @@
+import { In } from 'typeorm';
 import { BadRequestException, ConflictException, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { QueryFailedError } from 'typeorm';
 import type { ConfigService } from '@nestjs/config';
@@ -223,6 +224,45 @@ describe('PricingBasePriceService — overview and editing', () => {
     s.tx.insert.mockClear();
     expect(await s.svc.setRange(OWNER, PROP, { from: '2026-11-01', to: '2026-11-03', price: null })).toEqual({});
     expect(s.tx.insert).not.toHaveBeenCalled();
+  });
+
+  it('a range with days of the week: only those nights are replaced or removed', async () => {
+    const s = setup();
+    // 2026-11-06 Fri, 07 Sat, 08 Sun, 09 Mon
+    const out = await s.svc.setRange(OWNER, PROP, { from: '2026-11-06', to: '2026-11-09', price: 600, weekdays: [5, 6] });
+    expect(s.tx.delete).toHaveBeenCalledWith({ propertyId: PROP, date: In(['2026-11-06', '2026-11-07']) });
+    expect(s.tx.insert).toHaveBeenCalledWith([
+      { propertyId: PROP, date: '2026-11-06', priceMinor: 60000 },
+      { propertyId: PROP, date: '2026-11-07', priceMinor: 60000 },
+    ]);
+    expect(out).toEqual({ '2026-11-06': 600, '2026-11-07': 600 });
+    s.tx.insert.mockClear();
+    s.tx.delete.mockClear();
+    expect(await s.svc.setRange(OWNER, PROP, { from: '2026-11-06', to: '2026-11-09', price: null, weekdays: [0] })).toEqual({});
+    expect(s.tx.delete).toHaveBeenCalledWith({ propertyId: PROP, date: In(['2026-11-08']) });
+    expect(s.tx.insert).not.toHaveBeenCalled();
+    // all seven days = the whole range, as without the list
+    s.tx.delete.mockClear();
+    await s.svc.setRange(OWNER, PROP, { from: '2026-11-06', to: '2026-11-07', price: 500, weekdays: [0, 1, 2, 3, 4, 5, 6] });
+    expect(s.tx.delete).toHaveBeenCalledWith({ propertyId: PROP, date: In(['2026-11-06', '2026-11-07']) });
+  });
+
+  it('a range with days of the week that are not in it: 400, nothing written', async () => {
+    const s = setup();
+    // 2026-11-02 Mon, 03 Tue — no Saturday
+    await expect(
+      s.svc.setRange(OWNER, PROP, { from: '2026-11-02', to: '2026-11-03', price: 500, weekdays: [6] }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(s.dataSource.transaction).not.toHaveBeenCalled();
+  });
+
+  it('days of the week in the request: 0–6, at least one, no more than seven', () => {
+    const ok = basePriceRangeSchema.safeParse({ from: '2026-11-01', to: '2026-11-07', price: 500, weekdays: [0, 6] });
+    expect(ok.success).toBe(true);
+    for (const weekdays of [[], [7], [-1], [1.5], [0, 1, 2, 3, 4, 5, 6, 0]]) {
+      expect(basePriceRangeSchema.safeParse({ from: '2026-11-01', to: '2026-11-07', price: 500, weekdays }).success).toBe(false);
+    }
+    expect(basePriceRangeSchema.safeParse({ from: '2026-11-01', to: '2026-11-07', price: 500 }).success).toBe(true);
   });
 
   it('channel rules: unknown channel 400; only sent fields written; null clears a guest percent', async () => {

@@ -9,7 +9,13 @@ const price = z.coerce.number().positive().max(1_000_000);
 
 /** Base price for every night of [from, to] (inclusive); price null removes it. */
 export const basePriceRangeSchema = z
-  .object({ from: ymd, to: ymd, price: price.nullable() })
+  .object({
+    from: ymd,
+    to: ymd,
+    price: price.nullable(),
+    /** Only these days of the week (0 = Sunday … 6 = Saturday); left out = every night. */
+    weekdays: z.array(z.number().int().min(0).max(6)).min(1).max(7).optional(),
+  })
   .strict()
   .refine((v) => v.from <= v.to, { message: '«С» позже «по»', path: ['to'] });
 

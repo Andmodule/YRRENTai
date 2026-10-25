@@ -39,6 +39,9 @@ export interface ChannelPricing {
 /** Why «Отправить в Booking» is not available; null = it is. */
 export type BookingSendBlock = 'DATES_OFF' | 'DRY_RUN' | 'NOT_ON_BOOKING' | 'NOT_IN_PILOT' | null;
 
+/** Base price for [from, to]; `weekdays` (0 = Sunday … 6 = Saturday) limits it to those days. */
+export type BasePriceRangeInput = { from: string; to: string; price: number | null; weekdays?: number[] };
+
 export interface BasePriceOverview {
   /** yyyy-MM-dd → base price. */
   base: Record<string, number>;
@@ -389,7 +392,7 @@ export const pricingApi = {
   basePrice: {
     get: (propertyId: string, from: string, to: string) =>
       unwrap<BasePriceOverview>(apiClient.get(`/pricing/base-prices/${propertyId}`, { params: { from, to } })),
-    setRange: (propertyId: string, input: { from: string; to: string; price: number | null }) =>
+    setRange: (propertyId: string, input: BasePriceRangeInput) =>
       unwrap<Record<string, number>>(apiClient.put(`/pricing/base-prices/${propertyId}`, input)),
     fillFromBooking: (propertyId: string, input: { from: string; to: string }) =>
       unwrap<{ filled: number; kept: number; notOpen: number }>(

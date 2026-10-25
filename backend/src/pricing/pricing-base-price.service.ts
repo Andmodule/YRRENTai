@@ -1,7 +1,7 @@
 import { createHash } from 'crypto';
 import { BadRequestException, ConflictException, Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Between, DataSource, QueryFailedError, Repository } from 'typeorm';
+import { Between, DataSource, In, QueryFailedError, Repository } from 'typeorm';
 import type { JwtPayload } from '../common/decorators/current-user.decorator';
 import { PropertyService } from '../property/property.service';
 import type { PropertyEntity } from '../property/entities/property.entity';
@@ -12,7 +12,7 @@ import { PromotionSyncService } from './promotion-sync.service';
 import { channelTargets } from './base-price.util';
 import { addDaysYmd, nightsCount, toMinor, todayInTz } from './pricing-math.util';
 // The strict check: «2026-02-30» is refused, not left to the database.
-import { isYmd } from '../calendar-dates/calendar-dates.util';
+import { isYmd, weekdayOf } from '../calendar-dates/calendar-dates.util';
 import { PropertyBasePriceEntity } from './entities/property-base-price.entity';
 import { PropertyChannelPricingEntity } from './entities/property-channel-pricing.entity';
 import { PropertyChannelNightPriceEntity } from './entities/property-channel-night-price.entity';
@@ -167,12 +167,15 @@ export class PricingBasePriceService {
     this.assertOn();
     this.assertRange(dto.from, dto.to);
     const property = await this.owned(user, propertyId);
+    const days = dto.weekdays ? new Set(dto.weekdays) : null;
     const dates: string[] = [];
-    for (let d = dto.from; d <= dto.to; d = addDaysYmd(d, 1)) dates.push(d);
+    for (let d = dto.from; d <= dto.to; d = addDaysYmd(d, 1)) if (!days || days.has(weekdayOf(d))) dates.push(d);
+    if (dates.length === 0) throw new BadRequestException('В выбранных датах нет этих дней недели');
     return this.tables(async () => {
       await this.dataSource.transaction(async (m) => {
         const repo = m.getRepository(PropertyBasePriceEntity);
-        await repo.delete({ propertyId: property.id, date: Between(dto.from, dto.to) });
+        // Days of the week: the other nights of the range keep their price.
+        await repo.delete({ propertyId: property.id, date: days ? In(dates) : Between(dto.from, dto.to) });
         if (dto.price != null) {
           const priceMinor = toMinor(dto.price);
           await repo.insert(dates.map((date) => ({ propertyId: property.id, date, priceMinor })));
