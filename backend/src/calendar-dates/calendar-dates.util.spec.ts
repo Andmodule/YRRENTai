@@ -16,12 +16,25 @@ import {
   type NightChange,
   type RateNight,
 } from './calendar-dates.util';
+import { activeBookings } from '../integrations/zodomus/zodomus-inventory.util';
 
 const ROOM = '1102139801';
 const RATE = '39993723';
 
 /** The shape Zodomus returned for K22 Andersa on 2026-10-12. */
-function body(dates: Array<{ date: string; closed?: string; price?: string; booked?: string; dayBooked?: string; rateId?: string }>) {
+function body(
+  dates: Array<{
+    date: string;
+    closed?: string;
+    price?: string;
+    booked?: string;
+    cancelled?: string;
+    dayBooked?: string;
+    dayCancelled?: string;
+    availability?: string;
+    rateId?: string;
+  }>,
+) {
   return {
     status: { returnCode: 200 },
     rooms: [
@@ -29,14 +42,16 @@ function body(dates: Array<{ date: string; closed?: string; price?: string; book
         id: ROOM,
         dates: dates.map((d) => ({
           date: d.date,
-          availability: '1',
+          availability: d.availability ?? '1',
           booked: d.dayBooked ?? '',
+          cancelled: d.dayCancelled ?? '',
           rates: [
             {
               rateId: d.rateId ?? RATE,
               closed: d.closed ?? '0',
               price: d.price ?? '330.0',
               booked: d.booked ?? '0',
+              cancelled: d.cancelled ?? '0',
             },
           ],
         })),
@@ -144,6 +159,44 @@ describe('extractRateNights', () => {
     expect(extractRateNights(two, 'b', RATE).size).toBe(1);
   });
 
+  it('a cancelled reservation does not take the night (K22 Andersa, 2026-10-25)', () => {
+    // Prod: guest cancelled 24→28 Oct; Booking kept booked:"1" and added cancelled:"1", room free.
+    const m = extractRateNights(
+      body([
+        { date: '2026-10-25', booked: '1', cancelled: '1', price: '240.0' },
+        { date: '2026-10-26', booked: '2', cancelled: '1' }, // re-sold after the cancellation
+        { date: '2026-10-27', booked: '1', cancelled: '' }, // no cancelled counter
+        { date: '2026-10-28', booked: '1', cancelled: '3' }, // odd counters: never below zero
+        { date: '2026-10-29', booked: '', dayBooked: '1', dayCancelled: '1' }, // date-level counters
+        { date: '2026-10-30', booked: '', dayBooked: '1', dayCancelled: '0' },
+        { date: '2026-10-31', booked: '1', cancelled: '1', availability: '0' }, // no room: booked as sent
+        { date: '2026-11-01', booked: '1', cancelled: '1', availability: '' }, // no availability: booked as sent
+      ]),
+      ROOM,
+      RATE,
+    );
+    expect(m.get('2026-10-25')).toEqual({ date: '2026-10-25', closed: false, price: 240, booked: 0, availability: 1 });
+    expect(m.get('2026-10-26')?.booked).toBe(1);
+    expect(m.get('2026-10-27')?.booked).toBe(1);
+    expect(m.get('2026-10-28')?.booked).toBe(0);
+    expect(m.get('2026-10-29')?.booked).toBe(0);
+    expect(m.get('2026-10-30')?.booked).toBe(1);
+    expect(m.get('2026-10-31')).toMatchObject({ booked: 1, availability: 0 });
+    expect(m.get('2026-11-01')).toMatchObject({ booked: 1, availability: null });
+  });
+
+  it('activeBookings: booked minus cancelled only while a room is for sale, null without booked', () => {
+    expect(activeBookings({ booked: '1', cancelled: '1' }, 1)).toBe(0);
+    expect(activeBookings({ booked: 2, cancelled: 1 }, 1)).toBe(1);
+    expect(activeBookings({ booked: '1' }, 1)).toBe(1);
+    expect(activeBookings({ booked: '1', cancelled: '' }, 1)).toBe(1);
+    expect(activeBookings({ booked: '0', cancelled: '2' }, 1)).toBe(0);
+    expect(activeBookings({ booked: '1', cancelled: '1' }, 0)).toBe(1);
+    expect(activeBookings({ booked: '1', cancelled: '1' }, null)).toBe(1);
+    expect(activeBookings({ booked: '', cancelled: '1' }, 1)).toBeNull();
+    expect(activeBookings({}, 1)).toBeNull();
+  });
+
   it('survives empty or odd bodies', () => {
     expect(extractRateNights(null, ROOM, RATE).size).toBe(0);
     expect(extractRateNights({ rooms: 'x' }, ROOM, RATE).size).toBe(0);
@@ -158,6 +211,31 @@ describe('planCalendarDates — open', () => {
     { date: '2026-11-06', closed: true, price: 1180 }, // Friday
     { date: '2026-11-07', closed: false, price: 1180 }, // Saturday, open already
   ]);
+
+  it('opens a closed night whose only reservation was cancelled', () => {
+    const read = extractRateNights(
+      body([
+        { date: '2026-11-01', closed: '1', price: '1180.0', booked: '1', cancelled: '1' },
+        { date: '2026-11-02', closed: '1', price: '1180.0', booked: '1' },
+      ]),
+      ROOM,
+      RATE,
+    );
+    const p = planCalendarDates(read, { action: 'open', dateFrom: '2026-11-01', dateToExclusive: '2026-11-03' });
+    expect(p.changes.map((c) => c.date)).toEqual(['2026-11-01']);
+    expect(p.skipped.booked).toBe(1);
+  });
+
+  it('does not open a night with a cancelled reservation when Booking sends no availability', () => {
+    const read = extractRateNights(
+      body([{ date: '2026-11-01', closed: '1', price: '1180.0', booked: '1', cancelled: '1', availability: '' }]),
+      ROOM,
+      RATE,
+    );
+    const p = planCalendarDates(read, { action: 'open', dateFrom: '2026-11-01', dateToExclusive: '2026-11-02' });
+    expect(p.changes).toEqual([]);
+    expect(p.skipped.booked).toBe(1);
+  });
 
   it('keeps each night price when no price is given', () => {
     const p = planCalendarDates(base, { action: 'open', dateFrom: '2026-11-01', dateToExclusive: '2026-11-08' });
@@ -425,6 +503,21 @@ describe('planPriceTargets', () => {
     expect(plan.changes).toEqual([{ date: '2026-11-01', price: 520, closed: false, fromPrice: 500, fromClosed: false }]);
     expect(plan.skipped.closed).toBe(1);
     expect(countChanges(plan.changes)).toEqual({ open: 0, close: 0, price: 1 });
+  });
+
+  it('re-prices a night whose only reservation was cancelled; a re-sold or full night stays skipped', () => {
+    const read = extractRateNights(
+      body([
+        { date: '2026-10-25', booked: '1', cancelled: '1', price: '240.0' },
+        { date: '2026-10-26', booked: '2', cancelled: '1', price: '240.0' },
+        { date: '2026-10-27', booked: '1', cancelled: '1', price: '290.0', availability: '0' },
+      ]),
+      ROOM,
+      RATE,
+    );
+    const plan = planPriceTargets(read, new Map([['2026-10-25', 250], ['2026-10-26', 250], ['2026-10-27', 270]]));
+    expect(plan.changes).toEqual([{ date: '2026-10-25', price: 250, closed: false, fromPrice: 240, fromClosed: false }]);
+    expect(plan.skipped.booked).toBe(2);
   });
 
   it('a sold closed night counts as sold, not closed', () => {

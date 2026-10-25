@@ -1,3 +1,4 @@
+import { activeBookings } from '../integrations/zodomus/zodomus-inventory.util';
 /**
  * «Открыть / закрыть даты на Booking» — pure planning over ONE Booking room + rate.
  *
@@ -17,7 +18,7 @@ export type RateNight = {
   closed: boolean;
   /** Price of this rate on this night (major units); null = Booking sent none. */
   price: number | null;
-  /** Rooms sold on the channel that night (date or rate level, whichever is larger). */
+  /** Rooms sold on the channel that night (date or rate level, whichever is larger; cancelled ones taken off — see activeBookings). */
   booked: number;
   /** Rooms for sale that night (date level); null = Booking sent none. */
   availability?: number | null;
@@ -225,12 +226,13 @@ export function extractRateNights(body: unknown, roomId: string, rateId: string)
     ) as Record<string, unknown> | undefined;
     if (!rate) continue;
     const price = toNum(rate.price);
+    const availability = toNum(node.availability);
     out.set(date, {
       date,
       closed: isClosedFlag(rate.closed),
       price: price != null && price > 0 ? price : null,
-      booked: Math.max(toNum(node.booked) ?? 0, toNum(rate.booked) ?? 0),
-      availability: toNum(node.availability),
+      booked: Math.max(activeBookings(node, availability) ?? 0, activeBookings(rate, availability) ?? 0),
+      availability,
     });
   }
   return out;

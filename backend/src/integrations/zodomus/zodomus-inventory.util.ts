@@ -88,6 +88,19 @@ function toNum(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/**
+ * Reservations that still take the night. Booking keeps a cancelled reservation in `booked` and adds it to
+ * `cancelled` (prod, K22 Andersa 2026-10-25: `booked:"1", cancelled:"1"`, `availability:"1"`). The
+ * cancellation is trusted only when Booking also reports a room for sale (`availability` > 0); without that
+ * the raw `booked` stands, as before. null when Booking sends no `booked`.
+ */
+export function activeBookings(n: Record<string, unknown>, availability: number | null): number | null {
+  const booked = toNum(n.booked);
+  if (booked == null) return null;
+  if (availability == null || availability <= 0) return booked;
+  return Math.max(0, booked - (toNum(n.cancelled) ?? 0));
+}
+
 function isClosedFlag(v: unknown): boolean {
   if (v === true || v === 1 || v === '1' || v === 'Yes' || v === 'yes') return true;
   return false;
@@ -207,7 +220,7 @@ function mergeInventoryScalars(
   if (avail != null) {
     day.availability = day.availability == null ? avail : Math.min(day.availability, avail);
   }
-  const booked = toNum(n.booked);
+  const booked = activeBookings(n, avail);
   if (booked != null) {
     day.booked = day.booked == null ? booked : Math.max(day.booked, booked);
   }
