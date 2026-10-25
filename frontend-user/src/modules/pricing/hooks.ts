@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/use-auth';
 import {
   pricingApi,
+  type BasePriceRangeInput,
   type ChannelProfileInput,
   type GuestPriceChannel,
   type ObservationInput,
@@ -215,7 +216,7 @@ export function useBasePriceMutations(propertyId: string) {
   const qc = useQueryClient();
   const refresh = () => void qc.invalidateQueries({ queryKey: pricingKeys.basePrice(propertyId) });
   const setRange = useMutation({
-    mutationFn: (input: { from: string; to: string; price: number | null }) => pricingApi.basePrice.setRange(propertyId, input),
+    mutationFn: (input: BasePriceRangeInput) => pricingApi.basePrice.setRange(propertyId, input),
     onSuccess: refresh,
   });
   const fillFromBooking = useMutation({

@@ -156,7 +156,8 @@ export function MonthGrid({
                         {row.booking ? (
                           <>
                             {row.booking.pending ? <span className="mr-0.5 text-amber-600" aria-label={t('rowPending')}>●</span> : null}
-                            B {fmt.format(row.booking.price)}
+                            B {row.booking.current != null ? `${fmt.format(row.booking.current)}→` : ''}
+                            {fmt.format(row.booking.price)}
                             {row.booking.typed ? '✎' : ''}
                             <span className="text-muted-foreground"> / {fmt.format(row.booking.minGuest)}</span>
                           </>

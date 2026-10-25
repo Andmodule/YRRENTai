@@ -36,6 +36,7 @@ export function NightPanel({
   onClear,
   guestPrice,
   basePrice,
+  hideBelowMin = false,
 }: {
   nights: readonly MonthNight[];
   selection: NightSelection | null;
@@ -51,6 +52,8 @@ export function NightPanel({
   guestPrice?: ReactNode;
   /** «Базовая цена» for the picked nights — shown above «Цена для гостя» when the feature is on. */
   basePrice?: ReactNode;
+  /** «Цена для гостя» checks the minimum for the whole stay (room + cleaning) — the per-night note is not shown. */
+  hideBelowMin?: boolean;
 }) {
   const t = useTranslations('calendar.propertyMonth');
   const dateLocale = useDateLocale();
@@ -70,7 +73,7 @@ export function NightPanel({
     return [...seen.values()].sort((a, b) => Number(isTargetingType(a.promotionType)) - Number(isTargetingType(b.promotionType)));
   }, [picked]);
   const showApp = picked.some((n) => n.prices?.app != null);
-  const belowMin = minPrice
+  const belowMin = minPrice && !hideBelowMin
     ? picked.filter((n) => n.prices && Math.min(n.prices.genius, n.prices.app ?? Number.POSITIVE_INFINITY) < minPrice).length
     : 0;
   const single = picked.length === 1 ? picked[0]! : null;
@@ -177,6 +180,9 @@ export function NightPanel({
           ) : null}
         </section>
       )}
+
+      {selection && picked.length > 0 ? basePrice : null}
+      {selection && picked.length > 0 ? guestPrice : null}
 
       {selection && picked.length > 0 ? (
         <section className="space-y-2 rounded-xl border border-border bg-card p-4">
@@ -305,9 +311,6 @@ export function NightPanel({
         </section>
       ) : null}
 
-      {selection && picked.length > 0 ? basePrice : null}
-      {selection && picked.length > 0 ? guestPrice : null}
-
       <PriceLegend geniusPct={geniusPct} />
     </div>
   );
@@ -324,12 +327,12 @@ function PriceLegend({ geniusPct }: { geniusPct: number | null }) {
     { name: t('appName'), what: t('appWhat'), where: t('appWhere') },
   ];
   return (
-    <section className="space-y-2 rounded-xl border border-border bg-card p-4">
-      <h3 className="flex items-center gap-1.5 text-sm font-semibold">
+    <details className="group space-y-2 rounded-xl border border-border bg-card p-4">
+      <summary className="flex cursor-pointer list-none items-center gap-1.5 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <Info className="h-4 w-4 text-muted-foreground" aria-hidden />
         {t('title')}
-      </h3>
-      <dl className="space-y-2 text-xs">
+      </summary>
+      <dl className="mt-2 space-y-2 text-xs">
         {rows.map((r) => (
           <div key={r.name}>
             <dt className="font-semibold">{r.name}</dt>
@@ -342,6 +345,6 @@ function PriceLegend({ geniusPct }: { geniusPct: number | null }) {
       </dl>
       <p className="text-[11px] text-muted-foreground">{t('taxes')}</p>
       <p className="text-[11px] text-muted-foreground">{t('derived')}</p>
-    </section>
+    </details>
   );
 }

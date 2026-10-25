@@ -41,7 +41,7 @@ import { NightPanel } from './NightPanel';
 import { GuestPricePanel } from './GuestPricePanel';
 import { BasePricePanel } from './BasePricePanel';
 import type { CellRows } from './MonthGrid';
-import { airbnbNightPrice, bookingCell } from '@/modules/pricing/lib/guest-price';
+import { airbnbNightPrice, bookingCell, round2, stayBelowMin } from '@/modules/pricing/lib/guest-price';
 
 /** Calendar of one property by months (Airbnb-like): the month on the left, actions and prices on the right. */
 export function PropertyMonthView({ propertyId }: { propertyId: string }) {
@@ -118,6 +118,9 @@ export function PropertyMonthView({ propertyId }: { propertyId: string }) {
     }
     return rows;
   }, [basePriceOn, basePrices.data, guestPrices.data, nights, pricingRow]);
+
+  /** «Отправить в Booking» of the base price works here: the old «Цена на канале» would only fight it. */
+  const baseSends = basePriceOn && basePrices.data != null && basePrices.data.bookingSend == null;
 
   const [selection, setSelection] = useState<NightSelection | null>(null);
   useEffect(() => setSelection(null), [month, propertyId]);
@@ -252,6 +255,7 @@ export function PropertyMonthView({ propertyId }: { propertyId: string }) {
               linked={linked}
               ariUnavailable={Boolean(property.ariUnavailable)}
               onClear={() => setSelection(null)}
+              hideBelowMin={guestPriceOn}
               guestPrice={
                 guestPriceOn && selection ? (
                   <GuestPricePanel
@@ -279,19 +283,27 @@ export function PropertyMonthView({ propertyId }: { propertyId: string }) {
                     typed={guestPrices.data.nightPrices}
                     currency={currency}
                     minPrice={pricingRow?.minPrice ?? null}
-                    belowMin={
-                      pricingRow?.minPrice
-                        ? pickedNights.filter(
-                            // only nights a run would re-price: from today, open on Booking
-                            (n) => !n.past && n.kind === 'open' && (cellRows?.get(n.ymd)?.booking?.minGuest ?? Number.POSITIVE_INFINITY) < pricingRow.minPrice!,
-                          ).length
-                        : 0
-                    }
+                    belowMin={(() => {
+                      // The stay a guest could book: nights from today, open on Booking, at the prices RentAI sets;
+                      // room after every discount + cleaning against minimum × nights (decision 2026-10-25).
+                      const room = pickedNights
+                        .filter((n) => !n.past && n.kind === 'open')
+                        .map((n) => ({ date: n.ymd, amount: cellRows?.get(n.ymd)?.booking?.minGuest ?? null }))
+                        .filter((r): r is { date: string; amount: number } => r.amount != null);
+                      return stayBelowMin(
+                        {
+                          room: round2(room.reduce((s, r) => s + r.amount, 0)),
+                          fees: room.length > 0 ? (guestPrices.data?.profiles.booking?.cleaningFee ?? 0) : 0,
+                          roomPerNight: room,
+                        },
+                        pricingRow?.minPrice,
+                      );
+                    })()}
                   />
                 ) : null
               }
               actions={{
-                onSetPrice: linked ? withDates(setPriceOpen) : undefined,
+                onSetPrice: linked && !baseSends ? withDates(setPriceOpen) : undefined,
                 onDiscount:
                   pricingOn && linked && selection
                     ? () => {

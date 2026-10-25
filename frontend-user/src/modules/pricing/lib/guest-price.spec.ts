@@ -14,6 +14,7 @@ import {
   gapPct,
   guestPriceBreakdown,
   nightsBelowMinPrice,
+  stayBelowMin,
   type BookingNightSource,
 } from './guest-price';
 import type { CellPromotion } from './pricing-ui';
@@ -318,18 +319,35 @@ describe('base price helpers (same as backend base-price.util)', () => {
     assert.equal(airbnbNightPrice('2026-11-03', p, {}, null), 290);
   });
 
+  it('stayBelowMin: room after discounts + cleaning against minimum × nights', () => {
+    // 1 night: 158.38 room + 59 cleaning = 217.38 ≥ 160 — fine even though the room alone is below
+    assert.equal(stayBelowMin({ room: 158.38, fees: 59, roomPerNight: [{ date: 'a', amount: 158.38 }] }, 160), null);
+    // 3 nights: 3 × 139 + 59 = 476 < 480
+    const r = [139, 139, 139].map((amount, i) => ({ date: String(i), amount }));
+    assert.deepEqual(stayBelowMin({ room: 417, fees: 59, roomPerNight: r }, 160), { total: 476, floor: 480, nights: 3 });
+    // exactly the minimum is not below
+    assert.equal(stayBelowMin({ room: 421, fees: 59, roomPerNight: r }, 160), null);
+    // no cleaning: the room alone
+    assert.deepEqual(stayBelowMin({ room: 150, fees: 0, roomPerNight: [{ date: 'a', amount: 150 }] }, 160), { total: 150, floor: 160, nights: 1 });
+    // no minimum, zero minimum, no nights
+    assert.equal(stayBelowMin({ room: 10, fees: 0, roomPerNight: [{ date: 'a', amount: 10 }] }, null), null);
+    assert.equal(stayBelowMin({ room: 10, fees: 0, roomPerNight: [{ date: 'a', amount: 10 }] }, 0), null);
+    assert.equal(stayBelowMin({ room: 0, fees: 59, roomPerNight: [] }, 160), null);
+  });
+
   it('bookingCell: price, pending against Booking, typed, cheapest guest (room only)', () => {
     const n = night({ ymd: '2026-11-02', rack: 500, rackFrom: 500, promotions: [promo({ discountPct: 20 })], targetingPct: 10 });
     const c = bookingCell(n, { base: { '2026-11-02': 500 }, typed: {}, markupPct: 0, geniusPct: 10, profile: null })!;
     // 500 → Genius −10 % → 450 → deal −20 % → 360 → mobile −10 % → 324
-    assert.deepEqual(c, { price: 500, typed: false, pending: false, minGuest: 324 });
+    assert.deepEqual(c, { price: 500, typed: false, pending: false, current: null, minGuest: 324 });
     const up = bookingCell(n, { base: { '2026-11-02': 500 }, typed: {}, markupPct: 10, geniusPct: 10, profile: null })!;
     assert.equal(up.price, 550);
     assert.equal(up.pending, true);
+    assert.equal(up.current, 500); // what Booking has now, next to the new 550
     const typedCell = bookingCell(n, { base: {}, typed: { '2026-11-02': 600 }, markupPct: 0, geniusPct: null, profile: null })!;
     assert.equal(typedCell.typed, true);
     // No base, no typed price: what Booking has now, nothing to send.
-    assert.deepEqual(bookingCell(n, { base: {}, typed: {}, markupPct: 0, geniusPct: 10, profile: null }), { price: 500, typed: false, pending: false, minGuest: 324 });
+    assert.deepEqual(bookingCell(n, { base: {}, typed: {}, markupPct: 0, geniusPct: 10, profile: null }), { price: 500, typed: false, pending: false, current: null, minGuest: 324 });
     const unknown = night({ ymd: '2026-11-02', rack: null, rackFrom: null });
     assert.equal(bookingCell(unknown, { base: {}, typed: {}, markupPct: 0, geniusPct: null, profile: null }), null);
   });

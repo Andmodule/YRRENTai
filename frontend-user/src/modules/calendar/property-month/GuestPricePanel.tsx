@@ -19,7 +19,7 @@ import {
   countBookedOrClosed,
   gapPct,
   guestPriceBreakdown,
-  nightsBelowMinPrice,
+  stayBelowMin,
   type GuestPriceBreakdown,
   type GuestPriceLine,
   type GuestPriceScenario,
@@ -151,7 +151,7 @@ export function GuestPricePanel({
   // Totals over different sets of nights cannot be compared.
   const complete = booking.missing.length === 0 && airbnb.missing.length === 0;
   const gap = complete && booking.breakdown && airbnb.breakdown ? gapPct(booking.breakdown.total, airbnb.breakdown.total) : null;
-  const below = scenario === 'min' && booking.breakdown ? nightsBelowMinPrice(booking.breakdown, minPrice) : [];
+  const below = scenario === 'min' && booking.breakdown ? stayBelowMin(booking.breakdown, minPrice) : null;
   const lastCheck = data.data?.observations.find((o) => o.channel === 'booking' && o.scenario === scenario) ?? null;
   const notOnSale = countBookedOrClosed(picked);
   const first = picked[0]?.ymd ?? from;
@@ -295,9 +295,14 @@ export function GuestPricePanel({
         </p>
       ) : null}
 
-      {below.length > 0 && minPrice ? (
+      {below && minPrice ? (
         <p className="rounded-lg border border-amber-300/70 bg-amber-50 px-3 py-2 text-xs text-amber-950 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
-          {t('belowMin', { count: below.length, min: money(minPrice, currency) })}
+          {t('belowMinStay', {
+            nights: below.nights,
+            total: money(below.total, currency),
+            floor: money(below.floor, currency),
+            min: money(minPrice, currency),
+          })}
         </p>
       ) : null}
       {notOnSale > 0 ? <p className="text-[11px] text-muted-foreground">{t('notOnSale', { count: notOnSale })}</p> : null}
@@ -618,14 +623,17 @@ function ProfileForm({
                 aria-label={t('extraLabel')}
                 onChange={(e) => setExtras((xs) => xs.map((y, j) => (j === i ? { ...y, label: e.target.value } : y)))}
               />
-              <Input
-                className="h-9 w-20"
-                inputMode="decimal"
-                value={x.pct}
-                placeholder="%"
-                aria-label={t('extraPct')}
-                onChange={(e) => setExtras((xs) => xs.map((y, j) => (j === i ? { ...y, pct: e.target.value } : y)))}
-              />
+              {/* `cn` only joins classes: the Input's own w-full beats w-20 — the wrapper keeps the % narrow. */}
+              <div className="w-20 shrink-0">
+                <Input
+                  className="h-9"
+                  inputMode="decimal"
+                  value={x.pct}
+                  placeholder="%"
+                  aria-label={t('extraPct')}
+                  onChange={(e) => setExtras((xs) => xs.map((y, j) => (j === i ? { ...y, pct: e.target.value } : y)))}
+                />
+              </div>
               <Button type="button" variant="ghost" size="icon" aria-label={t('extraRemove')} onClick={() => setExtras((xs) => xs.filter((_, j) => j !== i))}>
                 <Trash2 className="h-4 w-4" aria-hidden />
               </Button>

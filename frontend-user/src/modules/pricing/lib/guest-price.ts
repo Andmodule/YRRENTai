@@ -121,6 +121,22 @@ export function nightsBelowMinPrice(
   return breakdown.roomPerNight.filter((n) => n.amount < minPrice).map((n) => n.date);
 }
 
+/**
+ * The minimum price against the whole stay (decision 2026-10-25): what the guest pays for the room after every
+ * discount plus the stay fees (cleaning) must not be below `minPrice` × nights. null when it is not below.
+ */
+export function stayBelowMin(
+  breakdown: Pick<GuestPriceBreakdown, 'room' | 'fees' | 'roomPerNight'>,
+  minPrice: number | null | undefined,
+): { total: number; floor: number; nights: number } | null {
+  if (!minPrice || minPrice <= 0) return null;
+  const nights = breakdown.roomPerNight.length;
+  if (nights === 0) return null;
+  const total = round2(breakdown.room + breakdown.fees);
+  const floor = round2(minPrice * nights);
+  return total < floor ? { total, floor, nights } : null;
+}
+
 export function compareWithObserved(
   calculatedTotal: number,
   observedTotal: number,
@@ -306,6 +322,8 @@ export type BookingCell = {
   typed: boolean;
   /** Booking has another price now on a night open for sale — the new one is not sent yet. */
   pending: boolean;
+  /** What Booking has now when `pending` (shown next to the new price); null otherwise. */
+  current: number | null;
   /** Lowest room price a guest can see for the night at that price (no cleaning). */
   minGuest: number;
 };
@@ -339,11 +357,13 @@ export function bookingCell(
   });
   const minGuest = guestPriceBreakdown(q.input).roomPerNight[0]?.amount ?? price;
   const t = p.typed[n.ymd];
+  // A closed / booked night is never re-priced by a run: no «not sent» mark for it.
+  const pending = own != null && n.onSale && n.rack != null && Math.abs(n.rack - price) >= 0.005;
   return {
     price,
     typed: t != null && t > 0,
-    // A closed / booked night is never re-priced by a run: no «not sent» mark for it.
-    pending: own != null && n.onSale && n.rack != null && Math.abs(n.rack - price) >= 0.005,
+    pending,
+    current: pending ? n.rack : null,
     minGuest,
   };
 }
