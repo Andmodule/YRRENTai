@@ -658,7 +658,7 @@ export function NewBookingSheet({
           <Textarea
             id="nb-notes"
             rows={2}
-            className="min-h-[2.5rem] resize-y text-sm"
+            className="min-h-[2.5rem] resize-y"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             placeholder={t('notesPlaceholder')}

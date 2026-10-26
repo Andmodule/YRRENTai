@@ -252,7 +252,7 @@ export function ReservationDetailPanel({
             </Label>
             <Select
               id={`pay-${reservation.uuid}`}
-              className="h-9 max-w-[220px] text-sm"
+              className="h-9 max-w-[220px]"
               value={paymentStatus}
               disabled={patchMutation.isPending}
               onChange={(e) => {

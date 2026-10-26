@@ -24,7 +24,8 @@ interface UiState {
 export const useUiStore = create<UiState>()(
   persist(
     (set) => ({
-      sidebarOpen: true,
+      /** Mobile drawer only (lg+ always shows the sidebar). Starts closed so a page load on a phone shows the page, not the menu. */
+      sidebarOpen: false,
       sidebarCollapsed: false,
       activePropertyId: null,
       openCalendarFilter: null,

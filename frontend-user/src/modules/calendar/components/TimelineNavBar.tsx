@@ -157,7 +157,7 @@ export function TimelineNavBar({
                 <Input
                   id="cal-jump-date"
                   type="date"
-                  className="h-9 text-sm"
+                  className="h-9"
                   value={jumpDate}
                   onChange={(e) => setJumpDate(e.target.value)}
                 />
