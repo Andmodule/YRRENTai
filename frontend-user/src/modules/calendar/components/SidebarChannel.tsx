@@ -23,7 +23,10 @@ function isZodomusStatus(v: unknown): v is ZodomusPropertyStatus {
   );
 }
 
-/** Row height is fixed by Planby (64px); keep content single column, tight leading, no extra vertical padding. */
+/**
+ * Row height is fixed by Planby (64px); keep content single column, tight leading, no extra vertical padding.
+ * Mobile: no photo — the narrow column shows the title (two lines) and the meta line, so rows can be told apart.
+ */
 export const SidebarChannel = memo(function SidebarChannel({ channel, meta, isMobile }: SidebarChannelProps) {
   const t = useTranslations('calendar');
   const property = (channel as Channel & { _property?: Property })._property;
@@ -43,26 +46,17 @@ export const SidebarChannel = memo(function SidebarChannel({ channel, meta, isMo
         'box-border flex h-full max-h-full min-h-0 w-full items-center gap-2 overflow-hidden px-2',
         'text-foreground transition-colors hover:bg-muted/50',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
-        isMobile ? 'justify-center px-1' : '',
       )}
       aria-label={isMobile ? `${title} — ${t('openPropertyMonth')}` : undefined}
     >
-      {avatarSrc ? (
+      {isMobile ? null : avatarSrc ? (
         <img
           src={avatarSrc}
           alt=""
-          className={cn(
-            'shrink-0 rounded object-cover',
-            isMobile ? 'h-11 w-11' : 'h-8 w-8',
-          )}
+          className="h-8 w-8 shrink-0 rounded object-cover"
         />
       ) : (
-        <div
-          className={cn(
-            'flex shrink-0 items-center justify-center rounded bg-muted text-muted-foreground',
-            isMobile ? 'h-11 w-11' : 'h-8 w-8',
-          )}
-        >
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-muted text-muted-foreground">
           <Building2 className="h-4 w-4" aria-hidden />
         </div>
       )}
@@ -90,6 +84,14 @@ export const SidebarChannel = memo(function SidebarChannel({ channel, meta, isMo
           <p className="truncate text-[11px] leading-tight text-muted-foreground">
             {ariUnavailable ? t('ariUnavailableHint') : meta}
           </p>
+        </div>
+      )}
+      {isMobile && (
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col justify-center gap-0.5 overflow-hidden" aria-hidden>
+          <span className="line-clamp-2 break-words text-xs font-semibold leading-tight">{title}</span>
+          <span className="truncate text-[11px] leading-tight text-muted-foreground">
+            {ariUnavailable ? t('ariUnavailableHint') : meta}
+          </span>
         </div>
       )}
       {isMobile && (

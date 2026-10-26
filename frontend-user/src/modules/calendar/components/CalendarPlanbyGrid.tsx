@@ -33,6 +33,11 @@ export type CalendarPricingProps = {
 };
 
 const ITEM_HEIGHT_PX = 64;
+/** Mobile keeps room for the property title (two lines) — an icon-only column made rows indistinguishable. */
+const SIDEBAR_WIDTH_PX = {
+  mobile: 112,
+  desktop: 240,
+} as const;
 const DAY_COLUMN_WIDTH_PX = {
   mobile: 64,
   desktop: 96,
@@ -137,7 +142,7 @@ export function CalendarPlanbyGrid({
     startDate: format(startOfDay(dateRange.start), 'yyyy-MM-dd 00:00:00'),
     endDate: format(addDays(startOfDay(dateRange.end), 1), 'yyyy-MM-dd 00:00:00'),
     dayWidth: dayWidthPx,
-    sidebarWidth: isMobile ? 56 : 240,
+    sidebarWidth: isMobile ? SIDEBAR_WIDTH_PX.mobile : SIDEBAR_WIDTH_PX.desktop,
     itemHeight: ITEM_HEIGHT_PX,
     itemOverscan,
     isLine: false,
