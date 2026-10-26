@@ -33,6 +33,7 @@ import {
   type NightSelection,
   nextSelection,
   parseMonth,
+  rangeFromFields,
   shiftMonth,
   summarizeNights,
 } from '../lib/property-month';
@@ -41,6 +42,7 @@ import { NightPanel } from './NightPanel';
 import { GuestPricePanel } from './GuestPricePanel';
 import { BasePricePanel } from './BasePricePanel';
 import { MobileNightSheet } from './MobileNightSheet';
+import { useBookingSend } from './useBookingSend';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { cn } from '@/lib/utils';
 import type { CellRows } from './MonthGrid';
@@ -123,11 +125,28 @@ export function PropertyMonthView({ propertyId }: { propertyId: string }) {
     return rows;
   }, [basePriceOn, basePrices.data, guestPrices.data, nights, pricingRow]);
 
+  // The Booking run is watched by the page: the panel remounts with each range and the phone sheet unmounts.
+  // The dates tool off: no runs to poll (the server would answer 503). Not tied to the month's data: a month
+  // that failed to load must not stop watching a run.
+  const bookingSend = useBookingSend(propertyId, basePriceOn && datesAccess.enabled);
+
   /** «Отправить в Booking» of the base price works here: the old «Цена на канале» would only fight it. */
   const baseSends = basePriceOn && basePrices.data != null && basePrices.data.bookingSend == null;
 
-  const [selection, setSelection] = useState<NightSelection | null>(null);
-  useEffect(() => setSelection(null), [month, propertyId]);
+  // `?from=…&to=…` (a range dragged in the general calendar) arrives picked, cut to the month on screen.
+  const [selection, setSelection] = useState<NightSelection | null>(() => {
+    const qFrom = searchParams.get('from');
+    const qTo = searchParams.get('to');
+    if (!qFrom || !qTo || !/^\d{4}-\d{2}-\d{2}$/.test(qFrom) || !/^\d{4}-\d{2}-\d{2}$/.test(qTo)) return null;
+    return rangeFromFields({ from: qFrom, to: qTo }, 'from', qFrom, from, to);
+  });
+  const shownKey = useRef(`${month}|${propertyId}`);
+  useEffect(() => {
+    const key = `${month}|${propertyId}`;
+    if (key === shownKey.current) return;
+    shownKey.current = key;
+    setSelection(null);
+  }, [month, propertyId]);
   useEffect(() => {
     if (!selection) return;
     const onKey = (e: KeyboardEvent) => {
@@ -137,6 +156,13 @@ export function PropertyMonthView({ propertyId }: { propertyId: string }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [selection]);
   const onPick = useCallback((ymd: string) => setSelection((s) => nextSelection(s, ymd)), []);
+  const onRange = useCallback((a: string, b: string) => setSelection({ from: a, to: b }), []);
+  /** «С» / «По» in the panel. */
+  const onRangeField = useCallback(
+    (field: 'from' | 'to', value: string) =>
+      setSelection((s) => (s ? (rangeFromFields(s, field, value, from, to) ?? s) : s)),
+    [from, to],
+  );
   const pickedNights = useMemo(
     () => (selection ? nights.filter((n) => n.ymd >= selection.from && n.ymd <= selection.to) : []),
     [nights, selection],
@@ -194,6 +220,7 @@ export function PropertyMonthView({ propertyId }: { propertyId: string }) {
           guestPrices.data.profiles.booking?.cleaningFee,
           pricingRow?.minPrice,
         )}
+        send={bookingSend}
       />
     ) : null;
   const guestPriceNode =
@@ -294,7 +321,7 @@ export function PropertyMonthView({ propertyId }: { propertyId: string }) {
                 {t('ariUnavailable')}
               </p>
             ) : null}
-            <MonthGrid month={month} nights={nights} selection={selection} onPick={onPick} rows={cellRows} />
+            <MonthGrid month={month} nights={nights} selection={selection} onPick={onPick} onRange={onRange} rows={cellRows} />
             <p className="mt-2 text-xs text-muted-foreground">{t('gridHint')}</p>
             {sheetMode && selection ? (
               <MobileNightSheet
@@ -308,6 +335,7 @@ export function PropertyMonthView({ propertyId }: { propertyId: string }) {
                 hideBelowMin={guestPriceOn}
                 actions={nightActions}
                 onClear={() => setSelection(null)}
+                range={{ min: from, max: to, onChange: onRangeField }}
                 basePrice={basePriceNode}
                 guestPrice={guestPriceNode}
               />
@@ -336,6 +364,7 @@ export function PropertyMonthView({ propertyId }: { propertyId: string }) {
               linked={linked}
               ariUnavailable={Boolean(property.ariUnavailable)}
               onClear={() => setSelection(null)}
+              range={{ min: from, max: to, onChange: onRangeField }}
               hideBelowMin={guestPriceOn}
               guestPrice={sheetMode ? null : guestPriceNode}
               basePrice={sheetMode ? null : basePriceNode}

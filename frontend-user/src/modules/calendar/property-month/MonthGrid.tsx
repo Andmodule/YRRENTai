@@ -9,6 +9,7 @@ import { isNotSent, isTargetingType, liveDeal, ymdToDate } from '@/modules/prici
 import type { BookingCell } from '@/modules/pricing/lib/guest-price';
 import type { BookingChannel } from '../types';
 import { inSelection, type MonthNight, monthWeeks, type NightSelection } from '../lib/property-month';
+import { useRangeDrag } from './useRangeDrag';
 
 /** Booked nights are tinted by channel, like the bars of the general calendar. */
 const CHANNEL_TONE: Record<BookingChannel, string> = {
@@ -46,6 +47,7 @@ export function MonthGrid({
   nights,
   selection,
   onPick,
+  onRange,
   rows,
 }: {
   /** yyyy-MM */
@@ -53,6 +55,8 @@ export function MonthGrid({
   nights: readonly MonthNight[];
   selection: NightSelection | null;
   onPick: (ymd: string) => void;
+  /** A range drawn by dragging (mouse at once, finger after a long press). */
+  onRange: (from: string, to: string) => void;
   /** When set, a free future night shows base / Booking / Airbnb instead of the single guest price. */
   rows?: ReadonlyMap<string, CellRows>;
 }) {
@@ -62,6 +66,7 @@ export function MonthGrid({
   const fmt = useMemo(() => new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }), [locale]);
   const weeks = useMemo(() => monthWeeks(month), [month]);
   const byDay = useMemo(() => new Map(nights.map((n) => [n.ymd, n])), [nights]);
+  const dragRef = useRangeDrag<HTMLDivElement>(onRange);
   // 2024-01-01 is a Monday: the header row follows the grid, Monday first.
   const weekdays = useMemo(
     () => Array.from({ length: 7 }, (_, i) => format(new Date(2024, 0, 1 + i), 'EEEEEE', { locale: dateLocale })),
@@ -81,7 +86,8 @@ export function MonthGrid({
           </div>
         ))}
       </div>
-      <div className="grid gap-1">
+      {/* No text selection or phone menu on a long press: it starts a drag here. */}
+      <div ref={dragRef} className="grid select-none gap-1 [-webkit-touch-callout:none]">
         {weeks.map((week, wi) => (
           <div key={wi} className="grid grid-cols-7 gap-1" role="row">
             {week.map((ymd, di) => {
@@ -99,6 +105,7 @@ export function MonthGrid({
                   type="button"
                   role="gridcell"
                   aria-selected={selected}
+                  data-ymd={ymd}
                   onClick={() => onPick(ymd)}
                   title={format(ymdToDate(ymd), 'EEEE, d MMMM', { locale: dateLocale })}
                   className={cn(

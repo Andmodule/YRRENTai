@@ -1,7 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useMemo, useRef, useState, type FormEvent } from 'react';
 import { format } from 'date-fns';
 import { useLocale, useTranslations } from 'next-intl';
 import { toast } from 'sonner';
@@ -10,12 +9,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { getApiErrorMessage } from '@/lib/api/error-message';
 import { cn } from '@/lib/utils';
-import { pricingKeys, useBasePriceMutations, useGuestPriceMutations } from '@/modules/pricing/hooks';
+import { useBasePriceMutations, useGuestPriceMutations } from '@/modules/pricing/hooks';
 import type { BasePriceOverview, BookingWeekday, GuestPriceChannel } from '@/modules/pricing/api';
 import { ChoiceChip } from '@/modules/pricing/components/shared';
 import { WEEKDAYS, weekdayOf, ymdToDate } from '@/modules/pricing/lib/pricing-ui';
-import { useCalendarDatesJob, type CalendarDatesPreview } from '../calendar-dates-api';
+import type { CalendarDatesPreview } from '../calendar-dates-api';
 import type { MonthNight } from '../lib/property-month';
+import type { BookingSendWatch } from './useBookingSend';
 
 type Preview = CalendarDatesPreview & { fingerprint: string };
 
@@ -47,6 +47,7 @@ export function BasePricePanel({
   currency,
   minPrice,
   belowMin,
+  send,
 }: {
   propertyId: string;
   picked: readonly MonthNight[];
@@ -61,6 +62,8 @@ export function BasePricePanel({
   minPrice: number | null;
   /** The picked stay on Booking (room after every discount + cleaning) when it falls below minimum × nights. */
   belowMin: { total: number; floor: number; nights: number } | null;
+  /** The property's Booking run, watched by the page (see `useBookingSend`). */
+  send: BookingSendWatch;
 }) {
   const t = useTranslations('calendar.propertyMonth.basePrice');
   const tw = useTranslations('pricing.form.weekdayShort');
@@ -68,22 +71,16 @@ export function BasePricePanel({
   const fmt = useMemo(() => new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }), [locale]);
   const base = useBasePriceMutations(propertyId);
   const guest = useGuestPriceMutations(propertyId);
-  const qc = useQueryClient();
-  // The dates tool off: no runs to poll (the server would answer 503 on every pick).
-  const job = useCalendarDatesJob(propertyId, data.bookingSend !== 'DATES_OFF');
   const [preview, setPreview] = useState<Preview | null>(null);
   const sendRef = useRef<HTMLDivElement>(null);
-  // When a run ends, the calendar re-reads Booking (the «not sent» dots go away).
-  const lastState = useRef<string | null>(null);
-  useEffect(() => {
-    const s = job.data?.state ?? null;
-    if (lastState.current === 'running' && s && s !== 'running') {
-      void qc.invalidateQueries({ queryKey: ['calendar'] });
-      void qc.invalidateQueries({ queryKey: pricingKeys.basePrice(propertyId) });
-    }
-    lastState.current = s;
-  }, [job.data?.state, qc, propertyId]);
+  const { sent, setSent } = send;
+  /**
+   * A finished run shows only when it was started here: an older one (another range, an earlier visit) next
+   * to a new check read as «the send did nothing». A running one shows whoever started it — it locks the buttons.
+   */
+  const shownJob = send.job && (send.job.state === 'running' || send.job.id === sent?.jobId) ? send.job : null;
   const [showRules, setShowRules] = useState(false);
+  const rulesRef = useRef<HTMLDivElement>(null);
 
   const from = picked[0]?.ymd ?? today;
   const to = picked[picked.length - 1]?.ymd ?? today;
@@ -95,7 +92,7 @@ export function BasePricePanel({
   const fillFrom = monthFrom < today ? today : monthFrom;
   const datesOff = data.bookingSend === 'DATES_OFF';
   const sendBlock = data.bookingSend;
-  const running = job.data?.state === 'running';
+  const running = send.running;
   // What Booking has now on each picked night — the preview shows «now → new».
   const nowOnBooking = useMemo(() => new Map(picked.map((n) => [n.ymd, n.rack])), [picked]);
 
@@ -109,7 +106,8 @@ export function BasePricePanel({
   const fail = (e: unknown) => toast.error(getApiErrorMessage(e) ?? t('saveError'));
 
   /** Asks the server what a send would change now; `scroll` brings the result into view (after a save). */
-  const check = (scroll: boolean) =>
+  const check = (scroll: boolean) => {
+    setSent(null);
     base.previewBooking.mutate(
       { from, to },
       {
@@ -123,6 +121,7 @@ export function BasePricePanel({
         },
       },
     );
+  };
   // After a save the price goes on to Booking only with «Отправить»; when Booking cannot be sent to, a save only saves.
   const canCheck = !sendBlock && !running;
 
@@ -140,6 +139,29 @@ export function BasePricePanel({
             : t('nowRange', { min: fmt.format(min), max: fmt.format(max!), currency: currency ?? '' })}
         {withoutBase > 0 && min != null ? ` ${t('someWithout', { count: withoutBase })}` : ''}
       </p>
+
+      {/* The channel percents used to hide under a button at the bottom: what goes where is visible here. */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg bg-muted/60 px-3 py-2 text-xs">
+        <span className="min-w-0 flex-1">
+          {t('channelsLine', {
+            booking: pctLabel(data.channels.booking.markupPct),
+            airbnb: pctLabel(data.channels.airbnb.markupPct),
+          })}
+        </span>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className="h-8 px-2 text-xs"
+          onClick={() => {
+            setShowRules(true);
+            requestAnimationFrame(() => rulesRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }));
+          }}
+        >
+          {t('channelsEdit')}
+        </Button>
+        <span className="basis-full text-[11px] text-muted-foreground">{t('channelsNote')}</span>
+      </div>
 
       {dayChoice.length > 1 ? (
         <div className="space-y-1.5">
@@ -227,7 +249,13 @@ export function BasePricePanel({
                   base.sendBooking.mutate(
                     { from, to, fingerprint: preview.fingerprint },
                     {
-                      onSuccess: () => {
+                      onSuccess: (started) => {
+                        setSent({
+                          jobId: started.id,
+                          ranges: preview.ranges.filter((r) => !r.closed),
+                          currency: preview.currency,
+                          more: preview.requests > preview.ranges.length,
+                        });
                         setPreview(null);
                         toast.success(t('sendStarted'));
                       },
@@ -264,25 +292,36 @@ export function BasePricePanel({
           </p>
         ) : null}
 
-        {job.data && job.data.action === 'price' ? (
+        {shownJob && shownJob.action === 'price' ? (
           <p
+            role="status"
             className={cn(
               'rounded-lg px-3 py-2 text-xs',
-              job.data.state === 'done' && job.data.failed.length === 0 && !job.data.verify?.mismatched.length
+              shownJob.state === 'done' && shownJob.failed.length === 0 && !shownJob.verify?.mismatched.length && !shownJob.verify?.error
                 ? 'bg-emerald-50 text-emerald-900 dark:bg-emerald-500/10 dark:text-emerald-200'
-                : job.data.state === 'running'
+                : shownJob.state === 'running'
                   ? 'bg-muted'
                   : 'bg-amber-50 text-amber-950 dark:bg-amber-500/10 dark:text-amber-100',
             )}
           >
-            {job.data.state === 'running'
-              ? t('jobRunning', { sent: job.data.sent, total: job.data.total })
-              : t('jobDone', {
-                  state: t(`jobState.${job.data.state}`),
-                  applied: job.data.applied?.price ?? 0,
-                  mismatched: job.data.verify?.mismatched.length ?? 0,
-                  failed: job.data.failed.length,
-                })}
+            {shownJob.state === 'running'
+              ? t('jobRunning', { sent: shownJob.sent, total: shownJob.total })
+              : sent && shownJob.id === sent.jobId && shownJob.state === 'done' && shownJob.failed.length === 0 && !shownJob.verify?.mismatched.length && !shownJob.verify?.error
+                ? t('sentDone', {
+                    time: format(new Date(shownJob.finishedAt ?? Date.now()), 'HH:mm'),
+                    list: sent.ranges
+                      .map(
+                        (r) =>
+                          `${format(ymdToDate(r.dateFrom), 'dd.MM')}${r.nights > 1 ? `–${format(ymdToDate(addDays(r.dateToExclusive, -1)), 'dd.MM')}` : ''} — ${fmt.format(r.price)} ${sent.currency}`,
+                      )
+                      .join(', ') + (sent.more ? ', …' : ''),
+                  })
+                : t('jobDone', {
+                    state: t(`jobState.${shownJob.state}`),
+                    applied: shownJob.applied?.price ?? 0,
+                    mismatched: shownJob.verify?.mismatched.length ?? 0,
+                    failed: shownJob.failed.length,
+                  })}
           </p>
         ) : null}
       </div>
@@ -347,7 +386,7 @@ export function BasePricePanel({
         <p className="text-[11px] text-muted-foreground">{t('fillHint')}</p>
 
         {showRules ? (
-          <div className="space-y-3 rounded-lg bg-muted/50 p-3">
+          <div ref={rulesRef} className="scroll-mt-4 space-y-3 rounded-lg bg-muted/50 p-3">
             {(['booking', 'airbnb'] as const).map((channel) => (
               <ChannelRuleForm
                 key={`${channel}|${data.channels[channel].isDefault}`}
@@ -374,6 +413,13 @@ export function BasePricePanel({
       </div>
     </section>
   );
+}
+
+/** «+10 %», «−5 %», «0 %» — the channel markup as the line under the base price shows it. */
+function pctLabel(pct: number): string {
+  if (pct > 0) return `+${pct} %`;
+  if (pct < 0) return `−${Math.abs(pct)} %`;
+  return '0 %';
 }
 
 function addDays(ymd: string, days: number): string {

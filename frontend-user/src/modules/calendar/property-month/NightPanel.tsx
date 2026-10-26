@@ -5,6 +5,7 @@ import { format } from 'date-fns';
 import { useTranslations } from 'next-intl';
 import { CalendarPlus, Coins, Info, LockOpen, Percent, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { useDateLocale } from '@/hooks/useDateLocale';
 import { cn } from '@/lib/utils';
 import { isNotSent, isTargetingType, nightsCount, ymdToDate } from '@/modules/pricing/lib/pricing-ui';
@@ -23,6 +24,60 @@ export type NightPanelActions = {
 };
 
 export type NightActionKey = 'price' | 'discount' | 'dates' | 'booking';
+
+/** «С» / «По» of the picked nights, inside the month on screen. */
+export type NightRangeControl = {
+  min: string;
+  max: string;
+  onChange: (field: 'from' | 'to', value: string) => void;
+};
+
+/**
+ * Booking-style date fields for the picked nights. On a computer a date applies when the field is left or Enter is pressed:
+ * applying it on every keystroke broke typing in Chrome (the half-typed «1» of «15» swapped the range ends and
+ * reset the field). `key` brings a new value in when the range changes elsewhere (a drag, a tap).
+ */
+export function RangeFields({ selection, range }: { selection: NightSelection; range: NightRangeControl }) {
+  const t = useTranslations('calendar.propertyMonth');
+  const field = (which: 'from' | 'to', value: string, label: string) => (
+    <label className="space-y-1 text-xs text-muted-foreground">
+      <span>{label}</span>
+      <Input
+        key={value}
+        type="date"
+        className="h-10"
+        defaultValue={value}
+        min={range.min}
+        max={range.max}
+        onChange={(e) => {
+          // A phone picks a date in its own picker (no half-typed values): apply at once.
+          if (window.matchMedia('(pointer: coarse)').matches && e.currentTarget.value !== value) {
+            range.onChange(which, e.currentTarget.value);
+          }
+        }}
+        onBlur={(e) => {
+          // A field replaced after Enter (new `key`) must not apply its old value once more.
+          if (e.currentTarget.isConnected && e.currentTarget.value !== value) range.onChange(which, e.currentTarget.value);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && e.currentTarget.value !== value) {
+            e.preventDefault();
+            range.onChange(which, e.currentTarget.value);
+          }
+        }}
+      />
+    </label>
+  );
+  return (
+    <div className="space-y-1">
+      <div className="grid grid-cols-2 gap-2">
+        {field('from', selection.from, t('rangeFrom'))}
+        {field('to', selection.to, t('rangeTo'))}
+      </div>
+      <p className="text-[11px] text-muted-foreground">{t('rangeHint')}</p>
+    </div>
+  );
+}
 
 /** What the picked nights hold: the nights, their bookings and the discounts on them. */
 export function usePickedNights(nights: readonly MonthNight[], selection: NightSelection | null) {
@@ -54,6 +109,7 @@ export function NightPanel({
   ariUnavailable,
   actions,
   onClear,
+  range,
   guestPrice,
   basePrice,
   hideBelowMin = false,
@@ -68,6 +124,8 @@ export function NightPanel({
   ariUnavailable: boolean;
   actions: NightPanelActions;
   onClear: () => void;
+  /** «С» / «По» fields under the picked range. */
+  range: NightRangeControl;
   /** «Цена для гостя» for the picked nights — shown under the table when the feature is on. */
   guestPrice?: ReactNode;
   /** «Базовая цена» for the picked nights — shown above «Цена для гостя» when the feature is on. */
@@ -126,6 +184,7 @@ export function NightPanel({
             </button>
           </div>
 
+          <RangeFields selection={selection} range={range} />
           <NightActions actions={actions} allPast={allPast} />
           {!linked ? <p className="text-sm text-amber-700 dark:text-amber-400">{t('notLinked')}</p> : null}
 
