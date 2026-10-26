@@ -40,6 +40,9 @@ import { MonthGrid } from './MonthGrid';
 import { NightPanel } from './NightPanel';
 import { GuestPricePanel } from './GuestPricePanel';
 import { BasePricePanel } from './BasePricePanel';
+import { MobileNightSheet } from './MobileNightSheet';
+import { useIsMobile } from '@/hooks/useIsMobile';
+import { cn } from '@/lib/utils';
 import type { CellRows } from './MonthGrid';
 import { airbnbNightPrice, bookingCell, pickedStayBelowMin } from '@/modules/pricing/lib/guest-price';
 
@@ -48,6 +51,7 @@ export function PropertyMonthView({ propertyId }: { propertyId: string }) {
   const t = useTranslations('calendar.propertyMonth');
   const tc = useTranslations('calendar');
   const dateLocale = useDateLocale();
+  const isMobile = useIsMobile();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -166,6 +170,62 @@ export function PropertyMonthView({ propertyId }: { propertyId: string }) {
     };
   }, [nightPromo, property, promotions.data, propertyId]);
 
+  const basePriceNode =
+    basePriceOn && selection && basePrices.data && guestPrices.data ? (
+      <BasePricePanel
+        key={`${selection.from}|${selection.to}`}
+        propertyId={propertyId}
+        picked={pickedNights}
+        monthFrom={from}
+        monthTo={to}
+        today={today}
+        data={basePrices.data}
+        typed={guestPrices.data.nightPrices}
+        currency={currency}
+        minPrice={pricingRow?.minPrice ?? null}
+        belowMin={pickedStayBelowMin(
+          // room after every discount + cleaning against minimum × nights (decision 2026-10-25)
+          pickedNights.map((n) => ({
+            ymd: n.ymd,
+            past: n.past,
+            open: n.kind === 'open',
+            minGuest: cellRows?.get(n.ymd)?.booking?.minGuest ?? null,
+          })),
+          guestPrices.data.profiles.booking?.cleaningFee,
+          pricingRow?.minPrice,
+        )}
+      />
+    ) : null;
+  const guestPriceNode =
+    guestPriceOn && selection ? (
+      <GuestPricePanel
+        propertyId={propertyId}
+        from={from}
+        to={to}
+        picked={pickedNights}
+        geniusPct={pricingRow?.geniusPct ?? null}
+        minPrice={pricingRow?.minPrice ?? null}
+        currency={currency}
+        basePrices={basePriceOn ? (basePrices.data ?? null) : null}
+      />
+    ) : null;
+  const nightActions = {
+    onSetPrice: linked && !baseSends ? withDates(setPriceOpen) : undefined,
+    onDiscount:
+      pricingOn && linked && selection
+        ? () => {
+            setDiscountInitial({ propertyIds: [propertyId], stayFrom: selection.from, stayTo: selection.to });
+            setDiscountOpen(true);
+          }
+        : undefined,
+    onOpenDates: datesAccess.enabled && linked ? withDates(setDatesOpen) : undefined,
+    onNewBooking: withDates(setBookingOpen),
+    onOpenReservation: setOpenReservation,
+    onNightDiscounts: pricingOn ? setNightPromo : undefined,
+  };
+  /** Phone: the picked nights go to a bottom sheet with tabs; the panel under the month keeps the month summary. */
+  const sheetMode = isMobile && selection != null;
+
   const monthLabel = format(ymdToDate(from), 'LLLL yyyy', { locale: dateLocale });
 
   return (
@@ -221,7 +281,13 @@ export function PropertyMonthView({ propertyId }: { propertyId: string }) {
       ) : !property ? (
         <div className="p-6 text-sm text-muted-foreground">{t('notFound')}</div>
       ) : (
-        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pt-4 lg:flex-row lg:overflow-hidden">
+        <div
+          className={cn(
+            'flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pt-4 lg:flex-row lg:overflow-hidden',
+            // the phone bar with the picked nights is pinned over the bottom of the page
+            sheetMode && 'pb-24',
+          )}
+        >
           <div className="min-w-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
             {property.ariUnavailable ? (
               <p className="mb-2 rounded-lg border border-amber-300/70 bg-amber-50 px-3 py-2 text-xs text-amber-950 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
@@ -230,7 +296,22 @@ export function PropertyMonthView({ propertyId }: { propertyId: string }) {
             ) : null}
             <MonthGrid month={month} nights={nights} selection={selection} onPick={onPick} rows={cellRows} />
             <p className="mt-2 text-xs text-muted-foreground">{t('gridHint')}</p>
-            {selection ? (
+            {sheetMode && selection ? (
+              <MobileNightSheet
+                nights={nights}
+                selection={selection}
+                currency={currency}
+                geniusPct={pricingRow?.geniusPct ?? null}
+                minPrice={pricingRow?.minPrice ?? null}
+                linked={linked}
+                ariUnavailable={Boolean(property.ariUnavailable)}
+                hideBelowMin={guestPriceOn}
+                actions={nightActions}
+                onClear={() => setSelection(null)}
+                basePrice={basePriceNode}
+                guestPrice={guestPriceNode}
+              />
+            ) : selection ? (
               <div className="sticky bottom-2 z-10 mt-2 flex justify-center lg:hidden">
                 <Button
                   type="button"
@@ -247,7 +328,7 @@ export function PropertyMonthView({ propertyId }: { propertyId: string }) {
           <aside ref={panelRef} className="shrink-0 scroll-mt-2 lg:w-[400px] lg:overflow-y-auto lg:pb-4" aria-label={t('panelAria')}>
             <NightPanel
               nights={nights}
-              selection={selection}
+              selection={sheetMode ? null : selection}
               summary={summary}
               currency={currency}
               geniusPct={pricingRow?.geniusPct ?? null}
@@ -256,61 +337,9 @@ export function PropertyMonthView({ propertyId }: { propertyId: string }) {
               ariUnavailable={Boolean(property.ariUnavailable)}
               onClear={() => setSelection(null)}
               hideBelowMin={guestPriceOn}
-              guestPrice={
-                guestPriceOn && selection ? (
-                  <GuestPricePanel
-                    propertyId={propertyId}
-                    from={from}
-                    to={to}
-                    picked={pickedNights}
-                    geniusPct={pricingRow?.geniusPct ?? null}
-                    minPrice={pricingRow?.minPrice ?? null}
-                    currency={currency}
-                    basePrices={basePriceOn ? (basePrices.data ?? null) : null}
-                  />
-                ) : null
-              }
-              basePrice={
-                basePriceOn && selection && basePrices.data && guestPrices.data ? (
-                  <BasePricePanel
-                    key={`${selection.from}|${selection.to}`}
-                    propertyId={propertyId}
-                    picked={pickedNights}
-                    monthFrom={from}
-                    monthTo={to}
-                    today={today}
-                    data={basePrices.data}
-                    typed={guestPrices.data.nightPrices}
-                    currency={currency}
-                    minPrice={pricingRow?.minPrice ?? null}
-                    belowMin={pickedStayBelowMin(
-                      // room after every discount + cleaning against minimum × nights (decision 2026-10-25)
-                      pickedNights.map((n) => ({
-                        ymd: n.ymd,
-                        past: n.past,
-                        open: n.kind === 'open',
-                        minGuest: cellRows?.get(n.ymd)?.booking?.minGuest ?? null,
-                      })),
-                      guestPrices.data.profiles.booking?.cleaningFee,
-                      pricingRow?.minPrice,
-                    )}
-                  />
-                ) : null
-              }
-              actions={{
-                onSetPrice: linked && !baseSends ? withDates(setPriceOpen) : undefined,
-                onDiscount:
-                  pricingOn && linked && selection
-                    ? () => {
-                        setDiscountInitial({ propertyIds: [propertyId], stayFrom: selection.from, stayTo: selection.to });
-                        setDiscountOpen(true);
-                      }
-                    : undefined,
-                onOpenDates: datesAccess.enabled && linked ? withDates(setDatesOpen) : undefined,
-                onNewBooking: withDates(setBookingOpen),
-                onOpenReservation: setOpenReservation,
-                onNightDiscounts: pricingOn ? setNightPromo : undefined,
-              }}
+              guestPrice={sheetMode ? null : guestPriceNode}
+              basePrice={sheetMode ? null : basePriceNode}
+              actions={nightActions}
             />
           </aside>
         </div>
