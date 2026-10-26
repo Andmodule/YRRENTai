@@ -113,6 +113,27 @@ export function mapApiBookingToReservation(
   };
 }
 
+/**
+ * Puts the prices just sent to Booking into every cached `/calendar` window of one property, so the cells
+ * show them at once; the refetch that follows replaces them with what Booking reports.
+ */
+export function patchOtaNightlyPricesInCalendarCache(
+  queryClient: QueryClient,
+  propertyId: string,
+  prices: Record<string, number>,
+): void {
+  if (Object.keys(prices).length === 0) return;
+  queryClient.setQueriesData<CalendarApiResponse>({ queryKey: ['calendar'] }, (old) => {
+    if (!old?.properties) return old;
+    return {
+      ...old,
+      properties: old.properties.map((p) =>
+        p.uuid === propertyId ? { ...p, otaNightlyPrices: { ...(p.otaNightlyPrices ?? {}), ...prices } } : p,
+      ),
+    };
+  });
+}
+
 /** Insert or replace a reservation in all cached `/calendar` windows (instant UI after create/edit). */
 export function upsertReservationInCalendarCache(
   queryClient: QueryClient,

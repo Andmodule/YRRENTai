@@ -70,6 +70,32 @@ export function inSelection(sel: NightSelection | null, ymd: string): boolean {
   return !!sel && ymd >= sel.from && ymd <= sel.to;
 }
 
+/** Two dates in calendar order — a drag can go backwards. */
+export function orderedRange(a: string, b: string): [string, string] {
+  return a <= b ? [a, b] : [b, a];
+}
+
+const YMD = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * «С» / «По» typed in the panel → the picked nights, kept inside the month on screen ([min, max]).
+ * An empty or broken field leaves the other end as it was; «По» before «С» swaps them; null when nothing
+ * of it falls inside the month.
+ */
+export function rangeFromFields(
+  current: NightSelection,
+  field: 'from' | 'to',
+  value: string,
+  min: string,
+  max: string,
+): NightSelection | null {
+  const next = { ...current };
+  if (YMD.test(value)) next[field] = value;
+  const [from, to] = orderedRange(next.from, next.to);
+  if (to < min || from > max) return null;
+  return { from: from < min ? min : from, to: to > max ? max : to };
+}
+
 /**
  * What a night is:
  * - `booked` — a booking in RentAI (any channel); `blocked` — a block made in RentAI;

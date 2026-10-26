@@ -13,8 +13,10 @@ import {
   NightActions,
   NightBookings,
   NightPriceTable,
+  RangeFields,
   usePickedNights,
   type NightPanelActions,
+  type NightRangeControl,
 } from './NightPanel';
 
 type SheetTab = 'price' | 'discount' | 'sales' | 'booking';
@@ -39,6 +41,7 @@ export function MobileNightSheet({
   hideBelowMin,
   actions,
   onClear,
+  range,
   basePrice,
   guestPrice,
 }: {
@@ -52,6 +55,7 @@ export function MobileNightSheet({
   hideBelowMin: boolean;
   actions: NightPanelActions;
   onClear: () => void;
+  range: NightRangeControl;
   basePrice?: ReactNode;
   guestPrice?: ReactNode;
 }) {
@@ -172,6 +176,7 @@ export function MobileNightSheet({
           }
         >
           <div role="tabpanel" id={`night-tabpanel-${tab}`} aria-labelledby={`night-tab-${tab}`} className="space-y-4 pb-2">
+            <RangeFields selection={selection} range={range} />
             {!linked ? <p className="text-sm text-amber-700 dark:text-amber-400">{t('notLinked')}</p> : null}
 
             {tab === 'price' ? (

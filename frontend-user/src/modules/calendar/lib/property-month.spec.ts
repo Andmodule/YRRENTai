@@ -9,6 +9,8 @@ import {
   monthOf,
   monthWeeks,
   nextSelection,
+  orderedRange,
+  rangeFromFields,
   parseMonth,
   reservationsInSelection,
   shiftMonth,
@@ -284,5 +286,53 @@ describe('summary and bookings of a selection', () => {
     assert.deepEqual(reservationsInSelection(list, { from: '2026-11-04', to: '2026-11-10' }).map((r) => r.uuid), ['r1', 'r2']);
     assert.deepEqual(reservationsInSelection(list, { from: '2026-11-05', to: '2026-11-09' }), []);
     assert.deepEqual(reservationsInSelection(list, null), []);
+  });
+});
+
+describe('range by drag and by «С / По»', () => {
+  it('orders a drag that goes backwards, keeps one going forward or one night', () => {
+    assert.deepEqual(orderedRange('2026-10-27', '2026-10-21'), ['2026-10-21', '2026-10-27']);
+    assert.deepEqual(orderedRange('2026-10-21', '2026-10-27'), ['2026-10-21', '2026-10-27']);
+    assert.deepEqual(orderedRange('2026-10-21', '2026-10-21'), ['2026-10-21', '2026-10-21']);
+  });
+
+  const cur = { from: '2026-10-10', to: '2026-10-12' };
+  const MIN = '2026-10-01';
+  const MAX = '2026-10-31';
+
+  it('moves one end from a field', () => {
+    assert.deepEqual(rangeFromFields(cur, 'from', '2026-10-05', MIN, MAX), { from: '2026-10-05', to: '2026-10-12' });
+    assert.deepEqual(rangeFromFields(cur, 'to', '2026-10-20', MIN, MAX), { from: '2026-10-10', to: '2026-10-20' });
+  });
+
+  it('makes one night when both ends meet', () => {
+    assert.deepEqual(rangeFromFields(cur, 'to', '2026-10-10', MIN, MAX), { from: '2026-10-10', to: '2026-10-10' });
+  });
+
+  it('swaps the ends when «По» is before «С»', () => {
+    assert.deepEqual(rangeFromFields(cur, 'to', '2026-10-03', MIN, MAX), { from: '2026-10-03', to: '2026-10-10' });
+    assert.deepEqual(rangeFromFields(cur, 'from', '2026-10-25', MIN, MAX), { from: '2026-10-12', to: '2026-10-25' });
+  });
+
+  it('keeps the range when a field is emptied or broken', () => {
+    assert.deepEqual(rangeFromFields(cur, 'from', '', MIN, MAX), cur);
+    assert.deepEqual(rangeFromFields(cur, 'to', '2026-1', MIN, MAX), cur);
+  });
+
+  it('cuts the range to the month on screen, at both edges', () => {
+    assert.deepEqual(rangeFromFields(cur, 'to', '2026-11-04', MIN, MAX), { from: '2026-10-10', to: '2026-10-31' });
+    assert.deepEqual(rangeFromFields(cur, 'from', '2026-09-28', MIN, MAX), { from: '2026-10-01', to: '2026-10-12' });
+    assert.deepEqual(rangeFromFields(cur, 'to', MAX, MIN, MAX), { from: '2026-10-10', to: '2026-10-31' });
+  });
+
+  it('keeps a one-day month window (min equals max)', () => {
+    assert.deepEqual(rangeFromFields(cur, 'to', '2026-10-20', '2026-10-15', '2026-10-15'), { from: '2026-10-15', to: '2026-10-15' });
+  });
+
+  it('gives nothing when the range falls wholly outside the month', () => {
+    const late = { from: '2026-11-02', to: '2026-11-05' };
+    assert.equal(rangeFromFields(late, 'to', '2026-11-06', MIN, MAX), null);
+    const early = { from: '2026-09-02', to: '2026-09-05' };
+    assert.equal(rangeFromFields(early, 'from', '2026-09-01', MIN, MAX), null);
   });
 });

@@ -5,7 +5,8 @@ import { useTheme } from 'next-themes';
 import { format, startOfDay } from 'date-fns';
 import { toast } from 'sonner';
 import { useTranslations } from 'next-intl';
-import { LockOpen, Percent, X } from 'lucide-react';
+import { CalendarRange, LockOpen, Percent, X } from 'lucide-react';
+import { Link } from '@/i18n/navigation';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { ResponsiveModal, ResponsiveModalContent } from '@/components/ui/responsive-modal';
@@ -33,6 +34,7 @@ import { ReservationDetailPanel, ReservationDetailPanelFooter } from './componen
 import { CalendarPlanbyGrid, type CalendarPricingProps } from './components/CalendarPlanbyGrid';
 import { getCalendarPlanbyTheme } from './lib/planby-app-theme';
 import { parseLocalCalendarDay } from './lib/calendar-api-dates';
+import { monthBounds } from './lib/property-month';
 import { isBookingIdPinQuery, normalizeCalendarQuery, reservationMatchesQuery } from './calendarSearch';
 import { useCalendarPromotions, usePricingAccess, usePricingProperties } from '@/modules/pricing/hooks';
 import { PromotionFormSheet, type PromotionFormInitial } from '@/modules/pricing/components/PromotionFormSheet';
@@ -305,8 +307,15 @@ export function CalendarView({
       .map((p) => p.uuid);
     const from = addDaysYmd(firstDayYmd, selection.d1);
     const to = addDaysYmd(firstDayYmd, selection.d2);
+    // One property: its month opens with these nights picked (the range is cut to the month of «from»).
+    const single = rows.length === 1 ? rows[0]!.uuid : null;
+    const monthEnd = monthBounds(from.slice(0, 7)).to;
+    const monthTo = to > monthEnd ? monthEnd : to;
     return {
       bookingIds,
+      single,
+      monthTo,
+      cut: monthTo !== to,
       skipped: rows.length - bookingIds.length,
       from,
       to,
@@ -711,6 +720,17 @@ export function CalendarView({
               <Percent className="h-4 w-4" aria-hidden />
               {tp('discountSelected')}
             </Button>
+            {selectionInfo.single ? (
+              <Link
+                href={`/dashboard/calendar/${selectionInfo.single}?month=${selectionInfo.from.slice(0, 7)}&from=${selectionInfo.from}&to=${selectionInfo.monthTo}`}
+                className="inline-flex h-10 items-center gap-2 rounded-md border border-zinc-700 px-3 text-sm font-medium text-white hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:hover:bg-zinc-700"
+              >
+                <CalendarRange className="h-4 w-4" aria-hidden />
+                {selectionInfo.cut
+                  ? tp('openInMonthCut', { date: `${selectionInfo.monthTo.slice(8, 10)}.${selectionInfo.monthTo.slice(5, 7)}` })
+                  : tp('openInMonth')}
+              </Link>
+            ) : null}
             {datesAccess.enabled && selectionInfo.bookingIds.length === 1 ? (
               <Button
                 type="button"
