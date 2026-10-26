@@ -49,3 +49,42 @@ export function filterPropertiesBySearch(
     return reservations.some((r) => r.propertyId === p.uuid && reservationMatchesQuery(r, q));
   });
 }
+
+/** Booking UUID pieces count from this length, as on the server — shorter ones hit random UUIDs. */
+const UUID_MIN_QUERY = 4;
+
+/** Who the guest is: name, email, phone, booking number; the RentAI UUID only from 4 characters; notes are not looked at. */
+function suggestionMatches(r: Reservation, q: string): boolean {
+  if ((r.guestName ?? '').toLowerCase().includes(q)) return true;
+  if (r.guestEmail?.toLowerCase().includes(q)) return true;
+  if (r.guestPhone?.toLowerCase().includes(q)) return true;
+  if (r.externalId.toLowerCase().includes(q)) return true;
+  if (q.length < UUID_MIN_QUERY) return false;
+  const compact = (v: string) => v.replace(/-/g, '').toLowerCase();
+  return r.uuid.toLowerCase().includes(q) || (compact(q).length > 0 && compact(r.uuid).includes(compact(q)));
+}
+
+/**
+ * Bookings for the phone search suggestions (see `suggestionMatches`), no technical blocks:
+ * stays not over yet first (nearest check-in first), then past ones (latest first).
+ */
+export function bookingSuggestions(
+  reservations: Reservation[],
+  rawQuery: string,
+  todayYmd: string,
+  limit: number,
+): Reservation[] {
+  const q = normalizeCalendarQuery(rawQuery);
+  if (q.length < 2) return [];
+  const hits = reservations.filter(
+    (r) => !r.otaInventoryBlock && r.status !== 'blocked' && suggestionMatches(r, q),
+  );
+  const checkOutYmd = (r: Reservation) => r.checkOut.slice(0, 10);
+  const current = hits
+    .filter((r) => checkOutYmd(r) >= todayYmd)
+    .sort((a, b) => a.checkIn.localeCompare(b.checkIn));
+  const past = hits
+    .filter((r) => checkOutYmd(r) < todayYmd)
+    .sort((a, b) => b.checkIn.localeCompare(a.checkIn));
+  return [...current, ...past].slice(0, limit);
+}

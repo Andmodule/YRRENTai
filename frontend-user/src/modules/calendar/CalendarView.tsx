@@ -129,24 +129,32 @@ export function CalendarView({
     dateRange.end,
   ]);
 
+  /**
+   * A booking picked from the phone search: kept as is while the date window and the search reload,
+   * otherwise it is in none of the lists for a moment and its card closes right after opening.
+   */
+  const [pickedReservation, setPickedReservation] = useState<Reservation | null>(null);
+  const pinned = pickedReservation && pickedReservation.uuid === selectedId ? pickedReservation : null;
+
   const selected = useMemo(() => {
     if (!selectedId) return null;
     return (
       filteredReservations.find((r) => r.uuid === selectedId) ??
       reservations.find((r) => r.uuid === selectedId) ??
       globalSearchReservations.find((r) => r.uuid === selectedId) ??
-      null
+      pinned
     );
-  }, [filteredReservations, selectedId, reservations, globalSearchReservations]);
+  }, [filteredReservations, selectedId, reservations, globalSearchReservations, pinned]);
 
   useEffect(() => {
     if (!selectedId) return;
+    if (pinned) return;
     const exists =
       filteredReservations.some((r) => r.uuid === selectedId) ||
       reservations.some((r) => r.uuid === selectedId) ||
       globalSearchReservations.some((r) => r.uuid === selectedId);
     if (!exists) setSelectedId(null);
-  }, [selectedId, filteredReservations, reservations, globalSearchReservations]);
+  }, [selectedId, filteredReservations, reservations, globalSearchReservations, pinned]);
   const [newBookingOpen, setNewBookingOpen] = useState(false);
   const [otaPriceOpen, setOtaPriceOpen] = useState(false);
   const [cellActionsOpen, setCellActionsOpen] = useState(false);
@@ -184,6 +192,20 @@ export function CalendarView({
     if (r.otaInventoryBlock) return;
     setSelectedId(r.uuid);
   }, []);
+
+  /** Phone search: a booking picked from the suggestions — bring its dates into view and open it. */
+  const onPickReservation = useCallback(
+    (r: Reservation) => {
+      if (r.otaInventoryBlock) return;
+      const checkIn = startOfDay(parseLocalCalendarDay(r.checkIn));
+      if (checkIn < startOfDay(dateRange.start) || checkIn > startOfDay(dateRange.end)) {
+        onDateRangeChange(buildCalendarWindowAround(checkIn));
+      }
+      setPickedReservation(r);
+      setSelectedId(r.uuid);
+    },
+    [dateRange.start, dateRange.end, onDateRangeChange],
+  );
 
   const onEmptyCellClick = useCallback(
     (payload: {
@@ -513,7 +535,7 @@ export function CalendarView({
   if (isError) {
     return (
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <div className="shrink-0 border-b border-border bg-background/95 backdrop-blur-sm supports-[backdrop-filter]:bg-background/90">
+        <div className="relative z-30 shrink-0 border-b border-border bg-background/95 backdrop-blur-sm supports-[backdrop-filter]:bg-background/90">
           <FilterBar
             filters={filters}
             onFiltersChange={onFiltersChange}
@@ -537,7 +559,7 @@ export function CalendarView({
   if (isPending && !data) {
     return (
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <div className="shrink-0 border-b border-border bg-background/95 backdrop-blur-sm supports-[backdrop-filter]:bg-background/90">
+        <div className="relative z-30 shrink-0 border-b border-border bg-background/95 backdrop-blur-sm supports-[backdrop-filter]:bg-background/90">
           <FilterBar
             filters={filters}
             onFiltersChange={onFiltersChange}
@@ -561,7 +583,7 @@ export function CalendarView({
   if (properties.length === 0) {
     return (
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <div className="shrink-0 border-b border-border bg-background/95 backdrop-blur-sm supports-[backdrop-filter]:bg-background/90">
+        <div className="relative z-30 shrink-0 border-b border-border bg-background/95 backdrop-blur-sm supports-[backdrop-filter]:bg-background/90">
           <FilterBar
             filters={filters}
             onFiltersChange={onFiltersChange}
@@ -583,7 +605,7 @@ export function CalendarView({
   return (
     <TooltipProvider delayDuration={200}>
     <div className="flex min-h-0 w-full min-w-0 max-w-full flex-1 flex-col overflow-hidden">
-      <div className="shrink-0 border-b border-border bg-background/95 backdrop-blur-sm supports-[backdrop-filter]:bg-background/90">
+      <div className="relative z-30 shrink-0 border-b border-border bg-background/95 backdrop-blur-sm supports-[backdrop-filter]:bg-background/90">
         <FilterBar
           filters={filters}
           onFiltersChange={onFiltersChange}
@@ -595,6 +617,7 @@ export function CalendarView({
           isSyncingOta={zodomusSync.isPending}
           showBottomBorder={false}
           onNewDiscount={pricingOn ? () => openDiscount({ preset: 'week' }) : undefined}
+          onPickReservation={onPickReservation}
         />
         {showFiltersEmptyHint ? (
           <Alert className="border-x-0 border-t border-dashed border-b-0 border-border/60 px-4 py-2" variant="default">

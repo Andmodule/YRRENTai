@@ -1658,6 +1658,9 @@
   "calendar": {
     "title": "Calendar",
     "searchPlaceholder": "Property, guest name, email, booking #…",
+    "searchClear": "Clear search",
+    "searchGroupProperties": "Properties",
+    "searchGroupBookings": "Bookings",
     "filters": "Filters",
     "close": "Close",
     "channels": "Channels",
