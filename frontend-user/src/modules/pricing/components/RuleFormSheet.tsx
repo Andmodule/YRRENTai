@@ -15,6 +15,7 @@ import type { BookingWeekday, RuleInput, RuleStepInput, RuleUnit, RuleView } fro
 import { useRulesMutations, usePriceToday, usePricingAccess, usePricingProperties } from '../hooks';
 import {
   MAX_RULE_STEPS,
+  RULE_TEMPLATES,
   TIME_WINDOWS,
   WEEKDAYS,
   findShadowedSteps,
@@ -26,6 +27,7 @@ import {
   ruleTemplate,
   sortSteps,
   timeWindowKey,
+  type RuleTemplateKey,
   type TimeWindowKey,
 } from '../lib/pricing-ui';
 import { ChoiceChip, SectionTitle, useStepWhen, usePriceFormatter } from './shared';
@@ -204,6 +206,13 @@ export function RuleFormSheet({ open, onOpenChange, rule }: RuleFormSheetProps) 
   }, [ladder]);
   const ladderDigits = (key: 'value' | 'start' | 'step', max: number) => (e: { target: { value: string } }) =>
     setLadder((prev) => ({ ...prev, [key]: e.target.value.replace(/\D/g, '').slice(0, max) }));
+  /** A ready-made ladder replaces the steps; a new rule still named by default takes the template's name. */
+  const applyTemplate = (key: RuleTemplateKey) => {
+    setSteps(RULE_TEMPLATES[key]().map(toDraft));
+    if (!isEdit && (name === t('defaultName') || name === t('templateName.day') || name === t('templateName.hot'))) {
+      setName(t(`templateName.${key}`));
+    }
+  };
   const applyLadder = (mode: 'replace' | 'append') => {
     const drafts = ladderSteps.map(toDraft);
     setSteps((prev) => (mode === 'replace' ? drafts : [...prev, ...drafts]));
@@ -268,6 +277,14 @@ export function RuleFormSheet({ open, onOpenChange, rule }: RuleFormSheetProps) 
           <section className="space-y-2.5">
             <SectionTitle>{t('stepsTitle')}</SectionTitle>
             <p className="text-xs text-muted-foreground">{t('stepsHint')}</p>
+            <div className="flex flex-wrap items-center gap-2" role="group" aria-label={t('templatesAria')}>
+              <span className="text-xs text-muted-foreground">{t('templates')}</span>
+              {(Object.keys(RULE_TEMPLATES) as RuleTemplateKey[]).map((key) => (
+                <Button key={key} type="button" variant="outline" size="sm" className="h-9" onClick={() => applyTemplate(key)}>
+                  {t(`template.${key}`)}
+                </Button>
+              ))}
+            </div>
 
             <ol className="space-y-3">
               {steps.map((d, i) => {
