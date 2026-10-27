@@ -116,7 +116,15 @@ export function PropertyMonthView({ propertyId }: { propertyId: string }) {
         base: b.base[n.ymd] ?? null,
         booking: bookingCell(
           { ymd: n.ymd, rack: n.rack, rackFrom: n.rackFrom, rateName: n.rateName, onSale: n.kind === 'open', promotions: n.promotions, targetingPct: n.targetingPct },
-          { base: b.base, typed: g.nightPrices.booking, markupPct: b.channels.booking.markupPct, geniusPct: pricingRow?.geniusPct ?? null, profile: g.profiles.booking },
+          {
+            base: b.base,
+            typed: g.nightPrices.booking,
+            markupPct: b.channels.booking.markupPct,
+            geniusPct: pricingRow?.geniusPct ?? null,
+            profile: g.profiles.booking,
+            auto: b.auto,
+            minPrice: pricingRow?.minPrice ?? null,
+          },
         ),
         airbnb: airbnbNightPrice(n.ymd, g.profiles.airbnb, g.nightPrices.airbnb, { base: b.base, markupPct: b.channels.airbnb.markupPct }),
         airbnbTyped: g.nightPrices.airbnb[n.ymd] != null,

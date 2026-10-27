@@ -373,6 +373,24 @@ describe('base price helpers (same as backend base-price.util)', () => {
     assert.equal(bookingCell(unknown, { base: {}, typed: {}, markupPct: 0, geniusPct: null, profile: null }), null);
   });
 
+  it('bookingCell with «Автоцены»: base moved by the percent, then the markup; typed price wins; never below the minimum', () => {
+    const n = { ymd: '2026-11-02', rack: 500, rackFrom: null, rateName: null, onSale: true, promotions: [], targetingPct: null };
+    const base = { '2026-11-02': 500 };
+    const down = bookingCell(n, { base, typed: {}, markupPct: 10, geniusPct: null, profile: null, auto: { '2026-11-02': -10 } })!;
+    // 500 −10 % = 450 → +10 % = 495
+    assert.equal(down.price, 495);
+    assert.equal(down.autoPct, -10);
+    assert.equal(down.pending, true);
+    const typed = bookingCell(n, { base, typed: { '2026-11-02': 610 }, markupPct: 0, geniusPct: null, profile: null, auto: { '2026-11-02': -10 } })!;
+    assert.equal(typed.price, 610);
+    assert.equal(typed.autoPct, undefined);
+    const min = bookingCell(n, { base, typed: {}, markupPct: 0, geniusPct: null, profile: null, auto: { '2026-11-02': -20 }, minPrice: 460 })!;
+    assert.equal(min.price, 460);
+    const other = bookingCell(n, { base, typed: {}, markupPct: 0, geniusPct: null, profile: null, auto: { '2026-11-03': -10 } })!;
+    assert.equal(other.price, 500);
+    assert.equal(other.autoPct, undefined);
+  });
+
   it('bookingCell: no «not sent» mark on a night that is not on sale (closed placeholder price)', () => {
     const closed = night({ ymd: '2026-11-02', rack: 1180, onSale: false });
     const c = bookingCell(closed, { base: { '2026-11-02': 300 }, typed: {}, markupPct: 0, geniusPct: null, profile: null })!;

@@ -1,5 +1,5 @@
 import { createHash } from 'crypto';
-import { BadRequestException, ConflictException, Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Between, DataSource, In, QueryFailedError, Repository } from 'typeorm';
 import type { JwtPayload } from '../common/decorators/current-user.decorator';
@@ -10,6 +10,8 @@ import { PricingConfig } from './pricing-config';
 import { PricingService } from './pricing.service';
 import { PromotionSyncService } from './promotion-sync.service';
 import { channelTargets } from './base-price.util';
+import { autoChannelPrice } from './autoprice.util';
+import { PropertyAutoPriceEntity } from './entities/pricing-auto-price.entity';
 import { addDaysYmd, nightsCount, toMinor, todayInTz } from './pricing-math.util';
 // The strict check: «2026-02-30» is refused, not left to the database.
 import { isYmd, weekdayOf } from '../calendar-dates/calendar-dates.util';
@@ -57,6 +59,8 @@ export type BasePriceOverview = {
   base: Record<string, number>;
   channels: Record<GuestPriceChannel, ChannelPricingView>;
   bookingSend: BookingSendBlock;
+  /** «Автоцены»: yyyy-MM-dd → signed percent the rule put on the night (empty while the rule is off). */
+  auto: Record<string, number>;
 };
 
 function defaultChannel(channel: GuestPriceChannel): ChannelPricingView {
@@ -82,6 +86,8 @@ function channelView(row: PropertyChannelPricingEntity): ChannelPricingView {
  */
 @Injectable()
 export class PricingBasePriceService {
+  private readonly logger = new Logger(PricingBasePriceService.name);
+
   constructor(
     private readonly cfg: PricingConfig,
     private readonly pricing: PricingService,
@@ -95,7 +101,25 @@ export class PricingBasePriceService {
     private readonly channelRepo: Repository<PropertyChannelPricingEntity>,
     @InjectRepository(PropertyChannelNightPriceEntity)
     private readonly nightPriceRepo: Repository<PropertyChannelNightPriceEntity>,
+    @InjectRepository(PropertyAutoPriceEntity)
+    private readonly autoRepo: Repository<PropertyAutoPriceEntity>,
   ) {}
+
+  /**
+   * «Автоцены»: adjustments the rule put on nights of [from, to]. Empty while the rule is off; a missing
+   * table (flag on before the migration) must not break «Отправить в Booking» — logged and treated as none.
+   */
+  async autoAdjustments(propertyId: string, from: string, to: string): Promise<Map<string, number>> {
+    // «Только показывать» or Booking writes paused: stored adjustments rest, the base price applies.
+    if (!this.cfg.flags.autoPrice || this.cfg.flags.autoPriceDryRun || this.cfg.flags.dryRun) return new Map();
+    try {
+      const rows = await this.autoRepo.find({ where: { propertyId, date: Between(from, to) } });
+      return new Map(rows.map((r) => [r.date, r.pct]));
+    } catch (e) {
+      this.logger.warn(`auto prices unreadable (migration 1778800000000 not run?): ${e instanceof Error ? e.message : String(e)}`);
+      return new Map();
+    }
+  }
 
   private assertOn(): void {
     this.pricing.assertEnabled();
@@ -146,9 +170,10 @@ export class PricingBasePriceService {
     this.assertRange(from, to);
     const property = await this.owned(user, propertyId);
     return this.tables(async () => {
-      const [base, channels] = await Promise.all([
+      const [base, channels, auto] = await Promise.all([
         this.baseRepo.find({ where: { propertyId: property.id, date: Between(from, to) } }),
         this.channelRepo.find({ where: { propertyId: property.id } }),
+        this.autoAdjustments(property.id, from, to),
       ]);
       const byChannel = new Map(channels.map((c) => [c.channel, c]));
       return {
@@ -158,6 +183,7 @@ export class PricingBasePriceService {
           airbnb: byChannel.has('airbnb') ? channelView(byChannel.get('airbnb')!) : defaultChannel('airbnb'),
         },
         bookingSend: this.bookingSendBlock(property),
+        auto: Object.fromEntries(auto),
       };
     });
   }
@@ -245,21 +271,53 @@ export class PricingBasePriceService {
     });
   }
 
-  /** Booking price of each night of [from, to]: typed for the night, else base × Booking markup. */
-  private async bookingTargets(propertyId: string, from: string, to: string): Promise<Map<string, number>> {
-    const [base, typed, rule] = await Promise.all([
+  /**
+   * Booking price of each night of [from, to]: typed for the night, else base × Booking markup — with the
+   * «Автоцены» adjustment of the night when there is one (never below the minimum price).
+   */
+  /** `auto` in place of the stored adjustments: «Автоцены» sends what the nights will carry before storing it. */
+  async bookingTargets(
+    propertyId: string,
+    from: string,
+    to: string,
+    auto?: ReadonlyMap<string, number>,
+  ): Promise<Map<string, number>> {
+    const [base, typed, rule, stored] = await Promise.all([
       this.baseRepo.find({ where: { propertyId, date: Between(from, to) } }),
       this.nightPriceRepo.find({ where: { propertyId, channel: 'booking', date: Between(from, to) } }),
       this.channelRepo.findOne({ where: { propertyId, channel: 'booking' } }),
+      auto ? Promise.resolve(auto) : this.autoAdjustments(propertyId, from, to),
     ]);
+    const adjustments = [...stored].filter(([d]) => d >= from && d <= to);
     const dates: string[] = [];
     for (let d = from; d <= to; d = addDaysYmd(d, 1)) dates.push(d);
-    return channelTargets(
-      dates,
-      Object.fromEntries(base.map((b) => [b.date, b.priceMinor / 100])),
-      Object.fromEntries(typed.map((t) => [t.date, t.priceMinor / 100])),
-      rule?.markupPct ?? 0,
-    );
+    const baseByDate = Object.fromEntries(base.map((b) => [b.date, b.priceMinor / 100]));
+    const typedByDate = Object.fromEntries(typed.map((t) => [t.date, t.priceMinor / 100]));
+    const targets = channelTargets(dates, baseByDate, typedByDate, rule?.markupPct ?? 0);
+    if (adjustments.length > 0) {
+      const min = await this.dates.minPriceOf(propertyId);
+      for (const [date, pct] of adjustments) {
+        const b = baseByDate[date];
+        if (!targets.has(date) || typedByDate[date] != null || b == null || !(b > 0)) continue;
+        targets.set(date, autoChannelPrice(b, pct, rule?.markupPct ?? 0, min));
+      }
+    }
+    return targets;
+  }
+
+  /** Markup of the Booking channel (0 when not set). */
+  async bookingMarkup(propertyId: string): Promise<number> {
+    const rule = await this.channelRepo.findOne({ where: { propertyId, channel: 'booking' } });
+    return rule?.markupPct ?? 0;
+  }
+
+  /** Base prices and the nights with a Booking price typed by hand, for [from, to]. */
+  async nightsSource(propertyId: string, from: string, to: string): Promise<{ base: Map<string, number>; typed: Set<string> }> {
+    const [base, typed] = await Promise.all([
+      this.baseRepo.find({ where: { propertyId, date: Between(from, to) } }),
+      this.nightPriceRepo.find({ where: { propertyId, channel: 'booking', date: Between(from, to) } }),
+    ]);
+    return { base: new Map(base.map((b) => [b.date, b.priceMinor / 100])), typed: new Set(typed.map((t) => t.date)) };
   }
 
   /** What «Отправить в Booking» would change for [from, to]. Reads Booking, writes nothing. */

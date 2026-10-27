@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/use-auth';
 import {
   pricingApi,
+  type AutoPriceSettingsInput,
   type BasePriceRangeInput,
   type ChannelProfileInput,
   type GuestPriceChannel,
@@ -26,6 +27,7 @@ export const pricingKeys = {
   calendar: (from: string, to: string) => ['pricing', 'calendar', from, to] as const,
   rules: ['pricing', 'rules'] as const,
   occupancy: ['pricing', 'occupancy'] as const,
+  autoPrice: ['pricing', 'auto-price'] as const,
   basePrice: (propertyId: string, from?: string, to?: string) =>
     (from && to ? ['pricing', 'base-price', propertyId, from, to] : ['pricing', 'base-price', propertyId]) as readonly string[],
   guestPrice: (propertyId: string, from?: string, to?: string) =>
@@ -57,6 +59,8 @@ export function usePricingAccess() {
     guestPrice: canManage && status.data?.enabled === true && status.data?.guestPrice === true,
     /** «Базовая цена»: rows of channel prices in the calendar of one property. */
     basePrice: canManage && status.data?.enabled === true && status.data?.basePrice === true,
+    /** «Автоцены» tab (needs «Базовая цена» on the server as well). */
+    autoPrice: canManage && status.data?.enabled === true && status.data?.autoPrice === true,
     isLoading: canManage && status.isLoading,
   };
 }
@@ -166,6 +170,25 @@ export function useOccupancyMutations() {
   const save = useMutation({
     mutationFn: (input: OccupancySettingsInput) => pricingApi.occupancy.saveSettings(input),
     onSuccess: (overview) => qc.setQueryData(pricingKeys.occupancy, overview),
+  });
+  return { save };
+}
+
+export function useAutoPrice(enabled: boolean) {
+  return useQuery({
+    queryKey: pricingKeys.autoPrice,
+    queryFn: pricingApi.autoPrice.get,
+    enabled,
+    staleTime: 60_000,
+    retry: false,
+  });
+}
+
+export function useAutoPriceMutations() {
+  const qc = useQueryClient();
+  const save = useMutation({
+    mutationFn: (input: AutoPriceSettingsInput) => pricingApi.autoPrice.saveSettings(input),
+    onSuccess: (overview) => qc.setQueryData(pricingKeys.autoPrice, overview),
   });
   return { save };
 }
