@@ -585,6 +585,44 @@ export class CalendarDatesService {
     return { ...job };
   }
 
+  /**
+   * «Автоцены»: re-prices the nights and waits for the end (no person — the daily run). Same guards as
+   * «Отправить в Booking»: Booking read afresh, sold / CRM-blocked nights and prices under the minimum left
+   * out, at most MAX_WRITE_REQUESTS requests, read back after. Returns null when a run is already going for
+   * the property (try again next time); `job` null when there is nothing to send.
+   */
+  async runPricesAuto(
+    propertyId: string,
+    targets: ReadonlyMap<string, number>,
+  ): Promise<{ plan: CalendarDatesPlan; ranges: ChangeRange[]; job: CalendarDatesJob | null } | null> {
+    this.assertEnabled();
+    if (this.isBusy(propertyId)) return null;
+    const ctx = await this.context(propertyId);
+    const today = todayInTz(ctx.tz);
+    const end = this.horizonEnd(ctx.tz);
+    if (![...targets.keys()].some((d) => d >= today && d < end)) {
+      return { plan: { nights: 0, changes: [], skipped: emptySkipped(), alreadyClosed: [] }, ranges: [], job: null };
+    }
+    const scope = this.scopePriceTargets(ctx, targets);
+    const { plan, ranges } = await this.planPrices(ctx, scope, true);
+    if (ranges.length === 0) return { plan, ranges, job: null };
+    if (ranges.length > MAX_WRITE_REQUESTS) {
+      throw new BadRequestException(`Слишком много запросов к Booking: ${ranges.length}`);
+    }
+    if (this.isBusy(propertyId)) return null;
+    const job = this.newJob(ctx, { action: 'price', dateFrom: scope.dateFrom, dateToExclusive: scope.dateToExclusive }, 'auto', plan, ranges);
+    try {
+      await this.execute(ctx, job, plan.changes, ranges);
+    } catch (e) {
+      // A crash outside the per-range handling must not leave the property «busy» until a restart.
+      job.state = 'failed';
+      job.phase = 'finished';
+      job.finishedAt = new Date().toISOString();
+      this.logger.error(`calendar auto prices run ${job.id} crashed: ${e instanceof Error ? e.stack : String(e)}`);
+    }
+    return { plan, ranges, job: { ...job } };
+  }
+
   // ─── run ───────────────────────────────────────────────────────────────────
 
   private newJob(

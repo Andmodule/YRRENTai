@@ -28,6 +28,13 @@ import { PricingBasePriceController } from './pricing-base-price.controller';
 import { PricingBasePriceService } from './pricing-base-price.service';
 import { PropertyBasePriceEntity } from './entities/property-base-price.entity';
 import { PropertyChannelPricingEntity } from './entities/property-channel-pricing.entity';
+import { PricingAutoPriceController } from './pricing-autoprice.controller';
+import { PricingAutoPriceService } from './pricing-autoprice.service';
+import {
+  PricingAutoPriceRunEntity,
+  PricingAutoPriceSettingsEntity,
+  PropertyAutoPriceEntity,
+} from './entities/pricing-auto-price.entity';
 import { CalendarDatesModule } from '../calendar-dates/calendar-dates.module';
 
 /**
@@ -47,6 +54,9 @@ import { CalendarDatesModule } from '../calendar-dates/calendar-dates.module';
       PriceObservationEntity,
       PropertyBasePriceEntity,
       PropertyChannelPricingEntity,
+      PricingAutoPriceSettingsEntity,
+      PropertyAutoPriceEntity,
+      PricingAutoPriceRunEntity,
       // read-only here: booked nights for «Заполненность»
       BookingEntity,
     ]),
@@ -62,6 +72,7 @@ import { CalendarDatesModule } from '../calendar-dates/calendar-dates.module';
     PricingOccupancyController,
     PricingGuestPriceController,
     PricingBasePriceController,
+    PricingAutoPriceController,
   ],
   providers: [
     PricingConfig,
@@ -73,6 +84,7 @@ import { CalendarDatesModule } from '../calendar-dates/calendar-dates.module';
     PricingOccupancyService,
     PricingGuestPriceService,
     PricingBasePriceService,
+    PricingAutoPriceService,
   ],
 })
 export class PricingModule {}

@@ -132,6 +132,7 @@ export class PricingService {
       occupancy: f.occupancy,
       guestPrice: f.guestPrice,
       basePrice: f.basePrice,
+      autoPrice: f.autoPrice,
     };
   }
 

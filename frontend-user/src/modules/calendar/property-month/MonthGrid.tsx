@@ -5,6 +5,7 @@ import { format } from 'date-fns';
 import { useLocale, useTranslations } from 'next-intl';
 import { useDateLocale } from '@/hooks/useDateLocale';
 import { cn } from '@/lib/utils';
+import { signedPct } from '@/modules/pricing/lib/autoprice-ui';
 import { isNotSent, isTargetingType, liveDeal, ymdToDate } from '@/modules/pricing/lib/pricing-ui';
 import type { BookingCell } from '@/modules/pricing/lib/guest-price';
 import type { BookingChannel } from '../types';
@@ -166,6 +167,12 @@ export function MonthGrid({
                             B {row.booking.current != null ? `${fmt.format(row.booking.current)}→` : ''}
                             {fmt.format(row.booking.price)}
                             {row.booking.typed ? '✎' : ''}
+                            {row.booking.autoPct ? (
+                              // «Автоцены» moved this night: an arrow in the cell, the percent on hover.
+                              <span className="text-violet-600 dark:text-violet-400" title={t('rowAuto', { pct: signedPct(row.booking.autoPct) })}>
+                                {row.booking.autoPct < 0 ? '↓' : '↑'}
+                              </span>
+                            ) : null}
                             <span className="text-muted-foreground"> / {fmt.format(row.booking.minGuest)}</span>
                           </>
                         ) : (

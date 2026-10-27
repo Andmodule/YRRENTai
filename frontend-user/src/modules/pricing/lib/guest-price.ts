@@ -306,6 +306,16 @@ export function channelPriceFromBase(base: number, markupPct: number | null | un
   return Math.round((base * (100 + pct)) / 100);
 }
 
+/**
+ * «Автоцены» — same as backend autoprice.util.ts: the base moved by `pct` in whole units, then the channel
+ * markup, never below the minimum price.
+ */
+export function autoChannelPrice(base: number, pct: number, markupPct: number | null | undefined, minPrice: number | null | undefined): number {
+  const adjusted = pct ? Math.round((base * (100 + pct)) / 100) : base;
+  const price = channelPriceFromBase(adjusted, markupPct);
+  return minPrice != null && minPrice > 0 && price < minPrice ? minPrice : price;
+}
+
 /** What RentAI sets on a channel for a night: typed for it, else base × markup; null = neither. */
 export function channelNightPrice(
   ymd: string,
@@ -344,6 +354,8 @@ export type BookingCell = {
   current: number | null;
   /** Lowest room price a guest can see for the night at that price (no cleaning). */
   minGuest: number;
+  /** «Автоцены» moved the price of the night by this percent (only when it did). */
+  autoPct?: number;
 };
 
 /**
@@ -358,9 +370,18 @@ export function bookingCell(
     markupPct: number;
     geniusPct: number | null;
     profile: ChannelProfile | null;
+    /** «Автоцены»: night → percent the rule put on the base price; a typed price still wins. */
+    auto?: Readonly<Record<string, number>>;
+    minPrice?: number | null;
   },
 ): BookingCell | null {
-  const own = channelNightPrice(n.ymd, p.base, p.typed, p.markupPct);
+  const autoPct = p.auto?.[n.ymd];
+  const b = p.base[n.ymd];
+  const typedHere = p.typed[n.ymd] != null && p.typed[n.ymd]! > 0;
+  const own =
+    autoPct && !typedHere && b != null && b > 0
+      ? autoChannelPrice(b, autoPct, p.markupPct, p.minPrice)
+      : channelNightPrice(n.ymd, p.base, p.typed, p.markupPct);
   // No base and no typed price for the night: the row shows what Booking has now, nothing to send.
   const price = own ?? (n.rack != null && n.rack > 0 ? n.rack : null);
   if (price == null) return null;
@@ -383,6 +404,7 @@ export function bookingCell(
     pending,
     current: pending ? n.rack : null,
     minGuest,
+    ...(autoPct && !typedHere && b != null && b > 0 ? { autoPct } : {}),
   };
 }
 

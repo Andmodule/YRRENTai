@@ -14,6 +14,7 @@ import type { CalendarDatesService } from '../calendar-dates/calendar-dates.serv
 import type { PropertyBasePriceEntity } from './entities/property-base-price.entity';
 import type { PropertyChannelPricingEntity } from './entities/property-channel-pricing.entity';
 import type { PropertyChannelNightPriceEntity } from './entities/property-channel-night-price.entity';
+import type { PropertyAutoPriceEntity } from './entities/pricing-auto-price.entity';
 import type { JwtPayload } from '../common/decorators/current-user.decorator';
 
 const OWNER: JwtPayload = { sub: 'u1', email: 'anna@example.com', role: 'OWNER' };
@@ -31,6 +32,9 @@ function setup(
     ext?: string | null;
     /** What Booking has open: night → price of the main rate. */
     open?: Record<string, number>;
+    /** «Автоцены»: night → percent the rule put on. */
+    auto?: Record<string, number>;
+    minPrice?: number | null;
   } = {},
 ) {
   const values: Record<string, unknown> = {
@@ -60,6 +64,7 @@ function setup(
     previewPrices: jest.fn(async (_u: unknown, _p: string, t: Map<string, number>) => ({ action: 'price', targets: [...t] })),
     startPrices: jest.fn(async (_u: unknown, _p: string, t: Map<string, number>) => ({ action: 'price', state: 'running', targets: [...t] })),
     readOpenRatePrices: jest.fn(async () => new Map(Object.entries(opts.open ?? {}))),
+    minPriceOf: jest.fn(async () => opts.minPrice ?? null),
   };
   const inRange = (date: string, where: { date?: { _value?: [string, string] } }) => {
     const v = where.date?._value;
@@ -103,6 +108,13 @@ function setup(
       (opts.typed ?? []).filter((t) => (t.channel ?? 'booking') === where.channel && inRange(t.date, where)),
     ),
   };
+  const autoRepo = {
+    find: jest.fn(async ({ where }: { where: { date?: { _value?: [string, string] } } }) =>
+      Object.entries(opts.auto ?? {})
+        .map(([date, pct]) => ({ propertyId: PROP, date, pct }))
+        .filter((a) => inRange(a.date, where)),
+    ),
+  };
   const tx = { delete: jest.fn(async () => undefined), insert: jest.fn(async () => undefined) };
   const dataSource = {
     transaction: jest.fn(async (work: (m: { getRepository: () => typeof tx }) => Promise<void>) => work({ getRepository: () => tx })),
@@ -117,8 +129,9 @@ function setup(
     baseRepo as unknown as Repository<PropertyBasePriceEntity>,
     channelRepo as unknown as Repository<PropertyChannelPricingEntity>,
     nightPriceRepo as unknown as Repository<PropertyChannelNightPriceEntity>,
+    autoRepo as unknown as Repository<PropertyAutoPriceEntity>,
   );
-  return { svc, baseRepo, qb, channelRepo, nightPriceRepo, dates, tx, dataSource, sync };
+  return { svc, baseRepo, qb, channelRepo, nightPriceRepo, dates, tx, dataSource, sync, autoRepo };
 }
 
 const NOV = { from: '2026-11-01', to: '2026-11-04' };
@@ -376,6 +389,79 @@ describe('PricingBasePriceService — Booking prices', () => {
     const s = setup({ base, ...(o as object) });
     await expect(s.svc.sendBooking(OWNER, PROP, { ...NOV, fingerprint: ANY_PRINT })).rejects.toThrow(msg);
     expect(s.dates.startPrices).not.toHaveBeenCalled();
+  });
+});
+
+describe('PricingBasePriceService — «Автоцены» on the Booking price', () => {
+  const base = [
+    { date: '2026-11-01', priceMinor: 50000 },
+    { date: '2026-11-02', priceMinor: 50000 },
+    { date: '2026-11-03', priceMinor: 28400 },
+  ];
+  const AUTO_ON = { ZODOMUS_PROMOTIONS_AUTOPRICE_ENABLED: true, ZODOMUS_PROMOTIONS_AUTOPRICE_DRY_RUN: false };
+  const targetsOf = (calls: unknown[][]) => [...(calls[0]![2] as Map<string, number>)];
+
+  it('flag on: base × (100 + pct) % (whole units), then the markup; nights without a percent as they were', async () => {
+    const s = setup({
+      base,
+      env: AUTO_ON,
+      rules: [{ propertyId: PROP, channel: 'booking', markupPct: 10 }],
+      auto: { '2026-11-01': -10, '2026-11-03': 5 },
+    });
+    await s.svc.previewBooking(OWNER, PROP, NOV);
+    // 500 −10 % = 450 → +10 % = 495; 284 +5 % = 298 → +10 % = 328 (whole zł)
+    expect(targetsOf(s.dates.previewPrices.mock.calls)).toEqual([
+      ['2026-11-01', 495],
+      ['2026-11-02', 550],
+      ['2026-11-03', 328],
+    ]);
+  });
+
+  it('a Booking price typed by hand wins over the rule', async () => {
+    const s = setup({ base, env: AUTO_ON, typed: [{ date: '2026-11-01', priceMinor: 61000 }], auto: { '2026-11-01': -10 } });
+    await s.svc.previewBooking(OWNER, PROP, NOV);
+    expect(targetsOf(s.dates.previewPrices.mock.calls)[0]).toEqual(['2026-11-01', 610]);
+  });
+
+  it('never below the minimum price', async () => {
+    const s = setup({ base, env: AUTO_ON, auto: { '2026-11-03': -20 }, minPrice: 260 });
+    await s.svc.previewBooking(OWNER, PROP, NOV);
+    // 284 −20 % = 227 < 260
+    expect(targetsOf(s.dates.previewPrices.mock.calls)[2]).toEqual(['2026-11-03', 260]);
+  });
+
+  it('a percent on a night without a base price adds no night', async () => {
+    const s = setup({ base, env: AUTO_ON, auto: { '2026-11-04': -10 } });
+    await s.svc.previewBooking(OWNER, PROP, NOV);
+    expect(targetsOf(s.dates.previewPrices.mock.calls).map(([d]) => d)).toEqual(['2026-11-01', '2026-11-02', '2026-11-03']);
+  });
+
+  it('flag off: stored percents are not read and change nothing', async () => {
+    const s = setup({ base, auto: { '2026-11-01': -10 } });
+    await s.svc.previewBooking(OWNER, PROP, NOV);
+    expect(targetsOf(s.dates.previewPrices.mock.calls)[0]).toEqual(['2026-11-01', 500]);
+    expect(s.autoRepo.find).not.toHaveBeenCalled();
+  });
+
+  it('«Только показывать» or Booking writes paused: stored percents rest, the base price applies', async () => {
+    for (const env of [{ ZODOMUS_PROMOTIONS_AUTOPRICE_DRY_RUN: true }, { ZODOMUS_PROMOTIONS_DRY_RUN: true }]) {
+      const s = setup({ base, env: { ...AUTO_ON, ...env }, auto: { '2026-11-01': -10 } });
+      await s.svc.previewBooking(OWNER, PROP, NOV);
+      expect(targetsOf(s.dates.previewPrices.mock.calls)[0]).toEqual(['2026-11-01', 500]);
+    }
+  });
+
+  it('the percents passed in replace the stored ones (the run sends before it stores)', async () => {
+    const s = setup({ base, env: AUTO_ON, auto: { '2026-11-01': -10 } });
+    const t = await s.svc.bookingTargets(PROP, '2026-11-01', '2026-11-03', new Map([['2026-11-02', 5], ['2026-12-01', 5]]));
+    expect([...t]).toEqual([['2026-11-01', 500], ['2026-11-02', 525], ['2026-11-03', 284]]);
+  });
+
+  it('table missing (migration not run): the base price as it is, no error', async () => {
+    const s = setup({ base, env: AUTO_ON });
+    s.autoRepo.find.mockRejectedValueOnce(new Error('relation "property_auto_prices" does not exist'));
+    await s.svc.previewBooking(OWNER, PROP, NOV);
+    expect(targetsOf(s.dates.previewPrices.mock.calls)[0]).toEqual(['2026-11-01', 500]);
   });
 });
 

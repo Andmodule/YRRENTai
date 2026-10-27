@@ -591,3 +591,55 @@ describe('CalendarDatesService — re-pricing nights («базовая цена�
     await expect(svc.startPrices(USER, PROPERTY_ID, prices({ '2026-11-01': 520 }))).rejects.toBeInstanceOf(ServiceUnavailableException);
   });
 });
+
+describe('CalendarDatesService — «Автоцены» run', () => {
+  const open = (price: number, extra: Partial<Night> = {}): Night => ({ closed: false, price, booked: 0, ...extra });
+  const prices = (m: Record<string, number>) => new Map(Object.entries(m));
+
+  it('sends the changed prices of open nights and returns the finished run', async () => {
+    const { svc, booking } = setup({ nights: { '2026-11-01': open(500), '2026-11-02': open(500) } });
+    const res = await svc.runPricesAuto(PROPERTY_ID, prices({ '2026-11-01': 475, '2026-11-02': 500 }));
+    expect(res!.ranges).toHaveLength(1);
+    expect(res!.job).toMatchObject({ source: 'auto', action: 'price', state: 'done', failed: [] });
+    expect(booking.state.get('2026-11-01')).toEqual(open(475));
+    expect(booking.setRates).toHaveBeenCalledTimes(1);
+  });
+
+  it('Booking already has these prices: no run, nothing sent', async () => {
+    const { svc, booking } = setup({ nights: { '2026-11-01': open(475) } });
+    const res = await svc.runPricesAuto(PROPERTY_ID, prices({ '2026-11-01': 475 }));
+    expect(res).toMatchObject({ ranges: [], job: null });
+    expect(booking.setRates).not.toHaveBeenCalled();
+  });
+
+  it('sold nights and prices under the minimum are skipped, as in «Отправить в Booking»', async () => {
+    const { svc, booking } = setup({ nights: { '2026-11-01': open(500, { booked: 1 }), '2026-11-02': open(500) }, minPriceMinor: 45000 });
+    const res = await svc.runPricesAuto(PROPERTY_ID, prices({ '2026-11-01': 475, '2026-11-02': 400 }));
+    expect(res!.job).toBeNull();
+    expect(res!.plan.skipped).toMatchObject({ booked: 1, belowMin: 1 });
+    expect(booking.setRates).not.toHaveBeenCalled();
+  });
+
+  it('only past nights: an empty plan, Booking not even read', async () => {
+    const { svc, booking } = setup({ nights: {} });
+    const res = await svc.runPricesAuto(PROPERTY_ID, prices({ '2026-10-01': 475 }));
+    expect(res).toMatchObject({ ranges: [], job: null, plan: { changes: [] } });
+    expect(booking.getAvailability).not.toHaveBeenCalled();
+  });
+
+  it('another run of the property is going: null, nothing sent', async () => {
+    const { svc, booking } = setup({ nights: { '2026-11-01': open(500), '2026-11-02': open(500) } });
+    let release: () => void = () => undefined;
+    booking.setRates.mockImplementationOnce(() => new Promise((r) => (release = () => r({ status: { returnCode: 200 } }))));
+    await svc.startPrices(USER, PROPERTY_ID, prices({ '2026-11-01': 520 }));
+    await expect(svc.runPricesAuto(PROPERTY_ID, prices({ '2026-11-02': 475 }))).resolves.toBeNull();
+    release();
+    await finished(svc);
+    expect(booking.setRates).toHaveBeenCalledTimes(1);
+  });
+
+  it('answers 503 while the dates tool is off', async () => {
+    const { svc } = setup({ env: { ZODOMUS_CALENDAR_DATES_ENABLED: false } });
+    await expect(svc.runPricesAuto(PROPERTY_ID, prices({ '2026-11-01': 475 }))).rejects.toBeInstanceOf(ServiceUnavailableException);
+  });
+});

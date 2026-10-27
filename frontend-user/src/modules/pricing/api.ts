@@ -22,6 +22,8 @@ export interface PricingStatus {
   guestPrice?: boolean;
   /** «Базовая цена» switched on (ZODOMUS_PROMOTIONS_BASE_PRICE_ENABLED). */
   basePrice?: boolean;
+  /** «Автоцены» switched on (ZODOMUS_PROMOTIONS_AUTOPRICE_ENABLED). */
+  autoPrice?: boolean;
 }
 
 /** How a channel's price is made from the base price. */
@@ -47,6 +49,8 @@ export interface BasePriceOverview {
   base: Record<string, number>;
   channels: Record<GuestPriceChannel, ChannelPricing>;
   bookingSend: BookingSendBlock;
+  /** «Автоцены»: yyyy-MM-dd → percent the rule put on the base price of the night (stored only when it really sends). */
+  auto?: Record<string, number>;
 }
 
 export type GuestPriceChannel = 'booking' | 'airbnb';
@@ -135,6 +139,82 @@ export interface OccupancyOverview {
   settings: OccupancySettingsInput & { isDefault: boolean };
   properties: OccupancyRow[];
   notOnBooking: number;
+}
+
+// ─── «Автоцены» (backend pricing-autoprice.service.ts) ───
+
+export type AutoPriceWindow = { kind: 'next'; days: number } | { kind: 'month_end'; daysBefore: number };
+/** «Не сдано от unsoldPct % → −pct %». */
+export type AutoPriceDownTier = { unsoldPct: number; pct: number };
+/** «Сдано от soldPct % → +pct %». */
+export type AutoPriceUpTier = { soldPct: number; pct: number };
+
+export interface AutoPriceSettingsInput {
+  enabled: boolean;
+  window: AutoPriceWindow;
+  down: AutoPriceDownTier[];
+  up: AutoPriceUpTier[];
+}
+
+export type AutoNightStatus = 'adjusted' | 'minimum' | 'booked' | 'typed' | 'no_base' | 'none';
+
+export interface AutoNight {
+  date: string;
+  status: AutoNightStatus;
+  pct: number;
+  /** Booking price without the rule / with it; null when there is no base price. */
+  before: number | null;
+  after: number | null;
+  /** Journal only: the night's adjustment was taken off. */
+  cleared?: boolean;
+}
+
+export interface AutoPriceRow {
+  propertyId: string;
+  name: string;
+  block: 'DATES_OFF' | 'NOT_ON_BOOKING' | 'NOT_IN_PILOT' | null;
+  /** null while «остаток месяца» has not started (or the rule is off). */
+  window: { from: string; to: string } | null;
+  totalNights: number;
+  bookedNights: number;
+  soldPct: number;
+  /** Signed percent of the rule today. */
+  pct: number;
+  nights: AutoNight[];
+  cleared: string[];
+}
+
+export interface AutoPriceRunResult {
+  changed: number;
+  cleared: number;
+  /** Booking requests; null in «Только показывать». */
+  sent: number | null;
+  failed: number;
+  mismatched: number;
+  error?: string;
+}
+
+export interface AutoPriceRun {
+  id: string;
+  propertyId: string;
+  propertyName: string;
+  runAt: string;
+  dryRun: boolean;
+  window: { from: string; to: string } | null;
+  totalNights: number;
+  bookedNights: number;
+  pct: number;
+  nights: AutoNight[];
+  result: AutoPriceRunResult;
+}
+
+export interface AutoPriceOverview {
+  /** «Только показывать»: the daily run only writes the journal. */
+  dryRun: boolean;
+  hourUtc: number;
+  settings: AutoPriceSettingsInput & { isDefault: boolean };
+  properties: AutoPriceRow[];
+  runs: AutoPriceRun[];
 }
 
 export interface PromotionStatsSummary {
@@ -388,6 +468,11 @@ export const pricingApi = {
     get: () => unwrap<OccupancyOverview>(apiClient.get('/pricing/occupancy')),
     saveSettings: (input: OccupancySettingsInput) =>
       unwrap<OccupancyOverview>(apiClient.patch('/pricing/occupancy/settings', input)),
+  },
+  autoPrice: {
+    get: () => unwrap<AutoPriceOverview>(apiClient.get('/pricing/auto-price')),
+    saveSettings: (input: AutoPriceSettingsInput) =>
+      unwrap<AutoPriceOverview>(apiClient.put('/pricing/auto-price/settings', input)),
   },
   basePrice: {
     get: (propertyId: string, from: string, to: string) =>

@@ -21,6 +21,12 @@ export type PricingFlags = {
   guestPrice: boolean;
   /** «Базовая цена»: needs `guestPrice` plus ZODOMUS_PROMOTIONS_BASE_PRICE_ENABLED; sending also `canWrite`. */
   basePrice: boolean;
+  /** «Автоцены»: needs `basePrice` plus ZODOMUS_PROMOTIONS_AUTOPRICE_ENABLED. */
+  autoPrice: boolean;
+  /** «Только показывать» of «Автоцены» (ZODOMUS_PROMOTIONS_AUTOPRICE_DRY_RUN, default true). */
+  autoPriceDryRun: boolean;
+  /** UTC hour of the daily «Автоцены» run. */
+  autoPriceHourUtc: number;
 };
 
 /** Env values arrive transformed by envSchema (booleans/numbers); strings are tolerated for safety. */
@@ -32,6 +38,11 @@ function toBool(v: unknown, fallback: boolean): boolean {
     if (['false', '0', 'no'].includes(s)) return false;
   }
   return fallback;
+}
+
+function toHour(v: unknown, fallback: number): number {
+  const n = Number(v);
+  return Number.isInteger(n) && n >= 0 && n <= 23 ? n : fallback;
 }
 
 function toInt(v: unknown, fallback: number): number {
@@ -67,6 +78,13 @@ export class PricingConfig {
         enabled &&
         toBool(config.get('ZODOMUS_PROMOTIONS_GUEST_PRICE_ENABLED'), false) &&
         toBool(config.get('ZODOMUS_PROMOTIONS_BASE_PRICE_ENABLED'), false),
+      autoPrice:
+        enabled &&
+        toBool(config.get('ZODOMUS_PROMOTIONS_GUEST_PRICE_ENABLED'), false) &&
+        toBool(config.get('ZODOMUS_PROMOTIONS_BASE_PRICE_ENABLED'), false) &&
+        toBool(config.get('ZODOMUS_PROMOTIONS_AUTOPRICE_ENABLED'), false),
+      autoPriceDryRun: toBool(config.get('ZODOMUS_PROMOTIONS_AUTOPRICE_DRY_RUN'), true),
+      autoPriceHourUtc: toHour(config.get('ZODOMUS_PROMOTIONS_AUTOPRICE_HOUR_UTC'), 5),
       // Default to dry run when the value is missing or unreadable.
       dryRun: toBool(config.get('ZODOMUS_PROMOTIONS_DRY_RUN'), true),
       allowlist: parseAllowlist(config.get('ZODOMUS_PROMOTIONS_PROPERTY_ALLOWLIST')),
@@ -78,7 +96,7 @@ export class PricingConfig {
     };
     if (this.flags.enabled) {
       this.logger.log(
-        `Booking promotions ENABLED — dryRun=${this.flags.dryRun}, allowlist=${this.flags.allowlist.size || 'all'}, channel=${this.flags.channelId}, autoRules=${this.flags.autoRules}, occupancy=${this.flags.occupancy}, guestPrice=${this.flags.guestPrice}, basePrice=${this.flags.basePrice}`,
+        `Booking promotions ENABLED — dryRun=${this.flags.dryRun}, allowlist=${this.flags.allowlist.size || 'all'}, channel=${this.flags.channelId}, autoRules=${this.flags.autoRules}, occupancy=${this.flags.occupancy}, guestPrice=${this.flags.guestPrice}, basePrice=${this.flags.basePrice}, autoPrice=${this.flags.autoPrice} (dryRun=${this.flags.autoPriceDryRun})`,
       );
     }
   }

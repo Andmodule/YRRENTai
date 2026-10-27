@@ -170,6 +170,27 @@ const zodomusEnvFields = z.object({
     .default('false')
     .transform((v) => v === 'true' || v === '1' || v === 'yes'),
   /**
+   * «Цены → Автоцены»: once a day the base price of free nights follows how full the property is (the
+   * tenant's rule), then goes to Booking like «Отправить в Booking». Off by default; needs
+   * ZODOMUS_PROMOTIONS_BASE_PRICE_ENABLED=true, ZODOMUS_CALENDAR_DATES_ENABLED=true and the migration
+   * 1778800000000-pricing-auto-price. Only properties of the pilot list (ZODOMUS_PROMOTIONS_PROPERTY_ALLOWLIST,
+   * empty = none). While off the API answers 503, the tab is hidden and the new tables are never read.
+   */
+  ZODOMUS_PROMOTIONS_AUTOPRICE_ENABLED: z
+    .enum(['true', 'false', '1', '0', 'yes', 'no'])
+    .default('false')
+    .transform((v) => v === 'true' || v === '1' || v === 'yes'),
+  /**
+   * «Только показывать» for «Автоцены» (default true): runs write the journal of what they would do, nothing
+   * reaches Booking and no adjustment is stored. Sending also needs ZODOMUS_PROMOTIONS_DRY_RUN=false.
+   */
+  ZODOMUS_PROMOTIONS_AUTOPRICE_DRY_RUN: z
+    .enum(['true', 'false', '1', '0', 'yes', 'no'])
+    .default('true')
+    .transform((v) => v === 'true' || v === '1' || v === 'yes'),
+  /** UTC hour of the daily «Автоцены» run (after auto-extension at 04:00). Default: 5 (06:00 in Warsaw in winter). */
+  ZODOMUS_PROMOTIONS_AUTOPRICE_HOUR_UTC: z.coerce.number().int().min(0).max(23).default(5),
+  /**
    * «Открыть / закрыть даты на Booking» in the calendar: opens (or closes) nights on the main Booking rate
    * with POST /rates `closed`, at the price the person gives. Off by default: API answers 503, UI hidden.
    */
