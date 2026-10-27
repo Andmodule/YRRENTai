@@ -25,8 +25,10 @@ export type PricingFlags = {
   autoPrice: boolean;
   /** «Только показывать» of «Автоцены» (ZODOMUS_PROMOTIONS_AUTOPRICE_DRY_RUN, default true). */
   autoPriceDryRun: boolean;
-  /** UTC hour of the daily «Автоцены» run. */
-  autoPriceHourUtc: number;
+  /** Local hour of the daily «Автоцены» run, in `autoPriceTimeZone`. */
+  autoPriceHour: number;
+  /** IANA zone of that hour (Europe/Warsaw by default). */
+  autoPriceTimeZone: string;
 };
 
 /** Env values arrive transformed by envSchema (booleans/numbers); strings are tolerated for safety. */
@@ -43,6 +45,18 @@ function toBool(v: unknown, fallback: boolean): boolean {
 function toHour(v: unknown, fallback: number): number {
   const n = Number(v);
   return Number.isInteger(n) && n >= 0 && n <= 23 ? n : fallback;
+}
+
+/** A zone Intl knows; anything else (a typo on Render) falls back rather than breaking the timer. */
+function toTimeZone(v: unknown, fallback: string): string {
+  const tz = typeof v === 'string' ? v.trim() : '';
+  if (!tz) return fallback;
+  try {
+    // The canonical spelling («europe/warsaw» → «Europe/Warsaw»): the tab compares it.
+    return new Intl.DateTimeFormat('en-US', { timeZone: tz }).resolvedOptions().timeZone;
+  } catch {
+    return fallback;
+  }
 }
 
 function toInt(v: unknown, fallback: number): number {
@@ -84,7 +98,8 @@ export class PricingConfig {
         toBool(config.get('ZODOMUS_PROMOTIONS_BASE_PRICE_ENABLED'), false) &&
         toBool(config.get('ZODOMUS_PROMOTIONS_AUTOPRICE_ENABLED'), false),
       autoPriceDryRun: toBool(config.get('ZODOMUS_PROMOTIONS_AUTOPRICE_DRY_RUN'), true),
-      autoPriceHourUtc: toHour(config.get('ZODOMUS_PROMOTIONS_AUTOPRICE_HOUR_UTC'), 5),
+      autoPriceHour: toHour(config.get('ZODOMUS_PROMOTIONS_AUTOPRICE_HOUR'), 6),
+      autoPriceTimeZone: toTimeZone(config.get('ZODOMUS_PROMOTIONS_AUTOPRICE_TZ'), 'Europe/Warsaw'),
       // Default to dry run when the value is missing or unreadable.
       dryRun: toBool(config.get('ZODOMUS_PROMOTIONS_DRY_RUN'), true),
       allowlist: parseAllowlist(config.get('ZODOMUS_PROMOTIONS_PROPERTY_ALLOWLIST')),

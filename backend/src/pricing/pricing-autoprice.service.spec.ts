@@ -249,7 +249,8 @@ describe('PricingAutoPriceService — settings', () => {
     const o = await setup().svc.overview(OWNER);
     expect(o.settings).toEqual({ ...DEFAULT_AUTO_PRICE_SETTINGS, enabled: false, isDefault: true });
     expect(o.dryRun).toBe(true);
-    expect(o.hourUtc).toBe(5);
+    expect(o.runHour).toBe(6);
+    expect(o.timeZone).toBe('Europe/Warsaw');
   });
 
   it('save: tiers stored sorted, the window kept, read back as saved', async () => {
@@ -590,7 +591,41 @@ describe('PricingAutoPriceService — daily run, live', () => {
 });
 
 describe('PricingAutoPriceService — the daily timer', () => {
-  it('before the hour nothing; at the hour once a day; the next day again', async () => {
+  it('summer: 06:00 in Warsaw is 04:00 UTC', async () => {
+    const s = setup({ settings: ON });
+    const runAll = jest.spyOn(s.svc, 'runAll').mockResolvedValue();
+    await s.svc.tick(new Date('2026-07-10T03:59:00Z'));
+    expect(runAll).not.toHaveBeenCalled();
+    await s.svc.tick(new Date('2026-07-10T04:00:00Z'));
+    expect(runAll).toHaveBeenCalledTimes(1);
+  });
+
+  it('the Warsaw day decides «once a day»: 23:30 UTC is already the next day there', async () => {
+    const s = setup({ settings: ON });
+    const runAll = jest.spyOn(s.svc, 'runAll').mockResolvedValue();
+    await s.svc.tick(new Date('2026-11-25T05:00:00Z')); // 25 Nov, 06:00 Warsaw
+    await s.svc.tick(new Date('2026-11-25T23:30:00Z')); // 26 Nov, 00:30 Warsaw — before 06:00
+    expect(runAll).toHaveBeenCalledTimes(1);
+    await s.svc.tick(new Date('2026-11-26T05:00:00Z')); // 26 Nov, 06:00 Warsaw
+    expect(runAll).toHaveBeenCalledTimes(2);
+  });
+
+  it('hour and zone from the environment; a broken zone falls back to Warsaw', async () => {
+    const s = setup({ settings: ON, env: { ZODOMUS_PROMOTIONS_AUTOPRICE_HOUR: 8, ZODOMUS_PROMOTIONS_AUTOPRICE_TZ: 'Europe/Minsk' } });
+    const runAll = jest.spyOn(s.svc, 'runAll').mockResolvedValue();
+    await s.svc.tick(new Date('2026-11-25T04:59:00Z')); // 07:59 Minsk
+    expect(runAll).not.toHaveBeenCalled();
+    await s.svc.tick(new Date('2026-11-25T05:00:00Z')); // 08:00 Minsk
+    expect(runAll).toHaveBeenCalledTimes(1);
+    const o = await setup({ env: { ZODOMUS_PROMOTIONS_AUTOPRICE_TZ: 'Mars/Olympus' } }).svc.overview(OWNER);
+    expect(o.timeZone).toBe('Europe/Warsaw');
+    const empty = await setup({ env: { ZODOMUS_PROMOTIONS_AUTOPRICE_TZ: '  ' } }).svc.overview(OWNER);
+    expect(empty.timeZone).toBe('Europe/Warsaw');
+    const lower = await setup({ env: { ZODOMUS_PROMOTIONS_AUTOPRICE_TZ: 'europe/warsaw' } }).svc.overview(OWNER);
+    expect(lower.timeZone).toBe('Europe/Warsaw');
+  });
+
+  it('winter: 06:00 in Warsaw is 05:00 UTC — before nothing, at the hour once a day, the next day again', async () => {
     const s = setup({ settings: ON });
     const runAll = jest.spyOn(s.svc, 'runAll').mockResolvedValue();
     await s.svc.tick(new Date('2026-11-25T04:59:00Z'));
