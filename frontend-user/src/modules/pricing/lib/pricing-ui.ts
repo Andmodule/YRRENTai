@@ -461,6 +461,25 @@ export function ruleTemplate(): RuleStepInput[] {
   ];
 }
 
+/**
+ * «Горящие по часам» — the manager's example of 2026-10-26: 3 days → 10 hours → 5 hours before check-in,
+ * any time of day. A growing ladder: Booking shows the guest the biggest deal that applies.
+ */
+export function hotDealsTemplate(): RuleStepInput[] {
+  return [
+    { discountPct: 5, unit: 'day', value: 3, bookTime: null },
+    { discountPct: 8, unit: 'hour', value: 10, bookTime: null },
+    { discountPct: 10, unit: 'hour', value: 5, bookTime: null },
+  ];
+}
+
+/** Ready-made ladders the rule form offers; `day` is the default of a new rule. */
+export const RULE_TEMPLATES = {
+  day: ruleTemplate,
+  hot: hotDealsTemplate,
+} as const;
+export type RuleTemplateKey = keyof typeof RULE_TEMPLATES;
+
 /** Most steps a rule may have (mirrors the backend limit). */
 export const MAX_RULE_STEPS = 24;
 

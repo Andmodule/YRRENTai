@@ -8,6 +8,7 @@ import {
   cellPriceLabels,
   findShadowedSteps,
   guestPrice,
+  hotDealsTemplate,
   hourlyLadder,
   hoursBefore,
   isBelowMin,
@@ -25,6 +26,7 @@ import {
   parseOccupancyDraft,
   presetRange,
   promotionsForCell,
+  RULE_TEMPLATES,
   ruleTemplate,
   safeDiscountPct,
   sortSteps,
@@ -475,6 +477,31 @@ describe('auto rule ladder', () => {
       t.map((s) => timeWindowKey(s.bookTime)),
       ['any', 'any', 'morning', 'day', 'evening'],
     );
+  });
+
+  it('the «hot deals» template: 3 days, 10 hours, 5 hours, growing, nothing hidden, any time of day', () => {
+    const t = hotDealsTemplate();
+    assert.deepEqual(
+      t.map((s) => [s.unit, s.value, s.discountPct]),
+      [['day', 3, 5], ['hour', 10, 8], ['hour', 5, 10]],
+    );
+    assert.deepEqual(findShadowedSteps(t), []);
+    assert.deepEqual(t.map((s) => timeWindowKey(s.bookTime)), ['any', 'any', 'any']);
+    // sorted for Booking: earliest step first, biggest discount last
+    assert.deepEqual(sortSteps(t).map((s) => s.discountPct), [5, 8, 10]);
+  });
+
+  it('every ready-made template fits Booking: 1–99 %, at most 30 days / 720 hours, within the step limit', () => {
+    for (const make of Object.values(RULE_TEMPLATES)) {
+      const t = make();
+      assert.ok(t.length >= 1 && t.length <= MAX_RULE_STEPS);
+      for (const s of t) {
+        assert.ok(s.discountPct >= 1 && s.discountPct <= 99);
+        assert.ok(s.value >= 1 && s.value <= (s.unit === 'day' ? 30 : 720));
+      }
+      // a fresh copy each time: editing one form must not change the template
+      assert.notEqual(make(), make());
+    }
   });
 
   it('flags a step the guest can never see (a wider step already gives the same or more)', () => {
