@@ -188,8 +188,13 @@ const zodomusEnvFields = z.object({
     .enum(['true', 'false', '1', '0', 'yes', 'no'])
     .default('true')
     .transform((v) => v === 'true' || v === '1' || v === 'yes'),
-  /** UTC hour of the daily «Автоцены» run (after auto-extension at 04:00). Default: 5 (06:00 in Warsaw in winter). */
-  ZODOMUS_PROMOTIONS_AUTOPRICE_HOUR_UTC: z.coerce.number().int().min(0).max(23).default(5),
+  /**
+   * Hour of the daily «Автоцены» run in ZODOMUS_PROMOTIONS_AUTOPRICE_TZ (local time, summer and winter time
+   * followed). Default 6 — 06:00 in Warsaw, where the pilot properties are.
+   */
+  ZODOMUS_PROMOTIONS_AUTOPRICE_HOUR: z.coerce.number().int().min(0).max(23).default(6),
+  /** IANA time zone of that hour. Default Europe/Warsaw; empty or unknown also falls back to it (never stops the boot). */
+  ZODOMUS_PROMOTIONS_AUTOPRICE_TZ: z.string().optional(),
   /**
    * «Открыть / закрыть даты на Booking» in the calendar: opens (or closes) nights on the main Booking rate
    * with POST /rates `closed`, at the price the person gives. Off by default: API answers 503, UI hidden.

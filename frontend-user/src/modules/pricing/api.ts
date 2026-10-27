@@ -211,7 +211,9 @@ export interface AutoPriceRun {
 export interface AutoPriceOverview {
   /** «Только показывать»: the daily run only writes the journal. */
   dryRun: boolean;
-  hourUtc: number;
+  /** Local hour of the daily run in `timeZone` (Europe/Warsaw by default). */
+  runHour: number;
+  timeZone: string;
   settings: AutoPriceSettingsInput & { isDefault: boolean };
   properties: AutoPriceRow[];
   runs: AutoPriceRun[];

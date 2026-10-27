@@ -8,6 +8,30 @@
 import { channelPriceFromBase } from './base-price.util';
 import { addDaysYmd, nightsCount } from './pricing-math.util';
 
+/**
+ * The calendar day and hour of `now` in `timeZone` (summer and winter time followed) — when the daily run
+ * is due: «06:00 in Warsaw» stays 06:00 when the clocks change.
+ */
+export function zonedDayHour(now: Date, timeZone: string): { day: string; hour: number } {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(now);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
+  return { day: `${get('year')}-${get('month')}-${get('day')}`, hour: Number(get('hour')) };
+}
+
+/** The UTC hour at which `localHour` in `timeZone` falls on the day of `now` (summer / winter time of that day). */
+export function utcHourOfLocal(localHour: number, timeZone: string, now: Date = new Date()): number {
+  const { hour } = zonedDayHour(now, timeZone);
+  const offset = (((hour - now.getUTCHours()) % 24) + 24) % 24;
+  return (((localHour - offset) % 24) + 24) % 24;
+}
+
 /** «Ближайшие N дней» or «остаток месяца, начиная за N дней до его конца». */
 export type AutoPriceWindow = { kind: 'next'; days: number } | { kind: 'month_end'; daysBefore: number };
 /** «Не сдано от X % → −Y %». */

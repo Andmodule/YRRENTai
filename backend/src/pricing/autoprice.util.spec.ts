@@ -9,6 +9,8 @@ import {
   planAutoNights,
   settingsProblem,
   type AutoPriceSettings,
+  utcHourOfLocal,
+  zonedDayHour,
 } from './autoprice.util';
 
 const S = DEFAULT_AUTO_PRICE_SETTINGS;
@@ -224,5 +226,45 @@ describe('diffAdjustments', () => {
     const { set, clear } = diffAdjustments(new Map([[TODAY, -5]]), new Map([[TODAY, -10]]), TODAY);
     expect([...set]).toEqual([[TODAY, -10]]);
     expect(clear).toEqual([]);
+  });
+});
+
+describe('zonedDayHour', () => {
+  it('Warsaw in winter is UTC+1, in summer UTC+2', () => {
+    expect(zonedDayHour(new Date('2026-11-25T05:00:00Z'), 'Europe/Warsaw')).toEqual({ day: '2026-11-25', hour: 6 });
+    expect(zonedDayHour(new Date('2026-07-10T04:00:00Z'), 'Europe/Warsaw')).toEqual({ day: '2026-07-10', hour: 6 });
+  });
+
+  it('the clocks going back (25 Oct 2026, 03:00 → 02:00 in Warsaw)', () => {
+    expect(zonedDayHour(new Date('2026-10-25T00:30:00Z'), 'Europe/Warsaw')).toEqual({ day: '2026-10-25', hour: 2 });
+    expect(zonedDayHour(new Date('2026-10-25T01:30:00Z'), 'Europe/Warsaw')).toEqual({ day: '2026-10-25', hour: 2 });
+    expect(zonedDayHour(new Date('2026-10-25T05:00:00Z'), 'Europe/Warsaw')).toEqual({ day: '2026-10-25', hour: 6 });
+  });
+
+  it('the clocks going forward (29 Mar 2026, 02:00 → 03:00 in Warsaw)', () => {
+    expect(zonedDayHour(new Date('2026-03-29T00:59:00Z'), 'Europe/Warsaw')).toEqual({ day: '2026-03-29', hour: 1 });
+    expect(zonedDayHour(new Date('2026-03-29T01:00:00Z'), 'Europe/Warsaw')).toEqual({ day: '2026-03-29', hour: 3 });
+    expect(zonedDayHour(new Date('2026-03-29T04:00:00Z'), 'Europe/Warsaw')).toEqual({ day: '2026-03-29', hour: 6 });
+  });
+
+  it('midnight there is hour 0 of the next day', () => {
+    expect(zonedDayHour(new Date('2026-11-25T23:00:00Z'), 'Europe/Warsaw')).toEqual({ day: '2026-11-26', hour: 0 });
+  });
+
+  it('other zones', () => {
+    expect(zonedDayHour(new Date('2026-11-25T05:00:00Z'), 'Europe/Minsk')).toEqual({ day: '2026-11-25', hour: 8 });
+    expect(zonedDayHour(new Date('2026-11-25T05:00:00Z'), 'UTC')).toEqual({ day: '2026-11-25', hour: 5 });
+  });
+});
+
+describe('utcHourOfLocal', () => {
+  it('06:00 in Warsaw is 05 UTC in winter and 04 UTC in summer', () => {
+    expect(utcHourOfLocal(6, 'Europe/Warsaw', new Date('2026-11-25T12:00:00Z'))).toBe(5);
+    expect(utcHourOfLocal(6, 'Europe/Warsaw', new Date('2026-07-10T12:00:00Z'))).toBe(4);
+  });
+
+  it('wraps around midnight', () => {
+    expect(utcHourOfLocal(0, 'Europe/Warsaw', new Date('2026-11-25T12:00:00Z'))).toBe(23);
+    expect(utcHourOfLocal(1, 'Europe/Minsk', new Date('2026-11-25T12:00:00Z'))).toBe(22);
   });
 });

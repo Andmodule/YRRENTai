@@ -59,7 +59,6 @@ const digits = (s: string, max: number) => s.replace(/\D/g, '').slice(0, max);
  */
 export function AutoPriceScreen() {
   const t = useTranslations('pricing.autoPrice');
-  const locale = useLocale();
   const access = usePricingAccess();
   const fmtRange = useStayRangeFormatter();
   const { data, isLoading, isError, refetch } = useAutoPrice(access.autoPrice);
@@ -77,12 +76,12 @@ export function AutoPriceScreen() {
   const parsed = useMemo(() => (draft ? parseAutoPriceDraft(draft) : null), [draft]);
   const dirty = !!saved && !!parsed && (parsed.value ? autoPriceKey(parsed.value) !== savedKey : true);
 
-  /** Local time of the daily run (the server keeps it in UTC). */
+  /** The daily run in the zone the server runs it in: «06:00 по Варшаве», whatever the browser's zone. */
   const runTime = useMemo(() => {
     if (!data) return '';
-    const d = new Date(Date.UTC(2026, 0, 15, data.hourUtc, 0));
-    return new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' }).format(d);
-  }, [data, locale]);
+    const hour = `${String(data.runHour).padStart(2, '0')}:00`;
+    return data.timeZone === 'Europe/Warsaw' ? t('runTimeWarsaw', { hour }) : `${hour} (${data.timeZone})`;
+  }, [data, t]);
 
   if (!access.autoPrice) {
     return <EmptyState icon={<Sparkles className="h-8 w-8" />} title={t('disabledTitle')} description={t('disabledText')} />;

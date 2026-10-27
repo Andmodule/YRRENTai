@@ -25,6 +25,8 @@ import {
   settingsProblem,
   sortDown,
   sortUp,
+  utcHourOfLocal,
+  zonedDayHour,
   type AutoNight,
   type AutoPriceSettings,
 } from './autoprice.util';
@@ -86,6 +88,13 @@ export type AutoPriceRunView = {
 export type AutoPriceOverview = {
   /** «Только показывать»: runs only write the journal (env, or the promotions dry run). */
   dryRun: boolean;
+  /** Local hour of the daily run in `timeZone`. */
+  runHour: number;
+  timeZone: string;
+  /**
+   * The same moment in UTC today — kept for a tab of the previous release (it reads `hourUtc`) while Vercel
+   * and Render update one after the other. Remove once both run this release.
+   */
   hourUtc: number;
   settings: AutoPriceSettings & { enabled: boolean; isDefault: boolean };
   properties: AutoPriceRow[];
@@ -110,7 +119,7 @@ type Settings = AutoPriceSettings & { enabled: boolean; isDefault: boolean };
 export class PricingAutoPriceService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PricingAutoPriceService.name);
   private timer: NodeJS.Timeout | null = null;
-  private lastRunUtcDate: string | null = null;
+  private lastRunLocalDate: string | null = null;
   private running = false;
   /** Owners whose rule was saved while a run was going: run again right after it. */
   private readonly pending = new Set<string>();
@@ -135,7 +144,7 @@ export class PricingAutoPriceService implements OnModuleInit, OnModuleDestroy {
   onModuleInit(): void {
     if (!this.cfg.flags.autoPrice) return;
     this.logger.log(
-      `Auto prices ENABLED — daily at ${String(this.cfg.flags.autoPriceHourUtc).padStart(2, '0')}:00 UTC, dryRun=${this.dryRun}`,
+      `Auto prices ENABLED — daily at ${String(this.cfg.flags.autoPriceHour).padStart(2, '0')}:00 ${this.cfg.flags.autoPriceTimeZone}, dryRun=${this.dryRun}`,
     );
     this.timer = setInterval(() => void this.tick(), 60_000);
   }
@@ -324,7 +333,9 @@ export class PricingAutoPriceService implements OnModuleInit, OnModuleDestroy {
       : [];
     return {
       dryRun: this.dryRun,
-      hourUtc: this.cfg.flags.autoPriceHourUtc,
+      runHour: this.cfg.flags.autoPriceHour,
+      timeZone: this.cfg.flags.autoPriceTimeZone,
+      hourUtc: utcHourOfLocal(this.cfg.flags.autoPriceHour, this.cfg.flags.autoPriceTimeZone),
       settings,
       // Properties the rule works on first.
       properties: rows.sort((a, b) => Number(a.block != null) - Number(b.block != null)),
@@ -361,13 +372,16 @@ export class PricingAutoPriceService implements OnModuleInit, OnModuleDestroy {
 
   // ─── daily run ─────────────────────────────────────────────────────────────
 
-  /** Once per UTC day, at or after the configured hour (a restart later that day runs it then). */
+  /**
+   * Once per local day (Warsaw by default), at or after the configured local hour — summer and winter time
+   * followed; a restart later that day runs it then.
+   */
   async tick(now: Date = new Date()): Promise<void> {
     if (!this.cfg.flags.autoPrice || this.running) return;
-    if (now.getUTCHours() < this.cfg.flags.autoPriceHourUtc) return;
-    const day = now.toISOString().slice(0, 10);
-    if (this.lastRunUtcDate === day) return;
-    this.lastRunUtcDate = day;
+    const { day, hour } = zonedDayHour(now, this.cfg.flags.autoPriceTimeZone);
+    if (hour < this.cfg.flags.autoPriceHour) return;
+    if (this.lastRunLocalDate === day) return;
+    this.lastRunLocalDate = day;
     try {
       await this.runAll();
     } catch (e) {
