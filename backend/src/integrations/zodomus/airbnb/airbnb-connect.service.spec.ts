@@ -88,7 +88,7 @@ describe('AirbnbConnectService — host', () => {
 
   it('refresh: GET /airbnb-host-status with the token, stores the code', async () => {
     const s = setup({ row: { statusCode: null } });
-    s.client.get.mockResolvedValue({ statusCode: '5', statusMessage: 'Host is active' });
+    s.client.get.mockResolvedValue({ status: { returnCode: 200 }, host: { statusCode: '5', statusMessage: 'Host is active' } });
     const v = await s.svc.refresh(OWNER);
     expect(s.client.get).toHaveBeenCalledWith('/airbnb-host-status', { token: 'tok' });
     expect(s.row()).toMatchObject({ statusCode: 5, statusText: 'Host is active' });
@@ -127,7 +127,7 @@ describe('AirbnbConnectService — listings', () => {
       .mockResolvedValueOnce({ listings: [{ id: PILOT }], _cursor: 'p3' });
     const v = await s.svc.listings(OWNER);
     expect(s.client.get).toHaveBeenCalledTimes(2);
-    expect(s.client.get).toHaveBeenLastCalledWith('/airbnb-listings', { token: 'tok', _cursor: 'p2' });
+    expect(s.client.get).toHaveBeenLastCalledWith('/airbnb-listings', { token: 'tok', _limit: '50', _cursor: 'p2' });
     expect(v).toEqual({ pilot: { id: PILOT, name: null }, others: 1, truncated: true });
   });
 

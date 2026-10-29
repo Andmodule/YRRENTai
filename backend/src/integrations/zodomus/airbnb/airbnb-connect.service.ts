@@ -171,7 +171,7 @@ export class AirbnbConnectService {
     let cursor: string | null = null;
     let pages = 0;
     do {
-      const params: Record<string, string> = { token: row.token };
+      const params: Record<string, string> = { token: row.token, _limit: '50' };
       if (cursor) params._cursor = cursor;
       const page = parseListings(await client.get<unknown>('/airbnb-listings', params));
       pages++;
