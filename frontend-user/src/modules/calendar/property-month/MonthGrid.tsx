@@ -150,7 +150,16 @@ export function MonthGrid({
                   {row ? (
                     <span className="mt-auto grid gap-px text-right text-[10px] leading-[14px] tabular-nums sm:text-[11px]">
                       {row.base != null ? (
-                        <span className="font-semibold text-foreground">{fmt.format(row.base)}</span>
+                        // Own Booking price on the night: the base price does not reach Booking — struck where the B line shows.
+                        <span
+                          className={cn(
+                            'font-semibold text-foreground',
+                            row.booking?.typed && 'sm:font-normal sm:text-muted-foreground sm:line-through',
+                          )}
+                          title={row.booking?.typed ? t('rowTypedTitle', { price: fmt.format(row.booking.price), base: fmt.format(row.base) }) : undefined}
+                        >
+                          {fmt.format(row.base)}
+                        </span>
                       ) : (
                         <span className="font-semibold text-foreground">
                           <span className="hidden sm:inline">—</span>
@@ -166,7 +175,18 @@ export function MonthGrid({
                             {row.booking.pending ? <span className="mr-0.5 text-amber-600" aria-label={t('rowPending')}>●</span> : null}
                             B {row.booking.current != null ? `${fmt.format(row.booking.current)}→` : ''}
                             {fmt.format(row.booking.price)}
-                            {row.booking.typed ? '✎' : ''}
+                            {row.booking.typed ? (
+                              <span
+                                className="font-semibold text-amber-600 dark:text-amber-400"
+                                title={
+                                  row.base != null
+                                    ? t('rowTypedTitle', { price: fmt.format(row.booking.price), base: fmt.format(row.base) })
+                                    : t('rowTypedTitleNoBase', { price: fmt.format(row.booking.price) })
+                                }
+                              >
+                                ✎
+                              </span>
+                            ) : null}
                             {row.booking.autoPct ? (
                               // «Автоцены» moved this night: an arrow in the cell, the percent on hover.
                               <span className="text-violet-600 dark:text-violet-400" title={t('rowAuto', { pct: signedPct(row.booking.autoPct) })}>
