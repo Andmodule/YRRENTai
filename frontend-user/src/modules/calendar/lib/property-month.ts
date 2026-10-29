@@ -230,6 +230,25 @@ export function summarizeNights(nights: readonly MonthNight[]): MonthSummary {
   return { open, booked, closed, avgOpenPrice: open > 0 ? Math.round(sum / open) : null };
 }
 
+/** A picked night with its own Booking price: that price goes to Booking, the base price of the night does not. */
+export interface TypedBookingNight {
+  ymd: string;
+  price: number;
+  base: number | null;
+}
+
+/** The picked nights whose Booking price is typed by hand, in date order (a base price saved there changes nothing on Booking). */
+export function typedBookingNights(
+  picked: readonly { ymd: string }[],
+  typed: Readonly<Record<string, number>>,
+  base: Readonly<Record<string, number>>,
+): TypedBookingNight[] {
+  return picked
+    .filter((n) => typed[n.ymd] != null && typed[n.ymd]! > 0)
+    .map((n) => ({ ymd: n.ymd, price: typed[n.ymd]!, base: base[n.ymd] ?? null }))
+    .sort((a, b) => a.ymd.localeCompare(b.ymd));
+}
+
 /** Bookings that touch the picked nights, in order of arrival. */
 export function reservationsInSelection(nights: readonly MonthNight[], sel: NightSelection | null): Reservation[] {
   if (!sel) return [];

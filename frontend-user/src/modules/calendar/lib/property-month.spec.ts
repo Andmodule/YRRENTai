@@ -15,6 +15,7 @@ import {
   reservationsInSelection,
   shiftMonth,
   summarizeNights,
+  typedBookingNights,
 } from './property-month';
 
 const PID = 'p1';
@@ -334,5 +335,31 @@ describe('range by drag and by «С / По»', () => {
     assert.equal(rangeFromFields(late, 'to', '2026-11-06', MIN, MAX), null);
     const early = { from: '2026-09-02', to: '2026-09-05' };
     assert.equal(rangeFromFields(early, 'from', '2026-09-01', MIN, MAX), null);
+  });
+});
+
+describe('typedBookingNights', () => {
+  const picked = [{ ymd: '2026-10-29' }, { ymd: '2026-10-30' }, { ymd: '2026-10-31' }];
+
+  it('lists only the picked nights with their own Booking price, with the base price beside it', () => {
+    assert.deepEqual(typedBookingNights(picked, { '2026-10-29': 260 }, { '2026-10-29': 250, '2026-10-30': 300 }), [
+      { ymd: '2026-10-29', price: 260, base: 250 },
+    ]);
+  });
+
+  it('is empty when no picked night has its own price (a typed night outside the range does not count)', () => {
+    assert.deepEqual(typedBookingNights(picked, { '2026-11-01': 270 }, {}), []);
+    assert.deepEqual(typedBookingNights([], { '2026-10-29': 260 }, {}), []);
+  });
+
+  it('keeps a typed night without a base price (base null)', () => {
+    assert.deepEqual(typedBookingNights(picked, { '2026-10-31': 330 }, {}), [{ ymd: '2026-10-31', price: 330, base: null }]);
+  });
+
+  it('ignores a zero or negative typed price and sorts by date', () => {
+    const out = typedBookingNights([...picked].reverse(), { '2026-10-29': 0, '2026-10-30': -5, '2026-10-31': 330, '2026-10-30x': 1 }, {});
+    assert.deepEqual(out.map((n) => n.ymd), ['2026-10-31']);
+    const all = typedBookingNights([...picked].reverse(), { '2026-10-29': 260, '2026-10-31': 330 }, {});
+    assert.deepEqual(all.map((n) => n.ymd), ['2026-10-29', '2026-10-31']);
   });
 });

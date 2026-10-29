@@ -4,7 +4,7 @@ import { useMemo, useRef, useState, type FormEvent } from 'react';
 import { format } from 'date-fns';
 import { useLocale, useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { Loader2, Send } from 'lucide-react';
+import { AlertTriangle, Loader2, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { getApiErrorMessage } from '@/lib/api/error-message';
@@ -14,7 +14,7 @@ import type { BasePriceOverview, BookingWeekday, GuestPriceChannel } from '@/mod
 import { ChoiceChip } from '@/modules/pricing/components/shared';
 import { WEEKDAYS, weekdayOf, ymdToDate } from '@/modules/pricing/lib/pricing-ui';
 import type { CalendarDatesPreview } from '../calendar-dates-api';
-import type { MonthNight } from '../lib/property-month';
+import { typedBookingNights, type MonthNight } from '../lib/property-month';
 import type { BookingSendWatch } from './useBookingSend';
 
 type Preview = CalendarDatesPreview & { fingerprint: string };
@@ -95,6 +95,18 @@ export function BasePricePanel({
   const running = send.running;
   // What Booking has now on each picked night — the preview shows «now → new».
   const nowOnBooking = useMemo(() => new Map(picked.map((n) => [n.ymd, n.rack])), [picked]);
+  // Nights with their own Booking price: that price goes to Booking, the base price saved there does not.
+  const typedNights = useMemo(() => typedBookingNights(picked, typed.booking, data.base), [picked, typed.booking, data.base]);
+  // «29.10 — 260 (базовая 250)», the first three nights, then «и ещё N».
+  const typedShown = typedNights.slice(0, 3).map((n) => {
+    const day = format(ymdToDate(n.ymd), 'dd.MM');
+    return n.base != null
+      ? t('typedItemBase', { day, price: fmt.format(n.price), base: fmt.format(n.base) })
+      : t('typedItem', { day, price: fmt.format(n.price) });
+  });
+  const typedList =
+    typedNights.length > 3 ? t('typedMore', { list: typedShown.join(', '), count: typedNights.length - 3 }) : typedShown.join(', ');
+  const [keepTyped, setKeepTyped] = useState(false);
 
   // Days of the week (only for a range that has more than one of them).
   const pickedDays = useMemo(() => new Set(picked.map((n) => weekdayOf(n.ymd))), [picked]);
@@ -124,6 +136,21 @@ export function BasePricePanel({
   };
   // After a save the price goes on to Booking only with «Отправить»; when Booking cannot be sent to, a save only saves.
   const canCheck = !sendBlock && !running;
+
+  /** Drops the own Booking price of the picked nights (all of them are in `typedNights`): the base price applies again. */
+  const resetTyped = () =>
+    guest.setNightPrices.mutate(
+      { from, to, price: null, channel: 'booking' },
+      {
+        onSuccess: () => {
+          toast.success(t('typedCleared'));
+          if (canCheck) check(true);
+          else setPreview(null);
+        },
+        onError: fail,
+      },
+    );
+  const resetPending = guest.setNightPrices.isPending && guest.setNightPrices.variables?.channel === 'booking';
 
   return (
     <section className="space-y-3 rounded-xl border border-border bg-card p-4" aria-label={t('title')}>
@@ -212,6 +239,34 @@ export function BasePricePanel({
         }
       />
 
+      {typedNights.length > 0 && !keepTyped ? (
+        <div
+          role="status"
+          className="space-y-2 rounded-lg border border-amber-300/70 bg-amber-50 px-3 py-2 text-xs text-amber-950 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100"
+        >
+          <p className="flex gap-1.5">
+            <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
+            <span>{t('typedWarn', { count: typedNights.length, total: picked.length, list: typedList })}</span>
+          </p>
+          <div className="flex flex-wrap gap-2 pl-5">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="border-amber-400 bg-transparent text-amber-900 hover:bg-amber-100 dark:border-amber-500/60 dark:text-amber-100 dark:hover:bg-amber-500/20"
+              disabled={resetPending}
+              onClick={resetTyped}
+            >
+              {resetPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : null}
+              {t('typedReset')}
+            </Button>
+            <Button type="button" size="sm" variant="ghost" onClick={() => setKeepTyped(true)}>
+              {t('typedKeep')}
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
       <div ref={sendRef} className="space-y-2 rounded-lg border border-border p-3">
         <h4 className="text-xs font-semibold">{t('sendTitle')}</h4>
         {sendBlock ? <p className="text-xs text-amber-700 dark:text-amber-400">{t(`block.${sendBlock}`)}</p> : null}
@@ -219,7 +274,11 @@ export function BasePricePanel({
         {preview ? (
           <div className="space-y-1.5 text-xs">
             <p className="font-medium">
-              {preview.changes.price > 0 ? t('previewChanges', { count: preview.changes.price }) : t('previewNothing')}
+              {preview.changes.price > 0
+                ? t('previewChanges', { count: preview.changes.price })
+                : typedNights.length > 0
+                  ? t('previewNothingTyped')
+                  : t('previewNothing')}
             </p>
             {preview.ranges.length > 0 ? (
               <ul className="space-y-0.5 tabular-nums">
@@ -238,6 +297,19 @@ export function BasePricePanel({
               </ul>
             ) : null}
             <SkippedLine skipped={preview.skipped} />
+            {typedNights.length > 0 ? (
+              <div className="space-y-1 rounded-md border border-amber-300/70 bg-amber-50 px-2 py-1.5 text-amber-950 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100">
+                <p>{t('typedInPreview', { count: typedNights.length, list: typedList })}</p>
+                <button
+                  type="button"
+                  className="text-left font-medium underline underline-offset-2 disabled:opacity-60"
+                  disabled={resetPending || running}
+                  onClick={resetTyped}
+                >
+                  {t('typedResetCheck')}
+                </button>
+              </div>
+            ) : null}
             {preview.tooMany ? <p className="text-amber-700 dark:text-amber-400">{t('tooMany')}</p> : null}
             {preview.changes.price > 0 && !preview.tooMany ? (
               <Button
