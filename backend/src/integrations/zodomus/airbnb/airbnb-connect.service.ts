@@ -156,6 +156,16 @@ export class AirbnbConnectService {
     return this.view(row);
   }
 
+  /** Token of the owner's active host — for the listing activation; refuses while the host is not active. */
+  async activeHostToken(user: JwtPayload): Promise<string> {
+    this.assertOn();
+    const row = await this.table(() => this.hosts.findOne({ where: { ownerId: user.sub } }));
+    if (!row || row.statusCode !== 5) {
+      throw new ServiceUnavailableException('Хозяин Airbnb не подключён: сначала «Подключить» и «Проверить статус»');
+    }
+    return row.token;
+  }
+
   /**
    * GET /airbnb-listings of the active host → only the pilot listing is returned; the others are counted.
    * Reads at most MAX_LISTING_PAGES pages and stops as soon as the pilot listing is found.

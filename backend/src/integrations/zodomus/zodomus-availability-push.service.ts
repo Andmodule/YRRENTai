@@ -17,6 +17,7 @@ import { BookingEntity } from '../../booking/entities/booking.entity';
 import { PropertyEntity } from '../../property/entities/property.entity';
 import { ZodomusService } from './zodomus.service';
 import { isZodomusPermanentMisconfiguration, zodomusErrorFingerprint } from './zodomus-status.util';
+import { AIRBNB_CHANNEL_ID } from './airbnb/airbnb-pilot.util';
 
 /** Statuses that do not block inventory on OTAs. */
 const NON_BLOCKING = new Set<string>([BOOKING_STATUS.CANCELLED, BOOKING_STATUS.DECLINED]);
@@ -409,6 +410,8 @@ export class ZodomusAvailabilityPushService implements OnModuleInit, OnModuleDes
       const ch = row.otaPlatform?.zodomusChannelId;
       const ext = row.externalListingId?.trim();
       if (ch == null || !ext) continue;
+      // Airbnb takes its calendar through POST /airbnb-calendar (src/airbnb), never the Booking-shaped calls.
+      if (ch === AIRBNB_CHANNEL_ID) continue;
       targets.push({
         channelId: ch,
         extProp: ext,
@@ -421,7 +424,7 @@ export class ZodomusAvailabilityPushService implements OnModuleInit, OnModuleDes
         property.otaPlatform?.zodomusChannelId ??
         this.config.get<number>('ZODOMUS_DEFAULT_CHANNEL_ID') ??
         1;
-      if (leg) {
+      if (leg && ch !== AIRBNB_CHANNEL_ID) {
         targets.push({
           channelId: ch,
           extProp: leg,
@@ -747,6 +750,18 @@ export class ZodomusAvailabilityPushService implements OnModuleInit, OnModuleDes
       );
     }
 
+    // The same nights go to Airbnb (src/airbnb) — its failure never fails the Booking push.
+    if (this.afterPushListener) {
+      try {
+        await this.afterPushListener(
+          propertyId,
+          days.map((d) => ({ date: d.key, free: d.availability > 0 })),
+        );
+      } catch (e) {
+        this.logger.warn(`Airbnb availability after push failed for ${propertyId}: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+
     return this.pushSummary({
       pushed: segmentsDispatched > 0,
       segmentCount: segments.length,
@@ -755,6 +770,14 @@ export class ZodomusAvailabilityPushService implements OnModuleInit, OnModuleDes
       nightsEvaluated: nightKeys.length,
       dispatchMode,
     });
+  }
+
+  private afterPushListener: ((propertyId: string, days: { date: string; free: boolean }[]) => Promise<void>) | null =
+    null;
+
+  /** Called with every night of each availability push (RentAI occupancy) — Airbnb registers here. */
+  setAfterPushListener(fn: (propertyId: string, days: { date: string; free: boolean }[]) => Promise<void>): void {
+    this.afterPushListener = fn;
   }
 
   private async markDirty(propertyId: string): Promise<void> {

@@ -65,6 +65,7 @@ import { AirbnbConnectController } from './airbnb/airbnb-connect.controller';
     ZodomusAvailabilityPushService,
     ZodomusRatesPushService,
     ZodomusMappingService,
+    AirbnbConnectService,
   ],
 })
 export class ZodomusModule {}

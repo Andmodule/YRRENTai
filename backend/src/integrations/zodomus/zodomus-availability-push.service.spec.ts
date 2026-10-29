@@ -273,7 +273,8 @@ describe('ZodomusAvailabilityPushService', () => {
       expect(freeSegs).toHaveLength(1);
     });
 
-    it('pushes one availability-multiple call per channel listing (Booking + Airbnb)', async () => {
+    // Airbnb (channel 3) takes its nights through POST /airbnb-calendar (src/airbnb), not this call.
+    it('pushes one availability-multiple call per Booking-shaped channel listing — Airbnb is left to src/airbnb', async () => {
       const property = makeProperty({
         zodomusPropertyId: undefined,
         otaPlatform: null,
@@ -299,12 +300,10 @@ describe('ZodomusAvailabilityPushService', () => {
 
       const summary = await service.pushAvailabilityNow(PROPERTY_ID);
 
-      expect(summary.targetCount).toBe(2);
-      expect(mockSetAvailabilityMultiple).toHaveBeenCalledTimes(2);
+      expect(summary.targetCount).toBe(1);
+      expect(mockSetAvailabilityMultiple).toHaveBeenCalledTimes(1);
       expect(mockSetAvailabilityMultiple.mock.calls[0]![0]).toBe(1);
       expect(mockSetAvailabilityMultiple.mock.calls[0]![1]).toBe('booking-listing');
-      expect(mockSetAvailabilityMultiple.mock.calls[1]![0]).toBe(3);
-      expect(mockSetAvailabilityMultiple.mock.calls[1]![1]).toBe('airbnb-listing');
 
       for (const call of mockSetAvailabilityMultiple.mock.calls) {
         const segs = call[2] as Array<{ availability: number }>;
@@ -477,5 +476,38 @@ describe('ZodomusAvailabilityPushService', () => {
       expect(segFrom >= dateFrom.toISOString().slice(0, 10)).toBe(true);
       expect(segTo <= dateTo.toISOString().slice(0, 10)).toBe(true);
     });
+  });
+});
+
+describe('ZodomusAvailabilityPushService — Airbnb channel', () => {
+  afterEach(() => jest.clearAllMocks());
+
+  const withAirbnbRow = () =>
+    makeProperty({
+      channelListings: [
+        { externalListingId: EXT_PROP, zodomusRoomId: ROOM_ID, otaPlatform: { zodomusChannelId: CHANNEL_ID } },
+        { externalListingId: '1017407411799040875', zodomusRoomId: '101740741179904087501', otaPlatform: { zodomusChannelId: 3 } },
+      ] as unknown as PropertyEntity['channelListings'],
+    });
+
+  it('never sends the Booking-shaped availability to the Airbnb row (channel 3)', async () => {
+    const { service, mockSetAvailabilityMultiple } = buildService({ property: withAirbnbRow() });
+    await service.pushAvailabilityNow(PROPERTY_ID);
+    expect(mockSetAvailabilityMultiple).toHaveBeenCalledTimes(1);
+    expect(mockSetAvailabilityMultiple.mock.calls[0]![0]).toBe(CHANNEL_ID);
+  });
+
+  it('hands every night of the push to the Airbnb listener; its failure does not fail the push', async () => {
+    const { service, mockSetAvailabilityMultiple } = buildService({ property: withAirbnbRow(), bookings: [makeBooking(5, 8)] });
+    const listener = jest.fn().mockRejectedValue(new Error('airbnb down'));
+    service.setAfterPushListener(listener);
+    const summary = await service.pushAvailabilityNow(PROPERTY_ID);
+    expect(summary.pushed).toBe(true);
+    expect(mockSetAvailabilityMultiple).toHaveBeenCalledTimes(1);
+    expect(listener).toHaveBeenCalledTimes(1);
+    const [pid, days] = listener.mock.calls[0] as [string, { date: string; free: boolean }[]];
+    expect(pid).toBe(PROPERTY_ID);
+    expect(days).toHaveLength(30);
+    expect(days.filter((d) => !d.free)).toHaveLength(3);
   });
 });

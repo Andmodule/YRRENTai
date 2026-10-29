@@ -121,3 +121,15 @@ export function parseListings(body: unknown): { listings: AirbnbListingView[]; n
   const cursor = (paging ? pick(paging, ['nextCursor']) : null) ?? pick(o, ['_cursor', 'next_cursor', 'nextCursor']);
   return { listings, nextCursor: cursor };
 }
+
+/**
+ * A POST through the generic «Zodomus API» page that would write to Airbnb: an `/airbnb-…` path (host
+ * activation / cancellation, listings, calendar…) or anything sent for channel 3 (property-activation,
+ * availability, rates). Those go only through src/airbnb, which checks the pilot listing.
+ */
+export function isAirbnbWrite(path: string, channelId: unknown, body: Record<string, unknown>): boolean {
+  const p = String(path ?? '').trim().toLowerCase().replace(/^\/+/, '');
+  if (p.startsWith('airbnb')) return true;
+  const isAirbnb = (v: unknown) => v === AIRBNB_CHANNEL_ID || (typeof v === 'string' && v.trim() === String(AIRBNB_CHANNEL_ID));
+  return isAirbnb(channelId) || isAirbnb(body.channelId);
+}

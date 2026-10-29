@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Body,
+  ForbiddenException,
   Controller,
   Get,
   Post,
@@ -22,6 +23,7 @@ import {
   ZODOMUS_API_REF_CATALOG,
 } from './zodomus-api-ref.constants';
 import type { PropertyEntity } from '../../property/entities/property.entity';
+import { isAirbnbWrite } from './airbnb/airbnb-pilot.util';
 
 /**
  * CRM (OWNER/MANAGER) explorer for Zodomus public API Reference + RentAI helpers.
@@ -127,6 +129,10 @@ export class ZodomusApiRefController {
       dto.body && typeof dto.body === 'object' && !Array.isArray(dto.body)
         ? { ...(dto.body as Record<string, unknown>) }
         : {};
+    // Airbnb is written only by «Подключение Airbnb» (pilot listing only): never from this page.
+    if (isAirbnbWrite(dto.path, channelId, body)) {
+      throw new ForbiddenException('Запись в Airbnb с этой страницы запрещена — только через «Подключение Airbnb» (пилот)');
+    }
     if (entry.scope === 'property' && channelId != null && externalListingId) {
       if (body.channelId === undefined) body.channelId = channelId;
       if (body.propertyId === undefined) body.propertyId = externalListingId;

@@ -25,6 +25,7 @@ import {
   extractCurrencyFromZodomusPayload,
   resolveOtaChannelCurrency,
 } from './zodomus-reservation-price.util';
+import { AIRBNB_CHANNEL_ID } from './airbnb/airbnb-pilot.util';
 
 export type PushRatesSegmentResult = RatesDateRange & {
   ok: boolean;
@@ -293,6 +294,8 @@ export class ZodomusRatesPushService {
       const ch = row.otaPlatform?.zodomusChannelId;
       const ext = row.externalListingId?.trim();
       if (ch == null || !ext) continue;
+      // Airbnb takes its calendar through POST /airbnb-calendar (src/airbnb), never the Booking-shaped calls.
+      if (ch === AIRBNB_CHANNEL_ID) continue;
       targets.push({
         channelId: ch,
         extProp: ext,
@@ -302,7 +305,7 @@ export class ZodomusRatesPushService {
     if (targets.length === 0) {
       const leg = property.zodomusPropertyId?.trim();
       const ch = property.otaPlatform?.zodomusChannelId;
-      if (leg && ch != null) {
+      if (leg && ch != null && ch !== AIRBNB_CHANNEL_ID) {
         targets.push({
           channelId: ch,
           extProp: leg,

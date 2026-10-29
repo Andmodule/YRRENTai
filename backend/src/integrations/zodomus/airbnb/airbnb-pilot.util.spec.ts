@@ -4,6 +4,7 @@ import {
   airbnbAuthUrl,
   assertAirbnbPilotListing,
   isAirbnbPilotListing,
+  isAirbnbWrite,
   normalizeListingId,
   parseHostActivation,
   parseHostStatus,
@@ -111,5 +112,22 @@ describe('parseListings', () => {
   it('skips items without an id and copes with no list at all', () => {
     expect(parseListings({ response: { listings: [{ name: 'no id' }, null, 3] } }).listings).toEqual([]);
     expect(parseListings(null)).toEqual({ listings: [], nextCursor: null });
+  });
+});
+
+describe('isAirbnbWrite — the generic «Zodomus API» page never writes to Airbnb', () => {
+  it('any /airbnb-… path, with or without a slash, any case', () => {
+    for (const p of ['/airbnb-host-cancellation', 'airbnb-calendar', '/AIRBNB-listings', '//airbnb-host-activation']) {
+      expect(isAirbnbWrite(p, undefined, {})).toBe(true);
+    }
+  });
+  it('any call for channel 3, in the request or in the body (number or string)', () => {
+    expect(isAirbnbWrite('/property-activation', 3, {})).toBe(true);
+    expect(isAirbnbWrite('/property-activation', undefined, { channelId: 3 })).toBe(true);
+    expect(isAirbnbWrite('/availability', 1, { channelId: '3' })).toBe(true);
+  });
+  it('Booking calls pass', () => {
+    expect(isAirbnbWrite('/property-activation', 1, { channelId: 1 })).toBe(false);
+    expect(isAirbnbWrite('/rates', undefined, {})).toBe(false);
   });
 });
