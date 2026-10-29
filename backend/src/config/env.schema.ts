@@ -196,6 +196,16 @@ const zodomusEnvFields = z.object({
   /** IANA time zone of that hour. Default Europe/Warsaw; empty or unknown also falls back to it (never stops the boot). */
   ZODOMUS_PROMOTIONS_AUTOPRICE_TZ: z.string().optional(),
   /**
+   * Airbnb through Zodomus (channel 3): connect the owner's Airbnb host (POST /airbnb-host-activation → the
+   * host allows on airbnb.com → host-status), read its listings. Writes to Airbnb only for the pilot listing
+   * hard-coded in airbnb-pilot.util.ts. Off by default: API answers 503 and the table is never read. Needs
+   * ZODOMUS_ENABLED=true and the migration 1778900000000-zodomus-airbnb-hosts.
+   */
+  ZODOMUS_AIRBNB_ENABLED: z
+    .enum(['true', 'false', '1', '0', 'yes', 'no'])
+    .default('false')
+    .transform((v) => v === 'true' || v === '1' || v === 'yes'),
+  /**
    * «Открыть / закрыть даты на Booking» in the calendar: opens (or closes) nights on the main Booking rate
    * with POST /rates `closed`, at the price the person gives. Off by default: API answers 503, UI hidden.
    */
