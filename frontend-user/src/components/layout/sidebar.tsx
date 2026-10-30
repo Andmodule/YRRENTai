@@ -21,8 +21,10 @@ import {
   Workflow,
   BookOpen,
   Tag,
+  House,
 } from 'lucide-react';
 import { usePricingAccess } from '@/modules/pricing/hooks';
+import { useAirbnbAccess } from '@/modules/airbnb/hooks';
 import { useOpenIncidentsCount } from '@/modules/incidents/hooks/useIncidents';
 import { useChatNeedsHumanPending } from '@/hooks/use-conversations';
 import { useCallsNavBadge } from '@/hooks/use-calls-admin';
@@ -43,6 +45,8 @@ const navItems = [
   /** Shown only when the backend has «Цены» switched on (ZODOMUS_PROMOTIONS_ENABLED). */
   { href: '/dashboard/pricing',   icon: Tag,             key: 'pricing',       roles: ['OWNER', 'MANAGER'] as const },
   { href: '/integrations/zodomus', icon: BookOpen,       key: 'zodomusApi',    roles: null },
+  /** Shown only to the owner while the backend has Airbnb switched on (ZODOMUS_AIRBNB_ENABLED). */
+  { href: '/integrations/airbnb', icon: House,          key: 'airbnb',        roles: ['OWNER'] as const },
   { href: '/automations',         icon: Workflow,        key: 'automations',   roles: null },
   { href: '/chat',                icon: MessageSquare,   key: 'chat',          roles: null },
   { href: '/dashboard/calls',     icon: Phone,           key: 'calls',         roles: ['OWNER', 'MANAGER'] as const },
@@ -60,6 +64,7 @@ const NAV_LIMITED_ALLOWED_KEYS = new Set<string>([
   'calendar',
   'pricing',
   'zodomusApi',
+  'airbnb',
   'automations',
   'chat',
 ]);
@@ -80,6 +85,7 @@ export function Sidebar() {
   const isCallsAdmin = user?.role === 'OWNER' || user?.role === 'MANAGER';
   const callsBadge = useCallsNavBadge(isCallsAdmin);
   const pricingAccess = usePricingAccess();
+  const airbnbAccess = useAirbnbAccess();
 
   async function handleLogout() {
     try {
@@ -193,6 +199,7 @@ export function Sidebar() {
               // Role-gated items: hide entirely if user doesn't have the role
               if (roles !== null && user && !(roles as readonly string[]).includes(user.role)) return null;
               if (key === 'pricing' && !pricingAccess.enabled) return null;
+              if (key === 'airbnb' && !airbnbAccess.enabled) return null;
 
               const itemDisabled = navLimitedMode && !NAV_LIMITED_ALLOWED_KEYS.has(key);
               const isActive =

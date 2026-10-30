@@ -558,7 +558,8 @@
     "signOut": "Salir",
     "collapseSidebar": "Contraer barra lateral",
     "expandSidebar": "Expandir barra lateral",
-    "zodomusApi": "Zodomus API"
+    "zodomusApi": "Zodomus API",
+    "airbnb": "Airbnb"
   },
   "automations": {
     "nav": {
