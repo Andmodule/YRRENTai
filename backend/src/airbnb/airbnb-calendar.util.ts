@@ -125,16 +125,17 @@ export function closedTail(planEnd: string, days: number): AirbnbCalendarOperati
 }
 
 /**
- * Availability only (after a booking, a cancellation, a block): a free night opens again only inside the
- * last full send (`< planEnd`) and where it had a price — `noPrice` holds the nights it left unavailable for
- * want of one. Nights from `planEnd` on are not sent (the full send closed them).
+ * Availability only (after a booking, a cancellation, a block). An occupied night is always closed — even
+ * past the last full send or after a failed one. A free night opens again only inside the last full send
+ * (`< planEnd`) and where it had a price (`noPrice` holds the nights it left without one); otherwise it is
+ * sent unavailable too.
  */
 export function availabilityOperations(
   days: readonly { date: string; free: boolean }[],
   noPrice: ReadonlySet<string>,
   planEnd: string | null,
 ): AirbnbCalendarOperation[] {
-  const sorted = [...days].filter((d) => planEnd != null && d.date < planEnd).sort((a, b) => a.date.localeCompare(b.date));
+  const sorted = [...days].sort((a, b) => a.date.localeCompare(b.date));
   const out: AirbnbCalendarOperation[] = [];
   let from: string | null = null;
   let to: string | null = null;
@@ -143,7 +144,7 @@ export function availabilityOperations(
     if (from && to) out.push({ dates: [`${from}:${to}`], availability: open ? 'available' : 'unavailable' });
   };
   for (const d of sorted) {
-    const o = d.free && !noPrice.has(d.date);
+    const o = d.free && planEnd != null && d.date < planEnd && !noPrice.has(d.date);
     if (from && to && o === open && addDaysYmd(to, 1) === d.date) {
       to = d.date;
       continue;

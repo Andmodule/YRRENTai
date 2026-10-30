@@ -154,6 +154,15 @@ export function assertAirbnbPostAllowed(path: string, body: unknown): void {
   }
   if (p === 'airbnb-host-activation') return;
   assertAirbnbPilotListing(b.propertyId);
+  // Activating again (a generic «bind mapping» or admin call: no host token, Booking's price model) would
+  // reset the listing's prices and availability on Airbnb: only RentAI's own Airbnb activation goes.
+  if (p === 'property-activation') {
+    const token = b.token;
+    const hasToken = (typeof token === 'string' && token.trim() !== '') || (typeof token === 'number' && Number.isFinite(token));
+    if (!hasToken || String(b.priceModelId) !== '4') {
+      throw new ForbiddenException('Airbnb: подключение объявления — только через «Подключение Airbnb» (токен хозяина, priceModelId 4)');
+    }
+  }
 }
 
 /**

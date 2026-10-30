@@ -127,19 +127,20 @@ describe('availabilityOperations — after a booking / cancellation', () => {
     { date: '2026-11-14', free: true },
     { date: '2026-11-15', free: true },
   ];
-  it('occupied nights close; free nights reopen except no-price ones; nothing from planEnd on is sent', () => {
+  it('occupied nights close; free nights reopen only before planEnd and with a price', () => {
     const ops = availabilityOperations(days, new Set(['2026-11-14']), '2026-11-15');
     expect(ops).toEqual([
       { dates: ['2026-11-10:2026-11-10'], availability: 'available' },
       { dates: ['2026-11-11:2026-11-12'], availability: 'unavailable' },
       { dates: ['2026-11-13:2026-11-13'], availability: 'available' },
-      { dates: ['2026-11-14:2026-11-14'], availability: 'unavailable' },
+      { dates: ['2026-11-14:2026-11-15'], availability: 'unavailable' },
     ]);
     expect(ops.every((o) => !('dailyPrice' in o))).toBe(true);
   });
-  it('without a full send (planEnd null) or with planEnd today nothing is sent', () => {
-    expect(availabilityOperations(days, new Set(), null)).toEqual([]);
-    expect(availabilityOperations(days, new Set(), '2026-11-10')).toEqual([]);
+  it('after a failed send (planEnd = today) or with no send at all, bookings still close and nothing opens', () => {
+    const closedOnly = [{ dates: ['2026-11-10:2026-11-15'], availability: 'unavailable' }];
+    expect(availabilityOperations(days, new Set(), null)).toEqual(closedOnly);
+    expect(availabilityOperations(days, new Set(), '2026-11-10')).toEqual(closedOnly);
   });
   it('empty → none', () => {
     expect(availabilityOperations([], new Set(), '2027-01-01')).toEqual([]);

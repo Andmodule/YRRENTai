@@ -75,7 +75,8 @@ export class ZodomusWebhookController implements OnModuleInit {
     const propertyId =
       channelId === AIRBNB_CHANNEL_ID ? airbnbWebhookListingId(body.propertyId) : String(body.propertyId ?? '').trim();
     const reservationId = String(body.reservationId ?? '').trim();
-    const reservationStatus = Number(body.reservationStatus ?? 1);
+    // Airbnb docs spell it `reservationstatus`.
+    const reservationStatus = Number(body.reservationStatus ?? (body as { reservationstatus?: number | string }).reservationstatus ?? 1);
 
     // Field-validation failures: return 200 so Zodomus doesn't retry bad payloads indefinitely.
     if (!propertyId || !reservationId || !Number.isFinite(channelId)) {

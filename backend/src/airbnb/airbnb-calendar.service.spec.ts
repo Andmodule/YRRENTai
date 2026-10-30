@@ -254,7 +254,7 @@ describe('AirbnbCalendarService — connect', () => {
 });
 
 describe('AirbnbCalendarService — after an availability push', () => {
-  it('closes booked nights and reopens free ones (except no-price ones, and nothing past planEnd)', async () => {
+  it('closes booked nights and reopens free ones (except no-price ones and past planEnd, which stay closed)', async () => {
     const s = setup({ listing: { activatedAt: new Date(), noPriceNights: ['2026-11-14'], planEnd: '2026-11-16' } });
     await s.listener()(PID, [
       { date: '2026-11-13', free: true },
@@ -268,7 +268,7 @@ describe('AirbnbCalendarService — after an availability push', () => {
       propertyId: PILOT,
       operations: [
         { dates: ['2026-11-13:2026-11-13'], availability: 'available' },
-        { dates: ['2026-11-14:2026-11-15'], availability: 'unavailable' },
+        { dates: ['2026-11-14:2026-11-16'], availability: 'unavailable' },
       ],
     });
     expect(s.listing()!.lastSync).toMatchObject({ kind: 'availability', sentCalls: 1, failedCalls: 0 });

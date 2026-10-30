@@ -156,6 +156,13 @@ describe('assertAirbnbPostAllowed — the last guard in ZodomusClient.post', () 
       expect(() => assertAirbnbPostAllowed('/airbnb-calendar', b)).toThrow(ForbiddenException);
     }
   });
+  it('refuses re-activating the pilot without the host token or with another price model (bind-mapping, admin)', () => {
+    expect(() => assertAirbnbPostAllowed('/property-activation', { channelId: 3, propertyId: PILOT, priceModelId: 1 })).toThrow(ForbiddenException);
+    expect(() => assertAirbnbPostAllowed('/property-activation', { channelId: 3, propertyId: PILOT, priceModelId: 4 })).toThrow(ForbiddenException);
+    expect(() => assertAirbnbPostAllowed('/property-activation', { channelId: 3, propertyId: PILOT, priceModelId: 4, token: ' ' })).toThrow(ForbiddenException);
+    expect(() => assertAirbnbPostAllowed('/property-activation', { channelId: 3, propertyId: PILOT, priceModelId: 1, token: 5 })).toThrow(ForbiddenException);
+    expect(() => assertAirbnbPostAllowed('/property-activation', { channelId: 3, propertyId: PILOT, priceModelId: '4', token: '98' })).not.toThrow();
+  });
   it('refuses every other Airbnb write, even for the pilot: cancellation, host cancellation, availability, rates, test booking, listing create/delete', () => {
     for (const p of ['/property-cancellation', '/availability', '/availability-multiple', '/rates', '/reservations-createtest', '/property-check', '/rooms-activation']) {
       expect(() => assertAirbnbPostAllowed(p, { channelId: 3, propertyId: PILOT })).toThrow(ForbiddenException);

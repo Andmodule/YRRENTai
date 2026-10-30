@@ -43,7 +43,7 @@ import {
 /** Nights sent to Airbnb from today on — the same as the Booking availability push (ZODOMUS_AVAILABILITY_HORIZON_DAYS). */
 const HORIZON_DAYS = 366;
 /** After the horizon, this many days are sent unavailable: RentAI does not guard them yet. */
-const TAIL_DAYS = 730;
+const TAIL_DAYS = 365;
 /** Operations per POST /airbnb-calendar. */
 const OPS_PER_CALL = 50;
 /** A check older than this must be done again before connecting or sending. */
@@ -276,7 +276,7 @@ export class AirbnbCalendarService implements OnModuleInit {
     for (const p of rows) {
       if (!p.stayFrom || !p.stayTo) continue;
       const target = (p.externalMeta as { targetChannel?: unknown } | null)?.targetChannel;
-      if (target != null && target !== 'public') continue;
+      if (target != null && String(target).toLowerCase() !== 'public') continue;
       const on = p.targets?.some((t) => t.propertyId === propertyId && t.desiredState === 'on' && t.state === 'on');
       if (!on) continue;
       out.push({ pct: Number(p.discountPct), from: p.stayFrom, to: p.stayTo, weekdays: p.activeWeekdays ?? null });
@@ -364,7 +364,7 @@ export class AirbnbCalendarService implements OnModuleInit {
             this.listings.create({ propertyId: property.id, listingId, activatedAt: new Date(), noPriceNights: plan.noPriceNights, planEnd: null }),
           ),
         );
-        const calendarError = await this.sendPlan(property.id, listingId, plan, job);
+        // The channel row right away: an Airbnb booking arriving during the calendar send finds its property.
         let rowError: string | null = null;
         if (!ownRow) {
           try {
@@ -381,6 +381,7 @@ export class AirbnbCalendarService implements OnModuleInit {
             rowError = `Строка Airbnb в карточке объекта не сохранилась — брони Airbnb не найдут объект: ${e instanceof Error ? e.message : String(e)}`;
           }
         }
+        const calendarError = await this.sendPlan(property.id, listingId, plan, job);
         const problems = [calendarError, rowError].filter(Boolean);
         if (problems.length > 0) throw new Error(problems.join(' · '));
       }),
