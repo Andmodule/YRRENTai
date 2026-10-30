@@ -11,6 +11,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { ApiTags } from '@nestjs/swagger';
 import { ZodomusSyncService } from './zodomus-sync.service';
+import { AIRBNB_CHANNEL_ID, airbnbWebhookListingId } from './airbnb/airbnb-pilot.util';
 
 interface ZodomusWebhookBody {
   /** Zodomus sends the key in either `webhookKey` or `token` depending on API type. */
@@ -70,7 +71,9 @@ export class ZodomusWebhookController implements OnModuleInit {
     }
 
     const channelId = Number(body.channelId ?? 1);
-    const propertyId = String(body.propertyId ?? '').trim();
+    // Airbnb listing ids are 64-bit: a JSON number comes rounded — matched back to the pilot listing.
+    const propertyId =
+      channelId === AIRBNB_CHANNEL_ID ? airbnbWebhookListingId(body.propertyId) : String(body.propertyId ?? '').trim();
     const reservationId = String(body.reservationId ?? '').trim();
     const reservationStatus = Number(body.reservationStatus ?? 1);
 

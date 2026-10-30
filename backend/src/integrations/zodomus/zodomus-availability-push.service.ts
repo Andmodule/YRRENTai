@@ -682,6 +682,16 @@ export class ZodomusAvailabilityPushService implements OnModuleInit, OnModuleDes
 
     const segments = this.mergeSegments(days, tz);
 
+    // The same nights go to Airbnb (src/airbnb) — not awaited, before Booking: a slow or failing Booking call
+    // must not hold back or drop the Airbnb update, and Airbnb's own pace (≥ 1 s per call) must not hold this
+    // push (and its per-property lock) either.
+    if (this.afterPushListener) {
+      const listener = this.afterPushListener;
+      void Promise.resolve()
+        .then(() => listener(propertyId, days.map((d) => ({ date: d.key, free: d.availability > 0 }))))
+        .catch((e) => this.logger.warn(`Airbnb availability after push failed for ${propertyId}: ${e instanceof Error ? e.message : String(e)}`));
+    }
+
     let segmentsDispatched = 0;
     for (const t of targets) {
       const roomId = await this.resolveRoomIdForTarget(property, t);
@@ -748,18 +758,6 @@ export class ZodomusAvailabilityPushService implements OnModuleInit, OnModuleDes
       this.logger.log(
         `Zodomus availability: property ${propertyId} channel ${t.channelId} — ${segments.length} segment(s) in 1 API call (availability-multiple).`,
       );
-    }
-
-    // The same nights go to Airbnb (src/airbnb) — its failure never fails the Booking push.
-    if (this.afterPushListener) {
-      try {
-        await this.afterPushListener(
-          propertyId,
-          days.map((d) => ({ date: d.key, free: d.availability > 0 })),
-        );
-      } catch (e) {
-        this.logger.warn(`Airbnb availability after push failed for ${propertyId}: ${e instanceof Error ? e.message : String(e)}`);
-      }
     }
 
     return this.pushSummary({

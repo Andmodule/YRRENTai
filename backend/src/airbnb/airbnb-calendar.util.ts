@@ -80,13 +80,18 @@ export function airbnbNights(
   });
 }
 
+function forSale(n: AirbnbNight): boolean {
+  return !n.occupied && n.price != null;
+}
+
 function opKey(n: AirbnbNight): string {
-  return n.occupied || n.price == null ? 'x' : `a:${n.price}`;
+  return `${forSale(n) ? 'a' : 'x'}:${n.price ?? '-'}`;
 }
 
 /**
- * Consecutive nights with the same state → one operation `"from:to"` (both ends included, as in the Zodomus
- * docs). For sale = free in RentAI and priced; anything else is sent unavailable (with no price).
+ * Consecutive nights with the same state and price → one operation `"from:to"` (both ends included, as in
+ * the Zodomus docs). For sale = free in RentAI and priced. The price goes with every night that has one —
+ * an occupied night too, so that when it frees up Airbnb already holds the Booking price, not the listing's.
  */
 export function calendarOperations(nights: readonly AirbnbNight[]): AirbnbCalendarOperation[] {
   const sorted = [...nights].sort((a, b) => a.date.localeCompare(b.date));
@@ -95,11 +100,10 @@ export function calendarOperations(nights: readonly AirbnbNight[]): AirbnbCalend
   let last: AirbnbNight | null = null;
   const flush = () => {
     if (!start || !last) return;
-    const forSale = opKey(start) !== 'x';
     out.push({
       dates: [`${start.date}:${last.date}`],
-      availability: forSale ? 'available' : 'unavailable',
-      ...(forSale ? { dailyPrice: start.price! } : {}),
+      availability: forSale(start) ? 'available' : 'unavailable',
+      ...(start.price != null ? { dailyPrice: start.price } : {}),
     });
   };
   for (const n of sorted) {
@@ -115,15 +119,22 @@ export function calendarOperations(nights: readonly AirbnbNight[]): AirbnbCalend
   return out;
 }
 
+/** Everything from `planEnd` for `days` days unavailable: RentAI does not guard those nights yet. */
+export function closedTail(planEnd: string, days: number): AirbnbCalendarOperation {
+  return { dates: [`${planEnd}:${addDaysYmd(planEnd, days - 1)}`], availability: 'unavailable' };
+}
+
 /**
- * Availability only (after a booking, a cancellation, a block): free nights open again only where the last
- * full send had a price — `noPrice` holds the nights it sent unavailable for want of one.
+ * Availability only (after a booking, a cancellation, a block): a free night opens again only inside the
+ * last full send (`< planEnd`) and where it had a price — `noPrice` holds the nights it left unavailable for
+ * want of one. Nights from `planEnd` on are not sent (the full send closed them).
  */
 export function availabilityOperations(
   days: readonly { date: string; free: boolean }[],
   noPrice: ReadonlySet<string>,
+  planEnd: string | null,
 ): AirbnbCalendarOperation[] {
-  const sorted = [...days].sort((a, b) => a.date.localeCompare(b.date));
+  const sorted = [...days].filter((d) => planEnd != null && d.date < planEnd).sort((a, b) => a.date.localeCompare(b.date));
   const out: AirbnbCalendarOperation[] = [];
   let from: string | null = null;
   let to: string | null = null;

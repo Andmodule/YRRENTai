@@ -22,6 +22,10 @@ export class ZodomusAirbnbListingEntity {
   @Column({ type: 'jsonb', default: () => "'[]'::jsonb" })
   noPriceNights!: string[];
 
+  /** Exclusive end of the last full send: later nights were sent unavailable and are not reopened. */
+  @Column({ type: 'date', nullable: true })
+  planEnd!: string | null;
+
   @Column({ type: 'timestamptz', nullable: true })
   lastSyncAt!: Date | null;
 

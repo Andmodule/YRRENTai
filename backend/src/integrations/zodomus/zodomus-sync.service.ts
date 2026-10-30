@@ -48,6 +48,7 @@ import {
 import { buildRateNameMapFromRoomRates, pickPrimaryRateId } from './zodomus-room-rates.util';
 import { overlayAvailabilityWindows, overlayReadStart } from './zodomus-overlay-windows.util';
 import { todayInTz } from '../../pricing/pricing-math.util';
+import { AIRBNB_CHANNEL_ID } from './airbnb/airbnb-pilot.util';
 
 /** Zodomus queue status codes per official docs (inbound only — see ZODOMUS_BOOKING_FLOW). */
 const QUEUE_STATUS = {
@@ -275,6 +276,9 @@ export class ZodomusSyncService {
     channelId: number,
     extId: string,
   ): Promise<{ status: string; detail: string | null }> {
+    // One status per property, and it is Booking's: an Airbnb check must not overwrite it (and POST
+    // /property-check for Airbnb is refused by the client anyway).
+    if (channelId === AIRBNB_CHANNEL_ID) return { status: 'active', detail: null };
     try {
       const existing = await this.propertyService.findByIdForAdmin(propertyId);
       const checkedAt = existing.zodomusStatusCheckedAt?.getTime() ?? 0;
@@ -749,6 +753,9 @@ export class ZodomusSyncService {
     for (const row of property.channelListings ?? []) {
       const ch = row.otaPlatform?.zodomusChannelId;
       if (typeof ch !== 'number' || !Number.isFinite(ch)) continue;
+      // Airbnb (channel 3) is not read for direct bookings, the calendar overlay or the stay check: its
+      // calendar is what RentAI sent there (src/airbnb); its bookings come by webhook and the channel cron.
+      if (ch === AIRBNB_CHANNEL_ID) continue;
       if (this.propertyService.getExternalListingIdForZodomusChannel(property, ch)) {
         ids.add(ch);
       }

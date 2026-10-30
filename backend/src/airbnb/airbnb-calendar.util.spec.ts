@@ -5,6 +5,7 @@ import {
   basicPctOn,
   calendarOperations,
   chunk,
+  closedTail,
   operationsFingerprint,
   weekdayOfYmd,
   type BasicDeal,
@@ -66,7 +67,7 @@ describe('airbnbNights', () => {
 });
 
 describe('calendarOperations', () => {
-  it('merges consecutive nights with the same price; occupied and unpriced nights go unavailable without price', () => {
+  it('merges consecutive nights with the same state and price; the price goes with unavailable nights too', () => {
     const ops = calendarOperations([
       { date: '2026-11-12', price: null, occupied: false },
       { date: '2026-11-10', price: 400, occupied: false },
@@ -76,8 +77,20 @@ describe('calendarOperations', () => {
     ]);
     expect(ops).toEqual([
       { dates: ['2026-11-10:2026-11-11'], availability: 'available', dailyPrice: 400 },
-      { dates: ['2026-11-12:2026-11-13'], availability: 'unavailable' },
+      { dates: ['2026-11-12:2026-11-12'], availability: 'unavailable' },
+      { dates: ['2026-11-13:2026-11-13'], availability: 'unavailable', dailyPrice: 400 },
       { dates: ['2026-11-14:2026-11-14'], availability: 'available', dailyPrice: 300 },
+    ]);
+  });
+  it('an occupied run with different prices keeps each price', () => {
+    expect(
+      calendarOperations([
+        { date: '2026-11-10', price: 400, occupied: true },
+        { date: '2026-11-11', price: 350, occupied: true },
+      ]),
+    ).toEqual([
+      { dates: ['2026-11-10:2026-11-10'], availability: 'unavailable', dailyPrice: 400 },
+      { dates: ['2026-11-11:2026-11-11'], availability: 'unavailable', dailyPrice: 350 },
     ]);
   });
   it('a gap in dates starts a new operation; empty input → none', () => {
@@ -98,18 +111,24 @@ describe('calendarOperations', () => {
   });
 });
 
+describe('closedTail', () => {
+  it('closes N days from the plan end, both ends included', () => {
+    expect(closedTail('2027-10-30', 730)).toEqual({ dates: ['2027-10-30:2029-10-28'], availability: 'unavailable' });
+    expect(closedTail('2026-11-10', 1)).toEqual({ dates: ['2026-11-10:2026-11-10'], availability: 'unavailable' });
+  });
+});
+
 describe('availabilityOperations — after a booking / cancellation', () => {
-  it('occupied nights close; free nights reopen except those the last full send had no price for', () => {
-    const ops = availabilityOperations(
-      [
-        { date: '2026-11-10', free: true },
-        { date: '2026-11-11', free: false },
-        { date: '2026-11-12', free: false },
-        { date: '2026-11-13', free: true },
-        { date: '2026-11-14', free: true },
-      ],
-      new Set(['2026-11-14']),
-    );
+  const days = [
+    { date: '2026-11-10', free: true },
+    { date: '2026-11-11', free: false },
+    { date: '2026-11-12', free: false },
+    { date: '2026-11-13', free: true },
+    { date: '2026-11-14', free: true },
+    { date: '2026-11-15', free: true },
+  ];
+  it('occupied nights close; free nights reopen except no-price ones; nothing from planEnd on is sent', () => {
+    const ops = availabilityOperations(days, new Set(['2026-11-14']), '2026-11-15');
     expect(ops).toEqual([
       { dates: ['2026-11-10:2026-11-10'], availability: 'available' },
       { dates: ['2026-11-11:2026-11-12'], availability: 'unavailable' },
@@ -118,8 +137,12 @@ describe('availabilityOperations — after a booking / cancellation', () => {
     ]);
     expect(ops.every((o) => !('dailyPrice' in o))).toBe(true);
   });
+  it('without a full send (planEnd null) or with planEnd today nothing is sent', () => {
+    expect(availabilityOperations(days, new Set(), null)).toEqual([]);
+    expect(availabilityOperations(days, new Set(), '2026-11-10')).toEqual([]);
+  });
   it('empty → none', () => {
-    expect(availabilityOperations([], new Set())).toEqual([]);
+    expect(availabilityOperations([], new Set(), '2027-01-01')).toEqual([]);
   });
 });
 

@@ -133,3 +133,38 @@ export function isAirbnbWrite(path: string, channelId: unknown, body: Record<str
   const isAirbnb = (v: unknown) => v === AIRBNB_CHANNEL_ID || (typeof v === 'string' && v.trim() === String(AIRBNB_CHANNEL_ID));
   return isAirbnb(channelId) || isAirbnb(body.channelId);
 }
+
+/** POST paths RentAI may send for Airbnb at all; everything else for Airbnb is refused in the client. */
+const AIRBNB_POST_PATHS = new Set(['airbnb-host-activation', 'property-activation', 'airbnb-calendar']);
+
+/**
+ * The last guard, in ZodomusClient.post — before anything leaves RentAI: a POST that concerns Airbnb (an
+ * `/airbnb-…` path or `channelId` 3 in the body) must be one of AIRBNB_POST_PATHS and, except the host
+ * activation (empty body), carry the pilot listing as `propertyId`. Booking calls pass untouched.
+ */
+export function assertAirbnbPostAllowed(path: string, body: unknown): void {
+  const p = String(path ?? '').trim().toLowerCase().replace(/^\/+/, '').split('?')[0]!;
+  const b = body && typeof body === 'object' && !Array.isArray(body) ? (body as Record<string, unknown>) : {};
+  const ch = b.channelId;
+  const forAirbnb =
+    p.startsWith('airbnb') || ch === AIRBNB_CHANNEL_ID || (typeof ch === 'string' && ch.trim() === String(AIRBNB_CHANNEL_ID));
+  if (!forAirbnb) return;
+  if (!AIRBNB_POST_PATHS.has(p)) {
+    throw new ForbiddenException(`Airbnb: POST /${p} RentAI не отправляет`);
+  }
+  if (p === 'airbnb-host-activation') return;
+  assertAirbnbPilotListing(b.propertyId);
+}
+
+/**
+ * The listing id of an Airbnb webhook body. The body is already parsed: a 64-bit id sent as a JSON number
+ * arrives rounded (1017407411799040875 → 1017407411799040900), so an unsafe number is matched back to the
+ * pilot listing it rounds to; otherwise it is kept as sent.
+ */
+export function airbnbWebhookListingId(raw: unknown): string {
+  if (typeof raw === 'number' && Number.isFinite(raw) && !Number.isSafeInteger(raw)) {
+    const hit = AIRBNB_PILOT_LISTING_IDS.find((id) => Number(id) === raw);
+    if (hit) return hit;
+  }
+  return normalizeListingId(raw);
+}

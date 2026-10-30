@@ -30,6 +30,7 @@ export class ZodomusAirbnbHosts1778900000000 implements MigrationInterface {
         "listingId" varchar(128) NOT NULL,
         "activatedAt" TIMESTAMP WITH TIME ZONE,
         "noPriceNights" jsonb NOT NULL DEFAULT '[]'::jsonb,
+        "planEnd" date,
         "lastSyncAt" TIMESTAMP WITH TIME ZONE,
         "lastSync" jsonb,
         "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),

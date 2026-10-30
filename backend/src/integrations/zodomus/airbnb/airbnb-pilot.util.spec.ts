@@ -2,6 +2,8 @@ import { ForbiddenException } from '@nestjs/common';
 import {
   AIRBNB_PILOT_LISTING_IDS,
   airbnbAuthUrl,
+  airbnbWebhookListingId,
+  assertAirbnbPostAllowed,
   assertAirbnbPilotListing,
   isAirbnbPilotListing,
   isAirbnbWrite,
@@ -129,5 +131,51 @@ describe('isAirbnbWrite — the generic «Zodomus API» page never writes to Air
   it('Booking calls pass', () => {
     expect(isAirbnbWrite('/property-activation', 1, { channelId: 1 })).toBe(false);
     expect(isAirbnbWrite('/rates', undefined, {})).toBe(false);
+  });
+});
+
+describe('assertAirbnbPostAllowed — the last guard in ZodomusClient.post', () => {
+  it('Booking calls pass untouched', () => {
+    for (const [p, b] of [
+      ['/rates', { channelId: 1, propertyId: '11021398' }],
+      ['/property-cancellation', { channelId: 1, propertyId: '11021398' }],
+      ['/availability-multiple', { channelId: '1' }],
+      ['/promotions/activate?x=1', {}],
+    ] as [string, unknown][]) {
+      expect(() => assertAirbnbPostAllowed(p, b)).not.toThrow();
+    }
+  });
+  it('allows host activation (empty body), and activation / calendar of the pilot listing', () => {
+    expect(() => assertAirbnbPostAllowed('/airbnb-host-activation', {})).not.toThrow();
+    expect(() => assertAirbnbPostAllowed('/property-activation', { channelId: 3, propertyId: PILOT, priceModelId: 4, token: 1 })).not.toThrow();
+    expect(() => assertAirbnbPostAllowed('airbnb-calendar', { channelId: 3, propertyId: PILOT, operations: [] })).not.toThrow();
+  });
+  it('refuses the same calls for any other listing, or with no listing', () => {
+    for (const b of [{ channelId: 3, propertyId: '1017407411799040876' }, { channelId: '3', propertyId: '123' }, { channelId: 3 }]) {
+      expect(() => assertAirbnbPostAllowed('/property-activation', b)).toThrow(ForbiddenException);
+      expect(() => assertAirbnbPostAllowed('/airbnb-calendar', b)).toThrow(ForbiddenException);
+    }
+  });
+  it('refuses every other Airbnb write, even for the pilot: cancellation, host cancellation, availability, rates, test booking, listing create/delete', () => {
+    for (const p of ['/property-cancellation', '/availability', '/availability-multiple', '/rates', '/reservations-createtest', '/property-check', '/rooms-activation']) {
+      expect(() => assertAirbnbPostAllowed(p, { channelId: 3, propertyId: PILOT })).toThrow(ForbiddenException);
+    }
+    for (const p of ['/airbnb-host-cancellation', '/airbnb-listings', '/airbnb-listings-delete', '/airbnb-pricing-settings']) {
+      expect(() => assertAirbnbPostAllowed(p, { token: 1, propertyId: PILOT })).toThrow(ForbiddenException);
+    }
+  });
+});
+
+describe('airbnbWebhookListingId — a 64-bit id parsed as a JSON number', () => {
+  it('maps the rounded pilot id back to the exact one', () => {
+    const rounded = JSON.parse(`{"propertyId":${PILOT}}`).propertyId as number;
+    expect(String(rounded)).not.toBe(PILOT);
+    expect(airbnbWebhookListingId(rounded)).toBe(PILOT);
+  });
+  it('keeps strings and safe numbers as sent; an unknown rounded number stays as it is', () => {
+    expect(airbnbWebhookListingId(` ${PILOT} `)).toBe(PILOT);
+    expect(airbnbWebhookListingId(51224597)).toBe('51224597');
+    expect(airbnbWebhookListingId(2 ** 60)).toBe(String(2 ** 60));
+    expect(airbnbWebhookListingId(undefined)).toBe('');
   });
 });
