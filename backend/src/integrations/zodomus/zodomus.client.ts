@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { assertZodomusSuccess } from './zodomus-status.util';
+import { assertAirbnbPostAllowed } from './airbnb/airbnb-pilot.util';
 
 const FETCH_MAX_ATTEMPTS = 3;
 
@@ -82,6 +83,8 @@ export class ZodomusClient {
   }
 
   async post<T>(path: string, body: unknown, opts?: FetchOpts): Promise<T> {
+    // Airbnb: only the pilot listing, only the calls RentAI makes — refused before the queue, nothing is sent.
+    assertAirbnbPostAllowed(path, body);
     return this.runExclusive(async () => {
       const p = path.startsWith('/') ? path : `/${path}`;
       const label = `POST ${path}`;

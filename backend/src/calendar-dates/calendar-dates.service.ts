@@ -299,6 +299,16 @@ export class CalendarDatesService {
     }
   }
 
+  /**
+   * The main Booking rate of each night of [from, toExclusive), read fresh from Booking (≤ 28 nights per GET).
+   * Airbnb (src/airbnb) copies the price a regular Booking guest sees from it. Needs only Zodomus — not this
+   * module's flag: nothing is written.
+   */
+  async bookingRateNights(propertyId: string, from: string, toExclusive: string): Promise<Map<string, RateNight>> {
+    const ctx = await this.context(propertyId);
+    return this.readNights(ctx, from, toExclusive, true);
+  }
+
   /** Rate nights of [from, toExclusive), read window by window (≤ 28 nights each). */
   private async readNights(
     ctx: Ctx,

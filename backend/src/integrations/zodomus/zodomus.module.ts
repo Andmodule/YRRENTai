@@ -20,11 +20,14 @@ import { GuestModule } from '../../guest/guest.module';
 import { ZodomusAvailabilityPushService } from './zodomus-availability-push.service';
 import { ZodomusRatesPushService } from './zodomus-rates-push.service';
 import { ZodomusMappingService } from './zodomus-mapping.service';
+import { ZodomusAirbnbHostEntity } from './airbnb/airbnb-host.entity';
+import { AirbnbConnectService } from './airbnb/airbnb-connect.service';
+import { AirbnbConnectController } from './airbnb/airbnb-connect.controller';
 
 @Module({
   imports: [
     ConfigModule,
-    TypeOrmModule.forFeature([BookingEntity, PropertyEntity, PropertyChannelListingEntity]),
+    TypeOrmModule.forFeature([BookingEntity, PropertyEntity, PropertyChannelListingEntity, ZodomusAirbnbHostEntity]),
     PropertyModule,
     UserModule,
     forwardRef(() => CalendarModule),
@@ -35,6 +38,7 @@ import { ZodomusMappingService } from './zodomus-mapping.service';
     ZodomusWebhookController,
     ZodomusAdminController,
     ZodomusApiRefController,
+    AirbnbConnectController,
   ],
   providers: [
     {
@@ -53,6 +57,7 @@ import { ZodomusMappingService } from './zodomus-mapping.service';
     ZodomusAvailabilityPushService,
     ZodomusRatesPushService,
     ZodomusMappingService,
+    AirbnbConnectService,
   ],
   exports: [
     ZodomusService,
@@ -60,6 +65,7 @@ import { ZodomusMappingService } from './zodomus-mapping.service';
     ZodomusAvailabilityPushService,
     ZodomusRatesPushService,
     ZodomusMappingService,
+    AirbnbConnectService,
   ],
 })
 export class ZodomusModule {}

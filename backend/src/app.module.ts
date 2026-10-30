@@ -40,6 +40,7 @@ import { RedisModule } from './modules/redis/redis.module';
 import { AiChatModule } from './modules/ai-chat/ai-chat.module';
 import { PricingModule } from './pricing/pricing.module';
 import { CalendarDatesModule } from './calendar-dates/calendar-dates.module';
+import { AirbnbModule } from './airbnb/airbnb.module';
 
 @Module({
   imports: [
@@ -124,6 +125,7 @@ import { CalendarDatesModule } from './calendar-dates/calendar-dates.module';
     AiChatModule,
     PricingModule,
     CalendarDatesModule,
+    AirbnbModule,
   ],
   providers: [
     {
