@@ -19,6 +19,12 @@ class AirbnbFingerprintDto extends createZodDto(z.object({ fingerprint: z.string
 export class AirbnbCalendarController {
   constructor(private readonly airbnb: AirbnbCalendarService) {}
 
+  /** The property the pilot listing is connected to, or null. */
+  @Get()
+  async connected(@CurrentUser() user: JwtPayload) {
+    return { data: await this.airbnb.connectedProperty(user) };
+  }
+
   @Get(':propertyId')
   async view(@CurrentUser() user: JwtPayload, @Param('propertyId', ParseUUIDPipe) propertyId: string) {
     return { data: await this.airbnb.view(user, propertyId) };

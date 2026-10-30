@@ -13,7 +13,7 @@ import { useProperties } from '@/hooks/use-properties';
 import { getApiErrorMessage } from '@/lib/api/error-message';
 import { cn } from '@/lib/utils';
 import type { AirbnbListingsView, AirbnbPlanSummary } from '../api';
-import { airbnbKeys, useAirbnbAccess, useAirbnbListing, useAirbnbMutations } from '../hooks';
+import { airbnbKeys, useAirbnbAccess, useAirbnbConnectedProperty, useAirbnbListing, useAirbnbMutations } from '../hooks';
 import { canConnect, canSend, lastNight, operationDates, steps, usablePlan, ymdLong, type StepState } from '../lib/airbnb-ui';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -29,7 +29,8 @@ function time(iso: string | null | undefined): string {
 export function AirbnbScreen() {
   const t = useTranslations('airbnb');
   const qc = useQueryClient();
-  const { isOwner, enabled, status } = useAirbnbAccess();
+  const { isOwner, authLoading, enabled, status } = useAirbnbAccess();
+  const connectedProp = useAirbnbConnectedProperty(enabled);
   const { properties = [], isLoading: propsLoading } = useProperties({ enabled });
   // Only properties connected to Booking: the Airbnb calendar is built from Booking.
   const bookingProps = useMemo(
@@ -37,31 +38,36 @@ export function AirbnbScreen() {
     [properties],
   );
   const [propertyId, setPropertyId] = useState<string | null>(null);
+  // Open on the property the pilot listing is connected to; else the first one connected to Booking.
   useEffect(() => {
-    if (!propertyId && bookingProps[0]) setPropertyId(bookingProps[0].id);
-  }, [bookingProps, propertyId]);
+    if (propertyId || connectedProp.isLoading) return;
+    const connected = connectedProp.data?.propertyId;
+    const pick = (connected && bookingProps.find((p) => p.id === connected)?.id) || bookingProps[0]?.id;
+    if (pick) setPropertyId(pick);
+  }, [bookingProps, propertyId, connectedProp.isLoading, connectedProp.data]);
 
   const listing = useAirbnbListing(enabled ? propertyId : null);
   const m = useAirbnbMutations(propertyId);
   const listings = qc.getQueryData<AirbnbListingsView>(airbnbKeys.listings) ?? m.listings.data ?? null;
   const [acknowledged, setAcknowledged] = useState(false);
-  const [now, setNow] = useState(() => Date.now());
+  const plan = usablePlan(listing.data);
+  // A new calendar (another check, or the one the server rebuilt) must be looked at and confirmed again.
+  const fingerprint = plan?.fingerprint ?? null;
   useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 30_000);
-    return () => clearInterval(id);
-  }, []);
+    setAcknowledged(false);
+  }, [fingerprint]);
 
   const fail = (e: unknown) => toast.error(getApiErrorMessage(e) ?? t('error'));
 
+  if (authLoading || status.isLoading) return <Shell><Skeleton className="h-40 w-full" /></Shell>;
   if (!isOwner) return <Shell><p className="text-sm text-muted-foreground">{t('ownerOnly')}</p></Shell>;
-  if (status.isLoading) return <Shell><Skeleton className="h-40 w-full" /></Shell>;
+  if (status.isError) return <Shell><Notice tone="error">{getApiErrorMessage(status.error) ?? t('error')}</Notice></Shell>;
   if (!enabled) return <Shell><p className="text-sm text-muted-foreground">{t('off')}</p></Shell>;
 
   const host = status.data;
   const view = listing.data;
   const job = view?.job ?? null;
   const running = job?.state === 'running';
-  const plan = usablePlan(job, now);
   const [s1, s2, s3] = steps(host, view, plan);
 
   return (
@@ -112,7 +118,7 @@ export function AirbnbScreen() {
             <span className="text-xs text-muted-foreground">
               {listings.pilot
                 ? t('host.found', { name: listings.pilot.name ?? listings.pilot.id, others: listings.others })
-                : t('host.notFound', { others: listings.others })}
+                : t(listings.truncated ? 'host.notFoundYet' : 'host.notFound', { others: listings.others })}
             </span>
           ) : null}
         </div>
@@ -142,8 +148,10 @@ export function AirbnbScreen() {
             </Select>
           </div>
         </div>
+        {!propsLoading && bookingProps.length === 0 ? <Notice tone="warn">{t('plan.noProperties')}</Notice> : null}
         <p className="text-sm text-muted-foreground">{t('plan.rule')}</p>
         {view?.takenByOther ? <Notice tone="warn">{t('plan.takenByOther')}</Notice> : null}
+        {listing.isError ? <Notice tone="error">{getApiErrorMessage(listing.error) ?? t('error')}</Notice> : null}
 
         {job?.kind === 'check' && running ? (
           <p className="flex items-center gap-2 text-sm">
@@ -164,7 +172,7 @@ export function AirbnbScreen() {
           </Button>
           {plan ? (
             <span className="text-xs text-muted-foreground">
-              {t('plan.checkedAt', { at: time(job?.finishedAt), requests: plan.requests })}
+              {t('plan.checkedAt', { at: time(plan.checkedAt), until: time(plan.expiresAt), requests: plan.requests })}
             </span>
           ) : null}
         </div>
@@ -175,6 +183,7 @@ export function AirbnbScreen() {
         {!view?.connected ? (
           <>
             <Notice tone="warn">{t('connect.warning')}</Notice>
+            {view?.takenByOther ? <Notice tone="error">{t('plan.takenByOther')}</Notice> : null}
             <label className="flex items-center gap-2 text-sm">
               <Checkbox checked={acknowledged} onCheckedChange={(v) => setAcknowledged(v === true)} />
               {t('connect.acknowledge')}
@@ -195,7 +204,9 @@ export function AirbnbScreen() {
         ) : (
           <>
             <p className="text-sm">
-              {t('connect.connectedAt', { at: time(view.activatedAt), until: view.planEnd ? ymdLong(lastNight(view.planEnd)) : '—' })}
+              {view.planEnd && view.activatedAt && view.planEnd > view.activatedAt.slice(0, 10)
+                ? t('connect.connectedAt', { at: time(view.activatedAt), until: ymdLong(lastNight(view.planEnd)) })
+                : t('connect.connectedClosed', { at: time(view.activatedAt) })}
             </p>
             {view.lastSync ? (
               <p className="text-sm text-muted-foreground">

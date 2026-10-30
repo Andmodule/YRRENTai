@@ -1,9 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { AirbnbHostView, AirbnbJob, AirbnbListingView, AirbnbPlanSummary } from '../api';
-import { CHECK_TTL_MS, canConnect, canSend, lastNight, operationDates, steps, usablePlan, ymdLong } from './airbnb-ui';
+import { canConnect, canSend, lastNight, operationDates, steps, usablePlan, ymdLong } from './airbnb-ui';
 
-const NOW = Date.parse('2026-10-30T10:00:00Z');
 const plan: AirbnbPlanSummary = {
   listingId: '1017407411799040875',
   from: '2026-10-30',
@@ -41,6 +40,7 @@ const listing = (over: Partial<AirbnbListingView> = {}): AirbnbListingView => ({
   lastSync: null,
   takenByOther: false,
   job: null,
+  freshPlan: null,
   ...over,
 });
 
@@ -61,18 +61,14 @@ describe('operationDates / ymdLong / lastNight', () => {
 });
 
 describe('usablePlan', () => {
-  it('a finished fresh check gives its plan', () => {
-    assert.equal(usablePlan(job(), NOW), plan);
+  const fresh = { ...plan, checkedAt: '2026-10-30T09:59:00Z', expiresAt: '2026-10-30T10:14:00Z' };
+  it('gives the server fresh check', () => {
+    assert.equal(usablePlan(listing({ freshPlan: fresh })), fresh);
   });
-  it('none while running, after 15 minutes, without a job or a plan', () => {
-    assert.equal(usablePlan(job({ state: 'running' }), NOW), null);
-    assert.equal(usablePlan(job({ finishedAt: new Date(NOW - CHECK_TTL_MS - 1000).toISOString() }), NOW), null);
-    assert.equal(usablePlan(null, NOW), null);
-    assert.equal(usablePlan(job({ plan: null }), NOW), null);
-  });
-  it('a connect refused because the calendar changed shows the new plan to use; a failed send after activation does not', () => {
-    assert.equal(usablePlan(job({ kind: 'connect', state: 'failed', result: null }), NOW), plan);
-    assert.equal(usablePlan(job({ kind: 'connect', state: 'failed', result: { activated: true, sentCalls: 0, failedCalls: 1, closedAll: true, errors: [] } }), NOW), null);
+  it('none while a job runs, without a fresh check or without the listing', () => {
+    assert.equal(usablePlan(listing({ freshPlan: fresh, job: job({ state: 'running' }) })), null);
+    assert.equal(usablePlan(listing()), null);
+    assert.equal(usablePlan(undefined), null);
   });
 });
 
@@ -83,6 +79,8 @@ describe('steps', () => {
     assert.deepEqual(steps(hostActive, listing(), null), ['done', 'current', 'locked']);
     assert.deepEqual(steps(hostActive, listing(), plan), ['done', 'done', 'current']);
     assert.deepEqual(steps(hostActive, listing({ connected: true }), null), ['done', 'done', 'done']);
+    // A connected listing stays open even when the host status turns bad.
+    assert.deepEqual(steps(hostWaiting, listing({ connected: true }), null), ['current', 'done', 'done']);
   });
 });
 

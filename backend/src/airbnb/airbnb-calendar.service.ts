@@ -197,7 +197,29 @@ export class AirbnbCalendarService implements OnModuleInit {
       /** The pilot listing is connected to another property. */
       takenByOther: taken != null && taken.propertyId !== property.id,
       job: this.jobs.get(property.id) ?? null,
+      /** The check that «Подключить» / «Отправить» accept now (server clock), or null. */
+      freshPlan: this.freshPlan(property.id),
     };
+  }
+
+  /** The property the pilot listing is connected to (or being connected to), for the page to open on. */
+  async connectedProperty(user: JwtPayload): Promise<{ propertyId: string | null }> {
+    this.assertOn();
+    const row = await this.table(() => this.listings.findOne({ where: { listingId: this.pilotListingId } }));
+    if (!row) return { propertyId: null };
+    try {
+      await this.owned(user, row.propertyId);
+    } catch {
+      return { propertyId: null };
+    }
+    return { propertyId: row.propertyId };
+  }
+
+  private freshPlan(propertyId: string): (AirbnbPlanSummary & { checkedAt: string; expiresAt: string }) | null {
+    if (this.jobs.get(propertyId)?.state === 'running') return null;
+    const plan = this.plans.get(propertyId);
+    if (!plan || Date.now() - plan.at > PLAN_TTL_MS) return null;
+    return { ...plan.summary, checkedAt: new Date(plan.at).toISOString(), expiresAt: new Date(plan.at + PLAN_TTL_MS).toISOString() };
   }
 
   job(propertyId: string): AirbnbJob | null {

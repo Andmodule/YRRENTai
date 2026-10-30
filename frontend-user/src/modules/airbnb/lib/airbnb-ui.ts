@@ -1,4 +1,4 @@
-import type { AirbnbCalendarOperation, AirbnbHostView, AirbnbJob, AirbnbListingView, AirbnbPlanSummary } from '../api';
+import type { AirbnbCalendarOperation, AirbnbHostView, AirbnbListingView, AirbnbPlanSummary } from '../api';
 
 /** "2026-11-10:2026-11-12" → "10.11 – 12.11"; one night → "10.11". */
 export function operationDates(op: AirbnbCalendarOperation): string {
@@ -22,26 +22,23 @@ export function lastNight(toExclusive: string): string {
   return d.toISOString().slice(0, 10);
 }
 
-/** The server keeps a check 15 minutes. */
-export const CHECK_TTL_MS = 15 * 60_000;
-
-/** The plan the person may connect / send now: the last finished job's plan while it is fresh. */
-export function usablePlan(job: AirbnbJob | null | undefined, now: number): AirbnbPlanSummary | null {
-  if (!job?.plan || job.state === 'running') return null;
-  const at = Date.parse(job.finishedAt ?? job.startedAt);
-  if (!Number.isFinite(at) || now - at > CHECK_TTL_MS) return null;
-  // A failed connect / send that rebuilt the plan shows the new calendar: it may be used (that is the point).
-  if (job.state === 'failed' && job.kind !== 'check' && job.result?.activated) return null;
-  return job.plan;
+/**
+ * The plan the person may connect / send now: the server's fresh check (its clock, its 15 minutes), none while
+ * something runs.
+ */
+export function usablePlan(listing: AirbnbListingView | undefined): AirbnbListingView['freshPlan'] {
+  if (!listing || listing.job?.state === 'running') return null;
+  return listing.freshPlan ?? null;
 }
 
 export type StepState = 'done' | 'current' | 'locked';
 
 /** Which of the three steps is done, current or still locked. */
 export function steps(host: AirbnbHostView | undefined, listing: AirbnbListingView | undefined, plan: AirbnbPlanSummary | null): [StepState, StepState, StepState] {
+  // A connected listing stays visible (its sends, errors, «Отправить») even if the host's status turns bad.
+  if (listing?.connected) return [host?.host?.active === true ? 'done' : 'current', 'done', 'done'];
   const hostOk = host?.host?.active === true;
   if (!hostOk) return ['current', 'locked', 'locked'];
-  if (listing?.connected) return ['done', 'done', 'done'];
   return ['done', plan ? 'done' : 'current', plan ? 'current' : 'locked'];
 }
 

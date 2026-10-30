@@ -320,3 +320,28 @@ describe('AirbnbCalendarService — after an availability push', () => {
     expect(s.listing()!.lastSync).toMatchObject({ kind: 'availability', sentCalls: 0, failedCalls: 1 });
   });
 });
+
+describe('AirbnbCalendarService — page helpers', () => {
+  it('freshPlan: the last check while fresh, none while a job runs or after 15 minutes', async () => {
+    const s = setup();
+    fillBooking(s, 500);
+    expect((await s.svc.view(OWNER, PID)).freshPlan).toBeNull();
+    const fp = await checked(s);
+    const v = await s.svc.view(OWNER, PID);
+    expect(v.freshPlan).toMatchObject({ fingerprint: fp });
+    expect(Date.parse(v.freshPlan!.expiresAt) - Date.parse(v.freshPlan!.checkedAt)).toBe(15 * 60_000);
+    const realNow = Date.now;
+    Date.now = () => realNow() + 15 * 60_000 + 1;
+    try {
+      expect((await s.svc.view(OWNER, PID)).freshPlan).toBeNull();
+    } finally {
+      Date.now = realNow;
+    }
+  });
+
+  it('connectedProperty: the property holding the pilot listing, if it is the user\'s', async () => {
+    expect(await setup().svc.connectedProperty(OWNER)).toEqual({ propertyId: null });
+    expect(await setup({ listing: { activatedAt: new Date() } }).svc.connectedProperty(OWNER)).toEqual({ propertyId: PID });
+    await expect(setup({ enabled: false }).svc.connectedProperty(OWNER)).rejects.toBeInstanceOf(ServiceUnavailableException);
+  });
+});

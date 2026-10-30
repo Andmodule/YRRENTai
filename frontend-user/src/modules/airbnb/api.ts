@@ -72,6 +72,8 @@ export interface AirbnbListingView {
   } | null;
   takenByOther: boolean;
   job: AirbnbJob | null;
+  /** The check «Подключить» / «Отправить» accept now — by the server's clock (15 minutes), or null. */
+  freshPlan: (AirbnbPlanSummary & { checkedAt: string; expiresAt: string }) | null;
 }
 
 type Envelope<T> = { data: { data: T } };
@@ -82,6 +84,8 @@ export const airbnbApi = {
   activateHost: () => unwrap<AirbnbHostView>(apiClient.post('/zodomus/airbnb/host/activate')),
   refreshHost: () => unwrap<AirbnbHostView>(apiClient.post('/zodomus/airbnb/host/refresh')),
   listings: () => unwrap<AirbnbListingsView>(apiClient.get('/zodomus/airbnb/listings')),
+  /** The property the pilot listing is connected to. */
+  connectedProperty: () => unwrap<{ propertyId: string | null }>(apiClient.get('/zodomus/airbnb/listing')),
   listing: (propertyId: string) => unwrap<AirbnbListingView>(apiClient.get(`/zodomus/airbnb/listing/${propertyId}`)),
   check: (propertyId: string) => unwrap<AirbnbJob>(apiClient.post(`/zodomus/airbnb/listing/${propertyId}/check`)),
   connect: (propertyId: string, fingerprint: string) =>
