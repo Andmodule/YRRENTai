@@ -12,6 +12,7 @@ import { useCalendarTimelinePan } from '../hooks/use-calendar-timeline-pan';
 import { getPropertyMeta } from '../lib/property-meta';
 import { parseLocalCalendarDay } from '../lib/calendar-api-dates';
 import { hitTestCalendarCell } from '../lib/hit-test-calendar-cell';
+import { nextTapRange, type TapCell } from '../lib/tap-range';
 import { ProgramBlock } from './ProgramBlock';
 import { TimelineHeader } from './TimelineHeader';
 import { SidebarChannel } from './SidebarChannel';
@@ -30,6 +31,13 @@ export type CalendarPricingProps = {
   selection: CellRect | null;
   onSelectionChange: (rect: CellRect | null) => void;
   onBadgeClick: (propertyId: string, ymd: string) => void;
+  /**
+   * Phone, mode «Цены»: a tap picks nights (first tap — one night, second tap in the row — the range) instead
+   * of opening the actions; bookings and badges let taps through; the price is large in the cell.
+   */
+  tapRange?: boolean;
+  /** Mode «Цены»: true after the first tap of a range, false once it is closed. */
+  onTapPending?: (pending: boolean) => void;
 };
 
 const ITEM_HEIGHT_PX = 64;
@@ -38,8 +46,12 @@ const SIDEBAR_WIDTH_PX = {
   mobile: 112,
   desktop: 240,
 } as const;
+/**
+ * Planby works in whole pixels per hour: the column is floor(width / 24) × 24, so only multiples of 24 come
+ * out as written (64 used to give 48 px on a phone — too narrow for a finger and a price).
+ */
 const DAY_COLUMN_WIDTH_PX = {
-  mobile: 64,
+  mobile: 72,
   desktop: 96,
 } as const;
 
@@ -92,6 +104,12 @@ export function CalendarPlanbyGrid({
   const dragRef = useRef<{ start: { row: number; day: number }; moved: boolean } | null>(null);
   const suppressClickRef = useRef(false);
   const anchorRef = useRef<{ row: number; day: number } | null>(null);
+  /** Mode «Цены»: the first tap of a range, waiting for the second. */
+  const tapAnchorRef = useRef<TapCell | null>(null);
+  const hasSelection = pricing?.selection != null;
+  useEffect(() => {
+    if (!hasSelection) tapAnchorRef.current = null;
+  }, [hasSelection]);
   const [contentEl, setContentEl] = useState<HTMLElement | null>(null);
   const numDays = useMemo(
     () => eachDayOfInterval({ start: startOfDay(dateRange.start), end: startOfDay(dateRange.end) }).length,
@@ -234,7 +252,8 @@ export function CalendarPlanbyGrid({
     // Drag across days / properties → range selection (only when «Цены» is on).
     const onMouseDown = (e: MouseEvent) => {
       suppressClickRef.current = false;
-      if (!pricingRef.current || e.button !== 0 || e.shiftKey) return;
+      // Mode «Цены» picks by taps only: a mouse drag there would leave the tap anchor behind.
+      if (!pricingRef.current || pricingRef.current.tapRange || e.button !== 0 || e.shiftKey) return;
       const c = cellAt(e);
       if (!c) return;
       dragRef.current = { start: { row: c.row, day: c.day }, moved: false };
@@ -267,6 +286,13 @@ export function CalendarPlanbyGrid({
       const c = cellAt(e);
       if (!c) return;
       const pricingNow = pricingRef.current;
+      if (pricingNow?.tapRange) {
+        const next = nextTapRange(tapAnchorRef.current, { row: c.row, day: c.day });
+        pricingNow.onSelectionChange(next.rect);
+        tapAnchorRef.current = next.anchor;
+        pricingNow.onTapPending?.(next.anchor != null);
+        return;
+      }
       if (pricingNow && e.shiftKey) {
         // Shift+click starts or extends the range from the last clicked cell, without the actions dialog.
         const from = anchorRef.current ?? { row: c.row, day: c.day };
@@ -412,6 +438,7 @@ export function CalendarPlanbyGrid({
   );
 
   const pricingEnabled = Boolean(pricing);
+  const tapRange = Boolean(pricing?.tapRange);
   const calendarGridCss = useMemo(() => {
     const rowH = layoutItemHeight > 0 ? layoutItemHeight : ITEM_HEIGHT_PX;
     const colW = dayColWidthPx > 0 ? dayColWidthPx : DAY_COLUMN_WIDTH_PX.desktop;
@@ -505,8 +532,23 @@ ${
 }
 `
     : ''
+}${
+  tapRange
+    ? `#cal-${calendarScopeId} .planby [data-testid="program-item"] {
+  pointer-events: none;
+  opacity: 0.6;
+}
+#cal-${calendarScopeId} .planby [data-testid="content"] {
+  cursor: pointer;
+  /* two quick taps in neighbouring nights must stay two taps, not a double-tap zoom */
+  touch-action: manipulation;
+  /* room to scroll the last rows above the bar with the picked nights (up to 3 wrapped lines on 375 px) */
+  margin-bottom: 176px;
+}
+`
+    : ''
 }`;
-  }, [calendarScopeId, dayColWidthPx, layoutItemHeight, pricingEnabled]);
+  }, [calendarScopeId, dayColWidthPx, layoutItemHeight, pricingEnabled, tapRange]);
 
   return (
     <>
@@ -536,6 +578,7 @@ ${
               cellPrices={pricing.cellPrices}
               selection={pricing.selection}
               onBadgeClick={pricing.onBadgeClick}
+              large={tapRange}
             />,
             contentEl,
           )

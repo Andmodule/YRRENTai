@@ -158,6 +158,15 @@ export function MonthGrid({
                           )}
                           title={row.booking?.typed ? t('rowTypedTitle', { price: fmt.format(row.booking.price), base: fmt.format(row.base) }) : undefined}
                         >
+                          {/* Phone has no B line: the dot alone says Booking does not have this price yet. */}
+                          {row.booking?.pending ? (
+                            <span className="sm:hidden">
+                              <span className="mr-0.5 text-amber-600" aria-hidden>
+                                ●
+                              </span>
+                              <span className="sr-only">{t('rowPending')}</span>
+                            </span>
+                          ) : null}
                           {fmt.format(row.base)}
                         </span>
                       ) : (

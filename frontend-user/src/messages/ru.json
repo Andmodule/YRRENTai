@@ -1691,8 +1691,13 @@
     "statusBlocked": "Заблокировано",
     "newBooking": "+ Новая бронь",
     "newDiscount": "Скидка",
+    "modeAria": "Что показывает шахматка",
+    "modeBookings": "Брони",
+    "modePrices": "Цены",
+    "priceModeHint": "Цифра — цена ночи для обычного гостя на Booking. Коснитесь первой ночи, затем последней.",
     "today": "Сегодня",
     "cellActions": {
+      "openMonth": "Цена на эту ночь",
       "title": "Свободная дата",
       "description": "Выберите действие",
       "newBooking": "Новая бронь",
@@ -1703,6 +1708,25 @@
     },
     "openPropertyMonth": "Календарь объекта по месяцам",
     "propertyMonth": {
+      "sendStatus": {
+        "aria": "Последняя отправка в Booking",
+        "what": {
+          "price": "цену",
+          "open": "открытие дат",
+          "close": "закрытие дат"
+        },
+        "auto": "(автоматически)",
+        "running": "Отправляем в Booking {what} на {range}: {done} из {total}…",
+        "ok": "Booking принял {what} на {range} · {at}",
+        "nothing": "{at}: на {range} в Booking уже всё так — отправлять было нечего",
+        "unchecked": "Отправили в Booking {what} на {range} · {at}. Сверить не удалось — проверьте в экстранете.",
+        "partial": "Не всё дошло до Booking ({what} на {range} · {at}):",
+        "partialFailed": "{count, plural, one {# ночь} few {# ночи} many {# ночей} other {# ночей}} Booking не принял.",
+        "partialMismatch": "На {count, plural, one {# ночи} few {# ночах} many {# ночах} other {# ночах}} Booking показывает другое.",
+        "failed": "Не удалось отправить в Booking {what} на {range} ({at}) — часть ночей могла не дойти.",
+        "stopped": "Остановили отправку в Booking: {what} на {range} ({at}) — часть ночей могла не дойти.",
+        "pickAgain": "Выбрать эти ночи"
+      },
       "basePrice": {
         "title": "Базовая цена",
         "noneYet": "На эти ночи базовой цены нет. Задайте её или заполните из Booking.",
@@ -2818,7 +2842,10 @@
       "rateUnknown": "Не удалось определить, по какому тарифу взята цена (Booking не прислал названия тарифов) — возможно, это самый дешёвый тариф, а не Standard. Сверьте цену в экстранете Booking.",
       "dialogTargeting": "Mobile/Country rate −{pct}% (только часть гостей)",
       "dialogTitleSoon": "Скидка −{pct}% (ещё не действует)",
-      "datesSelected": "Открыть / закрыть"
+      "datesSelected": "Открыть / закрыть",
+      "tapSecond": "коснитесь последней ночи",
+      "priceSelected": "Цена",
+      "priceSelectedCut": "Цена · до {date}"
     },
     "rules": {
       "disabledTitle": "Автоправила выключены",

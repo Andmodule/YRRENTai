@@ -43,6 +43,7 @@ import { GuestPricePanel } from './GuestPricePanel';
 import { BasePricePanel } from './BasePricePanel';
 import { MobileNightSheet } from './MobileNightSheet';
 import { useBookingSend } from './useBookingSend';
+import { BookingSendStatus } from './BookingSendStatus';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { cn } from '@/lib/utils';
 import type { CellRows } from './MonthGrid';
@@ -328,6 +329,9 @@ export function PropertyMonthView({ propertyId }: { propertyId: string }) {
               <p className="mb-2 rounded-lg border border-amber-300/70 bg-amber-50 px-3 py-2 text-xs text-amber-950 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
                 {t('ariUnavailable')}
               </p>
+            ) : null}
+            {basePriceOn && datesAccess.enabled ? (
+              <BookingSendStatus job={bookingSend.job} monthFrom={from} monthTo={to} onPick={onRange} />
             ) : null}
             <MonthGrid month={month} nights={nights} selection={selection} onPick={onPick} onRange={onRange} rows={cellRows} />
             <p className="mt-2 text-xs text-muted-foreground">{t('gridHint')}</p>
