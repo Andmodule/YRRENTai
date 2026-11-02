@@ -32,15 +32,21 @@ export type CalendarPricingProps = {
   onSelectionChange: (rect: CellRect | null) => void;
   onBadgeClick: (propertyId: string, ymd: string) => void;
   /**
-   * Phone, mode «Цены»: a tap picks nights (first tap — one night, second tap in the row — the range) instead
-   * of opening the actions; bookings and badges let taps through; the price is large in the cell.
+   * Phone, mode «Цены»: a tap picks nights (first tap — one night, second tap — the rectangle up to it, across
+   * properties too) instead of opening the actions; bookings and badges let taps through; the price is large.
    */
   tapRange?: boolean;
-  /** Mode «Цены»: true after the first tap of a range, false once it is closed. */
+  /**
+   * True after the first tap of a range (mode «Цены», or a long press in «Брони»), false once it is closed.
+   */
   onTapPending?: (pending: boolean) => void;
 };
 
 const ITEM_HEIGHT_PX = 64;
+/** «Брони» on a phone: holding a free cell this long picks it and starts a range instead of opening the actions. */
+const LONG_PRESS_MS = 450;
+/** A finger that moved further was scrolling the grid, not holding a cell. */
+const LONG_PRESS_SLOP_PX = 10;
 /** Mobile keeps room for the property title (two lines) — an icon-only column made rows indistinguishable. */
 const SIDEBAR_WIDTH_PX = {
   mobile: 112,
@@ -101,11 +107,18 @@ export function CalendarPlanbyGrid({
 }: CalendarPlanbyGridProps) {
   const pricingRef = useRef(pricing);
   pricingRef.current = pricing;
+  /** The long press is a phone gesture: on a touch laptop or tablet the hints for it are not shown. */
+  const isMobileRef = useRef(isMobile);
+  isMobileRef.current = isMobile;
   const dragRef = useRef<{ start: { row: number; day: number }; moved: boolean } | null>(null);
   const suppressClickRef = useRef(false);
   const anchorRef = useRef<{ row: number; day: number } | null>(null);
   /** Mode «Цены»: the first tap of a range, waiting for the second. */
   const tapAnchorRef = useRef<TapCell | null>(null);
+  /** «Брони»: the finger held on a cell, waiting for the long press. */
+  const pressRef = useRef<{ timer: number; x: number; y: number; fired: boolean } | null>(null);
+  /** The click a browser sends after a long press (when touchend could not cancel it) is not a tap. */
+  const ignoreClickUntilRef = useRef(0);
   const hasSelection = pricing?.selection != null;
   useEffect(() => {
     if (!hasSelection) tapAnchorRef.current = null;
@@ -195,7 +208,11 @@ export function CalendarPlanbyGrid({
     if (!el) return;
 
     /** Empty grid cell under the pointer (not a booking bar, sidebar, header or pricing badge). */
-    const cellAt = (e: MouseEvent): { row: number; day: number; propertyId: string } | null => {
+    const cellAt = (e: {
+      target: EventTarget | null;
+      clientX: number;
+      clientY: number;
+    }): { row: number; day: number; propertyId: string } | null => {
       const t = e.target as HTMLElement;
       if (t.closest('[data-testid="program-item"]')) return null;
       if (t.closest('[data-testid="sidebar"]')) return null;
@@ -278,15 +295,74 @@ export function CalendarPlanbyGrid({
       if (d?.moved) suppressClickRef.current = true;
     };
 
+    // «Брони» on a phone: a long press on a free cell picks it; the next tap closes the range (see onClick).
+    const cancelPress = () => {
+      const p = pressRef.current;
+      if (p) window.clearTimeout(p.timer);
+      pressRef.current = null;
+    };
+    const onTouchStart = (e: TouchEvent) => {
+      cancelPress();
+      // A new gesture: a later click belongs to it, not to the previous long press.
+      ignoreClickUntilRef.current = 0;
+      if (!isMobileRef.current || !pricingRef.current || pricingRef.current.tapRange || e.touches.length !== 1) return;
+      const finger = e.touches[0]!;
+      const c = cellAt({ target: e.target, clientX: finger.clientX, clientY: finger.clientY });
+      if (!c) return;
+      const press = {
+        x: finger.clientX,
+        y: finger.clientY,
+        fired: false,
+        timer: window.setTimeout(() => {
+          const now = pricingRef.current;
+          if (!now || pressRef.current !== press) return;
+          press.fired = true;
+          const next = nextTapRange(null, { row: c.row, day: c.day });
+          tapAnchorRef.current = next.anchor;
+          now.onSelectionChange(next.rect);
+          now.onTapPending?.(true);
+          try {
+            navigator.vibrate?.(15);
+          } catch {
+            // no vibration on this device
+          }
+        }, LONG_PRESS_MS),
+      };
+      pressRef.current = press;
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      const p = pressRef.current;
+      const finger = e.touches[0];
+      if (!p || p.fired || !finger) return;
+      if (Math.abs(finger.clientX - p.x) > LONG_PRESS_SLOP_PX || Math.abs(finger.clientY - p.y) > LONG_PRESS_SLOP_PX) {
+        cancelPress();
+      }
+    };
+    const onTouchEnd = (e: TouchEvent) => {
+      const p = pressRef.current;
+      cancelPress();
+      if (p?.fired) {
+        // The press already picked the cell: the lift must not open the actions.
+        if (e.cancelable) e.preventDefault();
+        ignoreClickUntilRef.current = Date.now() + 600;
+      }
+    };
+    const onContextMenu = (e: MouseEvent) => {
+      // A held finger opens the browser's menu on some phones; in the grid it picks a cell instead.
+      if (pressRef.current || tapAnchorRef.current) e.preventDefault();
+    };
+
     const onClick = (e: MouseEvent) => {
       if (suppressClickRef.current) {
         suppressClickRef.current = false;
         return;
       }
+      if (Date.now() < ignoreClickUntilRef.current) return;
       const c = cellAt(e);
       if (!c) return;
       const pricingNow = pricingRef.current;
-      if (pricingNow?.tapRange) {
+      // «Цены» always picks by taps; «Брони» does it only after a long press started a range.
+      if (pricingNow && (pricingNow.tapRange || tapAnchorRef.current)) {
         const next = nextTapRange(tapAnchorRef.current, { row: c.row, day: c.day });
         pricingNow.onSelectionChange(next.rect);
         tapAnchorRef.current = next.anchor;
@@ -321,7 +397,18 @@ export function CalendarPlanbyGrid({
     el.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
     el.addEventListener('click', onClick);
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    el.addEventListener('touchmove', onTouchMove, { passive: true });
+    el.addEventListener('touchend', onTouchEnd, { passive: false });
+    el.addEventListener('touchcancel', cancelPress);
+    el.addEventListener('contextmenu', onContextMenu);
     return () => {
+      cancelPress();
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove', onTouchMove);
+      el.removeEventListener('touchend', onTouchEnd);
+      el.removeEventListener('touchcancel', cancelPress);
+      el.removeEventListener('contextmenu', onContextMenu);
       el.removeEventListener('mousedown', onMouseDown);
       el.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
@@ -529,6 +616,17 @@ ${
   pricingEnabled
     ? `#cal-${calendarScopeId} .planby [data-testid="content"] {
   user-select: none;
+  -webkit-user-select: none;
+  /* a long press picks a cell — no copy / look-up menu over it */
+  -webkit-touch-callout: none;
+}
+`
+    : ''
+}${
+  pricingEnabled && isMobile && !tapRange
+    ? `#cal-${calendarScopeId} .planby [data-testid="content"] {
+  /* room to scroll the last rows above the bar with the picked cells; constant, so a reset does not jump */
+  margin-bottom: 176px;
 }
 `
     : ''
@@ -548,7 +646,7 @@ ${
 `
     : ''
 }`;
-  }, [calendarScopeId, dayColWidthPx, layoutItemHeight, pricingEnabled, tapRange]);
+  }, [calendarScopeId, dayColWidthPx, layoutItemHeight, pricingEnabled, tapRange, isMobile]);
 
   return (
     <>

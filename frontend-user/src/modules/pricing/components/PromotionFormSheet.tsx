@@ -85,6 +85,8 @@ export function PromotionFormSheet({ open, onOpenChange, promotion, initial, onD
   const [days, setDays] = useState<Set<BookingWeekday>>(new Set(WEEKDAYS));
   const [scope, setScope] = useState<'all' | 'pick'>('all');
   const [picked, setPicked] = useState<Set<string>>(new Set());
+  /** Properties ticked on opening (picked in the calendar) go first: on a phone the list shows ~4 rows. */
+  const pinnedIds = useMemo(() => new Set(initial?.propertyIds ?? []), [initial]);
   const [q, setQ] = useState('');
   const [protect, setProtect] = useState(true);
   const [name, setName] = useState('');
@@ -469,6 +471,7 @@ export function PromotionFormSheet({ open, onOpenChange, promotion, initial, onD
                   <div className="max-h-72 overflow-y-auto rounded-xl border border-border">
                     {(rows ?? [])
                       .filter((r) => !q.trim() || r.name.toLowerCase().includes(q.trim().toLowerCase()))
+                      .sort((x, y) => Number(pinnedIds.has(y.id)) - Number(pinnedIds.has(x.id)))
                       .map((r) => {
                         const available = r.bookingConnected && r.promotionsAccess !== 'denied' && r.inPilot !== false;
                         return (
