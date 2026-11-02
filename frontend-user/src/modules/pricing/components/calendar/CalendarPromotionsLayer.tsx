@@ -48,6 +48,7 @@ export function CalendarPromotionsLayer({
   cellPrices,
   selection,
   onBadgeClick,
+  large = false,
 }: {
   propertyIds: string[];
   /** yyyy-MM-dd of the first column. */
@@ -59,6 +60,11 @@ export function CalendarPromotionsLayer({
   cellPrices?: CalendarCellPrices;
   selection: CellRect | null;
   onBadgeClick: (propertyId: string, ymd: string) => void;
+  /**
+   * Phone, mode «Цены»: the whole cell is one target — the price large in the middle, the badge a plain label
+   * above it (a tap on it picks the night instead of opening the discount).
+   */
+  large?: boolean;
 }) {
   const t = useTranslations('pricing.calendar');
   const locale = useLocale();
@@ -136,7 +142,33 @@ export function CalendarPromotionsLayer({
       </div>
     ) : null}
     <div className="pointer-events-none absolute inset-0" style={{ zIndex: 2 }} aria-hidden={badges.length === 0 && prices.length === 0 && !selection}>
-      {freePrices.map((p) => (
+      {large
+        ? freePrices.map((p) => (
+            <span
+              key={`price:${p.key}`}
+              className={cn(
+                'absolute overflow-hidden whitespace-nowrap text-center text-base font-semibold leading-6 tabular-nums text-foreground',
+                p.rack != null && 'text-emerald-700 dark:text-emerald-400',
+              )}
+              style={{ top: p.row * rowHeightPx + 28, left: p.day * dayColWidthPx, width: dayColWidthPx }}
+            >
+              {fmt.format(p.price)}
+            </span>
+          ))
+        : null}
+      {large
+        ? badges.map((b) => (
+            <span
+              key={b.key}
+              title={b.title}
+              className={cn('absolute rounded-md px-1 text-center text-[11px] font-bold leading-[18px]', BADGE_TONE[b.tone])}
+              style={{ top: b.row * rowHeightPx + 6, left: b.day * dayColWidthPx + (dayColWidthPx - 44) / 2, width: 44 }}
+            >
+              −{b.pct}%
+            </span>
+          ))
+        : null}
+      {!large && freePrices.map((p) => (
         <span
           key={`price:${p.key}`}
           className="absolute overflow-hidden whitespace-nowrap text-right text-[11px] leading-4 tabular-nums text-muted-foreground"
@@ -146,7 +178,7 @@ export function CalendarPromotionsLayer({
           <span className={p.rack != null ? 'font-semibold text-emerald-700 dark:text-emerald-400' : undefined}>{fmt.format(p.price)}</span>
         </span>
       ))}
-      {badges.map((b) => (
+      {!large && badges.map((b) => (
         <button
           key={b.key}
           type="button"

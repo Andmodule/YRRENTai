@@ -6,7 +6,8 @@ import { format, startOfDay } from 'date-fns';
 import { toast } from 'sonner';
 import { useTranslations } from 'next-intl';
 import { CalendarRange, LockOpen, Percent, X } from 'lucide-react';
-import { Link } from '@/i18n/navigation';
+import { Link, useRouter } from '@/i18n/navigation';
+import { cn } from '@/lib/utils';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { ResponsiveModal, ResponsiveModalContent } from '@/components/ui/responsive-modal';
@@ -44,6 +45,7 @@ import { useStayRangeFormatter } from '@/modules/pricing/components/shared';
 import { addDaysYmd, localYmd, promotionsForCell, stayNights } from '@/modules/pricing/lib/pricing-ui';
 
 const PRICING_HINT_KEY = 'rentai.pricing.calendarHintHidden';
+const PRICE_MODE_KEY = 'rentai.calendar.priceMode';
 
 export interface CalendarViewProps {
   dateRange: CalendarDateRange;
@@ -59,6 +61,7 @@ export function CalendarView({
   onFiltersChange,
 }: CalendarViewProps) {
   const t = useTranslations('calendar');
+  const router = useRouter();
   const locale = useDateLocale();
   const isMobile = useIsMobile();
   const calendarScopeId = useId().replace(/:/g, '');
@@ -275,6 +278,25 @@ export function CalendarView({
   const lastDayYmd = format(startOfDay(dateRange.end), 'yyyy-MM-dd');
   const calendarPromotions = useCalendarPromotions(firstDayYmd, lastDayYmd, pricingOn);
   const [selection, setSelection] = useState<CellRect | null>(null);
+  /** Phone: «Брони» — taps open bookings and actions; «Цены» — large prices, taps pick nights. Kept per browser. */
+  const [priceModeOn, setPriceModeOn] = useState(false);
+  useEffect(() => {
+    try {
+      setPriceModeOn(window.localStorage.getItem(PRICE_MODE_KEY) === '1');
+    } catch {
+      // storage unavailable — starts in «Брони»
+    }
+  }, []);
+  const tapMode = isMobile && pricingOn && priceModeOn;
+  const switchPriceMode = useCallback((on: boolean) => {
+    setPriceModeOn(on);
+    setSelection(null);
+    try {
+      window.localStorage.setItem(PRICE_MODE_KEY, on ? '1' : '0');
+    } catch {
+      // storage unavailable — the mode is kept until the page reloads
+    }
+  }, []);
   const [discountOpen, setDiscountOpen] = useState(false);
   const [discountInitial, setDiscountInitial] = useState<PromotionFormInitial | null>(null);
   const [promoCell, setPromoCell] = useState<{ propertyId: string; ymd: string } | null>(null);
@@ -383,9 +405,10 @@ export function CalendarView({
             selection,
             onSelectionChange: setSelection,
             onBadgeClick,
+            tapRange: tapMode,
           }
         : undefined,
-    [pricingOn, calendarPromotions.data, cellPrices, selection, onBadgeClick],
+    [pricingOn, calendarPromotions.data, cellPrices, selection, onBadgeClick, tapMode],
   );
 
   /** One-time hint about the drag selection; hiding it is a per-browser convenience. */
@@ -414,6 +437,14 @@ export function CalendarView({
         propertyTitle={cellActionPropertyTitle ?? undefined}
         dayLabel={cellActionDayLabel ?? undefined}
         onNewBooking={() => setNewBookingOpen(true)}
+        onOpenMonth={
+          newBookingPropertyId && newBookingGridDates
+            ? () =>
+                router.push(
+                  `/dashboard/calendar/${newBookingPropertyId}?month=${newBookingGridDates.checkIn.slice(0, 7)}&from=${newBookingGridDates.checkIn}&to=${newBookingGridDates.checkIn}`,
+                )
+            : undefined
+        }
         onSetOtaPrice={() => setOtaPriceOpen(true)}
         onSetDiscount={
           pricingOn && newBookingPropertyId && newBookingGridDates
@@ -633,6 +664,27 @@ export function CalendarView({
             <AlertDescription>{t('emptyFiltersHint')}</AlertDescription>
           </Alert>
         ) : null}
+        {isMobile && pricingOn ? (
+          <div className="px-3 pt-2">
+            <div role="group" aria-label={t('modeAria')} className="grid grid-cols-2 gap-1 rounded-xl bg-muted p-1">
+              {[false, true].map((on) => (
+                <button
+                  key={String(on)}
+                  type="button"
+                  aria-pressed={priceModeOn === on}
+                  onClick={() => switchPriceMode(on)}
+                  className={cn(
+                    'h-11 rounded-lg text-[15px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                    priceModeOn === on ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground',
+                  )}
+                >
+                  {on ? t('modePrices') : t('modeBookings')}
+                </button>
+              ))}
+            </div>
+            {tapMode ? <p className="px-1 pt-1.5 text-xs text-muted-foreground">{t('priceModeHint')}</p> : null}
+          </div>
+        ) : null}
         <TimelineNavBar
           dateRange={dateRange}
           onDateRangeChange={onDateRangeChange}
@@ -703,11 +755,31 @@ export function CalendarView({
               <span className="text-[13px] text-amber-300">{tp('selectionPast')}</span>
             ) : selectionInfo.skipped > 0 ? (
               <span className="text-[13px] text-zinc-300">{tp('selectionSkip', { count: selectionInfo.skipped })}</span>
+            ) : tapMode && selectionInfo.nights === 1 ? (
+              <span className="text-[13px] text-zinc-300">{tp('tapSecond')}</span>
+            ) : null}
+            {tapMode && selectionInfo.single ? (
+              // Phone, mode «Цены»: the price of the picked nights is set in the property's month.
+              <Link
+                href={`/dashboard/calendar/${selectionInfo.single}?month=${selectionInfo.from.slice(0, 7)}&from=${selectionInfo.from}&to=${selectionInfo.monthTo}`}
+                className="inline-flex h-11 items-center gap-2 rounded-md bg-blue-600 px-4 text-[15px] font-semibold text-white hover:bg-blue-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <CalendarRange className="h-4 w-4" aria-hidden />
+                {selectionInfo.cut
+                  ? tp('priceSelectedCut', { date: `${selectionInfo.monthTo.slice(8, 10)}.${selectionInfo.monthTo.slice(5, 7)}` })
+                  : tp('priceSelected')}
+              </Link>
             ) : null}
             <Button
               type="button"
               size="sm"
-              className="h-10 gap-2 bg-blue-600 px-3.5 text-white hover:bg-blue-500"
+              variant={tapMode ? 'ghost' : 'default'}
+              className={cn(
+                'h-10 gap-2 px-3.5',
+                tapMode
+                  ? 'border border-zinc-700 text-white hover:bg-zinc-800 hover:text-white dark:hover:bg-zinc-700'
+                  : 'bg-blue-600 text-white hover:bg-blue-500',
+              )}
               disabled={selectionInfo.past || selectionInfo.bookingIds.length === 0}
               onClick={() =>
                 openDiscount({
@@ -720,7 +792,7 @@ export function CalendarView({
               <Percent className="h-4 w-4" aria-hidden />
               {tp('discountSelected')}
             </Button>
-            {selectionInfo.single ? (
+            {selectionInfo.single && !tapMode ? (
               <Link
                 href={`/dashboard/calendar/${selectionInfo.single}?month=${selectionInfo.from.slice(0, 7)}&from=${selectionInfo.from}&to=${selectionInfo.monthTo}`}
                 className="inline-flex h-10 items-center gap-2 rounded-md border border-zinc-700 px-3 text-sm font-medium text-white hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:hover:bg-zinc-700"

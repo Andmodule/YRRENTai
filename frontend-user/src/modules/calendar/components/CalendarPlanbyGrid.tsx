@@ -12,6 +12,7 @@ import { useCalendarTimelinePan } from '../hooks/use-calendar-timeline-pan';
 import { getPropertyMeta } from '../lib/property-meta';
 import { parseLocalCalendarDay } from '../lib/calendar-api-dates';
 import { hitTestCalendarCell } from '../lib/hit-test-calendar-cell';
+import { nextTapRange, type TapCell } from '../lib/tap-range';
 import { ProgramBlock } from './ProgramBlock';
 import { TimelineHeader } from './TimelineHeader';
 import { SidebarChannel } from './SidebarChannel';
@@ -30,6 +31,11 @@ export type CalendarPricingProps = {
   selection: CellRect | null;
   onSelectionChange: (rect: CellRect | null) => void;
   onBadgeClick: (propertyId: string, ymd: string) => void;
+  /**
+   * Phone, mode «Цены»: a tap picks nights (first tap — one night, second tap in the row — the range) instead
+   * of opening the actions; bookings and badges let taps through; the price is large in the cell.
+   */
+  tapRange?: boolean;
 };
 
 const ITEM_HEIGHT_PX = 64;
@@ -92,6 +98,12 @@ export function CalendarPlanbyGrid({
   const dragRef = useRef<{ start: { row: number; day: number }; moved: boolean } | null>(null);
   const suppressClickRef = useRef(false);
   const anchorRef = useRef<{ row: number; day: number } | null>(null);
+  /** Mode «Цены»: the first tap of a range, waiting for the second. */
+  const tapAnchorRef = useRef<TapCell | null>(null);
+  const hasSelection = pricing?.selection != null;
+  useEffect(() => {
+    if (!hasSelection) tapAnchorRef.current = null;
+  }, [hasSelection]);
   const [contentEl, setContentEl] = useState<HTMLElement | null>(null);
   const numDays = useMemo(
     () => eachDayOfInterval({ start: startOfDay(dateRange.start), end: startOfDay(dateRange.end) }).length,
@@ -267,6 +279,12 @@ export function CalendarPlanbyGrid({
       const c = cellAt(e);
       if (!c) return;
       const pricingNow = pricingRef.current;
+      if (pricingNow?.tapRange) {
+        const next = nextTapRange(tapAnchorRef.current, { row: c.row, day: c.day });
+        pricingNow.onSelectionChange(next.rect);
+        tapAnchorRef.current = next.anchor;
+        return;
+      }
       if (pricingNow && e.shiftKey) {
         // Shift+click starts or extends the range from the last clicked cell, without the actions dialog.
         const from = anchorRef.current ?? { row: c.row, day: c.day };
@@ -412,6 +430,7 @@ export function CalendarPlanbyGrid({
   );
 
   const pricingEnabled = Boolean(pricing);
+  const tapRange = Boolean(pricing?.tapRange);
   const calendarGridCss = useMemo(() => {
     const rowH = layoutItemHeight > 0 ? layoutItemHeight : ITEM_HEIGHT_PX;
     const colW = dayColWidthPx > 0 ? dayColWidthPx : DAY_COLUMN_WIDTH_PX.desktop;
@@ -505,8 +524,19 @@ ${
 }
 `
     : ''
+}${
+  tapRange
+    ? `#cal-${calendarScopeId} .planby [data-testid="program-item"] {
+  pointer-events: none;
+  opacity: 0.6;
+}
+#cal-${calendarScopeId} .planby [data-testid="content"] {
+  cursor: pointer;
+}
+`
+    : ''
 }`;
-  }, [calendarScopeId, dayColWidthPx, layoutItemHeight, pricingEnabled]);
+  }, [calendarScopeId, dayColWidthPx, layoutItemHeight, pricingEnabled, tapRange]);
 
   return (
     <>
@@ -536,6 +566,7 @@ ${
               cellPrices={pricing.cellPrices}
               selection={pricing.selection}
               onBadgeClick={pricing.onBadgeClick}
+              large={tapRange}
             />,
             contentEl,
           )

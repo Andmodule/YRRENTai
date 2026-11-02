@@ -1,7 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { CalendarPlus, Coins, LockOpen, Percent } from 'lucide-react';
+import { CalendarPlus, CalendarRange, Coins, LockOpen, Percent } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   ResponsiveModal,
@@ -14,6 +14,8 @@ interface CalendarCellActionsDialogProps {
   propertyTitle?: string;
   dayLabel?: string;
   onNewBooking: () => void;
+  /** The property's month with this night picked: base price, «Проверить», «Отправить в Booking». */
+  onOpenMonth?: () => void;
   onSetOtaPrice: () => void;
   /** «Цены → Скидки» enabled: discount for this property and day. */
   onSetDiscount?: () => void;
@@ -27,6 +29,7 @@ export function CalendarCellActionsDialog({
   propertyTitle,
   dayLabel,
   onNewBooking,
+  onOpenMonth,
   onSetOtaPrice,
   onSetDiscount,
   onOpenDates,
@@ -44,6 +47,19 @@ export function CalendarCellActionsDialog({
         }
       >
         <div className="grid gap-2">
+          {onOpenMonth ? (
+            <Button
+              type="button"
+              className="h-11 justify-start gap-2"
+              onClick={() => {
+                onOpenChange(false);
+                onOpenMonth();
+              }}
+            >
+              <CalendarRange className="h-4 w-4" />
+              {t('openMonth')}
+            </Button>
+          ) : null}
           <Button
             type="button"
             variant="secondary"

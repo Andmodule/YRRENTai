@@ -158,6 +158,12 @@ export function MonthGrid({
                           )}
                           title={row.booking?.typed ? t('rowTypedTitle', { price: fmt.format(row.booking.price), base: fmt.format(row.base) }) : undefined}
                         >
+                          {/* Phone has no B line: the dot alone says Booking does not have this price yet. */}
+                          {row.booking?.pending ? (
+                            <span className="mr-0.5 text-amber-600 sm:hidden" aria-label={t('rowPending')}>
+                              ●
+                            </span>
+                          ) : null}
                           {fmt.format(row.base)}
                         </span>
                       ) : (
@@ -165,6 +171,11 @@ export function MonthGrid({
                           <span className="hidden sm:inline">—</span>
                           {/* Phone shows one row: without a base price it is the guest price, as before base prices. */}
                           <span className={cn('sm:hidden', deal && 'text-emerald-700 dark:text-emerald-400')}>
+                            {row.booking?.pending ? (
+                              <span className="mr-0.5 text-amber-600" aria-label={t('rowPending')}>
+                                ●
+                              </span>
+                            ) : null}
                             {n?.prices ? fmt.format(n.prices.regular) : '—'}
                           </span>
                         </span>
