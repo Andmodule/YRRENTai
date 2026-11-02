@@ -35,10 +35,14 @@ export function BookingSendStatus({
 
   const what = t(`what.${job.action}`);
   const range = fmtRange(job.dateFrom, addDaysYmd(job.dateToExclusive, -1));
-  const at = 'at' in status ? format(new Date(status.at), 'd MMM, HH:mm', { locale: dateLocale }) : '';
+  // The device's time; the year only for a run of another year (the server keeps the last run until it restarts).
+  const atDate = 'at' in status ? new Date(status.at) : null;
+  const at = atDate
+    ? format(atDate, atDate.getFullYear() === new Date().getFullYear() ? 'd MMM, HH:mm' : 'd MMM yyyy, HH:mm', { locale: dateLocale })
+    : '';
   const auto = job.source === 'auto' ? ` ${t('auto')}` : '';
-  // Only nights of this month can be picked here.
-  const again = resendRange(job);
+  // Only a price run is sent again from here (opening / closing — «Продажи»), and only nights of this month.
+  const again = job.action === 'price' ? resendRange(job) : null;
   const pick =
     again && again.from <= monthTo && again.to >= monthFrom
       ? { from: again.from < monthFrom ? monthFrom : again.from, to: again.to > monthTo ? monthTo : again.to }

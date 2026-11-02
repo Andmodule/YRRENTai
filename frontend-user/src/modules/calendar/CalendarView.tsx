@@ -273,7 +273,10 @@ export function CalendarView({
   // «Цены → Скидки» in the calendar: badges, range selection, discount sheet (owners / managers, feature on).
   const tp = useTranslations('pricing.calendar');
   const fmtStayRange = useStayRangeFormatter();
-  const pricingOn = usePricingAccess().enabled;
+  const pricingAccess = usePricingAccess();
+  const pricingOn = pricingAccess.enabled;
+  // The property's month edits prices only with «Базовая цена» on (it builds on «Цена для гостя»).
+  const basePriceOn = pricingAccess.basePrice && pricingAccess.guestPrice;
   const firstDayYmd = format(startOfDay(dateRange.start), 'yyyy-MM-dd');
   const lastDayYmd = format(startOfDay(dateRange.end), 'yyyy-MM-dd');
   const calendarPromotions = useCalendarPromotions(firstDayYmd, lastDayYmd, pricingOn);
@@ -288,6 +291,11 @@ export function CalendarView({
     }
   }, []);
   const tapMode = isMobile && pricingOn && priceModeOn;
+  /** Mode «Цены»: the first night is picked and the second tap is awaited. */
+  const [tapPending, setTapPending] = useState(false);
+  useEffect(() => {
+    if (!selection) setTapPending(false);
+  }, [selection]);
   const switchPriceMode = useCallback((on: boolean) => {
     setPriceModeOn(on);
     setSelection(null);
@@ -406,6 +414,7 @@ export function CalendarView({
             onSelectionChange: setSelection,
             onBadgeClick,
             tapRange: tapMode,
+            onTapPending: setTapPending,
           }
         : undefined,
     [pricingOn, calendarPromotions.data, cellPrices, selection, onBadgeClick, tapMode],
@@ -438,7 +447,7 @@ export function CalendarView({
         dayLabel={cellActionDayLabel ?? undefined}
         onNewBooking={() => setNewBookingOpen(true)}
         onOpenMonth={
-          newBookingPropertyId && newBookingGridDates
+          basePriceOn && newBookingPropertyId && newBookingGridDates
             ? () =>
                 router.push(
                   `/dashboard/calendar/${newBookingPropertyId}?month=${newBookingGridDates.checkIn.slice(0, 7)}&from=${newBookingGridDates.checkIn}&to=${newBookingGridDates.checkIn}`,
@@ -672,7 +681,9 @@ export function CalendarView({
                   key={String(on)}
                   type="button"
                   aria-pressed={priceModeOn === on}
-                  onClick={() => switchPriceMode(on)}
+                  onClick={() => {
+                    if (on !== priceModeOn) switchPriceMode(on);
+                  }}
                   className={cn(
                     'h-11 rounded-lg text-[15px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                     priceModeOn === on ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground',
@@ -755,31 +766,29 @@ export function CalendarView({
               <span className="text-[13px] text-amber-300">{tp('selectionPast')}</span>
             ) : selectionInfo.skipped > 0 ? (
               <span className="text-[13px] text-zinc-300">{tp('selectionSkip', { count: selectionInfo.skipped })}</span>
-            ) : tapMode && selectionInfo.nights === 1 ? (
+            ) : tapMode && tapPending ? (
               <span className="text-[13px] text-zinc-300">{tp('tapSecond')}</span>
             ) : null}
             {tapMode && selectionInfo.single ? (
-              // Phone, mode «Цены»: the price of the picked nights is set in the property's month.
+              // Phone, mode «Цены»: the price of the picked nights is set in the property's month; the bar keeps
+              // one button so it covers as little of the grid as possible (discount and dates are in the month too).
               <Link
                 href={`/dashboard/calendar/${selectionInfo.single}?month=${selectionInfo.from.slice(0, 7)}&from=${selectionInfo.from}&to=${selectionInfo.monthTo}`}
                 className="inline-flex h-11 items-center gap-2 rounded-md bg-blue-600 px-4 text-[15px] font-semibold text-white hover:bg-blue-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <CalendarRange className="h-4 w-4" aria-hidden />
                 {selectionInfo.cut
-                  ? tp('priceSelectedCut', { date: `${selectionInfo.monthTo.slice(8, 10)}.${selectionInfo.monthTo.slice(5, 7)}` })
-                  : tp('priceSelected')}
+                  ? tp(basePriceOn ? 'priceSelectedCut' : 'openInMonthCut', {
+                      date: `${selectionInfo.monthTo.slice(8, 10)}.${selectionInfo.monthTo.slice(5, 7)}`,
+                    })
+                  : tp(basePriceOn ? 'priceSelected' : 'openInMonth')}
               </Link>
             ) : null}
+            {tapMode ? null : (
             <Button
               type="button"
               size="sm"
-              variant={tapMode ? 'ghost' : 'default'}
-              className={cn(
-                'h-10 gap-2 px-3.5',
-                tapMode
-                  ? 'border border-zinc-700 text-white hover:bg-zinc-800 hover:text-white dark:hover:bg-zinc-700'
-                  : 'bg-blue-600 text-white hover:bg-blue-500',
-              )}
+              className="h-10 gap-2 bg-blue-600 px-3.5 text-white hover:bg-blue-500"
               disabled={selectionInfo.past || selectionInfo.bookingIds.length === 0}
               onClick={() =>
                 openDiscount({
@@ -792,6 +801,7 @@ export function CalendarView({
               <Percent className="h-4 w-4" aria-hidden />
               {tp('discountSelected')}
             </Button>
+            )}
             {selectionInfo.single && !tapMode ? (
               <Link
                 href={`/dashboard/calendar/${selectionInfo.single}?month=${selectionInfo.from.slice(0, 7)}&from=${selectionInfo.from}&to=${selectionInfo.monthTo}`}
@@ -803,7 +813,7 @@ export function CalendarView({
                   : tp('openInMonth')}
               </Link>
             ) : null}
-            {datesAccess.enabled && selectionInfo.bookingIds.length === 1 ? (
+            {datesAccess.enabled && selectionInfo.bookingIds.length === 1 && !tapMode ? (
               <Button
                 type="button"
                 size="sm"
@@ -823,7 +833,10 @@ export function CalendarView({
               type="button"
               size="sm"
               variant="ghost"
-              className="h-10 border border-zinc-700 px-3 text-white hover:bg-zinc-800 hover:text-white dark:hover:bg-zinc-700"
+              className={cn(
+                'border border-zinc-700 px-3 text-white hover:bg-zinc-800 hover:text-white dark:hover:bg-zinc-700',
+                tapMode ? 'h-11' : 'h-10',
+              )}
               onClick={() => setSelection(null)}
             >
               {tp('reset')}

@@ -1723,8 +1723,8 @@
         "partial": "Не всё дошло до Booking ({what} на {range} · {at}):",
         "partialFailed": "{count, plural, one {# ночь} few {# ночи} many {# ночей} other {# ночей}} Booking не принял.",
         "partialMismatch": "На {count, plural, one {# ночи} few {# ночах} many {# ночах} other {# ночах}} Booking показывает другое.",
-        "failed": "Отправка {what} на {range} оборвалась с ошибкой ({at}) — часть ночей могла не дойти до Booking.",
-        "stopped": "Отправка {what} на {range} остановлена ({at}) — часть ночей могла не дойти до Booking.",
+        "failed": "Не удалось отправить в Booking {what} на {range} ({at}) — часть ночей могла не дойти.",
+        "stopped": "Остановили отправку в Booking: {what} на {range} ({at}) — часть ночей могла не дойти.",
         "pickAgain": "Выбрать эти ночи"
       },
       "basePrice": {

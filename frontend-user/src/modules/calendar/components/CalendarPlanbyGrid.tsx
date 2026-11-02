@@ -36,6 +36,8 @@ export type CalendarPricingProps = {
    * of opening the actions; bookings and badges let taps through; the price is large in the cell.
    */
   tapRange?: boolean;
+  /** Mode «Цены»: true after the first tap of a range, false once it is closed. */
+  onTapPending?: (pending: boolean) => void;
 };
 
 const ITEM_HEIGHT_PX = 64;
@@ -44,8 +46,12 @@ const SIDEBAR_WIDTH_PX = {
   mobile: 112,
   desktop: 240,
 } as const;
+/**
+ * Planby works in whole pixels per hour: the column is floor(width / 24) × 24, so only multiples of 24 come
+ * out as written (64 used to give 48 px on a phone — too narrow for a finger and a price).
+ */
 const DAY_COLUMN_WIDTH_PX = {
-  mobile: 64,
+  mobile: 72,
   desktop: 96,
 } as const;
 
@@ -246,7 +252,8 @@ export function CalendarPlanbyGrid({
     // Drag across days / properties → range selection (only when «Цены» is on).
     const onMouseDown = (e: MouseEvent) => {
       suppressClickRef.current = false;
-      if (!pricingRef.current || e.button !== 0 || e.shiftKey) return;
+      // Mode «Цены» picks by taps only: a mouse drag there would leave the tap anchor behind.
+      if (!pricingRef.current || pricingRef.current.tapRange || e.button !== 0 || e.shiftKey) return;
       const c = cellAt(e);
       if (!c) return;
       dragRef.current = { start: { row: c.row, day: c.day }, moved: false };
@@ -283,6 +290,7 @@ export function CalendarPlanbyGrid({
         const next = nextTapRange(tapAnchorRef.current, { row: c.row, day: c.day });
         pricingNow.onSelectionChange(next.rect);
         tapAnchorRef.current = next.anchor;
+        pricingNow.onTapPending?.(next.anchor != null);
         return;
       }
       if (pricingNow && e.shiftKey) {
@@ -532,6 +540,10 @@ ${
 }
 #cal-${calendarScopeId} .planby [data-testid="content"] {
   cursor: pointer;
+  /* two quick taps in neighbouring nights must stay two taps, not a double-tap zoom */
+  touch-action: manipulation;
+  /* room to scroll the last rows above the bar with the picked nights */
+  margin-bottom: 96px;
 }
 `
     : ''

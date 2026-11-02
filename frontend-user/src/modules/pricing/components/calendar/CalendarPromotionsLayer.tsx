@@ -143,18 +143,28 @@ export function CalendarPromotionsLayer({
     ) : null}
     <div className="pointer-events-none absolute inset-0" style={{ zIndex: 2 }} aria-hidden={badges.length === 0 && prices.length === 0 && !selection}>
       {large
-        ? freePrices.map((p) => (
-            <span
-              key={`price:${p.key}`}
-              className={cn(
-                'absolute overflow-hidden whitespace-nowrap text-center text-base font-semibold leading-6 tabular-nums text-foreground',
-                p.rack != null && 'text-emerald-700 dark:text-emerald-400',
-              )}
-              style={{ top: p.row * rowHeightPx + 28, left: p.day * dayColWidthPx, width: dayColWidthPx }}
-            >
-              {fmt.format(p.price)}
-            </span>
-          ))
+        ? freePrices.map((p) => {
+            const label = fmt.format(p.price);
+            // A check-out day: the leaving guest's bar covers the left half, the price takes the right one.
+            const half = cellPrices?.halfBusy.has(p.key) ?? false;
+            return (
+              <span
+                key={`price:${p.key}`}
+                className={cn(
+                  'absolute overflow-hidden whitespace-nowrap font-semibold leading-6 tabular-nums text-foreground',
+                  half ? 'pr-1 text-right text-xs' : label.length > 5 ? 'text-center text-[13px]' : 'text-center text-base',
+                  p.rack != null && 'text-emerald-700 dark:text-emerald-400',
+                )}
+                style={{
+                  top: p.row * rowHeightPx + 28,
+                  left: p.day * dayColWidthPx + (half ? dayColWidthPx / 2 : 0),
+                  width: half ? dayColWidthPx / 2 : dayColWidthPx,
+                }}
+              >
+                {label}
+              </span>
+            );
+          })
         : null}
       {large
         ? badges.map((b) => (
