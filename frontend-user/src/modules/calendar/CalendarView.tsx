@@ -823,7 +823,10 @@ export function CalendarView({
                 type="button"
                 size="sm"
                 variant="ghost"
-                className="h-10 gap-2 border border-zinc-700 px-3 text-white hover:bg-zinc-800 hover:text-white dark:hover:bg-zinc-700"
+                className={cn(
+                  'gap-2 border border-zinc-700 px-3 text-white hover:bg-zinc-800 hover:text-white dark:hover:bg-zinc-700',
+                  isMobile ? 'h-11' : 'h-10',
+                )}
                 disabled={selectionInfo.past}
                 onClick={() => {
                   openDates(selectionInfo.bookingIds[0]!, selectionInfo.from, selectionInfo.to);
