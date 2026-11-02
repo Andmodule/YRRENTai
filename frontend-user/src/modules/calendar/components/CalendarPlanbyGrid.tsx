@@ -542,8 +542,8 @@ ${
   cursor: pointer;
   /* two quick taps in neighbouring nights must stay two taps, not a double-tap zoom */
   touch-action: manipulation;
-  /* room to scroll the last rows above the bar with the picked nights */
-  margin-bottom: 96px;
+  /* room to scroll the last rows above the bar with the picked nights (up to 3 wrapped lines on 375 px) */
+  margin-bottom: 176px;
 }
 `
     : ''

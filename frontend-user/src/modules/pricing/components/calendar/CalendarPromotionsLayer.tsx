@@ -152,7 +152,11 @@ export function CalendarPromotionsLayer({
                 key={`price:${p.key}`}
                 className={cn(
                   'absolute overflow-hidden whitespace-nowrap font-semibold leading-6 tabular-nums text-foreground',
-                  half ? 'pr-1 text-right text-xs' : label.length > 5 ? 'text-center text-[13px]' : 'text-center text-base',
+                  half
+                    ? cn('text-right', label.length > 4 ? 'text-[10px]' : 'text-[11px]')
+                    : label.length > 5
+                      ? 'text-center text-[13px]'
+                      : 'text-center text-base',
                   p.rack != null && 'text-emerald-700 dark:text-emerald-400',
                 )}
                 style={{
