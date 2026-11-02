@@ -150,23 +150,14 @@ export function MonthGrid({
                   {row ? (
                     <span className="mt-auto grid gap-px text-right text-[10px] leading-[14px] tabular-nums sm:text-[11px]">
                       {row.base != null ? (
-                        // Own Booking price on the night: the base price does not reach Booking — struck where the B line shows.
+                        // Own Booking price on the night: the base price does not reach Booking — struck.
                         <span
                           className={cn(
                             'font-semibold text-foreground',
-                            row.booking?.typed && 'sm:font-normal sm:text-muted-foreground sm:line-through',
+                            row.booking?.typed && 'font-normal text-muted-foreground line-through',
                           )}
                           title={row.booking?.typed ? t('rowTypedTitle', { price: fmt.format(row.booking.price), base: fmt.format(row.base) }) : undefined}
                         >
-                          {/* Phone has no B line: the dot alone says Booking does not have this price yet. */}
-                          {row.booking?.pending ? (
-                            <span className="sm:hidden">
-                              <span className="mr-0.5 text-amber-600" aria-hidden>
-                                ●
-                              </span>
-                              <span className="sr-only">{t('rowPending')}</span>
-                            </span>
-                          ) : null}
                           {fmt.format(row.base)}
                         </span>
                       ) : (
@@ -178,15 +169,19 @@ export function MonthGrid({
                           </span>
                         </span>
                       )}
-                      <span className="hidden text-blue-700 dark:text-blue-300 sm:block" title={t('rowBookingTitle')}>
+                      {/* Phone: «B price» only — the old price, marks and the guest minimum stay for the computer. */}
+                      <span className="truncate text-blue-700 dark:text-blue-300 sm:overflow-visible sm:whitespace-normal" title={t('rowBookingTitle')}>
                         {row.booking ? (
                           <>
                             {row.booking.pending ? <span className="mr-0.5 text-amber-600" aria-label={t('rowPending')}>●</span> : null}
-                            B {row.booking.current != null ? `${fmt.format(row.booking.current)}→` : ''}
+                            B{' '}
+                            {row.booking.current != null ? (
+                              <span className="hidden sm:inline">{`${fmt.format(row.booking.current)}→`}</span>
+                            ) : null}
                             {fmt.format(row.booking.price)}
                             {row.booking.typed ? (
                               <span
-                                className="font-semibold text-amber-600 dark:text-amber-400"
+                                className="hidden font-semibold text-amber-600 dark:text-amber-400 sm:inline"
                                 title={
                                   row.base != null
                                     ? t('rowTypedTitle', { price: fmt.format(row.booking.price), base: fmt.format(row.base) })
@@ -198,17 +193,21 @@ export function MonthGrid({
                             ) : null}
                             {row.booking.autoPct ? (
                               // «Автоцены» moved this night: an arrow in the cell, the percent on hover.
-                              <span className="text-violet-600 dark:text-violet-400" title={t('rowAuto', { pct: signedPct(row.booking.autoPct) })}>
+                              <span className="hidden text-violet-600 dark:text-violet-400 sm:inline" title={t('rowAuto', { pct: signedPct(row.booking.autoPct) })}>
                                 {row.booking.autoPct < 0 ? '↓' : '↑'}
                               </span>
                             ) : null}
-                            <span className="text-muted-foreground"> / {fmt.format(row.booking.minGuest)}</span>
+                            <span className="hidden text-muted-foreground sm:inline"> / {fmt.format(row.booking.minGuest)}</span>
                           </>
                         ) : (
                           'B —'
                         )}
                       </span>
-                      <span className="hidden text-rose-700 dark:text-rose-300 sm:block" title={t('rowAirbnbTitle')}>
+                      {/* Phone: the A line only where Airbnb has a price (one listing is connected) — «A —» everywhere was noise. */}
+                      <span
+                        className={cn('truncate text-rose-700 dark:text-rose-300 sm:overflow-visible sm:whitespace-normal', row.airbnb == null && 'hidden sm:block')}
+                        title={t('rowAirbnbTitle')}
+                      >
                         A {row.airbnb != null ? fmt.format(row.airbnb) : '—'}
                         {row.airbnbTyped ? '✎' : ''}
                       </span>

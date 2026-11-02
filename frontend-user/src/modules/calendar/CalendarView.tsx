@@ -693,7 +693,7 @@ export function CalendarView({
                 </button>
               ))}
             </div>
-            {tapMode ? <p className="px-1 pt-1.5 text-xs text-muted-foreground">{t('priceModeHint')}</p> : null}
+            <p className="px-1 pt-1.5 text-xs text-muted-foreground">{t(tapMode ? 'priceModeHint' : 'bookingsModeHint')}</p>
           </div>
         ) : null}
         <TimelineNavBar
@@ -766,12 +766,12 @@ export function CalendarView({
               <span className="text-[13px] text-amber-300">{tp('selectionPast')}</span>
             ) : selectionInfo.skipped > 0 ? (
               <span className="text-[13px] text-zinc-300">{tp('selectionSkip', { count: selectionInfo.skipped })}</span>
-            ) : tapMode && tapPending ? (
+            ) : isMobile && tapPending ? (
               <span className="text-[13px] text-zinc-300">{tp('tapSecond')}</span>
             ) : null}
-            {tapMode && selectionInfo.single ? (
-              // Phone, mode «Цены»: the price of the picked nights is set in the property's month; the bar keeps
-              // one button so it covers as little of the grid as possible (discount and dates are in the month too).
+            {isMobile && selectionInfo.single ? (
+              // Phone: the price of the picked nights is set in the property's month; the bar keeps few buttons so it
+              // covers as little of the grid as possible (dates are in the month too).
               <Link
                 href={`/dashboard/calendar/${selectionInfo.single}?month=${selectionInfo.from.slice(0, 7)}&from=${selectionInfo.from}&to=${selectionInfo.monthTo}`}
                 className="inline-flex h-11 items-center gap-2 rounded-md bg-blue-600 px-4 text-[15px] font-semibold text-white hover:bg-blue-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -784,11 +784,17 @@ export function CalendarView({
                   : tp(basePriceOn ? 'priceSelected' : 'openInMonth')}
               </Link>
             ) : null}
-            {tapMode ? null : (
             <Button
               type="button"
               size="sm"
-              className="h-10 gap-2 bg-blue-600 px-3.5 text-white hover:bg-blue-500"
+              className={cn(
+                'gap-2 px-3.5 text-white',
+                // Phone, one property: «Цена» is the main button, the discount is next to it.
+                isMobile && selectionInfo.single
+                  ? 'h-11 border border-zinc-600 bg-transparent hover:bg-zinc-800 dark:hover:bg-zinc-700'
+                  : 'bg-blue-600 hover:bg-blue-500',
+                isMobile ? 'h-11 text-[15px]' : 'h-10',
+              )}
               disabled={selectionInfo.past || selectionInfo.bookingIds.length === 0}
               onClick={() =>
                 openDiscount({
@@ -799,10 +805,9 @@ export function CalendarView({
               }
             >
               <Percent className="h-4 w-4" aria-hidden />
-              {tp('discountSelected')}
+              {tp(isMobile ? 'discountDays' : 'discountSelected')}
             </Button>
-            )}
-            {selectionInfo.single && !tapMode ? (
+            {selectionInfo.single && !isMobile ? (
               <Link
                 href={`/dashboard/calendar/${selectionInfo.single}?month=${selectionInfo.from.slice(0, 7)}&from=${selectionInfo.from}&to=${selectionInfo.monthTo}`}
                 className="inline-flex h-10 items-center gap-2 rounded-md border border-zinc-700 px-3 text-sm font-medium text-white hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:hover:bg-zinc-700"
@@ -813,7 +818,7 @@ export function CalendarView({
                   : tp('openInMonth')}
               </Link>
             ) : null}
-            {datesAccess.enabled && selectionInfo.bookingIds.length === 1 && !tapMode ? (
+            {datesAccess.enabled && selectionInfo.bookingIds.length === 1 && !isMobile ? (
               <Button
                 type="button"
                 size="sm"
@@ -835,7 +840,7 @@ export function CalendarView({
               variant="ghost"
               className={cn(
                 'border border-zinc-700 px-3 text-white hover:bg-zinc-800 hover:text-white dark:hover:bg-zinc-700',
-                tapMode ? 'h-11' : 'h-10',
+                isMobile ? 'h-11' : 'h-10',
               )}
               onClick={() => setSelection(null)}
             >

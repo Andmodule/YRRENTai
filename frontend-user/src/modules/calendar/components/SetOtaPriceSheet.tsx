@@ -20,6 +20,7 @@ import {
   type OtaRateCurrencyCode,
 } from '@/components/property/property-field-options';
 import type { Property as CalendarProperty } from '../types';
+import { channelPriceNow } from '../lib/ota-price-now';
 
 interface SetOtaPriceSheetProps {
   open: boolean;
@@ -128,6 +129,12 @@ export function SetOtaPriceSheet({
       return '';
     }
   }, [dateToInclusive]);
+
+  /** The channel's Standard price now — the field below is prefilled from it, but without a label it read as a guess. */
+  const priceNow = useMemo(() => {
+    const prop = linkedProperties.find((p) => p.uuid === propertyId);
+    return channelPriceNow(prop?.otaNightlyPrices, dateFrom, dateToExclusive);
+  }, [linkedProperties, propertyId, dateFrom, dateToExclusive]);
 
   const nights = useMemo(() => {
     if (!dateFrom || !dateToExclusive || dateFrom >= dateToExclusive) return 0;
@@ -275,6 +282,24 @@ export function SetOtaPriceSheet({
             {t('nightsHint', { count: nights })}
           </p>
           <p className="text-[11px] text-muted-foreground">{t('freeOnlyHint')}</p>
+
+          {priceNow.nights > 0 ? (
+            <div className="rounded-lg border border-blue-300 bg-blue-50 px-3 py-2 text-sm text-blue-950 dark:border-blue-500/40 dark:bg-blue-500/10 dark:text-blue-100">
+              <p>
+                {priceNow.min == null
+                  ? t('nowUnknown')
+                  : priceNow.min === priceNow.max
+                    ? t('nowOne', { price: formatMoneyMajor(priceNow.min), currency })
+                    : t('nowRange', {
+                        min: formatMoneyMajor(priceNow.min),
+                        max: formatMoneyMajor(priceNow.max ?? priceNow.min),
+                        currency,
+                      })}
+                {priceNow.min != null && priceNow.unknown > 0 ? ` ${t('nowSomeUnknown', { count: priceNow.unknown })}` : ''}
+              </p>
+              <p className="mt-0.5 text-[11px] leading-snug opacity-80">{t('nowNote')}</p>
+            </div>
+          ) : null}
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
