@@ -76,6 +76,16 @@ export function MonthGrid({
 
   return (
     <div className="min-w-0" role="grid" aria-label={t('gridAria')}>
+      {rows ? (
+        <p className="flex flex-wrap gap-x-3 pb-1.5 text-[11px] text-muted-foreground sm:hidden">
+          <span className="font-semibold text-foreground">{t('legendBase')}</span>
+          <span className="text-blue-700 dark:text-blue-300">{t('legendBooking')}</span>
+          <span className="text-rose-700 dark:text-rose-300">{t('legendAirbnb')}</span>
+          <span>
+            <span className="text-amber-600">●</span> {t('legendPending')}
+          </span>
+        </p>
+      ) : null}
       <div className="grid grid-cols-7 gap-1 pb-1" role="row">
         {weekdays.map((w, i) => (
           <div
@@ -174,7 +184,8 @@ export function MonthGrid({
                         {row.booking ? (
                           <>
                             {row.booking.pending ? <span className="mr-0.5 text-amber-600" aria-label={t('rowPending')}>●</span> : null}
-                            B{' '}
+                            {/* Phone: no letter — a 35 px cell fits the number only; the colour and the legend say it. */}
+                            <span className="hidden sm:inline">B </span>
                             {row.booking.current != null ? (
                               <span className="hidden sm:inline">{`${fmt.format(row.booking.current)}→`}</span>
                             ) : null}
@@ -200,7 +211,9 @@ export function MonthGrid({
                             <span className="hidden text-muted-foreground sm:inline"> / {fmt.format(row.booking.minGuest)}</span>
                           </>
                         ) : (
-                          'B —'
+                          <>
+                            <span className="hidden sm:inline">B </span>—
+                          </>
                         )}
                       </span>
                       {/* Phone: the A line only where Airbnb has a price (one listing is connected) — «A —» everywhere was noise. */}
@@ -208,7 +221,8 @@ export function MonthGrid({
                         className={cn('truncate text-rose-700 dark:text-rose-300 sm:overflow-visible sm:whitespace-normal', row.airbnb == null && 'hidden sm:block')}
                         title={t('rowAirbnbTitle')}
                       >
-                        A {row.airbnb != null ? fmt.format(row.airbnb) : '—'}
+                        <span className="hidden sm:inline">A </span>
+                        {row.airbnb != null ? fmt.format(row.airbnb) : '—'}
                         {row.airbnbTyped ? '✎' : ''}
                       </span>
                     </span>

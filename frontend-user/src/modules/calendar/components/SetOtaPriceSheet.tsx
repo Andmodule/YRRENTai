@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { addDays, differenceInCalendarDays, format, parseISO } from 'date-fns';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { isAxiosError } from 'axios';
 import { Loader2 } from 'lucide-react';
@@ -133,8 +133,15 @@ export function SetOtaPriceSheet({
   /** The channel's Standard price now — the field below is prefilled from it, but without a label it read as a guess. */
   const priceNow = useMemo(() => {
     const prop = linkedProperties.find((p) => p.uuid === propertyId);
-    return channelPriceNow(prop?.otaNightlyPrices, dateFrom, dateToExclusive);
-  }, [linkedProperties, propertyId, dateFrom, dateToExclusive]);
+    const full = fullProperties.find((p) => p.id === propertyId);
+    return {
+      ...channelPriceNow(prop?.otaNightlyPrices, dateFrom, dateToExclusive),
+      // The channel's own currency, not the field below: switching it does not convert what Booking has.
+      currency: resolveOtaRateCurrency(prop?.otaCurrency || full?.currency || prop?.currency),
+    };
+  }, [linkedProperties, fullProperties, propertyId, dateFrom, dateToExclusive]);
+  const locale = useLocale();
+  const fmtNow = useMemo(() => new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }), [locale]);
 
   const nights = useMemo(() => {
     if (!dateFrom || !dateToExclusive || dateFrom >= dateToExclusive) return 0;
@@ -289,11 +296,11 @@ export function SetOtaPriceSheet({
                 {priceNow.min == null
                   ? t('nowUnknown')
                   : priceNow.min === priceNow.max
-                    ? t('nowOne', { price: formatMoneyMajor(priceNow.min), currency })
+                    ? t('nowOne', { price: fmtNow.format(priceNow.min), currency: priceNow.currency })
                     : t('nowRange', {
-                        min: formatMoneyMajor(priceNow.min),
-                        max: formatMoneyMajor(priceNow.max ?? priceNow.min),
-                        currency,
+                        min: fmtNow.format(priceNow.min),
+                        max: fmtNow.format(priceNow.max ?? priceNow.min),
+                        currency: priceNow.currency,
                       })}
                 {priceNow.min != null && priceNow.unknown > 0 ? ` ${t('nowSomeUnknown', { count: priceNow.unknown })}` : ''}
               </p>

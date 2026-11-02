@@ -107,6 +107,9 @@ export function CalendarPlanbyGrid({
 }: CalendarPlanbyGridProps) {
   const pricingRef = useRef(pricing);
   pricingRef.current = pricing;
+  /** The long press is a phone gesture: on a touch laptop or tablet the hints for it are not shown. */
+  const isMobileRef = useRef(isMobile);
+  isMobileRef.current = isMobile;
   const dragRef = useRef<{ start: { row: number; day: number }; moved: boolean } | null>(null);
   const suppressClickRef = useRef(false);
   const anchorRef = useRef<{ row: number; day: number } | null>(null);
@@ -300,7 +303,9 @@ export function CalendarPlanbyGrid({
     };
     const onTouchStart = (e: TouchEvent) => {
       cancelPress();
-      if (!pricingRef.current || pricingRef.current.tapRange || e.touches.length !== 1) return;
+      // A new gesture: a later click belongs to it, not to the previous long press.
+      ignoreClickUntilRef.current = 0;
+      if (!isMobileRef.current || !pricingRef.current || pricingRef.current.tapRange || e.touches.length !== 1) return;
       const finger = e.touches[0]!;
       const c = cellAt({ target: e.target, clientX: finger.clientX, clientY: finger.clientY });
       if (!c) return;
@@ -618,9 +623,9 @@ ${
 `
     : ''
 }${
-  pricingEnabled && isMobile && !tapRange && hasSelection
+  pricingEnabled && isMobile && !tapRange
     ? `#cal-${calendarScopeId} .planby [data-testid="content"] {
-  /* room to scroll the last rows above the bar with the picked cells */
+  /* room to scroll the last rows above the bar with the picked cells; constant, so a reset does not jump */
   margin-bottom: 176px;
 }
 `
@@ -641,7 +646,7 @@ ${
 `
     : ''
 }`;
-  }, [calendarScopeId, dayColWidthPx, layoutItemHeight, pricingEnabled, tapRange, isMobile, hasSelection]);
+  }, [calendarScopeId, dayColWidthPx, layoutItemHeight, pricingEnabled, tapRange, isMobile]);
 
   return (
     <>

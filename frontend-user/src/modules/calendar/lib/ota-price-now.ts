@@ -1,4 +1,7 @@
-import { addDays, format, parseISO } from 'date-fns';
+import { addDays, format, isValid, parseISO } from 'date-fns';
+
+const YMD = /^\d{4}-\d{2}-\d{2}$/;
+const isYmd = (s: string) => YMD.test(s) && isValid(parseISO(`${s}T12:00:00`));
 
 /** «Цена на канале»: what Booking's Standard rate is now on the picked nights (from the calendar's channel read). */
 export type ChannelPriceNow = {
@@ -17,7 +20,8 @@ export function channelPriceNow(
   dateToExclusive: string,
 ): ChannelPriceNow {
   const out: ChannelPriceNow = { min: null, max: null, unknown: 0, nights: 0 };
-  if (!dateFrom || !dateToExclusive || dateFrom >= dateToExclusive) return out;
+  // A date input lets a 5-digit year through; such a date is not a night to look up.
+  if (!isYmd(dateFrom) || !isYmd(dateToExclusive) || dateFrom >= dateToExclusive) return out;
   let cur = dateFrom;
   // A year of nights at most: a mistyped year must not spin the loop.
   while (cur < dateToExclusive && out.nights < 366) {

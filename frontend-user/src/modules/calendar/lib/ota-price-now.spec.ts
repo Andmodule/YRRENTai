@@ -38,6 +38,12 @@ describe('channelPriceNow', () => {
     assert.deepEqual(channelPriceNow(prices, '2026-10-31', '2026-11-02'), { min: 400, max: 410, unknown: 0, nights: 2 });
   });
 
+  it('a 5-digit or broken date gives nothing instead of throwing', () => {
+    assert.equal(channelPriceNow({}, '10000-01-01', '2026-11-10').nights, 0);
+    assert.equal(channelPriceNow({}, '2026-11-09', '2026-13-01').nights, 0);
+    assert.equal(channelPriceNow({}, '2026-11-9', '2026-11-12').nights, 0);
+  });
+
   it('a mistyped far year stops at a year of nights', () => {
     assert.equal(channelPriceNow({}, '2026-11-09', '2126-11-09').nights, 366);
   });

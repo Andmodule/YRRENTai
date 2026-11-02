@@ -818,7 +818,7 @@ export function CalendarView({
                   : tp('openInMonth')}
               </Link>
             ) : null}
-            {datesAccess.enabled && selectionInfo.bookingIds.length === 1 && !isMobile ? (
+            {datesAccess.enabled && selectionInfo.bookingIds.length === 1 && !tapMode ? (
               <Button
                 type="button"
                 size="sm"

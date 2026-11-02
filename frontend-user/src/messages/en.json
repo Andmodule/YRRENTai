@@ -1695,7 +1695,7 @@
     "modeBookings": "Брони",
     "modePrices": "Цены",
     "priceModeHint": "Цифра — цена ночи для обычного гостя на Booking. Коснитесь первой ночи, затем последней — в другой строке выберутся и все объекты между ними.",
-    "bookingsModeHint": "Удерживайте свободную ячейку, затем коснитесь последней — выберутся дни и объекты для скидки.",
+    "bookingsModeHint": "Удерживайте ячейку — выбор дней и объектов для скидки.",
     "today": "Today",
     "cellActions": {
       "openMonth": "Цена на эту ночь",
@@ -1809,6 +1809,10 @@
         "belowMinStay": "По новой цене: за {nights, plural, one {# ночь} few {# ночи} many {# ночей} other {# ночей}} гость со всеми скидками Booking и уборкой заплатит {total} {currency} — меньше минимума {floor} {currency} ({min} × {nights}). Отправка это не остановит — проверьте скидки или цену."
       },
       "rowBookingTitle": "Booking: цена, которую ставит RentAI / минимум для гостя за ночь (номер, без уборки). «● 240→245» — на Booking сейчас 240, новая цена ещё не отправлена; ✎ — своя цена на эту ночь.",
+      "legendBase": "base",
+      "legendBooking": "Booking",
+      "legendAirbnb": "Airbnb",
+      "legendPending": "not on Booking yet",
       "rowAirbnbTitle": "Airbnb: цена ночи (✎ — своя цена на эту ночь).",
       "rowTypedTitle": "Своя цена Booking {price} — важнее базовой {base}. Базовая на эту ночь не действует.",
       "rowTypedTitleNoBase": "Своя цена Booking {price} на эту ночь.",
