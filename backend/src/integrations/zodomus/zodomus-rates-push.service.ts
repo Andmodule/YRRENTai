@@ -26,6 +26,7 @@ import {
   resolveOtaChannelCurrency,
 } from './zodomus-reservation-price.util';
 import { AIRBNB_CHANNEL_ID } from './airbnb/airbnb-pilot.util';
+import { todayInTz } from '../../pricing/pricing-math.util';
 
 export type PushRatesSegmentResult = RatesDateRange & {
   ok: boolean;
@@ -33,7 +34,7 @@ export type PushRatesSegmentResult = RatesDateRange & {
 };
 
 /** Nights written on the main rate by a «Цена на канале» push, with the price sent. */
-export type RatesPushedListener = (propertyId: string, nights: { date: string; price: number }[]) => void;
+export type RatesPushedListener = (propertyId: string, channelId: number, nights: { date: string; price: number }[]) => void;
 
 function nextYmd(ymd: string): string {
   return new Date(Date.parse(`${ymd}T12:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
@@ -79,23 +80,27 @@ export class ZodomusRatesPushService {
     this.pushedListeners.push(fn);
   }
 
-  /** Every night of the accepted segments, once (several channel targets may carry the same night). */
-  private notifyPushed(propertyId: string, results: readonly PushRatesTargetResult[], price: number): void {
+  /**
+   * Per channel target: the nights of its accepted segments from today on (in the property's zone) — a
+   * listener follows only the channel it cares about, and a past night is nothing to follow.
+   */
+  private notifyPushed(propertyId: string, tz: string | null | undefined, results: readonly PushRatesTargetResult[], price: number): void {
     if (this.pushedListeners.length === 0) return;
-    const dates = new Set<string>();
+    const today = todayInTz(tz);
     for (const r of results) {
+      const dates = new Set<string>();
       for (const s of r.segments ?? []) {
         if (!s.ok) continue;
-        for (let d = s.dateFrom; d < s.dateToExclusive; d = nextYmd(d)) dates.add(d);
+        for (let d = s.dateFrom; d < s.dateToExclusive; d = nextYmd(d)) if (d >= today) dates.add(d);
       }
-    }
-    if (dates.size === 0) return;
-    const nights = [...dates].sort().map((date) => ({ date, price }));
-    for (const fn of this.pushedListeners) {
-      try {
-        fn(propertyId, nights);
-      } catch (e) {
-        this.logger.warn(`rates pushed listener failed: ${e instanceof Error ? e.message : String(e)}`);
+      if (dates.size === 0) continue;
+      const nights = [...dates].sort().map((date) => ({ date, price }));
+      for (const fn of this.pushedListeners) {
+        try {
+          fn(propertyId, r.channelId, nights);
+        } catch (e) {
+          this.logger.warn(`rates pushed listener failed: ${e instanceof Error ? e.message : String(e)}`);
+        }
       }
     }
   }
@@ -313,7 +318,7 @@ export class ZodomusRatesPushService {
     }
 
     // Only the main rate is followed (a rate picked by id is not what a regular guest is offered).
-    if (!input.rateId) this.notifyPushed(property.id, results, input.price);
+    if (!input.rateId) this.notifyPushed(property.id, property.timezone, results, input.price);
 
     return {
       propertyId: property.id,

@@ -106,19 +106,29 @@ describe('ZodomusRatesPushService', () => {
     expect(arg).not.toHaveProperty('priceSingle');
   });
 
-  it('tells the listeners every accepted night of the main rate, once', async () => {
-    const heard: { date: string; price: number }[][] = [];
-    service.addPushedListener((_p, nights) => heard.push(nights));
-    await service.pushRatesForProperty({ propertyId: PROPERTY_ID, dateFrom: '2026-10-01', dateToExclusive: '2026-10-03', price: 600, currencyCode: 'PLN' });
-    expect(heard).toEqual([[{ date: '2026-10-01', price: 600 }, { date: '2026-10-02', price: 600 }]]);
+  it('tells the listeners the accepted nights of the main rate with their channel; past nights left out', async () => {
+    jest.useFakeTimers({ now: new Date('2026-10-01T10:00:00Z'), doNotFake: ['setImmediate', 'nextTick'] });
+    try {
+      const heard: [number, { date: string; price: number }[]][] = [];
+      service.addPushedListener((_p, ch, nights) => heard.push([ch, nights]));
+      await service.pushRatesForProperty({ propertyId: PROPERTY_ID, dateFrom: '2026-10-01', dateToExclusive: '2026-10-03', price: 600, currencyCode: 'PLN' });
+      expect(heard).toHaveLength(1);
+      expect(heard[0]![1]).toEqual([{ date: '2026-10-01', price: 600 }, { date: '2026-10-02', price: 600 }]);
+      jest.setSystemTime(new Date('2026-10-02T10:00:00Z'));
+      await service.pushRatesForProperty({ propertyId: PROPERTY_ID, dateFrom: '2026-10-01', dateToExclusive: '2026-10-03', price: 610, currencyCode: 'PLN' });
+      expect(heard[1]![1]).toEqual([{ date: '2026-10-02', price: 610 }]);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('does not tell the listeners about a rate picked by id, a failed write, or a listener that throws', async () => {
+    jest.useFakeTimers({ now: new Date('2026-10-01T10:00:00Z'), doNotFake: ['setImmediate', 'nextTick'] });
     const heard: unknown[] = [];
     service.addPushedListener(() => {
       throw new Error('boom');
     });
-    service.addPushedListener((_p, nights) => heard.push(nights));
+    service.addPushedListener((_p, _ch, nights) => heard.push(nights));
     await service.pushRatesForProperty({ propertyId: PROPERTY_ID, dateFrom: '2026-10-01', dateToExclusive: '2026-10-03', price: 600, rateId: RATE_ID });
     expect(heard).toEqual([]);
     setRates.mockRejectedValueOnce(new Error('502'));
@@ -129,6 +139,7 @@ describe('ZodomusRatesPushService', () => {
       service.pushRatesForProperty({ propertyId: PROPERTY_ID, dateFrom: '2026-10-01', dateToExclusive: '2026-10-03', price: 650 }),
     ).resolves.toBeDefined();
     expect(heard).toHaveLength(1);
+    jest.useRealTimers();
   });
 
   it('sends priceSingle only when explicitly provided', async () => {

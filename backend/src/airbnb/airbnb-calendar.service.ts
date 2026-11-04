@@ -145,7 +145,9 @@ export class AirbnbCalendarService implements OnModuleInit {
       void this.afterDatesApplied(propertyId, applied, alreadyClosed);
       return Promise.resolve();
     });
-    this.ratesPush.addPushedListener((propertyId, nights) => {
+    this.ratesPush.addPushedListener((propertyId, channelId, nights) => {
+      // Only a price Booking took: another channel's rate is not what a Booking guest pays.
+      if (channelId !== this.dates.bookingChannelId) return;
       void this.afterDatesApplied(propertyId, nights.map((n) => ({ ...n, closed: false })), []);
     });
   }

@@ -28,6 +28,7 @@ function setup(
     bookingRateNights: jest.fn(async () => new Map(rateNights)),
     minPriceOf: jest.fn(async () => 160),
     addAppliedListener: jest.fn(),
+    bookingChannelId: 1,
   };
   const calls: [string, Record<string, unknown>][] = [];
   const zodomus = {
@@ -348,13 +349,30 @@ describe('AirbnbCalendarService — after «Открыть / закрыть пр
   it('«Цена на канале»: the pushed nights get the new Airbnb price', async () => {
     const s = setup({ listing: { activatedAt: new Date(), planEnd: '2027-01-01' } });
     expect(s.ratesPush.addPushedListener).toHaveBeenCalledTimes(1);
-    const fn = (s.ratesPush.addPushedListener.mock.calls[0] as unknown as [(p: string, n: { date: string; price: number }[]) => void])[0];
-    fn(PID, [
+    const fn = (s.ratesPush.addPushedListener.mock.calls[0] as unknown as [(p: string, ch: number, n: { date: string; price: number }[]) => void])[0];
+    // another channel's rate is not followed
+    fn(PID, 7, [{ date: '2026-11-09', price: 999 }]);
+    fn(PID, 1, [
       { date: '2026-11-09', price: 320 },
       { date: '2026-11-10', price: 320 },
     ]);
     await drain(s, 1);
+    expect(s.zodomus.upstreamPost).toHaveBeenCalledTimes(1);
     expect(ops(s, 0)).toEqual([{ dates: ['2026-11-09:2026-11-10'], availability: 'available', dailyPrice: 256 }]);
+  });
+
+  it('a price run: an occupied night goes unavailable with its price, a no-price night reopens and leaves the list', async () => {
+    const s = setup({ listing: { activatedAt: new Date(), planEnd: '2027-01-01', noPriceNights: ['2026-11-21'] } });
+    s.ratesPush.collectCrmBlockedNightKeys.mockResolvedValueOnce(new Set(['2026-11-20']));
+    const fn = (s.dates.addAppliedListener.mock.calls[0] as unknown as [(...a: unknown[]) => Promise<void>])[0];
+    await fn(PID, 'price', [opened('2026-11-20'), opened('2026-11-21')], []);
+    await drain(s, 1);
+    for (let i = 0; i < 20; i++) await new Promise((r) => setImmediate(r));
+    expect(ops(s, 0)).toEqual([
+      { dates: ['2026-11-20:2026-11-20'], availability: 'unavailable', dailyPrice: 240 },
+      { dates: ['2026-11-21:2026-11-21'], availability: 'available', dailyPrice: 240 },
+    ]);
+    expect(s.listing()!.noPriceNights).toEqual([]);
   });
 
   it('closed nights (sent and already closed) go unavailable and are remembered, no price lookups', async () => {

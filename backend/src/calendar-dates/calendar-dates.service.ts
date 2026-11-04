@@ -183,6 +183,11 @@ export class CalendarDatesService {
     return this.zodomus.isEnabled && toBool(this.config.get('ZODOMUS_CALENDAR_DATES_ENABLED'), false);
   }
 
+  /** The channel runs write to (Booking) — what Airbnb prices follow. */
+  get bookingChannelId(): number {
+    return this.channelId;
+  }
+
   private get channelId(): number {
     const n = Number(this.config.get('ZODOMUS_PROMOTIONS_CHANNEL_ID') ?? 1);
     return Number.isFinite(n) && n > 0 ? n : 1;
