@@ -32,6 +32,13 @@ export type PushRatesSegmentResult = RatesDateRange & {
   detail?: string;
 };
 
+/** Nights written on the main rate by a «Цена на канале» push, with the price sent. */
+export type RatesPushedListener = (propertyId: string, nights: { date: string; price: number }[]) => void;
+
+function nextYmd(ymd: string): string {
+  return new Date(Date.parse(`${ymd}T12:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+}
+
 export type PushRatesTargetResult = {
   channelId: number;
   externalListingId: string;
@@ -57,6 +64,9 @@ export type PushTarget = { channelId: number; extProp: string; storedRoomId: str
 export class ZodomusRatesPushService {
   private readonly logger = new Logger(ZodomusRatesPushService.name);
 
+  /** Told the nights a «Цена на канале» push wrote on the main rate (Airbnb follows them). */
+  private readonly pushedListeners: RatesPushedListener[] = [];
+
   constructor(
     private readonly zodomus: ZodomusService,
     @InjectRepository(PropertyEntity)
@@ -64,6 +74,31 @@ export class ZodomusRatesPushService {
     @InjectRepository(BookingEntity)
     private readonly bookingRepo: Repository<BookingEntity>,
   ) {}
+
+  addPushedListener(fn: RatesPushedListener): void {
+    this.pushedListeners.push(fn);
+  }
+
+  /** Every night of the accepted segments, once (several channel targets may carry the same night). */
+  private notifyPushed(propertyId: string, results: readonly PushRatesTargetResult[], price: number): void {
+    if (this.pushedListeners.length === 0) return;
+    const dates = new Set<string>();
+    for (const r of results) {
+      for (const s of r.segments ?? []) {
+        if (!s.ok) continue;
+        for (let d = s.dateFrom; d < s.dateToExclusive; d = nextYmd(d)) dates.add(d);
+      }
+    }
+    if (dates.size === 0) return;
+    const nights = [...dates].sort().map((date) => ({ date, price }));
+    for (const fn of this.pushedListeners) {
+      try {
+        fn(propertyId, nights);
+      } catch (e) {
+        this.logger.warn(`rates pushed listener failed: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+  }
 
   async pushRatesForProperty(input: {
     propertyId: string;
@@ -276,6 +311,9 @@ export class ZodomusRatesPushService {
         `Zodomus rates push failed: ${details.join('; ') || 'unknown'}`,
       );
     }
+
+    // Only the main rate is followed (a rate picked by id is not what a regular guest is offered).
+    if (!input.rateId) this.notifyPushed(property.id, results, input.price);
 
     return {
       propertyId: property.id,

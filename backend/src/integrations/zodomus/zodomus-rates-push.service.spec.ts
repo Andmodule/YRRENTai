@@ -106,6 +106,31 @@ describe('ZodomusRatesPushService', () => {
     expect(arg).not.toHaveProperty('priceSingle');
   });
 
+  it('tells the listeners every accepted night of the main rate, once', async () => {
+    const heard: { date: string; price: number }[][] = [];
+    service.addPushedListener((_p, nights) => heard.push(nights));
+    await service.pushRatesForProperty({ propertyId: PROPERTY_ID, dateFrom: '2026-10-01', dateToExclusive: '2026-10-03', price: 600, currencyCode: 'PLN' });
+    expect(heard).toEqual([[{ date: '2026-10-01', price: 600 }, { date: '2026-10-02', price: 600 }]]);
+  });
+
+  it('does not tell the listeners about a rate picked by id, a failed write, or a listener that throws', async () => {
+    const heard: unknown[] = [];
+    service.addPushedListener(() => {
+      throw new Error('boom');
+    });
+    service.addPushedListener((_p, nights) => heard.push(nights));
+    await service.pushRatesForProperty({ propertyId: PROPERTY_ID, dateFrom: '2026-10-01', dateToExclusive: '2026-10-03', price: 600, rateId: RATE_ID });
+    expect(heard).toEqual([]);
+    setRates.mockRejectedValueOnce(new Error('502'));
+    await service.pushRatesForProperty({ propertyId: PROPERTY_ID, dateFrom: '2026-10-01', dateToExclusive: '2026-10-03', price: 600 }).catch(() => undefined);
+    expect(heard).toEqual([]);
+    // the throwing listener does not stop the next one, nor the push
+    await expect(
+      service.pushRatesForProperty({ propertyId: PROPERTY_ID, dateFrom: '2026-10-01', dateToExclusive: '2026-10-03', price: 650 }),
+    ).resolves.toBeDefined();
+    expect(heard).toHaveLength(1);
+  });
+
   it('sends priceSingle only when explicitly provided', async () => {
     await service.pushRatesForProperty({
       propertyId: PROPERTY_ID,
