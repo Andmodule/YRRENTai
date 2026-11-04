@@ -63,7 +63,7 @@ export interface AirbnbListingView {
   planEnd: string | null;
   lastSyncAt: string | null;
   lastSync: {
-    kind?: 'full' | 'availability';
+    kind?: 'full' | 'availability' | 'dates';
     operations?: number;
     sentCalls?: number;
     failedCalls?: number;

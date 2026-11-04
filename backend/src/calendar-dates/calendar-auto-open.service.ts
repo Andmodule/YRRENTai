@@ -100,7 +100,7 @@ export class CalendarAutoOpenService implements OnModuleInit, OnModuleDestroy {
   }
 
   onModuleInit(): void {
-    this.dates.setAppliedListener((propertyId, action, applied, alreadyClosed) =>
+    this.dates.addAppliedListener((propertyId, action, applied, alreadyClosed) =>
       this.rememberManual(propertyId, action, applied, alreadyClosed),
     );
     if (!this.enabled) return;

@@ -50,7 +50,7 @@ function setup(
     assertAccess: jest.fn().mockResolvedValue(undefined),
     minPriceOf: jest.fn().mockResolvedValue(opts.minPrice ?? null),
     horizonEnd: jest.fn().mockReturnValue(opts.horizonEnd ?? '2027-10-13'),
-    setAppliedListener: jest.fn((fn: CalendarDatesAppliedListener) => {
+    addAppliedListener: jest.fn((fn: CalendarDatesAppliedListener) => {
       listener = fn;
     }),
     runAuto: jest.fn(async (_pid: string, input: { dateFrom: string }) => ({

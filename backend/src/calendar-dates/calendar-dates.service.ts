@@ -164,7 +164,8 @@ export class CalendarDatesService {
   /** Last run per property — in memory: a restart forgets the report, Booking keeps what was sent. */
   private readonly jobs = new Map<string, CalendarDatesJob>();
   private readonly windowCache = new Map<string, { at: number; body: unknown }>();
-  private appliedListener: CalendarDatesAppliedListener | null = null;
+  /** Auto-extension and Airbnb both follow the runs. */
+  private readonly appliedListeners: CalendarDatesAppliedListener[] = [];
 
   constructor(
     private readonly config: ConfigService,
@@ -206,8 +207,8 @@ export class CalendarDatesService {
     return addDaysYmd(todayInTz(tz), this.availabilityHorizonDays);
   }
 
-  setAppliedListener(fn: CalendarDatesAppliedListener): void {
-    this.appliedListener = fn;
+  addAppliedListener(fn: CalendarDatesAppliedListener): void {
+    this.appliedListeners.push(fn);
   }
 
   assertEnabled(): void {
@@ -721,11 +722,13 @@ export class CalendarDatesService {
         job.verify = { checked: 0, mismatched: [], error: formatZodomusHttpException(e) };
       }
     }
-    if (this.appliedListener && (applied.length > 0 || alreadyClosed.length > 0)) {
-      try {
-        await this.appliedListener(ctx.property.id, job.action, applied, alreadyClosed);
-      } catch (e) {
-        this.logger.warn(`calendar dates listener failed: ${e instanceof Error ? e.message : String(e)}`);
+    if (applied.length > 0 || alreadyClosed.length > 0) {
+      for (const listener of this.appliedListeners) {
+        try {
+          await listener(ctx.property.id, job.action, applied, alreadyClosed);
+        } catch (e) {
+          this.logger.warn(`calendar dates listener failed: ${e instanceof Error ? e.message : String(e)}`);
+        }
       }
     }
     if (job.state === 'running') job.state = job.sent === 0 && job.total > 0 ? 'failed' : 'done';
