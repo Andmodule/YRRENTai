@@ -431,14 +431,18 @@ describe('AirbnbCalendarService — after «Открыть / закрыть пр
     expect(s.zodomus.upstreamPost).toHaveBeenCalledTimes(3); // one chunk, its retries, no second chunk
   });
 
-  it('lookups failing: closes still go, opened nights are sent closed', async () => {
+  it('lookups failing: closes still go, opened nights are sent closed without a price and stay remembered', async () => {
     const s = setup({ listing: { activatedAt: new Date(), planEnd: '2027-01-01' } });
     s.dates.minPriceOf.mockRejectedValueOnce(new Error('db down'));
     await s.svc.afterDatesApplied(PID, [closed('2026-11-16'), opened('2026-11-18')], []);
     expect(ops(s, 0)).toEqual([
       { dates: ['2026-11-16:2026-11-16'], availability: 'unavailable' },
-      { dates: ['2026-11-18:2026-11-18'], availability: 'unavailable', dailyPrice: 300 },
+      { dates: ['2026-11-18:2026-11-18'], availability: 'unavailable' },
     ]);
+    expect(s.listing()!.noPriceNights).toEqual(['2026-11-16', '2026-11-18']);
+    // a booking update does not open it at an undiscounted price
+    await s.listener()(PID, [{ date: '2026-11-18', free: true }]);
+    expect(ops(s, 1)).toEqual([{ dates: ['2026-11-18:2026-11-18'], availability: 'unavailable' }]);
   });
 
   it('waits for a running full send of the property (never interleaves)', async () => {

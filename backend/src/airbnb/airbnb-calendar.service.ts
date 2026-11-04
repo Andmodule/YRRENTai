@@ -582,6 +582,7 @@ export class AirbnbCalendarService implements OnModuleInit {
     let deals: BasicDeal[] = [];
     let minPrice: number | null = null;
     let occupied: ReadonlySet<string> = new Set<string>();
+    let changes: readonly BookingDateChange[] = applied;
     if (openedDates.length > 0) {
       try {
         [deals, minPrice, occupied] = await Promise.all([
@@ -592,13 +593,14 @@ export class AirbnbCalendarService implements OnModuleInit {
             .then((p) => this.ratesPush.collectCrmBlockedNightKeys(p, all[0]!, addDaysYmd(all[all.length - 1]!, 1))),
         ]);
       } catch (e) {
-        // Occupancy unknown: the opened nights stay closed on Airbnb (the next full send opens them); closes still go.
+        // Occupancy and deals unknown: the opened nights go as closed, without a price, and stay in the no-price
+        // list — so a booking update does not open them at an undiscounted price; the next full send opens them.
         this.logger.warn(`Airbnb dates for ${propertyId}: lookups failed, opened nights kept closed — ${e instanceof Error ? e.message : String(e)}`);
-        occupied = new Set(openedDates);
+        changes = applied.map((c) => (c.closed ? c : { ...c, closed: true }));
       }
     }
     const { ops, noPriceNights } = dateChangeOperations(
-      applied,
+      changes,
       alreadyClosed,
       deals,
       occupied,
