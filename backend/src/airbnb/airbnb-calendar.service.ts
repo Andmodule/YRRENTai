@@ -578,16 +578,25 @@ export class AirbnbCalendarService implements OnModuleInit {
     }
     const all = [...applied.map((c) => c.date), ...alreadyClosed].sort();
     // Prices and occupancy matter only for opened nights; a close sends no price and needs no lookups.
-    const opened = applied.some((c) => !c.closed);
-    const [deals, minPrice, occupied]: [BasicDeal[], number | null, ReadonlySet<string>] = opened
-      ? await Promise.all([
+    const openedDates = applied.filter((c) => !c.closed).map((c) => c.date);
+    let deals: BasicDeal[] = [];
+    let minPrice: number | null = null;
+    let occupied: ReadonlySet<string> = new Set<string>();
+    if (openedDates.length > 0) {
+      try {
+        [deals, minPrice, occupied] = await Promise.all([
           this.basicDeals(propertyId),
           this.dates.minPriceOf(propertyId),
           this.propertyService
             .findByIdForAdmin(propertyId)
             .then((p) => this.ratesPush.collectCrmBlockedNightKeys(p, all[0]!, addDaysYmd(all[all.length - 1]!, 1))),
-        ])
-      : [[], null, new Set<string>()];
+        ]);
+      } catch (e) {
+        // Occupancy unknown: the opened nights stay closed on Airbnb (the next full send opens them); closes still go.
+        this.logger.warn(`Airbnb dates for ${propertyId}: lookups failed, opened nights kept closed — ${e instanceof Error ? e.message : String(e)}`);
+        occupied = new Set(openedDates);
+      }
+    }
     const { ops, noPriceNights } = dateChangeOperations(
       applied,
       alreadyClosed,
@@ -606,13 +615,19 @@ export class AirbnbCalendarService implements OnModuleInit {
         sent++;
       } catch (e) {
         errors.push(e instanceof Error ? e.message : String(e));
+        // Zodomus is not answering: no more calls now (it has blocked the account for bursts).
+        break;
       }
     }
+    // Closed nights are remembered even when a call failed — a later booking update must never reopen them;
+    // opened nights leave the list only when everything went through (what Airbnb has is unknown otherwise).
+    const closedNow = [...alreadyClosed, ...applied.filter((c) => c.closed).map((c) => c.date)];
+    const remembered =
+      errors.length === 0 ? noPriceNights : [...new Set([...(row.noPriceNights ?? []), ...closedNow])].sort();
     await this.listings.update(
       { propertyId },
       {
-        // After a failed call what Airbnb has is unknown: the old list stays, the next full send settles it.
-        ...(errors.length === 0 ? { noPriceNights } : {}),
+        noPriceNights: remembered,
         lastSyncAt: new Date(),
         lastSync: { kind: 'dates', operations: ops.length, sentCalls: sent, failedCalls: errors.length, errors: errors.slice(0, 5) },
       },
