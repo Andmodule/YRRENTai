@@ -138,11 +138,17 @@ export class AirbnbCalendarService implements OnModuleInit {
 
   onModuleInit(): void {
     this.availabilityPush.setAfterPushListener((propertyId, days) => this.afterAvailabilityPush(propertyId, days));
-    // «Открыть / закрыть продажи» writes Booking's rate, not RentAI's occupancy: it needs its own way to Airbnb.
-    // Not awaited: the Booking run finishes without waiting for Airbnb's pace (>= 1 s per call).
-    this.dates.addAppliedListener((propertyId, action, applied, alreadyClosed) => {
-      if (action !== 'price') void this.afterDatesApplied(propertyId, applied, alreadyClosed);
+    // «Открыть / закрыть продажи», price runs (the month, «Автоцены») and «Цена на канале» write Booking's rate,
+    // not RentAI's occupancy: they need their own way to Airbnb. A price run only re-prices nights open for sale,
+    // so it goes the same way as an opening. Not awaited: Booking does not wait for Airbnb's pace (>= 1 s per call).
+    this.dates.addAppliedListener((propertyId, _action, applied, alreadyClosed) => {
+      void this.afterDatesApplied(propertyId, applied, alreadyClosed);
       return Promise.resolve();
+    });
+    this.ratesPush.addPushedListener((propertyId, channelId, nights) => {
+      // Only a price Booking took: another channel's rate is not what a Booking guest pays.
+      if (channelId !== this.dates.bookingChannelId) return;
+      void this.afterDatesApplied(propertyId, nights.map((n) => ({ ...n, closed: false })), []);
     });
   }
 

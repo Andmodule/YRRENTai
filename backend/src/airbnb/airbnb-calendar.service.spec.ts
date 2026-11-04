@@ -28,6 +28,7 @@ function setup(
     bookingRateNights: jest.fn(async () => new Map(rateNights)),
     minPriceOf: jest.fn(async () => 160),
     addAppliedListener: jest.fn(),
+    bookingChannelId: 1,
   };
   const calls: [string, Record<string, unknown>][] = [];
   const zodomus = {
@@ -36,7 +37,7 @@ function setup(
       return path === '/airbnb-calendar' ? { response: { success: true } } : {};
     }),
   };
-  const ratesPush = { collectCrmBlockedNightKeys: jest.fn(async () => new Set<string>()) };
+  const ratesPush = { collectCrmBlockedNightKeys: jest.fn(async () => new Set<string>()), addPushedListener: jest.fn() };
   const availabilityPush = { setAfterPushListener: jest.fn((fn) => (listener = fn)) };
   const property = { id: PID, timezone: 'Europe/Warsaw', icalImportUrls: opts.ical ?? [] };
   const propertyService = { findOneForUser: jest.fn(async () => property), findByIdForAdmin: jest.fn(async () => property) };
@@ -328,16 +329,50 @@ describe('AirbnbCalendarService — after «Открыть / закрыть пр
   const ops = (s: ReturnType<typeof setup>, i: number) =>
     (s.zodomus.upstreamPost.mock.calls[i] as unknown as [string, { operations: unknown }])[1].operations;
 
-  it('registers with the dates runs, ignores price runs and does not hold the run', async () => {
+  const drain = async (s: ReturnType<typeof setup>, n: number) => {
+    for (let i = 0; i < 100 && s.zodomus.upstreamPost.mock.calls.length < n; i++) await new Promise((r) => setImmediate(r));
+  };
+
+  it('registers with the dates runs (close, open and price) and does not hold the run', async () => {
     const s = setup({ listing: { activatedAt: new Date(), planEnd: '2027-01-01' } });
     expect(s.dates.addAppliedListener).toHaveBeenCalledTimes(1);
     const fn = (s.dates.addAppliedListener.mock.calls[0] as unknown as [(...a: unknown[]) => Promise<void>])[0];
-    await fn(PID, 'price', [opened('2026-11-16')], []);
-    await new Promise((r) => setImmediate(r));
-    expect(s.zodomus.upstreamPost).not.toHaveBeenCalled();
-    await fn(PID, 'close', [closed('2026-11-16')], []);
-    for (let i = 0; i < 50 && s.zodomus.upstreamPost.mock.calls.length === 0; i++) await new Promise((r) => setImmediate(r));
+    await expect(fn(PID, 'close', [closed('2026-11-16')], [])).resolves.toBeUndefined();
+    await drain(s, 1);
     expect(s.zodomus.upstreamPost).toHaveBeenCalledTimes(1);
+    // a price run re-prices nights open for sale: the new Airbnb price goes out (300 − Basic 20 % = 240)
+    await fn(PID, 'price', [opened('2026-11-20')], []);
+    await drain(s, 2);
+    expect(ops(s, 1)).toEqual([{ dates: ['2026-11-20:2026-11-20'], availability: 'available', dailyPrice: 240 }]);
+  });
+
+  it('«Цена на канале»: the pushed nights get the new Airbnb price', async () => {
+    const s = setup({ listing: { activatedAt: new Date(), planEnd: '2027-01-01' } });
+    expect(s.ratesPush.addPushedListener).toHaveBeenCalledTimes(1);
+    const fn = (s.ratesPush.addPushedListener.mock.calls[0] as unknown as [(p: string, ch: number, n: { date: string; price: number }[]) => void])[0];
+    // another channel's rate is not followed
+    fn(PID, 7, [{ date: '2026-11-09', price: 999 }]);
+    fn(PID, 1, [
+      { date: '2026-11-09', price: 320 },
+      { date: '2026-11-10', price: 320 },
+    ]);
+    await drain(s, 1);
+    expect(s.zodomus.upstreamPost).toHaveBeenCalledTimes(1);
+    expect(ops(s, 0)).toEqual([{ dates: ['2026-11-09:2026-11-10'], availability: 'available', dailyPrice: 256 }]);
+  });
+
+  it('a price run: an occupied night goes unavailable with its price, a no-price night reopens and leaves the list', async () => {
+    const s = setup({ listing: { activatedAt: new Date(), planEnd: '2027-01-01', noPriceNights: ['2026-11-21'] } });
+    s.ratesPush.collectCrmBlockedNightKeys.mockResolvedValueOnce(new Set(['2026-11-20']));
+    const fn = (s.dates.addAppliedListener.mock.calls[0] as unknown as [(...a: unknown[]) => Promise<void>])[0];
+    await fn(PID, 'price', [opened('2026-11-20'), opened('2026-11-21')], []);
+    await drain(s, 1);
+    for (let i = 0; i < 20; i++) await new Promise((r) => setImmediate(r));
+    expect(ops(s, 0)).toEqual([
+      { dates: ['2026-11-20:2026-11-20'], availability: 'unavailable', dailyPrice: 240 },
+      { dates: ['2026-11-21:2026-11-21'], availability: 'available', dailyPrice: 240 },
+    ]);
+    expect(s.listing()!.noPriceNights).toEqual([]);
   });
 
   it('closed nights (sent and already closed) go unavailable and are remembered, no price lookups', async () => {
