@@ -210,7 +210,13 @@ export function AirbnbScreen() {
             </p>
             {view.lastSync ? (
               <p className="text-sm text-muted-foreground">
-                {t(view.lastSync.kind === 'availability' ? 'connect.lastAvailability' : 'connect.lastFull', {
+                {t(
+                  view.lastSync.kind === 'availability'
+                    ? 'connect.lastAvailability'
+                    : view.lastSync.kind === 'dates'
+                      ? 'connect.lastDates'
+                      : 'connect.lastFull',
+                  {
                   at: time(view.lastSyncAt),
                   sent: view.lastSync.sentCalls ?? 0,
                   failed: view.lastSync.failedCalls ?? 0,

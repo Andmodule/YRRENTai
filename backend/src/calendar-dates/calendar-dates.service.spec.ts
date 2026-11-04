@@ -264,7 +264,7 @@ describe('CalendarDatesService — run', () => {
     nights['2026-11-03'] = { closed: false, price: 400, booked: 0 };
     const { svc, booking } = setup({ nights });
     const listener = jest.fn().mockResolvedValue(undefined);
-    svc.setAppliedListener(listener);
+    svc.addAppliedListener(listener);
     const p = await svc.preview(USER, { ...OPEN, action: 'close', dateToExclusive: '2026-11-04' });
     expect(p).toMatchObject({ alreadyClosed: 2, changes: { open: 0, close: 1, price: 0 }, propertyName: 'K22 Andersa' });
     await svc.start(USER, { ...OPEN, action: 'close', dateToExclusive: '2026-11-04' });
@@ -276,7 +276,7 @@ describe('CalendarDatesService — run', () => {
   it('closing only closed nights still reaches the listener (nothing to send)', async () => {
     const { svc, booking } = setup({ nights: closedNights('2026-11-01', '2026-11-03') });
     const listener = jest.fn().mockResolvedValue(undefined);
-    svc.setAppliedListener(listener);
+    svc.addAppliedListener(listener);
     await svc.start(USER, { ...OPEN, action: 'close', dateToExclusive: '2026-11-03' });
     const job = await finished(svc);
     expect(job).toMatchObject({ state: 'done', total: 0 });
@@ -397,7 +397,7 @@ describe('CalendarDatesService — run', () => {
   it('tells the listener which nights Booking accepted', async () => {
     const { svc } = setup();
     const listener = jest.fn().mockResolvedValue(undefined);
-    svc.setAppliedListener(listener);
+    svc.addAppliedListener(listener);
     await svc.start(USER, { ...OPEN, action: 'open', dateToExclusive: '2026-11-03' });
     await finished(svc);
     expect(listener).toHaveBeenCalledWith(
@@ -410,7 +410,7 @@ describe('CalendarDatesService — run', () => {
 
   it('a failing listener does not break the run', async () => {
     const { svc } = setup();
-    svc.setAppliedListener(jest.fn().mockRejectedValue(new Error('db down')));
+    svc.addAppliedListener(jest.fn().mockRejectedValue(new Error('db down')));
     await svc.start(USER, OPEN);
     expect((await finished(svc)).state).toBe('done');
   });

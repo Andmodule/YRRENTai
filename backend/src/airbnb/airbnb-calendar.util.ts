@@ -158,6 +158,41 @@ export function availabilityOperations(
   return out;
 }
 
+/** A night «Открыть / закрыть продажи» changed on Booking (the price is the main rate it sent). */
+export interface BookingDateChange {
+  date: string;
+  price: number;
+  closed: boolean;
+}
+
+/**
+ * «Открыть / закрыть продажи» changed nights on Booking: the same nights on Airbnb. A closed night goes
+ * unavailable and is remembered as having no price, so a later booking update does not reopen it; an opened
+ * night goes available with the price a regular Booking guest gets (or stays unavailable when it is occupied
+ * in RentAI or has no price). Nights from `planEnd` on are left to the closed tail: RentAI does not guard them.
+ */
+export function dateChangeOperations(
+  changes: readonly BookingDateChange[],
+  alreadyClosed: readonly string[],
+  deals: readonly BasicDeal[],
+  occupied: ReadonlySet<string>,
+  minPrice: number | null,
+  planEnd: string | null,
+  noPrice: readonly string[],
+): { ops: AirbnbCalendarOperation[]; noPriceNights: string[] } {
+  const booking = new Map<string, BookingNightForAirbnb>();
+  for (const date of alreadyClosed) booking.set(date, { date, rack: null, closed: true });
+  for (const c of changes) booking.set(c.date, { date: c.date, rack: c.price, closed: c.closed });
+  const dates = [...booking.keys()].filter((d) => planEnd != null && d < planEnd).sort();
+  const nights = airbnbNights(booking, dates, deals, occupied, minPrice);
+  const left = new Set(noPrice);
+  for (const n of nights) {
+    if (n.price == null) left.add(n.date);
+    else left.delete(n.date);
+  }
+  return { ops: calendarOperations(nights), noPriceNights: [...left].sort() };
+}
+
 /** At most `size` operations per POST /airbnb-calendar. */
 export function chunk<T>(items: readonly T[], size: number): T[][] {
   const out: T[][] = [];

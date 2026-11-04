@@ -34,9 +34,11 @@ import {
   calendarOperations,
   chunk,
   closedTail,
+  dateChangeOperations,
   operationsFingerprint,
   type AirbnbCalendarOperation,
   type BasicDeal,
+  type BookingDateChange,
   type BookingNightForAirbnb,
 } from './airbnb-calendar.util';
 
@@ -136,6 +138,12 @@ export class AirbnbCalendarService implements OnModuleInit {
 
   onModuleInit(): void {
     this.availabilityPush.setAfterPushListener((propertyId, days) => this.afterAvailabilityPush(propertyId, days));
+    // «Открыть / закрыть продажи» writes Booking's rate, not RentAI's occupancy: it needs its own way to Airbnb.
+    // Not awaited: the Booking run finishes without waiting for Airbnb's pace (>= 1 s per call).
+    this.dates.addAppliedListener((propertyId, action, applied, alreadyClosed) => {
+      if (action !== 'price') void this.afterDatesApplied(propertyId, applied, alreadyClosed);
+      return Promise.resolve();
+    });
   }
 
   private assertOn(): void {
@@ -534,6 +542,82 @@ export class AirbnbCalendarService implements OnModuleInit {
     }).catch((e) => {
       this.logger.warn(`Airbnb availability for ${propertyId} failed: ${e instanceof Error ? e.message : String(e)}`);
     });
+  }
+
+  // ─── after «Открыть / закрыть продажи» ────────────────────────────────────
+
+  /**
+   * Nights opened / closed on Booking by RentAI: the same on the connected pilot listing, with the price on
+   * opened nights. Queued on the property's Airbnb chain; never throws.
+   */
+  afterDatesApplied(propertyId: string, applied: readonly BookingDateChange[], alreadyClosed: readonly string[]): Promise<void> {
+    if (!this.connect.isEnabled || (applied.length === 0 && alreadyClosed.length === 0)) return Promise.resolve();
+    return this.locked(propertyId, () => this.sendDateChanges(propertyId, applied, alreadyClosed)).catch((e) => {
+      this.logger.warn(`Airbnb dates for ${propertyId} failed: ${e instanceof Error ? e.message : String(e)}`);
+    });
+  }
+
+  private async sendDateChanges(
+    propertyId: string,
+    applied: readonly BookingDateChange[],
+    alreadyClosed: readonly string[],
+  ): Promise<void> {
+    let row: ZodomusAirbnbListingEntity | null;
+    try {
+      row = await this.listings.findOne({ where: { propertyId } });
+    } catch {
+      return; // tables not migrated: nothing is connected
+    }
+    if (!row?.activatedAt) return;
+    let listingId: string;
+    try {
+      listingId = assertAirbnbPilotListing(row.listingId);
+    } catch (e) {
+      if (e instanceof ForbiddenException) return;
+      throw e;
+    }
+    const all = [...applied.map((c) => c.date), ...alreadyClosed].sort();
+    // Prices and occupancy matter only for opened nights; a close sends no price and needs no lookups.
+    const opened = applied.some((c) => !c.closed);
+    const [deals, minPrice, occupied]: [BasicDeal[], number | null, ReadonlySet<string>] = opened
+      ? await Promise.all([
+          this.basicDeals(propertyId),
+          this.dates.minPriceOf(propertyId),
+          this.propertyService
+            .findByIdForAdmin(propertyId)
+            .then((p) => this.ratesPush.collectCrmBlockedNightKeys(p, all[0]!, addDaysYmd(all[all.length - 1]!, 1))),
+        ])
+      : [[], null, new Set<string>()];
+    const { ops, noPriceNights } = dateChangeOperations(
+      applied,
+      alreadyClosed,
+      deals,
+      occupied,
+      minPrice,
+      row.planEnd ?? null,
+      row.noPriceNights ?? [],
+    );
+    if (ops.length === 0) return;
+    let sent = 0;
+    const errors: string[] = [];
+    for (const part of chunk(ops, OPS_PER_CALL)) {
+      try {
+        await this.postCalendarWithRetry(listingId, part);
+        sent++;
+      } catch (e) {
+        errors.push(e instanceof Error ? e.message : String(e));
+      }
+    }
+    await this.listings.update(
+      { propertyId },
+      {
+        // After a failed call what Airbnb has is unknown: the old list stays, the next full send settles it.
+        ...(errors.length === 0 ? { noPriceNights } : {}),
+        lastSyncAt: new Date(),
+        lastSync: { kind: 'dates', operations: ops.length, sentCalls: sent, failedCalls: errors.length, errors: errors.slice(0, 5) },
+      },
+    );
+    if (errors.length > 0) this.logger.warn(`Airbnb dates for ${propertyId}: ${errors.length} call(s) failed — ${errors[0]}`);
   }
 
   private async sendAvailability(propertyId: string, days: { date: string; free: boolean }[]): Promise<void> {

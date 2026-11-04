@@ -27,6 +27,7 @@ function setup(
   const dates = {
     bookingRateNights: jest.fn(async () => new Map(rateNights)),
     minPriceOf: jest.fn(async () => 160),
+    addAppliedListener: jest.fn(),
   };
   const calls: [string, Record<string, unknown>][] = [];
   const zodomus = {
@@ -38,7 +39,7 @@ function setup(
   const ratesPush = { collectCrmBlockedNightKeys: jest.fn(async () => new Set<string>()) };
   const availabilityPush = { setAfterPushListener: jest.fn((fn) => (listener = fn)) };
   const property = { id: PID, timezone: 'Europe/Warsaw', icalImportUrls: opts.ical ?? [] };
-  const propertyService = { findOneForUser: jest.fn(async () => property) };
+  const propertyService = { findOneForUser: jest.fn(async () => property), findByIdForAdmin: jest.fn(async () => property) };
   const listings = {
     findOne: jest.fn(async ({ where }: { where: { propertyId?: string; listingId?: string } }) =>
       listing && (where.propertyId === listing.propertyId || where.listingId === listing.listingId) ? { ...listing } : null,
@@ -318,6 +319,110 @@ describe('AirbnbCalendarService — after an availability push', () => {
     await expect(s.listener()(PID, [{ date: '2026-11-13', free: false }])).resolves.toBeUndefined();
     expect(s.zodomus.upstreamPost).toHaveBeenCalledTimes(3);
     expect(s.listing()!.lastSync).toMatchObject({ kind: 'availability', sentCalls: 0, failedCalls: 1 });
+  });
+});
+
+describe('AirbnbCalendarService — after «Открыть / закрыть продажи»', () => {
+  const closed = (date: string) => ({ date, price: 300, closed: true, fromPrice: 300, fromClosed: false });
+  const opened = (date: string, price = 300) => ({ date, price, closed: false, fromPrice: null, fromClosed: true });
+  const ops = (s: ReturnType<typeof setup>, i: number) =>
+    (s.zodomus.upstreamPost.mock.calls[i] as unknown as [string, { operations: unknown }])[1].operations;
+
+  it('registers with the dates runs, ignores price runs and does not hold the run', async () => {
+    const s = setup({ listing: { activatedAt: new Date(), planEnd: '2027-01-01' } });
+    expect(s.dates.addAppliedListener).toHaveBeenCalledTimes(1);
+    const fn = (s.dates.addAppliedListener.mock.calls[0] as unknown as [(...a: unknown[]) => Promise<void>])[0];
+    await fn(PID, 'price', [opened('2026-11-16')], []);
+    await new Promise((r) => setImmediate(r));
+    expect(s.zodomus.upstreamPost).not.toHaveBeenCalled();
+    await fn(PID, 'close', [closed('2026-11-16')], []);
+    for (let i = 0; i < 50 && s.zodomus.upstreamPost.mock.calls.length === 0; i++) await new Promise((r) => setImmediate(r));
+    expect(s.zodomus.upstreamPost).toHaveBeenCalledTimes(1);
+  });
+
+  it('closed nights (sent and already closed) go unavailable and are remembered, no price lookups', async () => {
+    const s = setup({ listing: { activatedAt: new Date(), planEnd: '2027-01-01', noPriceNights: ['2026-12-01'] } });
+    await s.svc.afterDatesApplied(PID, [closed('2026-11-16'), closed('2026-11-17')], ['2026-11-18']);
+    expect(s.zodomus.upstreamPost).toHaveBeenCalledWith('/airbnb-calendar', {
+      channelId: 3,
+      propertyId: PILOT,
+      operations: [{ dates: ['2026-11-16:2026-11-18'], availability: 'unavailable' }],
+    });
+    expect(s.listing()!.noPriceNights).toEqual(['2026-11-16', '2026-11-17', '2026-11-18', '2026-12-01']);
+    expect(s.listing()!.lastSync).toMatchObject({ kind: 'dates', sentCalls: 1, failedCalls: 0 });
+    expect(s.ratesPush.collectCrmBlockedNightKeys).not.toHaveBeenCalled();
+    expect(s.dates.minPriceOf).not.toHaveBeenCalled();
+  });
+
+  it('a later booking update keeps a night closed by «закрыть» closed', async () => {
+    const s = setup({ listing: { activatedAt: new Date(), planEnd: '2027-01-01' } });
+    await s.svc.afterDatesApplied(PID, [closed('2026-11-16')], []);
+    await s.listener()(PID, [{ date: '2026-11-16', free: true }]);
+    expect(ops(s, 1)).toEqual([{ dates: ['2026-11-16:2026-11-16'], availability: 'unavailable' }]);
+  });
+
+  it('opened nights go available with the regular guest price; occupied ones stay closed', async () => {
+    const s = setup({ listing: { activatedAt: new Date(), planEnd: '2027-01-01', noPriceNights: ['2026-11-16', '2026-11-17', '2026-11-18'] } });
+    s.ratesPush.collectCrmBlockedNightKeys.mockResolvedValueOnce(new Set(['2026-11-18']));
+    await s.svc.afterDatesApplied(PID, [opened('2026-11-16'), opened('2026-11-17'), opened('2026-11-18')], []);
+    // 300 − Basic 20 % = 240 (the app-only 30 % and the deals of other properties do not count)
+    expect(ops(s, 0)).toEqual([
+      { dates: ['2026-11-16:2026-11-17'], availability: 'available', dailyPrice: 240 },
+      { dates: ['2026-11-18:2026-11-18'], availability: 'unavailable', dailyPrice: 240 },
+    ]);
+    expect(s.listing()!.noPriceNights).toEqual([]);
+    expect(s.ratesPush.collectCrmBlockedNightKeys).toHaveBeenCalledWith(expect.objectContaining({ id: PID }), '2026-11-16', '2026-11-19');
+  });
+
+  it('an opened night below the minimum price is sent at the minimum', async () => {
+    const s = setup({ listing: { activatedAt: new Date(), planEnd: '2027-01-01' } });
+    await s.svc.afterDatesApplied(PID, [opened('2026-11-16', 150)], []);
+    expect(ops(s, 0)).toEqual([{ dates: ['2026-11-16:2026-11-16'], availability: 'available', dailyPrice: 160 }]);
+  });
+
+  it('nights from planEnd on are not touched (the closed tail guards them)', async () => {
+    const s = setup({ listing: { activatedAt: new Date(), planEnd: '2026-11-17' } });
+    await s.svc.afterDatesApplied(PID, [opened('2026-11-16'), opened('2026-11-17'), closed('2026-11-20')], []);
+    expect(ops(s, 0)).toEqual([{ dates: ['2026-11-16:2026-11-16'], availability: 'available', dailyPrice: 240 }]);
+    const t = setup({ listing: { activatedAt: new Date(), planEnd: '2026-11-17' } });
+    await t.svc.afterDatesApplied(PID, [opened('2026-11-17')], []);
+    expect(t.zodomus.upstreamPost).not.toHaveBeenCalled();
+  });
+
+  it('does nothing when off, not connected, another listing, or nothing changed', async () => {
+    const cases = [
+      setup({ enabled: false, listing: { activatedAt: new Date(), planEnd: '2027-01-01' } }),
+      setup(),
+      setup({ listing: { activatedAt: null, planEnd: '2027-01-01' } }),
+      setup({ listing: { activatedAt: new Date(), listingId: '123', planEnd: '2027-01-01' } }),
+    ];
+    for (const s of cases) {
+      await s.svc.afterDatesApplied(PID, [closed('2026-11-16')], []);
+      expect(s.zodomus.upstreamPost).not.toHaveBeenCalled();
+    }
+    const s = setup({ listing: { activatedAt: new Date(), planEnd: '2027-01-01' } });
+    await s.svc.afterDatesApplied(PID, [], []);
+    expect(s.listings.findOne).not.toHaveBeenCalled();
+  });
+
+  it('a failed call keeps the old no-price list and is recorded, not thrown', async () => {
+    const s = setup({ listing: { activatedAt: new Date(), planEnd: '2027-01-01', noPriceNights: ['2026-12-01'] } });
+    s.zodomus.upstreamPost.mockRejectedValue(new Error('502'));
+    await expect(s.svc.afterDatesApplied(PID, [closed('2026-11-16')], [])).resolves.toBeUndefined();
+    expect(s.listing()!.noPriceNights).toEqual(['2026-12-01']);
+    expect(s.listing()!.lastSync).toMatchObject({ kind: 'dates', sentCalls: 0, failedCalls: 1 });
+  });
+
+  it('waits for a running full send of the property (never interleaves)', async () => {
+    const s = setup({ listing: { activatedAt: new Date(), planEnd: '2027-01-01' } });
+    fillBooking(s, 500);
+    const fp = await checked(s);
+    const job = await s.svc.startSend(OWNER, PID, fp);
+    const dates = s.svc.afterDatesApplied(PID, [closed('2026-11-16')], []);
+    await settle(job);
+    await dates;
+    const sizes = (s.zodomus.upstreamPost.mock.calls as unknown as [string, { operations: unknown[] }][]).map((c) => c[1].operations.length);
+    expect(sizes).toEqual([2, 1]);
   });
 });
 
