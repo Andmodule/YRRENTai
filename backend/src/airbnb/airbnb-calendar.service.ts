@@ -5,8 +5,10 @@ import {
   Injectable,
   Logger,
   OnModuleInit,
+  Optional,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import { OnEvent } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 import { QueryFailedError, Repository } from 'typeorm';
 import type { JwtPayload } from '../common/decorators/current-user.decorator';
@@ -27,6 +29,7 @@ import {
 } from '../integrations/zodomus/airbnb/airbnb-pilot.util';
 import { todayInTz } from '../pricing/pricing-math.util';
 import { ZodomusAirbnbListingEntity } from './airbnb-listing.entity';
+import { AIRBNB_OWN_PRICES_CHANGED, AirbnbOwnPriceService, type AirbnbOwnPricesChanged } from './airbnb-own-price.service';
 import {
   addDaysYmd,
   airbnbNights,
@@ -119,6 +122,8 @@ export class AirbnbCalendarService implements OnModuleInit {
   private readonly chains = new Map<string, Promise<void>>();
   /** Latest occupancy waiting to go to Airbnb, per property (older ones are dropped). */
   private readonly pendingDays = new Map<string, { date: string; free: boolean }[]>();
+  /** Own-price range waiting to go to Airbnb, per property (later saves widen it). */
+  private readonly pendingOwn = new Map<string, { from: string; to: string }>();
   private lastPostAt = 0;
   /** Replaced in tests. */
   sleep: Sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -134,6 +139,8 @@ export class AirbnbCalendarService implements OnModuleInit {
     @InjectRepository(PropertyChannelListingEntity) private readonly channelRows: Repository<PropertyChannelListingEntity>,
     @InjectRepository(OtaPlatformEntity) private readonly platforms: Repository<OtaPlatformEntity>,
     @InjectRepository(PricePromotionEntity) private readonly promotions: Repository<PricePromotionEntity>,
+    /** RentAI's own Airbnb prices (ZODOMUS_AIRBNB_PRICE_FROM_BASE); absent or off → the Booking rule. */
+    @Optional() private readonly own?: AirbnbOwnPriceService,
   ) {}
 
   onModuleInit(): void {
@@ -210,6 +217,8 @@ export class AirbnbCalendarService implements OnModuleInit {
       lastSync: row?.lastSync ?? null,
       /** The pilot listing is connected to another property. */
       takenByOther: taken != null && taken.propertyId !== property.id,
+      /** ZODOMUS_AIRBNB_PRICE_FROM_BASE: the Airbnb price comes from RentAI (base − Airbnb %, own price per night). */
+      priceFromBase: this.own?.enabled === true,
       job: this.jobs.get(property.id) ?? null,
       /** The check that «Подключить» / «Отправить» accept now (server clock), or null. */
       freshPlan: this.freshPlan(property.id),
@@ -276,7 +285,8 @@ export class AirbnbCalendarService implements OnModuleInit {
     const occ = new Set(occupied);
     for (const [date, n] of rateNights) if (n.booked > 0) occ.add(date);
 
-    const nights = airbnbNights(booking, dates, deals, occ, minPrice);
+    const own = (await this.own?.prices(propertyId, from, toExclusive, minPrice)) ?? null;
+    const nights = airbnbNights(booking, dates, deals, occ, minPrice, own);
     const ops = [...calendarOperations(nights), closedTail(toExclusive, TAIL_DAYS)];
     const forSale = nights.filter((n) => !n.occupied && n.price != null);
     const noPriceNights = nights.filter((n) => n.price == null).map((n) => n.date);
@@ -589,6 +599,7 @@ export class AirbnbCalendarService implements OnModuleInit {
     let minPrice: number | null = null;
     let occupied: ReadonlySet<string> = new Set<string>();
     let changes: readonly BookingDateChange[] = applied;
+    let own: Map<string, number> | null = null;
     if (openedDates.length > 0) {
       try {
         [deals, minPrice, occupied] = await Promise.all([
@@ -598,6 +609,7 @@ export class AirbnbCalendarService implements OnModuleInit {
             .findByIdForAdmin(propertyId)
             .then((p) => this.ratesPush.collectCrmBlockedNightKeys(p, all[0]!, addDaysYmd(all[all.length - 1]!, 1))),
         ]);
+        own = (await this.own?.prices(propertyId, all[0]!, addDaysYmd(all[all.length - 1]!, 1), minPrice)) ?? null;
       } catch (e) {
         // Occupancy and deals unknown: the opened nights go as closed, without a price, and stay in the no-price
         // list — so a booking update does not open them at an undiscounted price; the next full send opens them.
@@ -613,6 +625,7 @@ export class AirbnbCalendarService implements OnModuleInit {
       minPrice,
       row.planEnd ?? null,
       row.noPriceNights ?? [],
+      own,
     );
     if (ops.length === 0) return;
     let sent = 0;
@@ -643,6 +656,106 @@ export class AirbnbCalendarService implements OnModuleInit {
     if (errors.length > 0) this.logger.warn(`Airbnb dates for ${propertyId}: ${errors.length} call(s) failed — ${errors[0]}`);
   }
 
+  // ─── after RentAI's own Airbnb price changed ──────────────────────────────
+
+  /**
+   * Base price, Airbnb markup or a price typed for Airbnb saved in «Цены» (ZODOMUS_AIRBNB_PRICE_FROM_BASE):
+   * those nights are sent to the connected pilot listing as a full send would send them — Booking is read for
+   * just those nights (closed or sold there stays closed on Airbnb), RentAI occupancy closes too, the price is
+   * the own one or, without it, the Booking rule. Saves that arrive while one is waiting are merged into one
+   * range. Queued on the property's Airbnb chain; never throws.
+   */
+  @OnEvent(AIRBNB_OWN_PRICES_CHANGED)
+  afterOwnPricesChanged(e: AirbnbOwnPricesChanged): Promise<void> {
+    if (!this.connect.isEnabled || !this.own?.enabled || !e?.propertyId || !e.from || !e.to || e.from > e.to) {
+      return Promise.resolve();
+    }
+    const waiting = this.pendingOwn.get(e.propertyId);
+    if (waiting) {
+      if (e.from < waiting.from) waiting.from = e.from;
+      if (e.to > waiting.to) waiting.to = e.to;
+      return Promise.resolve();
+    }
+    this.pendingOwn.set(e.propertyId, { from: e.from, to: e.to });
+    return this.locked(e.propertyId, async () => {
+      const range = this.pendingOwn.get(e.propertyId);
+      this.pendingOwn.delete(e.propertyId);
+      if (range) await this.sendOwnPrices(e.propertyId, range.from, addDaysYmd(range.to, 1));
+    }).catch((err) => {
+      this.logger.warn(`Airbnb own prices for ${e.propertyId} failed: ${err instanceof Error ? err.message : String(err)}`);
+    });
+  }
+
+  private async sendOwnPrices(propertyId: string, from: string, toExclusive: string): Promise<void> {
+    let row: ZodomusAirbnbListingEntity | null;
+    try {
+      row = await this.listings.findOne({ where: { propertyId } });
+    } catch {
+      return; // tables not migrated: nothing is connected
+    }
+    if (!row?.activatedAt || !row.planEnd) return;
+    let listingId: string;
+    try {
+      listingId = assertAirbnbPilotListing(row.listingId);
+    } catch (e) {
+      if (e instanceof ForbiddenException) return;
+      throw e;
+    }
+    const property = await this.propertyService.findByIdForAdmin(propertyId);
+    // Past nights are not sent; nights from planEnd on are left to the closed tail.
+    const today = todayInTz(property.timezone?.trim() || 'UTC');
+    const start = from < today ? today : from;
+    const end = toExclusive < row.planEnd ? toExclusive : row.planEnd;
+    if (start >= end) return;
+    const minPrice = await this.dates.minPriceOf(propertyId);
+    const own = await this.own!.prices(propertyId, start, end, minPrice);
+    // Own prices unreadable: send nothing rather than prices nobody asked for.
+    if (!own) return;
+    const [rateNights, occupied, deals] = await Promise.all([
+      this.dates.bookingRateNights(propertyId, start, end),
+      this.ratesPush.collectCrmBlockedNightKeys(property, start, end),
+      this.basicDeals(propertyId),
+    ]);
+    const dates: string[] = [];
+    for (let d = start; d < end; d = addDaysYmd(d, 1)) dates.push(d);
+    const booking = new Map<string, BookingNightForAirbnb>();
+    const occ = new Set(occupied);
+    for (const [date, n] of rateNights) {
+      booking.set(date, { date, rack: n.price, closed: n.closed || n.availability === 0 });
+      // Sold on Booking before RentAI has the booking: closed on Airbnb too.
+      if (n.booked > 0) occ.add(date);
+    }
+    const nights = airbnbNights(booking, dates, deals, occ, minPrice, own);
+    const ops = calendarOperations(nights);
+    if (ops.length === 0) return;
+    let sent = 0;
+    const errors: string[] = [];
+    for (const part of chunk(ops, OPS_PER_CALL)) {
+      try {
+        await this.postCalendarWithRetry(listingId, part);
+        sent++;
+      } catch (e) {
+        errors.push(e instanceof Error ? e.message : String(e));
+        break; // Zodomus is not answering: no more calls now
+      }
+    }
+    // Nights left without a price are held closed (a booking update must not open them); priced ones leave the
+    // list only when everything went through — otherwise what Airbnb has is unknown.
+    const held = new Set(row.noPriceNights ?? []);
+    for (const n of nights) {
+      if (n.price == null) held.add(n.date);
+      else if (errors.length === 0) held.delete(n.date);
+    }
+    await this.listings.update(
+      { propertyId },
+      {
+        noPriceNights: [...held].sort(),
+        lastSyncAt: new Date(),
+        lastSync: { kind: 'prices', operations: ops.length, sentCalls: sent, failedCalls: errors.length, errors: errors.slice(0, 5) },
+      },
+    );
+    if (errors.length > 0) this.logger.warn(`Airbnb own prices for ${propertyId}: ${errors.length} call(s) failed — ${errors[0]}`);
+  }
   private async sendAvailability(propertyId: string, days: { date: string; free: boolean }[]): Promise<void> {
     let row: ZodomusAirbnbListingEntity | null;
     try {

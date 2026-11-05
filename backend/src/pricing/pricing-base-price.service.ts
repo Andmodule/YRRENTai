@@ -1,5 +1,6 @@
 import { createHash } from 'crypto';
-import { BadRequestException, ConflictException, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, Optional, ServiceUnavailableException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Between, DataSource, In, QueryFailedError, Repository } from 'typeorm';
 import type { JwtPayload } from '../common/decorators/current-user.decorator';
@@ -20,6 +21,7 @@ import { PropertyChannelPricingEntity } from './entities/property-channel-pricin
 import { PropertyChannelNightPriceEntity } from './entities/property-channel-night-price.entity';
 import { GUEST_PRICE_CHANNELS, type GuestPriceChannel } from './entities/property-channel-profile.entity';
 import type { BasePriceRangeDto, BookingSendConfirmDto, BookingSendDto, ChannelPricingDto } from './dto/pricing-base-price.dto';
+import { AIRBNB_OWN_PRICES_CHANGED, type AirbnbOwnPricesChanged } from '../airbnb/airbnb-own-price.service';
 
 /** Longest range read, set or sent at once (a year, like the availability horizon). */
 export const BASE_PRICE_MAX_RANGE_DAYS = 366;
@@ -103,7 +105,18 @@ export class PricingBasePriceService {
     private readonly nightPriceRepo: Repository<PropertyChannelNightPriceEntity>,
     @InjectRepository(PropertyAutoPriceEntity)
     private readonly autoRepo: Repository<PropertyAutoPriceEntity>,
+    @Optional() private readonly events?: EventEmitter2,
   ) {}
+
+  /** The Airbnb price is made of the base price and the Airbnb markup: tell Airbnb (it decides by its own flag). */
+  private airbnbPricesChanged(propertyId: string, from: string, to: string): void {
+    const e: AirbnbOwnPricesChanged = { propertyId, from, to };
+    try {
+      this.events?.emit(AIRBNB_OWN_PRICES_CHANGED, e);
+    } catch (err) {
+      this.logger.warn(`Airbnb price event for ${propertyId} failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
 
   /**
    * «Автоцены»: adjustments the rule put on nights of [from, to]. Empty while the rule is off; a missing
@@ -209,6 +222,7 @@ export class PricingBasePriceService {
       });
       const out: Record<string, number> = {};
       if (dto.price != null) for (const d of dates) out[d] = dto.price;
+      this.airbnbPricesChanged(property.id, dates[0]!, dates[dates.length - 1]!);
       return out;
     });
   }
@@ -234,6 +248,7 @@ export class PricingBasePriceService {
       await this.tables(() =>
         this.baseRepo.createQueryBuilder().insert().into(PropertyBasePriceEntity).values(rows).orIgnore().execute(),
       );
+      this.airbnbPricesChanged(property.id, rows[0]!.date, rows[rows.length - 1]!.date);
     }
     const kept = [...open.keys()].filter((d) => has.has(d)).length;
     return { filled: rows.length, kept, notOpen: Math.max(0, this.futureNights(property, dto.from, dto.to) - open.size) };
@@ -265,7 +280,15 @@ export class PricingBasePriceService {
     if (dto.singleGuestPct !== undefined) row.singleGuestPct = dto.singleGuestPct;
     if (dto.extraGuestPct !== undefined) row.extraGuestPct = dto.extraGuestPct;
     return this.tables(async () => {
+      const markupBefore = row.channel === 'airbnb' && dto.markupPct !== undefined
+        ? ((await this.channelRepo.findOne({ where: { propertyId: property.id, channel: 'airbnb' } }))?.markupPct ?? 0)
+        : null;
       await this.channelRepo.upsert(row, ['propertyId', 'channel']);
+      if (row.channel === 'airbnb' && dto.markupPct !== undefined && markupBefore !== dto.markupPct) {
+        // Every night with a base price may change: Airbnb keeps only the nights inside its last full send.
+        const today = todayInTz(property.timezone);
+        this.airbnbPricesChanged(property.id, today, addDaysYmd(today, BASE_PRICE_MAX_RANGE_DAYS));
+      }
       const saved = await this.channelRepo.findOne({ where: { propertyId: property.id, channel: row.channel } });
       return saved ? channelView(saved) : defaultChannel(row.channel);
     });

@@ -6,8 +6,12 @@ import { PropertyModule } from '../property/property.module';
 import { PropertyChannelListingEntity } from '../property/entities/property-channel-listing.entity';
 import { OtaPlatformEntity } from '../property/entities/ota-platform.entity';
 import { PricePromotionEntity } from '../pricing/entities/price-promotion.entity';
+import { PropertyBasePriceEntity } from '../pricing/entities/property-base-price.entity';
+import { PropertyChannelPricingEntity } from '../pricing/entities/property-channel-pricing.entity';
+import { PropertyChannelNightPriceEntity } from '../pricing/entities/property-channel-night-price.entity';
 import { ZodomusAirbnbListingEntity } from './airbnb-listing.entity';
 import { AirbnbCalendarService } from './airbnb-calendar.service';
+import { AirbnbOwnPriceService } from './airbnb-own-price.service';
 import { AirbnbCalendarController } from './airbnb-calendar.controller';
 
 /**
@@ -16,12 +20,20 @@ import { AirbnbCalendarController } from './airbnb-calendar.controller';
  */
 @Module({
   imports: [
-    TypeOrmModule.forFeature([ZodomusAirbnbListingEntity, PropertyChannelListingEntity, OtaPlatformEntity, PricePromotionEntity]),
+    TypeOrmModule.forFeature([
+      ZodomusAirbnbListingEntity,
+      PropertyChannelListingEntity,
+      OtaPlatformEntity,
+      PricePromotionEntity,
+      PropertyBasePriceEntity,
+      PropertyChannelPricingEntity,
+      PropertyChannelNightPriceEntity,
+    ]),
     ZodomusModule,
     CalendarDatesModule,
     PropertyModule,
   ],
   controllers: [AirbnbCalendarController],
-  providers: [AirbnbCalendarService],
+  providers: [AirbnbCalendarService, AirbnbOwnPriceService],
 })
 export class AirbnbModule {}

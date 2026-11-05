@@ -65,17 +65,52 @@ export function airbnbPrice(rack: number, pct: number, min: number | null): numb
   return min != null && p < min ? Math.ceil(min) : p;
 }
 
-/** Booking nights + deals + RentAI occupancy → the Airbnb night list. A night closed on Booking has no price. */
+/**
+ * Owner's rule 2026-11-05 (ZODOMUS_AIRBNB_PRICE_FROM_BASE): the Airbnb price of a night is RentAI's own —
+ * the price typed for Airbnb on that night, else the base price with the Airbnb markup («Airbnb — базовая
+ * −N %»). Whole złoty, never below `min`. Nights with neither are left out (they keep the Booking rule).
+ */
+export function ownAirbnbPrices(
+  dates: readonly string[],
+  base: ReadonlyMap<string, number>,
+  typed: ReadonlyMap<string, number>,
+  markupPct: number | null | undefined,
+  min: number | null,
+): Map<string, number> {
+  const pct = Number.isFinite(markupPct) ? (markupPct as number) : 0;
+  const out = new Map<string, number>();
+  for (const d of dates) {
+    const t = typed.get(d);
+    const b = base.get(d);
+    let p: number | null = null;
+    if (t != null && t > 0) p = Math.round(t);
+    else if (b != null && b > 0) p = Math.round((b * (100 + pct)) / 100);
+    if (p == null || !(p > 0)) continue;
+    out.set(d, min != null && p < min ? Math.ceil(min) : p);
+  }
+  return out;
+}
+
+/**
+ * Booking nights + deals + RentAI occupancy → the Airbnb night list. A night closed on Booking has no price.
+ * `own` (RentAI's own Airbnb prices) wins over the Booking rule on a night open on Booking.
+ */
 export function airbnbNights(
   booking: ReadonlyMap<string, BookingNightForAirbnb>,
   dates: readonly string[],
   deals: readonly BasicDeal[],
   occupied: ReadonlySet<string>,
   minPrice: number | null,
+  own?: ReadonlyMap<string, number> | null,
 ): AirbnbNight[] {
   return dates.map((date) => {
     const b = booking.get(date);
-    const price = b && !b.closed && b.rack != null && b.rack > 0 ? airbnbPrice(b.rack, basicPctOn(date, deals), minPrice) : null;
+    let price: number | null = null;
+    if (b && !b.closed) {
+      const o = own?.get(date);
+      if (o != null) price = o;
+      else if (b.rack != null && b.rack > 0) price = airbnbPrice(b.rack, basicPctOn(date, deals), minPrice);
+    }
     return { date, price, occupied: occupied.has(date) };
   });
 }
@@ -179,12 +214,13 @@ export function dateChangeOperations(
   minPrice: number | null,
   planEnd: string | null,
   noPrice: readonly string[],
+  own?: ReadonlyMap<string, number> | null,
 ): { ops: AirbnbCalendarOperation[]; noPriceNights: string[] } {
   const booking = new Map<string, BookingNightForAirbnb>();
   for (const date of alreadyClosed) booking.set(date, { date, rack: null, closed: true });
   for (const c of changes) booking.set(c.date, { date: c.date, rack: c.price, closed: c.closed });
   const dates = [...booking.keys()].filter((d) => planEnd != null && d < planEnd).sort();
-  const nights = airbnbNights(booking, dates, deals, occupied, minPrice);
+  const nights = airbnbNights(booking, dates, deals, occupied, minPrice, own);
   const left = new Set(noPrice);
   for (const n of nights) {
     if (n.price == null) left.add(n.date);

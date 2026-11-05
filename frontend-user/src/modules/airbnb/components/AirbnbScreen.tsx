@@ -149,7 +149,7 @@ export function AirbnbScreen() {
           </div>
         </div>
         {!propsLoading && bookingProps.length === 0 ? <Notice tone="warn">{t('plan.noProperties')}</Notice> : null}
-        <p className="text-sm text-muted-foreground">{t('plan.rule')}</p>
+        <p className="text-sm text-muted-foreground">{t(view?.priceFromBase ? 'plan.ruleOwn' : 'plan.rule')}</p>
         {view?.takenByOther ? <Notice tone="warn">{t('plan.takenByOther')}</Notice> : null}
         {listing.isError ? <Notice tone="error">{getApiErrorMessage(listing.error) ?? t('error')}</Notice> : null}
 
@@ -215,7 +215,9 @@ export function AirbnbScreen() {
                     ? 'connect.lastAvailability'
                     : view.lastSync.kind === 'dates'
                       ? 'connect.lastDates'
-                      : 'connect.lastFull',
+                      : view.lastSync.kind === 'prices'
+                        ? 'connect.lastPrices'
+                        : 'connect.lastFull',
                   {
                   at: time(view.lastSyncAt),
                   sent: view.lastSync.sentCalls ?? 0,
@@ -223,7 +225,7 @@ export function AirbnbScreen() {
                 })}
               </p>
             ) : null}
-            <p className="text-sm text-muted-foreground">{t('connect.auto')}</p>
+            <p className="text-sm text-muted-foreground">{t(view?.priceFromBase ? 'connect.autoOwn' : 'connect.auto')}</p>
             <div className="flex flex-wrap items-center gap-2">
               <Button
                 disabled={!canSend({ listing: view, plan }) || m.send.isPending}
