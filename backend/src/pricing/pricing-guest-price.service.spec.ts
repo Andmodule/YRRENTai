@@ -80,6 +80,7 @@ function setup(opts: { env?: Record<string, unknown>; profiles?: Partial<Propert
       work({ getRepository: () => tx }),
     ),
   };
+  const events = { emit: jest.fn() };
   const svc = new PricingGuestPriceService(
     cfg,
     pricing as unknown as PricingService,
@@ -88,8 +89,9 @@ function setup(opts: { env?: Record<string, unknown>; profiles?: Partial<Propert
     profileRepo as unknown as Repository<PropertyChannelProfileEntity>,
     nightPriceRepo as unknown as Repository<PropertyChannelNightPriceEntity>,
     observationRepo as unknown as Repository<PriceObservationEntity>,
+    events as never,
   );
-  return { svc, profileRepo, nightPriceRepo, observationRepo, tx, dataSource, propertyService, get profiles() { return profiles; } };
+  return { svc, events, profileRepo, nightPriceRepo, observationRepo, tx, dataSource, propertyService, get profiles() { return profiles; } };
 }
 
 function observation(over: Partial<Omit<ObservationDto, 'input'>> & { input?: GuestPriceInput } = {}): ObservationDto {
@@ -372,5 +374,27 @@ describe('guest price — review fixes', () => {
       BadRequestException,
     );
     expect(s.observationRepo.save).not.toHaveBeenCalled();
+  });
+});
+
+describe('PricingGuestPriceService — «Airbnb — своя цена» tells Airbnb', () => {
+  const EVENT = 'pricing.airbnb-own-prices-changed';
+
+  it('an Airbnb price set or cleared → an event for those nights; a Booking price → none', async () => {
+    const s = setup();
+    await s.svc.setNightPrices(OWNER, PROP, { channel: 'booking', from: '2026-11-06', to: '2026-11-06', price: 385 });
+    expect(s.events.emit).not.toHaveBeenCalled();
+    await s.svc.setNightPrices(OWNER, PROP, { channel: 'airbnb', from: '2026-11-06', to: '2026-11-07', price: 290 });
+    expect(s.events.emit).toHaveBeenLastCalledWith(EVENT, { propertyId: PROP, from: '2026-11-06', to: '2026-11-07' });
+    await s.svc.setNightPrices(OWNER, PROP, { channel: 'airbnb', from: '2026-11-06', to: '2026-11-06', price: null });
+    expect(s.events.emit).toHaveBeenLastCalledWith(EVENT, { propertyId: PROP, from: '2026-11-06', to: '2026-11-06' });
+  });
+
+  it('an event that throws does not fail the save', async () => {
+    const s = setup();
+    s.events.emit.mockImplementation(() => {
+      throw new Error('boom');
+    });
+    await expect(s.svc.setNightPrices(OWNER, PROP, { channel: 'airbnb', from: '2026-11-06', to: '2026-11-06', price: 290 })).resolves.toEqual({ '2026-11-06': 290 });
   });
 });

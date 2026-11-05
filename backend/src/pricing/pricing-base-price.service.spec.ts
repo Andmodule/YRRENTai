@@ -119,6 +119,7 @@ function setup(
   const dataSource = {
     transaction: jest.fn(async (work: (m: { getRepository: () => typeof tx }) => Promise<void>) => work({ getRepository: () => tx })),
   };
+  const events = { emit: jest.fn() };
   const svc = new PricingBasePriceService(
     cfg,
     pricing as unknown as PricingService,
@@ -130,8 +131,9 @@ function setup(
     channelRepo as unknown as Repository<PropertyChannelPricingEntity>,
     nightPriceRepo as unknown as Repository<PropertyChannelNightPriceEntity>,
     autoRepo as unknown as Repository<PropertyAutoPriceEntity>,
+    events as never,
   );
-  return { svc, baseRepo, qb, channelRepo, nightPriceRepo, dates, tx, dataSource, sync, autoRepo };
+  return { svc, baseRepo, qb, channelRepo, nightPriceRepo, dates, tx, dataSource, sync, autoRepo, events };
 }
 
 const NOV = { from: '2026-11-01', to: '2026-11-04' };
@@ -499,5 +501,49 @@ describe('base price DTOs', () => {
     expect(channelPricingSchema.safeParse({ markupPct: 10.5 }).success).toBe(false);
     expect(channelPricingSchema.safeParse({ singleGuestPct: 91 }).success).toBe(false);
     expect(channelPricingSchema.safeParse({ extraGuestPct: null }).success).toBe(true);
+  });
+});
+
+describe('PricingBasePriceService — tells Airbnb its price changed (owner rule 2026-11-05)', () => {
+  const EVENT = 'pricing.airbnb-own-prices-changed';
+
+  it('a base price saved or removed: an event for the nights of the range', async () => {
+    const s = setup();
+    await s.svc.setRange(OWNER, PROP, { from: '2026-11-01', to: '2026-11-03', price: 480 });
+    expect(s.events.emit).toHaveBeenLastCalledWith(EVENT, { propertyId: PROP, from: '2026-11-01', to: '2026-11-03' });
+    await s.svc.setRange(OWNER, PROP, { from: '2026-11-01', to: '2026-11-03', price: null });
+    expect(s.events.emit).toHaveBeenCalledTimes(2);
+  });
+
+  it('days of the week: from the first to the last chosen night', async () => {
+    const s = setup();
+    await s.svc.setRange(OWNER, PROP, { from: '2026-11-06', to: '2026-11-09', price: 600, weekdays: [5, 6] });
+    expect(s.events.emit).toHaveBeenCalledWith(EVENT, { propertyId: PROP, from: '2026-11-06', to: '2026-11-07' });
+  });
+
+  it('nothing saved (400) → no event', async () => {
+    const s = setup();
+    await expect(s.svc.setRange(OWNER, PROP, { from: '2026-11-02', to: '2026-11-03', price: 500, weekdays: [6] })).rejects.toBeInstanceOf(BadRequestException);
+    expect(s.events.emit).not.toHaveBeenCalled();
+  });
+
+  it('Airbnb markup saved → an event from today for a year; Booking markup or guest percents only → none', async () => {
+    const s = setup();
+    await s.svc.saveChannel(OWNER, PROP, 'booking', { markupPct: 10 });
+    await s.svc.saveChannel(OWNER, PROP, 'airbnb', { singleGuestPct: 10 });
+    expect(s.events.emit).not.toHaveBeenCalled();
+    await s.svc.saveChannel(OWNER, PROP, 'airbnb', { markupPct: -10 });
+    expect(s.events.emit).toHaveBeenCalledTimes(1);
+    const [, e] = s.events.emit.mock.calls[0] as [string, { propertyId: string; from: string; to: string }];
+    expect(e.propertyId).toBe(PROP);
+    expect(e.to > e.from).toBe(true);
+  });
+
+  it('an event that throws does not fail the save', async () => {
+    const s = setup();
+    s.events.emit.mockImplementation(() => {
+      throw new Error('boom');
+    });
+    await expect(s.svc.setRange(OWNER, PROP, { from: '2026-11-01', to: '2026-11-01', price: 480 })).resolves.toEqual({ '2026-11-01': 480 });
   });
 });

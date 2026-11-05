@@ -206,6 +206,15 @@ const zodomusEnvFields = z.object({
     .default('false')
     .transform((v) => v === 'true' || v === '1' || v === 'yes'),
   /**
+   * Airbnb price from RentAI (owner's rule 2026-11-05): a night's price on the pilot listing = the price typed
+   * for Airbnb, else the base price with the Airbnb markup; saving either sends those nights to Airbnb at once.
+   * Off by default: Airbnb keeps the Booking rule (Booking price − biggest Basic), sent only with Booking.
+   */
+  ZODOMUS_AIRBNB_PRICE_FROM_BASE: z
+    .enum(['true', 'false', '1', '0', 'yes', 'no'])
+    .default('false')
+    .transform((v) => v === 'true' || v === '1' || v === 'yes'),
+  /**
    * «Открыть / закрыть даты на Booking» in the calendar: opens (or closes) nights on the main Booking rate
    * with POST /rates `closed`, at the price the person gives. Off by default: API answers 503, UI hidden.
    */

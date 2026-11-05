@@ -2,8 +2,10 @@ import {
   BadRequestException,
   Injectable,
   Logger,
+  Optional,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Between, DataSource, QueryFailedError, Repository } from 'typeorm';
 import type { JwtPayload } from '../common/decorators/current-user.decorator';
@@ -21,6 +23,7 @@ import {
 import { PropertyChannelNightPriceEntity } from './entities/property-channel-night-price.entity';
 import { PriceObservationEntity, type GuestPriceScenario } from './entities/price-observation.entity';
 import type { ChannelProfileDto, NightPricesDto, ObservationDto } from './dto/pricing-guest-price.dto';
+import { AIRBNB_OWN_PRICES_CHANGED, type AirbnbOwnPricesChanged } from '../airbnb/airbnb-own-price.service';
 
 /** Longest window the panel asks for / a hand-typed price range may cover. */
 export const GUEST_PRICE_MAX_RANGE_DAYS = 120;
@@ -141,6 +144,7 @@ export class PricingGuestPriceService {
     private readonly nightPriceRepo: Repository<PropertyChannelNightPriceEntity>,
     @InjectRepository(PriceObservationEntity)
     private readonly observationRepo: Repository<PriceObservationEntity>,
+    @Optional() private readonly events?: EventEmitter2,
   ) {}
 
   private assertOn(): void {
@@ -258,6 +262,15 @@ export class PricingGuestPriceService {
           await repo.insert(dates.map((date) => ({ propertyId: id, channel: dto.channel, date, priceMinor })));
         }
       });
+      if (dto.channel === 'airbnb') {
+        // «Airbnb — своя цена» / «Вернуть к формуле»: those nights go to Airbnb (it decides by its own flag).
+        const e: AirbnbOwnPricesChanged = { propertyId: id, from: dto.from, to: dto.to };
+        try {
+          this.events?.emit(AIRBNB_OWN_PRICES_CHANGED, e);
+        } catch (err) {
+          this.logger.warn(`Airbnb price event for ${id} failed: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
       const out: Record<string, number> = {};
       if (dto.price != null) for (const d of dates) out[d] = dto.price;
       return out;

@@ -213,7 +213,7 @@ export function AirbnbScreen() {
                 {t(
                   view.lastSync.kind === 'availability'
                     ? 'connect.lastAvailability'
-                    : view.lastSync.kind === 'dates'
+                    : view.lastSync.kind === 'dates' || view.lastSync.kind === 'prices'
                       ? 'connect.lastDates'
                       : 'connect.lastFull',
                   {
