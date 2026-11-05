@@ -537,6 +537,15 @@ describe('PricingBasePriceService — tells Airbnb its price changed (owner rule
     const [, e] = s.events.emit.mock.calls[0] as [string, { propertyId: string; from: string; to: string }];
     expect(e.propertyId).toBe(PROP);
     expect(e.to > e.from).toBe(true);
+    // the same markup saved again → nothing to send
+    await s.svc.saveChannel(OWNER, PROP, 'airbnb', { markupPct: -10 });
+    expect(s.events.emit).toHaveBeenCalledTimes(1);
+  });
+
+  it('Airbnb markup 0 saved where nothing was saved (markup 0) → no event', async () => {
+    const s = setup();
+    await s.svc.saveChannel(OWNER, PROP, 'airbnb', { markupPct: 0 });
+    expect(s.events.emit).not.toHaveBeenCalled();
   });
 
   it('an event that throws does not fail the save', async () => {

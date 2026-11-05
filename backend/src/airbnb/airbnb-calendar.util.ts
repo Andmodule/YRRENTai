@@ -115,25 +115,6 @@ export function airbnbNights(
   });
 }
 
-/**
- * RentAI's own Airbnb price changed (base price, Airbnb markup, a price typed for Airbnb): the nights that
- * have one, inside the last full send (`< planEnd`). A night occupied in RentAI or held closed (`noPrice`:
- * closed on Booking or without a price at the last send) goes unavailable with its new price — so it opens at
- * that price later; the rest go available at it. Nights without an own price are not touched.
- */
-export function ownPriceOperations(
-  own: ReadonlyMap<string, number>,
-  occupied: ReadonlySet<string>,
-  noPrice: ReadonlySet<string>,
-  planEnd: string | null,
-): AirbnbCalendarOperation[] {
-  if (planEnd == null) return [];
-  const nights: AirbnbNight[] = [...own]
-    .filter(([date]) => date < planEnd)
-    .map(([date, price]) => ({ date, price, occupied: occupied.has(date) || noPrice.has(date) }));
-  return calendarOperations(nights);
-}
-
 function forSale(n: AirbnbNight): boolean {
   return !n.occupied && n.price != null;
 }

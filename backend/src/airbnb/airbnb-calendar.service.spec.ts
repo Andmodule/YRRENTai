@@ -536,27 +536,60 @@ describe('AirbnbCalendarService — own Airbnb prices (owner rule 2026-11-05, ZO
   const ev = (from = '2027-02-01', to = '2027-02-04') => ({ propertyId: PID, from, to });
   const ops = (s: ReturnType<typeof setup>, i: number) =>
     (s.zodomus.upstreamPost.mock.calls[i] as unknown as [string, { operations: unknown }])[1].operations;
+  const book = (s: ReturnType<typeof setup>, date: string, over: Partial<RateNight> = {}) =>
+    s.rateNights.set(date, { date, price: 400, closed: false, booked: 0, availability: 1, ...over });
+  const feb = (s: ReturnType<typeof setup>) => {
+    for (let d = 1; d <= 9; d++) book(s, `2027-02-0${d}`);
+  };
 
-  it('a saved price goes to Airbnb: free nights available, occupied and held-closed nights unavailable with the price', async () => {
-    const s = setup({ listing: { ...LIVE, noPriceNights: ['2027-02-03'] }, own: ON });
-    s.ratesPush.collectCrmBlockedNightKeys.mockResolvedValueOnce(new Set(['2027-02-02']));
+  it('a saved price goes out at once: own price on nights open on Booking; Booking read only for those nights', async () => {
+    const s = setup({ listing: LIVE, own: ON });
+    feb(s);
     await s.svc.afterOwnPricesChanged(ev());
+    expect(s.dates.bookingRateNights).toHaveBeenCalledWith(PID, '2027-02-01', '2027-02-05');
     expect(s.zodomus.upstreamPost).toHaveBeenCalledTimes(1);
-    expect(s.zodomus.upstreamPost.mock.calls[0]![0]).toBe('/airbnb-calendar');
     expect((s.zodomus.upstreamPost.mock.calls[0] as unknown as [string, { propertyId: string }])[1].propertyId).toBe(PILOT);
     expect(ops(s, 0)).toEqual([
-      { dates: ['2027-02-01:2027-02-01'], availability: 'available', dailyPrice: 270 },
-      { dates: ['2027-02-02:2027-02-03'], availability: 'unavailable', dailyPrice: 270 },
+      { dates: ['2027-02-01:2027-02-03'], availability: 'available', dailyPrice: 270 },
       { dates: ['2027-02-04:2027-02-04'], availability: 'available', dailyPrice: 290 },
     ]);
-    expect(s.listing()!.lastSync).toMatchObject({ kind: 'prices', operations: 3, sentCalls: 1, failedCalls: 0 });
-    // held-closed nights stay in the list: a booking update must not open them
-    expect(s.listing()!.noPriceNights).toEqual(['2027-02-03']);
-    // no Booking read
-    expect(s.dates.bookingRateNights).not.toHaveBeenCalled();
+    expect(s.listing()!.lastSync).toMatchObject({ kind: 'prices', operations: 2, sentCalls: 1, failedCalls: 0 });
   });
 
-  it('flag off, no own-price service or Airbnb off → nothing read, nothing sent', async () => {
+  it('never opens: occupied in RentAI, sold on Booking (not yet in RentAI), closed or no room on Booking', async () => {
+    const s = setup({ listing: LIVE, own: ON });
+    feb(s);
+    s.ratesPush.collectCrmBlockedNightKeys.mockResolvedValueOnce(new Set(['2027-02-01']));
+    // one unit sold, Booking still shows a room — sold all the same
+    book(s, '2027-02-02', { booked: 1 });
+    book(s, '2027-02-03', { closed: true });
+    book(s, '2027-02-04', { availability: 0 });
+    await s.svc.afterOwnPricesChanged(ev());
+    expect(ops(s, 0)).toEqual([
+      { dates: ['2027-02-01:2027-02-02'], availability: 'unavailable', dailyPrice: 270 },
+      { dates: ['2027-02-03:2027-02-04'], availability: 'unavailable' },
+    ]);
+    // closed on Booking → held closed; occupied ones keep their price and are not in the list
+    expect(s.listing()!.noPriceNights).toEqual(['2027-02-03', '2027-02-04']);
+  });
+
+  it('a night held closed for no price opens once it has an own price and is open on Booking', async () => {
+    const s = setup({ listing: { ...LIVE, noPriceNights: ['2027-02-02', '2027-03-15'] }, own: ON });
+    feb(s);
+    await s.svc.afterOwnPricesChanged(ev('2027-02-02', '2027-02-02'));
+    expect(ops(s, 0)).toEqual([{ dates: ['2027-02-02:2027-02-02'], availability: 'available', dailyPrice: 270 }]);
+    expect(s.listing()!.noPriceNights).toEqual(['2027-03-15']);
+  });
+
+  it('own price removed («Вернуть к формуле», base removed): the night goes back to the Booking rule', async () => {
+    const s = setup({ listing: LIVE, own: { enabled: true, prices: {} } });
+    feb(s);
+    await s.svc.afterOwnPricesChanged(ev('2027-02-05', '2027-02-05'));
+    // 400 − Basic 20 % = 320
+    expect(ops(s, 0)).toEqual([{ dates: ['2027-02-05:2027-02-05'], availability: 'available', dailyPrice: 320 }]);
+  });
+
+  it('flag off, no own-price service, Airbnb off → nothing read, nothing sent', async () => {
     for (const s of [
       setup({ listing: LIVE, own: { enabled: false, prices: ON.prices } }),
       setup({ listing: LIVE }),
@@ -564,11 +597,19 @@ describe('AirbnbCalendarService — own Airbnb prices (owner rule 2026-11-05, ZO
     ]) {
       await s.svc.afterOwnPricesChanged(ev());
       expect(s.listings.findOne).not.toHaveBeenCalled();
+      expect(s.dates.bookingRateNights).not.toHaveBeenCalled();
       expect(s.zodomus.upstreamPost).not.toHaveBeenCalled();
     }
   });
 
-  it('not connected, no full send yet, another listing ID → nothing sent', async () => {
+  it('own prices unreadable → nothing read from Booking, nothing sent', async () => {
+    const s = setup({ listing: LIVE, own: { enabled: true, prices: null } });
+    await s.svc.afterOwnPricesChanged(ev());
+    expect(s.dates.bookingRateNights).not.toHaveBeenCalled();
+    expect(s.zodomus.upstreamPost).not.toHaveBeenCalled();
+  });
+
+  it('not connected, no full send yet, another listing ID, no row → nothing sent', async () => {
     for (const listing of [{ activatedAt: null, planEnd: '2027-06-01' }, { activatedAt: new Date(), planEnd: null }, { ...LIVE, listingId: '123' }]) {
       const s = setup({ listing, own: ON });
       await s.svc.afterOwnPricesChanged(ev());
@@ -579,13 +620,15 @@ describe('AirbnbCalendarService — own Airbnb prices (owner rule 2026-11-05, ZO
     expect(none.zodomus.upstreamPost).not.toHaveBeenCalled();
   });
 
-  it('past nights and nights from planEnd on are not asked for or sent', async () => {
+  it('past nights and nights from planEnd on are not read or sent', async () => {
     const s = setup({ listing: { activatedAt: new Date(), planEnd: '2027-02-03' }, own: ON });
+    feb(s);
     await s.svc.afterOwnPricesChanged(ev('2020-01-01', '2027-02-04'));
-    const [, from, toExclusive] = s.own!.prices.mock.calls[0]! as unknown as [string, string, string];
+    const [, from, toExclusive] = s.dates.bookingRateNights.mock.calls[0]! as unknown as [string, string, string];
     expect(from >= new Date(Date.now() - 2 * 86_400_000).toISOString().slice(0, 10)).toBe(true);
     expect(toExclusive).toBe('2027-02-03');
-    expect(ops(s, 0)).toEqual([{ dates: ['2027-02-01:2027-02-02'], availability: 'available', dailyPrice: 270 }]);
+    const sent = ops(s, 0) as { dates: string[] }[];
+    expect(sent[sent.length - 1]!.dates[0]!.endsWith(':2027-02-02')).toBe(true);
   });
 
   it('a range wholly in the past or after planEnd, or a bad event → nothing', async () => {
@@ -594,27 +637,42 @@ describe('AirbnbCalendarService — own Airbnb prices (owner rule 2026-11-05, ZO
     await s.svc.afterOwnPricesChanged(ev('2027-07-01', '2027-07-05'));
     await s.svc.afterOwnPricesChanged(ev('2027-02-04', '2027-02-01'));
     await s.svc.afterOwnPricesChanged({ propertyId: '', from: '2027-02-01', to: '2027-02-04' });
+    expect(s.dates.bookingRateNights).not.toHaveBeenCalled();
     expect(s.zodomus.upstreamPost).not.toHaveBeenCalled();
   });
 
-  it('no own price on those nights → nothing sent', async () => {
-    const s = setup({ listing: LIVE, own: { enabled: true, prices: {} } });
-    await s.svc.afterOwnPricesChanged(ev());
-    expect(s.zodomus.upstreamPost).not.toHaveBeenCalled();
-  });
-
-  it('Airbnb refuses → retried, then recorded as failed; never throws', async () => {
+  it('saves arriving while one waits are merged into one send of the widest range', async () => {
     const s = setup({ listing: LIVE, own: ON });
+    feb(s);
+    const first = s.svc.afterOwnPricesChanged(ev('2027-02-02', '2027-02-02'));
+    void s.svc.afterOwnPricesChanged(ev('2027-02-01', '2027-02-01'));
+    void s.svc.afterOwnPricesChanged(ev('2027-02-04', '2027-02-04'));
+    await first;
+    expect(s.dates.bookingRateNights).toHaveBeenCalledTimes(1);
+    expect(s.dates.bookingRateNights).toHaveBeenCalledWith(PID, '2027-02-01', '2027-02-05');
+    expect(s.zodomus.upstreamPost).toHaveBeenCalledTimes(1);
+  });
+
+  it('Airbnb refuses → retried, then recorded as failed; priced nights stay held, never throws', async () => {
+    const s = setup({ listing: { ...LIVE, noPriceNights: ['2027-02-01'] }, own: ON });
+    feb(s);
     s.zodomus.upstreamPost.mockRejectedValue(new Error('429'));
     await expect(s.svc.afterOwnPricesChanged(ev())).resolves.toBeUndefined();
     expect(s.zodomus.upstreamPost).toHaveBeenCalledTimes(3);
     expect(s.listing()!.lastSync).toMatchObject({ kind: 'prices', sentCalls: 0, failedCalls: 1 });
+    expect(s.listing()!.noPriceNights).toEqual(['2027-02-01']);
+  });
+
+  it('Booking read fails → nothing sent, never throws', async () => {
+    const s = setup({ listing: LIVE, own: ON });
+    s.dates.bookingRateNights.mockRejectedValueOnce(new Error('Zodomus 500'));
+    await expect(s.svc.afterOwnPricesChanged(ev())).resolves.toBeUndefined();
+    expect(s.zodomus.upstreamPost).not.toHaveBeenCalled();
   });
 
   it('«Проверить» / full send: own price on nights open on Booking, closed on Booking stays unavailable', async () => {
     const s = setup({ own: { enabled: true, prices: {} } });
     fillBooking(s, 500);
-    const today = new Date().toISOString().slice(0, 10);
     const d2 = new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10);
     const d3 = new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10);
     s.own!.prices.mockResolvedValueOnce(new Map([[d2, 290], [d3, 290]]));
@@ -622,10 +680,10 @@ describe('AirbnbCalendarService — own Airbnb prices (owner rule 2026-11-05, ZO
     const job = await settle(await s.svc.startCheck(OWNER, PID));
     const sample = job.plan!.sample;
     expect(sample.find((o) => o.dates[0] === `${d2}:${d2}`)).toEqual({ dates: [`${d2}:${d2}`], availability: 'available', dailyPrice: 290 });
-    expect(sample.find((o) => o.dates[0]!.startsWith(`${d3}:`))).toMatchObject({ availability: 'unavailable' });
-    expect(sample.find((o) => o.dates[0]!.startsWith(`${d3}:`))!.dailyPrice).toBeUndefined();
+    const closedOp = sample.find((o) => o.dates[0]!.startsWith(`${d3}:`))!;
+    expect(closedOp.availability).toBe('unavailable');
+    expect(closedOp.dailyPrice).toBeUndefined();
     expect(sample[0]!.dailyPrice).toBe(400); // other nights: the Booking rule (500 − Basic 20 %)
-    expect(today <= d2).toBe(true);
   });
 
   it('a night opened on Booking goes to Airbnb at its own price', async () => {

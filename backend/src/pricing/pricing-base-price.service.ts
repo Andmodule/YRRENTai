@@ -280,8 +280,11 @@ export class PricingBasePriceService {
     if (dto.singleGuestPct !== undefined) row.singleGuestPct = dto.singleGuestPct;
     if (dto.extraGuestPct !== undefined) row.extraGuestPct = dto.extraGuestPct;
     return this.tables(async () => {
+      const markupBefore = row.channel === 'airbnb' && dto.markupPct !== undefined
+        ? ((await this.channelRepo.findOne({ where: { propertyId: property.id, channel: 'airbnb' } }))?.markupPct ?? 0)
+        : null;
       await this.channelRepo.upsert(row, ['propertyId', 'channel']);
-      if (row.channel === 'airbnb' && dto.markupPct !== undefined) {
+      if (row.channel === 'airbnb' && dto.markupPct !== undefined && markupBefore !== dto.markupPct) {
         // Every night with a base price may change: Airbnb keeps only the nights inside its last full send.
         const today = todayInTz(property.timezone);
         this.airbnbPricesChanged(property.id, today, addDaysYmd(today, BASE_PRICE_MAX_RANGE_DAYS));

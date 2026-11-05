@@ -9,7 +9,6 @@ import {
   dateChangeOperations,
   operationsFingerprint,
   ownAirbnbPrices,
-  ownPriceOperations,
   weekdayOfYmd,
   type BasicDeal,
   type BookingNightForAirbnb,
@@ -247,30 +246,3 @@ describe('dateChangeOperations with own prices', () => {
   });
 });
 
-describe('ownPriceOperations — after a base price / markup / Airbnb price is saved', () => {
-  const own = new Map([['2026-11-06', 270], ['2026-11-07', 270], ['2026-11-08', 270], ['2026-11-09', 280], ['2026-11-10', 280]]);
-
-  it('free nights available at the price; occupied or held closed: unavailable with the price; runs merged', () => {
-    expect(ownPriceOperations(own, new Set(['2026-11-08']), new Set(['2026-11-10']), '2027-01-01')).toEqual([
-      { dates: ['2026-11-06:2026-11-07'], availability: 'available', dailyPrice: 270 },
-      { dates: ['2026-11-08:2026-11-08'], availability: 'unavailable', dailyPrice: 270 },
-      { dates: ['2026-11-09:2026-11-09'], availability: 'available', dailyPrice: 280 },
-      { dates: ['2026-11-10:2026-11-10'], availability: 'unavailable', dailyPrice: 280 },
-    ]);
-  });
-
-  it('nights from planEnd on are left to the closed tail; no full send yet → nothing', () => {
-    expect(ownPriceOperations(own, new Set(), new Set(), '2026-11-08')).toEqual([
-      { dates: ['2026-11-06:2026-11-07'], availability: 'available', dailyPrice: 270 },
-    ]);
-    expect(ownPriceOperations(own, new Set(), new Set(), null)).toEqual([]);
-    expect(ownPriceOperations(new Map(), new Set(), new Set(), '2027-01-01')).toEqual([]);
-  });
-
-  it('a gap between nights is not bridged', () => {
-    expect(ownPriceOperations(new Map([['2026-11-06', 270], ['2026-11-08', 270]]), new Set(), new Set(), '2027-01-01')).toEqual([
-      { dates: ['2026-11-06:2026-11-06'], availability: 'available', dailyPrice: 270 },
-      { dates: ['2026-11-08:2026-11-08'], availability: 'available', dailyPrice: 270 },
-    ]);
-  });
-});

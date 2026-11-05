@@ -71,6 +71,8 @@ export interface AirbnbListingView {
     errors?: string[];
   } | null;
   takenByOther: boolean;
+  /** The Airbnb price comes from RentAI: base price − Airbnb %, or the own price of the night. */
+  priceFromBase?: boolean;
   job: AirbnbJob | null;
   /** The check «Подключить» / «Отправить» accept now — by the server's clock (15 minutes), or null. */
   freshPlan: (AirbnbPlanSummary & { checkedAt: string; expiresAt: string }) | null;
