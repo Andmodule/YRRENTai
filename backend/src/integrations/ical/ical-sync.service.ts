@@ -1,6 +1,6 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Not, Repository } from 'typeorm';
 import { addDays } from 'date-fns';
 import { BOOKING_STATUS } from '@rentai/shared';
 import { BookingEntity } from '../../booking/entities/booking.entity';
@@ -8,6 +8,7 @@ import { PropertyEntity } from '../../property/entities/property.entity';
 import { PropertyService } from '../../property/property.service';
 import { parseICal, type ICalEvent } from './ical-parse.util';
 import { generateICal } from './ical-generate.util';
+import { isAirbnbWindowTail, isStoredAirbnbWindowTail } from './ical-airbnb-tail.util';
 import { ZodomusAvailabilityPushService } from '../zodomus/zodomus-availability-push.service';
 
 export interface ICalImportResult {
@@ -15,9 +16,20 @@ export interface ICalImportResult {
   imported: number;
   updated: number;
   cancelled: number;
+  /** Airbnb booking-window tails («Airbnb (Not available)» to about a year ahead): not bookings, not imported. */
+  skipped: number;
   failed: number;
   error?: string;
 }
+
+/** Uids of one import run: Airbnb window tails skipped, and events imported as real ones. */
+interface SeenUids {
+  tails: Set<string>;
+  kept: Set<string>;
+  /** A feed could not be read: what it holds is unknown, so stored rows are judged by uid only. */
+  failed: boolean;
+}
+const newSeen = (): SeenUids => ({ tails: new Set(), kept: new Set(), failed: false });
 
 @Injectable()
 export class ICalSyncService {
@@ -62,7 +74,11 @@ export class ICalSyncService {
     url: string,
   ): Promise<ICalImportResult> {
     const property = await this.propertyService.findOneForUser(propertyId, userId, role);
-    return this.importUrlRaw(property, url);
+    const seen = newSeen();
+    const result = await this.importUrlRaw(property, url, seen);
+    result.cancelled += await this.cancelImportedWindowTails(property, seen);
+    this.zodomusAvailabilityPush.scheduleAvailabilityPush(property.id);
+    return result;
   }
 
   /**
@@ -129,15 +145,22 @@ export class ICalSyncService {
     if (urls.length === 0) return [];
 
     const results: ICalImportResult[] = [];
+    const seen = newSeen();
     for (const url of urls) {
-      results.push(await this.importUrlRaw(property, url));
+      results.push(await this.importUrlRaw(property, url, seen));
     }
+    // Once per property, after all feeds: counted on the first result.
+    results[0]!.cancelled += await this.cancelImportedWindowTails(property, seen);
     this.zodomusAvailabilityPush.scheduleAvailabilityPush(property.id);
     return results;
   }
 
-  private async importUrlRaw(property: PropertyEntity, url: string): Promise<ICalImportResult> {
-    const result: ICalImportResult = { url, imported: 0, updated: 0, cancelled: 0, failed: 0 };
+  /**
+   * `seen.tails` collects the uids of the Airbnb window tails skipped in this feed, `seen.kept` those imported as
+   * real events (the cleanup must not cancel what this very run imported).
+   */
+  private async importUrlRaw(property: PropertyEntity, url: string, seen: SeenUids): Promise<ICalImportResult> {
+    const result: ICalImportResult = { url, imported: 0, updated: 0, cancelled: 0, skipped: 0, failed: 0 };
 
     let text: string;
     try {
@@ -150,6 +173,7 @@ export class ICalSyncService {
     } catch (e) {
       result.error = `Fetch failed: ${String(e)}`;
       this.logger.warn(`iCal import failed for ${url}: ${result.error}`);
+      seen.failed = true;
       return result;
     }
 
@@ -159,11 +183,22 @@ export class ICalSyncService {
     } catch (e) {
       result.error = `Parse failed: ${String(e)}`;
       this.logger.warn(`iCal parse failed for ${url}: ${result.error}`);
+      seen.failed = true;
       return result;
     }
 
+    const now = new Date();
     for (const ev of events) {
       try {
+        if (isAirbnbWindowTail(ev.summary, ev.dtStart, ev.dtEnd, now)) {
+          result.skipped += 1;
+          seen.tails.add(ev.uid);
+          this.logger.log(
+            `iCal ${property.id}: Airbnb window tail skipped uid=${ev.uid} ${ev.dtStart.toISOString().slice(0, 10)}..${ev.dtEnd.toISOString().slice(0, 10)}`,
+          );
+          continue;
+        }
+        seen.kept.add(ev.uid);
         await this.upsertFromICalEvent(property, ev, result);
       } catch (e) {
         result.failed += 1;
@@ -172,9 +207,37 @@ export class ICalSyncService {
     }
 
     this.logger.log(
-      `iCal import ${url}: +${result.imported} ~${result.updated} cancelled=${result.cancelled} failed=${result.failed}`,
+      `iCal import ${url}: +${result.imported} ~${result.updated} cancelled=${result.cancelled} skipped=${result.skipped} failed=${result.failed}`,
     );
     return result;
+  }
+
+  /**
+   * Window tails imported before this rule are no bookings: confirmed iCal bookings of the property that are the
+   * tail skipped now (same uid) or look like a recent tail (it moves daily, its uid may change) → cancelled.
+   * Never throws; returns how many were cancelled.
+   */
+  private async cancelImportedWindowTails(property: PropertyEntity, seen: SeenUids): Promise<number> {
+    const now = new Date();
+    let n = 0;
+    try {
+      const rows = await this.bookingRepo.find({
+        where: { propertyId: property.id, status: BOOKING_STATUS.CONFIRMED, icalUid: Not(IsNull()) },
+      });
+      for (const b of rows) {
+        if (b.icalUid == null || seen.kept.has(b.icalUid)) continue; // imported as a real event in this run
+        const sameTail = seen.tails.has(b.icalUid);
+        if (!sameTail && (seen.failed || !isStoredAirbnbWindowTail(b.notes, b.checkIn, b.checkOut, now))) continue;
+        await this.bookingRepo.update({ id: b.id }, { status: BOOKING_STATUS.CANCELLED });
+        n += 1;
+        this.logger.log(
+          `iCal ${property.id}: Airbnb window tail cancelled booking=${b.id} uid=${b.icalUid} ${b.checkIn.toISOString().slice(0, 10)}..${b.checkOut.toISOString().slice(0, 10)}`,
+        );
+      }
+    } catch (e) {
+      this.logger.warn(`iCal tail cleanup failed for property ${property.id}: ${String(e)}`);
+    }
+    return n;
   }
 
   private async upsertFromICalEvent(
@@ -182,7 +245,7 @@ export class ICalSyncService {
     ev: ICalEvent,
     counter: ICalImportResult,
   ): Promise<void> {
-    const existing = await this.bookingRepo.findOne({ where: { icalUid: ev.uid } });
+    const existing = await this.bookingRepo.findOne({ where: { icalUid: ev.uid, propertyId: property.id } });
 
     const isCancelled =
       ev.status === 'CANCELLED' ||
