@@ -3343,7 +3343,7 @@
   },
   "airbnb": {
     "title": "Подключение Airbnb",
-    "subtitle": "Пилот: только объявление K22 Andersa (1017407411799040875). Другие объявления аккаунта RentAI не трогает.",
+    "subtitle": "Пилот: 5 объявлений K22 — Andersa, Park Mokotow, Zgoda 13 Lite, Al. Niepodległości – Wierzbno, Pałac Kultury /Bagno; каждое подключается только к своему объекту RentAI. Другие объявления аккаунта RentAI не трогает.",
     "ownerOnly": "Подключение Airbnb доступно только владельцу.",
     "off": "Airbnb выключен на сервере (ZODOMUS_AIRBNB_ENABLED).",
     "error": "Не получилось — попробуйте ещё раз.",
