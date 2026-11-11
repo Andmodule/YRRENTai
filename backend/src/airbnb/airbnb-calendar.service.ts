@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Injectable,
   Logger,
+  NotFoundException,
   OnModuleInit,
   Optional,
   ServiceUnavailableException,
@@ -24,8 +25,9 @@ import { ZodomusAvailabilityPushService } from '../integrations/zodomus/zodomus-
 import { AirbnbConnectService } from '../integrations/zodomus/airbnb/airbnb-connect.service';
 import {
   AIRBNB_CHANNEL_ID,
-  AIRBNB_PILOT_LISTING_IDS,
-  assertAirbnbPilotListing,
+  AIRBNB_PILOT_PAIRS,
+  airbnbPilotListingForProperty,
+  assertAirbnbPilotPair,
 } from '../integrations/zodomus/airbnb/airbnb-pilot.util';
 import { todayInTz } from '../pricing/pricing-math.util';
 import { ZodomusAirbnbListingEntity } from './airbnb-listing.entity';
@@ -182,8 +184,11 @@ export class AirbnbCalendarService implements OnModuleInit {
     return this.propertyService.findOneForUser(propertyId, user.sub, user.role);
   }
 
-  private get pilotListingId(): string {
-    return assertAirbnbPilotListing(AIRBNB_PILOT_LISTING_IDS[0]);
+  /** The pilot listing of this property; any other property is refused before anything is read or sent. */
+  private listingIdFor(propertyId: string): string {
+    const id = airbnbPilotListingForProperty(propertyId);
+    if (!id) throw new ForbiddenException('Airbnb: у этого объекта нет объявления в пилоте — подключать нельзя');
+    return assertAirbnbPilotPair(propertyId, id);
   }
 
   /** Runs `work` after everything already queued for the property (sends and availability updates). */
@@ -206,10 +211,11 @@ export class AirbnbCalendarService implements OnModuleInit {
   async view(user: JwtPayload, propertyId: string) {
     this.assertOn();
     const property = await this.owned(user, propertyId);
+    const listingId = this.listingIdFor(property.id);
     const row = await this.table(() => this.listings.findOne({ where: { propertyId: property.id } }));
-    const taken = row ? null : await this.table(() => this.listings.findOne({ where: { listingId: this.pilotListingId } }));
+    const taken = row ? null : await this.table(() => this.listings.findOne({ where: { listingId } }));
     return {
-      listingId: this.pilotListingId,
+      listingId,
       connected: row?.activatedAt != null,
       activatedAt: row?.activatedAt?.toISOString() ?? null,
       planEnd: row?.planEnd ?? null,
@@ -225,17 +231,27 @@ export class AirbnbCalendarService implements OnModuleInit {
     };
   }
 
-  /** The property the pilot listing is connected to (or being connected to), for the page to open on. */
-  async connectedProperty(user: JwtPayload): Promise<{ propertyId: string | null }> {
+  /**
+   * The user's properties that have a pilot listing (`pilotPropertyIds`, the page offers only these) and the
+   * first of them already connected (or being connected), for the page to open on.
+   */
+  async connectedProperty(user: JwtPayload): Promise<{ propertyId: string | null; pilotPropertyIds: string[] }> {
     this.assertOn();
-    const row = await this.table(() => this.listings.findOne({ where: { listingId: this.pilotListingId } }));
-    if (!row) return { propertyId: null };
-    try {
-      await this.owned(user, row.propertyId);
-    } catch {
-      return { propertyId: null };
+    const mine: string[] = [];
+    for (const p of AIRBNB_PILOT_PAIRS) {
+      try {
+        await this.owned(user, p.propertyId);
+        mine.push(p.propertyId);
+      } catch (e) {
+        // Not this user's property; any other error (database…) is the page's error, not an empty list.
+        if (!(e instanceof NotFoundException) && !(e instanceof ForbiddenException)) throw e;
+      }
     }
-    return { propertyId: row.propertyId };
+    for (const propertyId of mine) {
+      const row = await this.table(() => this.listings.findOne({ where: { propertyId } }));
+      if (row && row.listingId === airbnbPilotListingForProperty(propertyId)) return { propertyId, pilotPropertyIds: mine };
+    }
+    return { propertyId: null, pilotPropertyIds: mine };
   }
 
   private freshPlan(propertyId: string): (AirbnbPlanSummary & { checkedAt: string; expiresAt: string }) | null {
@@ -255,6 +271,7 @@ export class AirbnbCalendarService implements OnModuleInit {
   async startCheck(user: JwtPayload, propertyId: string): Promise<AirbnbJob> {
     this.assertOn();
     const property = await this.owned(user, propertyId);
+    this.listingIdFor(property.id);
     this.assertIdle(property.id);
     const job = this.newJob(property.id, 'check');
     void this.runJob(job, async () => {
@@ -291,7 +308,7 @@ export class AirbnbCalendarService implements OnModuleInit {
     const forSale = nights.filter((n) => !n.occupied && n.price != null);
     const noPriceNights = nights.filter((n) => n.price == null).map((n) => n.date);
     const prices = forSale.map((n) => n.price!);
-    const listingId = this.pilotListingId;
+    const listingId = this.listingIdFor(propertyId);
     const summary: AirbnbPlanSummary = {
       listingId,
       from,
@@ -362,14 +379,14 @@ export class AirbnbCalendarService implements OnModuleInit {
     this.assertOn();
     const property = await this.owned(user, propertyId);
     this.assertIdle(property.id);
-    const listingId = this.pilotListingId;
+    const listingId = this.listingIdFor(property.id);
     const checked = this.plans.get(property.id);
     if (!checked || Date.now() - checked.at > PLAN_TTL_MS || checked.summary.fingerprint !== fingerprint) {
       throw new ConflictException('Нет свежей проверки с этим календарём — нажмите «Проверить» ещё раз');
     }
     const existing = await this.table(() => this.listings.findOne({ where: { listingId } }));
     if (existing && existing.propertyId !== property.id) {
-      throw new ConflictException('Пилотное объявление Airbnb уже подключено к другому объекту');
+      throw new ConflictException('Это объявление Airbnb уже подключено к другому объекту');
     }
     if (existing?.activatedAt) throw new ConflictException('Объявление уже подключено — используйте «Отправить в Airbnb»');
     if ((property.icalImportUrls ?? []).some((u) => /airbnb\./i.test(String(u)))) {
@@ -387,7 +404,7 @@ export class AirbnbCalendarService implements OnModuleInit {
     }
     const elsewhere = await this.channelRows.findOne({ where: { externalListingId: listingId } });
     if (elsewhere && elsewhere.propertyId !== property.id) {
-      throw new ConflictException('Пилотное объявление Airbnb привязано к другому объекту в карточке объекта');
+      throw new ConflictException('Это объявление Airbnb привязано к другому объекту в карточке объекта');
     }
     const token = await this.connect.activeHostToken(user);
 
@@ -396,7 +413,7 @@ export class AirbnbCalendarService implements OnModuleInit {
     void this.runJob(job, () =>
       this.locked(property.id, async () => {
         const plan = await this.recheckedPlan(property, fingerprint, job);
-        assertAirbnbPilotListing(listingId);
+        assertAirbnbPilotPair(property.id, listingId);
         await this.zodomus.upstreamPost('/property-activation', {
           channelId: AIRBNB_CHANNEL_ID,
           propertyId: listingId,
@@ -446,7 +463,7 @@ export class AirbnbCalendarService implements OnModuleInit {
     }
     const row = await this.table(() => this.listings.findOne({ where: { propertyId: property.id } }));
     if (!row?.activatedAt) throw new BadRequestException('Объявление Airbnb ещё не подключено');
-    const listingId = assertAirbnbPilotListing(row.listingId);
+    const listingId = assertAirbnbPilotPair(property.id, row.listingId);
     const job = this.newJob(property.id, 'send');
     job.plan = checked.summary;
     job.result = { activated: false, sentCalls: 0, failedCalls: 0, closedAll: false, errors: [] };
@@ -470,7 +487,7 @@ export class AirbnbCalendarService implements OnModuleInit {
     let failed = false;
     for (const part of chunk(plan.ops, OPS_PER_CALL)) {
       try {
-        await this.postCalendarWithRetry(listingId, part);
+        await this.postCalendarWithRetry(propertyId, listingId, part);
         result.sentCalls++;
       } catch (e) {
         result.failedCalls++;
@@ -481,7 +498,7 @@ export class AirbnbCalendarService implements OnModuleInit {
     }
     if (failed) {
       try {
-        await this.postCalendarWithRetry(listingId, [closedTail(plan.summary.from, HORIZON_DAYS + TAIL_DAYS)]);
+        await this.postCalendarWithRetry(propertyId, listingId, [closedTail(plan.summary.from, HORIZON_DAYS + TAIL_DAYS)]);
         result.closedAll = true;
       } catch (e) {
         result.errors.push(`закрыть всё тоже не вышло: ${e instanceof Error ? e.message : String(e)}`);
@@ -512,12 +529,12 @@ export class AirbnbCalendarService implements OnModuleInit {
       : `Календарь Airbnb не ушёл и закрыть объявление не удалось (${result.errors.join(' · ')}) — закройте даты на Airbnb вручную`;
   }
 
-  private async postCalendarWithRetry(listingId: string, operations: AirbnbCalendarOperation[]): Promise<void> {
+  private async postCalendarWithRetry(propertyId: string, listingId: string, operations: AirbnbCalendarOperation[]): Promise<void> {
     let last: unknown = null;
     for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
       if (attempt > 0) await this.sleep(RETRY_DELAYS_MS[attempt - 1]!);
       try {
-        await this.postCalendar(listingId, operations);
+        await this.postCalendar(propertyId, listingId, operations);
         return;
       } catch (e) {
         if (e instanceof ForbiddenException) throw e;
@@ -527,12 +544,19 @@ export class AirbnbCalendarService implements OnModuleInit {
     throw last instanceof Error ? last : new Error(String(last));
   }
 
-  /** The one place that writes the Airbnb calendar: pilot listing only, at most one call per MIN_GAP_MS. */
-  private async postCalendar(listingId: string, operations: AirbnbCalendarOperation[]): Promise<void> {
-    const id = assertAirbnbPilotListing(listingId);
-    const wait = this.lastPostAt + MIN_GAP_MS - Date.now();
+  /**
+   * The one place that writes the Airbnb calendar (no other caller may post /airbnb-calendar): only the pilot
+   * listing of this very property, at most one call per MIN_GAP_MS for all listings together — Zodomus' limit
+   * is per account.
+   */
+  private async postCalendar(propertyId: string, listingId: string, operations: AirbnbCalendarOperation[]): Promise<void> {
+    const id = assertAirbnbPilotPair(propertyId, listingId);
+    // The slot is taken before waiting: chains of several properties entering at once queue up MIN_GAP_MS
+    // apart instead of all waking at the same moment.
+    const at = Math.max(Date.now(), this.lastPostAt + MIN_GAP_MS);
+    this.lastPostAt = at;
+    const wait = at - Date.now();
     if (wait > 0) await this.sleep(wait);
-    this.lastPostAt = Date.now();
     const res = await this.zodomus.upstreamPost('/airbnb-calendar', { channelId: AIRBNB_CHANNEL_ID, propertyId: id, operations });
     // Zodomus answers `{ status, response: { success: true } }`; an explicit `false` is a refusal.
     const success = (res as { response?: { success?: unknown } } | null)?.response?.success;
@@ -587,9 +611,13 @@ export class AirbnbCalendarService implements OnModuleInit {
     if (!row?.activatedAt) return;
     let listingId: string;
     try {
-      listingId = assertAirbnbPilotListing(row.listingId);
+      listingId = assertAirbnbPilotPair(propertyId, row.listingId);
     } catch (e) {
-      if (e instanceof ForbiddenException) return;
+      if (e instanceof ForbiddenException) {
+        // A stored row that is not this property's pilot listing: nothing is sent — loudly, its nights are not guarded.
+        this.logger.error(`Airbnb: строка подключения объекта ${propertyId} (${row.listingId}) не его объявление пилота — на Airbnb ничего не отправлено`);
+        return;
+      }
       throw e;
     }
     const all = [...applied.map((c) => c.date), ...alreadyClosed].sort();
@@ -632,7 +660,7 @@ export class AirbnbCalendarService implements OnModuleInit {
     const errors: string[] = [];
     for (const part of chunk(ops, OPS_PER_CALL)) {
       try {
-        await this.postCalendarWithRetry(listingId, part);
+        await this.postCalendarWithRetry(propertyId, listingId, part);
         sent++;
       } catch (e) {
         errors.push(e instanceof Error ? e.message : String(e));
@@ -696,9 +724,13 @@ export class AirbnbCalendarService implements OnModuleInit {
     if (!row?.activatedAt || !row.planEnd) return;
     let listingId: string;
     try {
-      listingId = assertAirbnbPilotListing(row.listingId);
+      listingId = assertAirbnbPilotPair(propertyId, row.listingId);
     } catch (e) {
-      if (e instanceof ForbiddenException) return;
+      if (e instanceof ForbiddenException) {
+        // A stored row that is not this property's pilot listing: nothing is sent — loudly, its nights are not guarded.
+        this.logger.error(`Airbnb: строка подключения объекта ${propertyId} (${row.listingId}) не его объявление пилота — на Airbnb ничего не отправлено`);
+        return;
+      }
       throw e;
     }
     const property = await this.propertyService.findByIdForAdmin(propertyId);
@@ -732,7 +764,7 @@ export class AirbnbCalendarService implements OnModuleInit {
     const errors: string[] = [];
     for (const part of chunk(ops, OPS_PER_CALL)) {
       try {
-        await this.postCalendarWithRetry(listingId, part);
+        await this.postCalendarWithRetry(propertyId, listingId, part);
         sent++;
       } catch (e) {
         errors.push(e instanceof Error ? e.message : String(e));
@@ -766,9 +798,13 @@ export class AirbnbCalendarService implements OnModuleInit {
     if (!row?.activatedAt) return;
     let listingId: string;
     try {
-      listingId = assertAirbnbPilotListing(row.listingId);
+      listingId = assertAirbnbPilotPair(propertyId, row.listingId);
     } catch (e) {
-      if (e instanceof ForbiddenException) return;
+      if (e instanceof ForbiddenException) {
+        // A stored row that is not this property's pilot listing: nothing is sent — loudly, its nights are not guarded.
+        this.logger.error(`Airbnb: строка подключения объекта ${propertyId} (${row.listingId}) не его объявление пилота — на Airbnb ничего не отправлено`);
+        return;
+      }
       throw e;
     }
     const ops = availabilityOperations(days, new Set(row.noPriceNights ?? []), row.planEnd ?? null);
@@ -776,7 +812,7 @@ export class AirbnbCalendarService implements OnModuleInit {
     const errors: string[] = [];
     for (const part of chunk(ops, OPS_PER_CALL)) {
       try {
-        await this.postCalendarWithRetry(listingId, part);
+        await this.postCalendarWithRetry(propertyId, listingId, part);
         sent++;
       } catch (e) {
         errors.push(e instanceof Error ? e.message : String(e));

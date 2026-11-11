@@ -1,7 +1,10 @@
 import { ForbiddenException } from '@nestjs/common';
 import {
   AIRBNB_PILOT_LISTING_IDS,
+  AIRBNB_PILOT_PAIRS,
   airbnbAuthUrl,
+  airbnbPilotListingForProperty,
+  assertAirbnbPilotPair,
   airbnbWebhookListingId,
   assertAirbnbPostAllowed,
   assertAirbnbPilotListing,
@@ -16,8 +19,43 @@ import {
 const PILOT = '1017407411799040875';
 
 describe('airbnb pilot allowlist', () => {
-  it('holds exactly the one pilot listing (K22 Andersa)', () => {
-    expect(AIRBNB_PILOT_LISTING_IDS).toEqual([PILOT]);
+  it('holds exactly the five K22 listings, each paired with its own RentAI property', () => {
+    expect(AIRBNB_PILOT_LISTING_IDS).toEqual([
+      PILOT,
+      '859458401639089947',
+      '947811739695459519',
+      '1078671637452575972',
+      '1114631344050060493',
+    ]);
+    expect(AIRBNB_PILOT_PAIRS.map((p) => p.propertyId)).toEqual([
+      '46889a43-e073-46d3-8457-f03525dbb1c9',
+      '0a240ac8-46a3-4a1b-aa09-359b1b560531',
+      '81545370-ec23-4035-866e-39ca7195bb70',
+      '69c58f05-e5c5-405e-b77d-ee8a43c7dce7',
+      '357f034d-a04f-467c-9564-f770fb25a34f',
+    ]);
+    // One listing per property and one property per listing.
+    expect(new Set(AIRBNB_PILOT_LISTING_IDS).size).toBe(AIRBNB_PILOT_PAIRS.length);
+    expect(new Set(AIRBNB_PILOT_PAIRS.map((p) => p.propertyId)).size).toBe(AIRBNB_PILOT_PAIRS.length);
+    // Not «VIP Centrum open-space Bagno» (owner's answer 2026-11-11).
+    expect(AIRBNB_PILOT_LISTING_IDS).not.toContain('989944996874896319');
+  });
+
+  it('a property gets only its own listing; a listing of the list for another property is refused', () => {
+    for (const p of AIRBNB_PILOT_PAIRS) {
+      expect(airbnbPilotListingForProperty(p.propertyId)).toBe(p.listingId);
+      expect(airbnbPilotListingForProperty(p.propertyId.toUpperCase())).toBe(p.listingId);
+      expect(assertAirbnbPilotPair(p.propertyId, p.listingId)).toBe(p.listingId);
+      for (const other of AIRBNB_PILOT_PAIRS) {
+        if (other === p) continue;
+        expect(() => assertAirbnbPilotPair(p.propertyId, other.listingId)).toThrow(ForbiddenException);
+      }
+    }
+    for (const bad of ['9e597576-3ff5-40f7-a8cb-55c73f23c279', '', null, undefined, 42]) {
+      expect(airbnbPilotListingForProperty(bad)).toBeNull();
+      expect(() => assertAirbnbPilotPair(bad, PILOT)).toThrow(ForbiddenException);
+    }
+    expect(() => assertAirbnbPilotPair(AIRBNB_PILOT_PAIRS[0]!.propertyId, '989944996874896319')).toThrow(ForbiddenException);
   });
 
   it('accepts the pilot id as a string, trimmed', () => {
@@ -174,6 +212,7 @@ describe('assertAirbnbPostAllowed — the last guard in ZodomusClient.post', () 
 });
 
 describe('airbnbWebhookListingId — a 64-bit id parsed as a JSON number', () => {
+it('every pilot listing, rounded by JSON.parse, is matched back to itself (the rounded values do not collide)', () => {    for (const id of AIRBNB_PILOT_LISTING_IDS) expect(airbnbWebhookListingId(JSON.parse(id) as number)).toBe(id);  });
   it('maps the rounded pilot id back to the exact one', () => {
     const rounded = JSON.parse(`{"propertyId":${PILOT}}`).propertyId as number;
     expect(String(rounded)).not.toBe(PILOT);

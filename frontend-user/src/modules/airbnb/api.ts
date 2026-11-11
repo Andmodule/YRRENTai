@@ -19,6 +19,8 @@ export interface AirbnbHostView {
 
 export interface AirbnbListingsView {
   pilot: { id: string; name: string | null } | null;
+  /** Every pilot listing the host has (newer servers). */
+  pilots?: { id: string; name: string | null }[];
   others: number;
   truncated: boolean;
 }
@@ -86,8 +88,9 @@ export const airbnbApi = {
   activateHost: () => unwrap<AirbnbHostView>(apiClient.post('/zodomus/airbnb/host/activate')),
   refreshHost: () => unwrap<AirbnbHostView>(apiClient.post('/zodomus/airbnb/host/refresh')),
   listings: () => unwrap<AirbnbListingsView>(apiClient.get('/zodomus/airbnb/listings')),
-  /** The property the pilot listing is connected to. */
-  connectedProperty: () => unwrap<{ propertyId: string | null }>(apiClient.get('/zodomus/airbnb/listing')),
+  /** The first pilot property already connected, and the user's pilot properties (each has its own listing). */
+  connectedProperty: () =>
+    unwrap<{ propertyId: string | null; pilotPropertyIds?: string[] }>(apiClient.get('/zodomus/airbnb/listing')),
   listing: (propertyId: string) => unwrap<AirbnbListingView>(apiClient.get(`/zodomus/airbnb/listing/${propertyId}`)),
   check: (propertyId: string) => unwrap<AirbnbJob>(apiClient.post(`/zodomus/airbnb/listing/${propertyId}/check`)),
   connect: (propertyId: string, fingerprint: string) =>

@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { AirbnbCalendarService, type AirbnbJob } from './airbnb-calendar.service';
 import type { ZodomusAirbnbListingEntity } from './airbnb-listing.entity';
 
@@ -18,10 +18,15 @@ function setup(
     promos?: unknown[];
     /** RentAI's own Airbnb prices: on with these prices (date → price); absent = no own-price service. */
     own?: { enabled: boolean; prices: Record<string, number> | null };
+    /** The RentAI property the service is called for (default K22 Andersa). */
+    pid?: string;
+    /** Properties the user does not own (findOneForUser throws). */
+    notOwned?: string[];
   } = {},
 ) {
+  const pid = opts.pid ?? PID;
   let listing: ZodomusAirbnbListingEntity | null = opts.listing
-    ? ({ propertyId: PID, listingId: PILOT, activatedAt: null, noPriceNights: [], planEnd: null, lastSyncAt: null, lastSync: null, ...opts.listing } as ZodomusAirbnbListingEntity)
+    ? ({ propertyId: pid, listingId: PILOT, activatedAt: null, noPriceNights: [], planEnd: null, lastSyncAt: null, lastSync: null, ...opts.listing } as ZodomusAirbnbListingEntity)
     : null;
   let listener: ((p: string, d: { date: string; free: boolean }[]) => Promise<void>) | null = null;
   const connect = { isEnabled: opts.enabled ?? true, activeHostToken: jest.fn(async () => '9851359133') };
@@ -41,8 +46,14 @@ function setup(
   };
   const ratesPush = { collectCrmBlockedNightKeys: jest.fn(async () => new Set<string>()), addPushedListener: jest.fn() };
   const availabilityPush = { setAfterPushListener: jest.fn((fn) => (listener = fn)) };
-  const property = { id: PID, timezone: 'Europe/Warsaw', icalImportUrls: opts.ical ?? [] };
-  const propertyService = { findOneForUser: jest.fn(async () => property), findByIdForAdmin: jest.fn(async () => property) };
+  const property = { id: pid, timezone: 'Europe/Warsaw', icalImportUrls: opts.ical ?? [] };
+  const propertyService = {
+    findOneForUser: jest.fn(async (id: string) => {
+      if (opts.notOwned?.includes(id)) throw new NotFoundException('not found');
+      return { ...property, id };
+    }),
+    findByIdForAdmin: jest.fn(async () => property),
+  };
   const listings = {
     findOne: jest.fn(async ({ where }: { where: { propertyId?: string; listingId?: string } }) =>
       listing && (where.propertyId === listing.propertyId || where.listingId === listing.listingId) ? { ...listing } : null,
@@ -524,8 +535,8 @@ describe('AirbnbCalendarService — page helpers', () => {
   });
 
   it('connectedProperty: the property holding the pilot listing, if it is the user\'s', async () => {
-    expect(await setup().svc.connectedProperty(OWNER)).toEqual({ propertyId: null });
-    expect(await setup({ listing: { activatedAt: new Date() } }).svc.connectedProperty(OWNER)).toEqual({ propertyId: PID });
+    expect(await setup().svc.connectedProperty(OWNER)).toMatchObject({ propertyId: null });
+    expect(await setup({ listing: { activatedAt: new Date() } }).svc.connectedProperty(OWNER)).toMatchObject({ propertyId: PID });
     await expect(setup({ enabled: false }).svc.connectedProperty(OWNER)).rejects.toBeInstanceOf(ServiceUnavailableException);
   });
 });
@@ -690,5 +701,81 @@ describe('AirbnbCalendarService — own Airbnb prices (owner rule 2026-11-05, ZO
     const s = setup({ listing: LIVE, own: { enabled: true, prices: { '2027-02-01': 270 } } });
     await s.svc.afterDatesApplied(PID, [{ date: '2027-02-01', price: 385, closed: false, fromPrice: null, fromClosed: true } as never], []);
     expect(ops(s, 0)).toEqual([{ dates: ['2027-02-01:2027-02-01'], availability: 'available', dailyPrice: 270 }]);
+  });
+});
+describe('AirbnbCalendarService — several pilot listings, each bound to its own property', () => {
+  const MOKOTOW = '0a240ac8-46a3-4a1b-aa09-359b1b560531';
+  const MOKOTOW_LISTING = '859458401639089947';
+  const ZGODA_LISTING = '947811739695459519';
+  const NOT_PILOT = '9e597576-3ff5-40f7-a8cb-55c73f23c279';
+
+  it('a property without a pilot listing: view, check, connect and send are refused; nothing read or sent', async () => {
+    const s = setup({ pid: NOT_PILOT });
+    await expect(s.svc.view(OWNER, NOT_PILOT)).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(s.svc.startCheck(OWNER, NOT_PILOT)).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(s.svc.startConnect(OWNER, NOT_PILOT, 'x')).rejects.toBeInstanceOf(ForbiddenException);
+    expect(s.dates.bookingRateNights).not.toHaveBeenCalled();
+    expect(s.zodomus.upstreamPost).not.toHaveBeenCalled();
+  });
+
+  it('a second pilot property is checked, connected and sent with its own listing only', async () => {
+    const s = setup({ pid: MOKOTOW });
+    fillBooking(s, 300);
+    const view = await s.svc.view(OWNER, MOKOTOW);
+    expect(view.listingId).toBe(MOKOTOW_LISTING);
+    const fp = await (async () => {
+      const job = await settle(await s.svc.startCheck(OWNER, MOKOTOW));
+      expect(job.plan!.listingId).toBe(MOKOTOW_LISTING);
+      return job.plan!.fingerprint;
+    })();
+    const job = await settle(await s.svc.startConnect(OWNER, MOKOTOW, fp));
+    expect(job.state).toBe('done');
+    expect(s.calls.length).toBeGreaterThan(1);
+    for (const [, body] of s.calls) expect(body.propertyId).toBe(MOKOTOW_LISTING);
+    expect(s.calls[0]).toEqual(['/property-activation', { channelId: 3, propertyId: MOKOTOW_LISTING, priceModelId: 4, token: '9851359133' }]);
+    expect(s.listing()).toMatchObject({ propertyId: MOKOTOW, listingId: MOKOTOW_LISTING });
+    expect(s.channelRows.save).toHaveBeenCalledWith(expect.objectContaining({ propertyId: MOKOTOW, externalListingId: MOKOTOW_LISTING, zodomusRoomId: `${MOKOTOW_LISTING}01` }));
+  });
+
+  it("a stored row with another property's pilot listing is never written: send refused, background updates skipped", async () => {
+    const s = setup({ pid: MOKOTOW, listing: { listingId: ZGODA_LISTING, activatedAt: new Date(), planEnd: '2099-01-01' } });
+    fillBooking(s, 300);
+    const fp = await (async () => (await settle(await s.svc.startCheck(OWNER, MOKOTOW))).plan!.fingerprint)();
+    await expect(s.svc.startSend(OWNER, MOKOTOW, fp)).rejects.toBeInstanceOf(ForbiddenException);
+    await s.listener()(MOKOTOW, [{ date: '2026-12-13', free: false }]);
+    await s.svc.afterDatesApplied(MOKOTOW, [{ date: '2026-12-14', closed: true, price: 300 }], []);
+    expect(s.zodomus.upstreamPost).not.toHaveBeenCalled();
+  });
+
+  it('two properties posting at the same moment still go out at least 1.5 s apart (one Airbnb pace for all)', async () => {
+    const s = setup();
+    const post = (s.svc as unknown as { postCalendar: (p: string, l: string, o: unknown[]) => Promise<void> }).postCalendar.bind(s.svc);
+    const op = [{ dates: ['2026-12-01:2026-12-01'], availability: 'unavailable' }];
+    await Promise.all([post(PID, PILOT, op), post(MOKOTOW, MOKOTOW_LISTING, op), post(PID, PILOT, op)]);
+    expect(s.calls.map(([, b]) => b.propertyId)).toEqual([PILOT, MOKOTOW_LISTING, PILOT]);
+    const waits = s.sleeps.filter((ms) => ms > 0).sort((x, y) => x - y);
+    expect(waits).toHaveLength(2);
+    expect(waits[0]).toBeGreaterThan(1_400);
+    expect(waits[1]).toBeGreaterThan(2_900);
+  });
+
+  it('the page gets the pilot properties the user owns and opens on the connected one', async () => {
+    const s = setup({ pid: MOKOTOW, listing: { listingId: MOKOTOW_LISTING, activatedAt: new Date() }, notOwned: ['357f034d-a04f-467c-9564-f770fb25a34f'] });
+    const v = await s.svc.connectedProperty(OWNER);
+    expect(v.pilotPropertyIds).toEqual([
+      PID,
+      MOKOTOW,
+      '81545370-ec23-4035-866e-39ca7195bb70',
+      '69c58f05-e5c5-405e-b77d-ee8a43c7dce7',
+    ]);
+    expect(v.propertyId).toBe(MOKOTOW);
+  });
+});
+
+describe('AirbnbCalendarService — page helpers, errors', () => {
+  it('connectedProperty: a database error is the page error, not an empty list', async () => {
+    const s = setup();
+    (s.svc as unknown as { propertyService: { findOneForUser: jest.Mock } }).propertyService.findOneForUser.mockRejectedValueOnce(new Error('db down'));
+    await expect(s.svc.connectedProperty(OWNER)).rejects.toThrow('db down');
   });
 });

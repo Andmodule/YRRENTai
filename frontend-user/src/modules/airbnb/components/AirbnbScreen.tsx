@@ -32,10 +32,18 @@ export function AirbnbScreen() {
   const { isOwner, authLoading, enabled, status } = useAirbnbAccess();
   const connectedProp = useAirbnbConnectedProperty(enabled);
   const { properties = [], isLoading: propsLoading } = useProperties({ enabled });
-  // Only properties connected to Booking: the Airbnb calendar is built from Booking.
+  // Only pilot properties (each has its own Airbnb listing on the server) connected to Booking: the Airbnb
+  // calendar is built from Booking.
+  // The call failed: offer nothing (the error is shown) rather than properties without a pilot listing.
+  const pilotIds = connectedProp.isError ? [] : connectedProp.data?.pilotPropertyIds;
   const bookingProps = useMemo(
-    () => properties.filter((p) => !!p.zodomusPropertyId || (p.channelListings ?? []).some((c) => c.otaPlatform?.code === 'booking')),
-    [properties],
+    () =>
+      properties.filter(
+        (p) =>
+          (!pilotIds || pilotIds.includes(p.id)) &&
+          (!!p.zodomusPropertyId || (p.channelListings ?? []).some((c) => c.otaPlatform?.code === 'booking')),
+      ),
+    [properties, pilotIds],
   );
   const [propertyId, setPropertyId] = useState<string | null>(null);
   // Open on the property the pilot listing is connected to; else the first one connected to Booking.
@@ -117,7 +125,12 @@ export function AirbnbScreen() {
           {listings ? (
             <span className="text-xs text-muted-foreground">
               {listings.pilot
-                ? t('host.found', { name: listings.pilot.name ?? listings.pilot.id, others: listings.others })
+                ? t('host.found', {
+                    count: (listings.pilots ?? [listings.pilot]).length,
+                    total: status.data?.pilotListingIds.length ?? 1,
+                    name: (listings.pilots ?? [listings.pilot]).map((l) => l.name ?? l.id).join(', '),
+                    others: listings.others,
+                  })
                 : t(listings.truncated ? 'host.notFoundYet' : 'host.notFound', { others: listings.others })}
             </span>
           ) : null}
@@ -148,7 +161,8 @@ export function AirbnbScreen() {
             </Select>
           </div>
         </div>
-        {!propsLoading && bookingProps.length === 0 ? <Notice tone="warn">{t('plan.noProperties')}</Notice> : null}
+        {connectedProp.isError ? <Notice tone="error">{getApiErrorMessage(connectedProp.error) ?? t('error')}</Notice> : null}
+        {!propsLoading && !connectedProp.isError && bookingProps.length === 0 ? <Notice tone="warn">{t('plan.noProperties')}</Notice> : null}
         <p className="text-sm text-muted-foreground">{t(view?.priceFromBase ? 'plan.ruleOwn' : 'plan.rule')}</p>
         {view?.takenByOther ? <Notice tone="warn">{t('plan.takenByOther')}</Notice> : null}
         {listing.isError ? <Notice tone="error">{getApiErrorMessage(listing.error) ?? t('error')}</Notice> : null}
