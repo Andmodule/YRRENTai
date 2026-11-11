@@ -1,12 +1,49 @@
 /**
- * Airbnb through Zodomus — the pilot is ONE listing (owner's decision 2026-10-22: «работаем ИСКЛЮЧИТЕЛЬНО
- * С 1 обектом — другие не трогать»). Every write to Airbnb checks `assertAirbnbPilotListing` before it is
- * sent; other listings of the host are never written to and are not shown beyond a count.
+ * Airbnb through Zodomus — the pilot is a FIXED list of listings, each paired with its own RentAI property
+ * (owner's decisions: 2026-10-22 one listing, K22 Andersa; 2026-11-11 four more K22 listings). Every write to
+ * Airbnb checks `assertAirbnbPilotListing` before it is sent, and a property may be connected only to its own
+ * listing of the list (`assertAirbnbPilotPair` in src/airbnb, the list itself again in ZodomusClient.post);
+ * other listings of the host are never written to and are not shown beyond a count.
  */
 import { ForbiddenException } from '@nestjs/common';
 
-/** K22 Andersa 12 m Ratusz Arsenal on Airbnb. Ids are kept as strings (Airbnb moves to strings ≤ 128 chars). */
-export const AIRBNB_PILOT_LISTING_IDS: readonly string[] = ['1017407411799040875'];
+export interface AirbnbPilotPair {
+  /** Airbnb listing id, as a string (Airbnb moves to strings ≤ 128 chars). */
+  listingId: string;
+  /** The RentAI property (uuid) this listing belongs to — the only one it may be connected to. */
+  propertyId: string;
+  /** For logs and reading only. */
+  name: string;
+}
+
+export const AIRBNB_PILOT_PAIRS: readonly AirbnbPilotPair[] = [
+  { listingId: '1017407411799040875', propertyId: '46889a43-e073-46d3-8457-f03525dbb1c9', name: 'K22 Andersa 12 m Ratusz Arsenal' },
+  { listingId: '859458401639089947', propertyId: '0a240ac8-46a3-4a1b-aa09-359b1b560531', name: 'K22 Park Mokotow Aparts' },
+  { listingId: '947811739695459519', propertyId: '81545370-ec23-4035-866e-39ca7195bb70', name: 'K22 Zgoda 13 Lite centrum Warszawy' },
+  { listingId: '1078671637452575972', propertyId: '69c58f05-e5c5-405e-b77d-ee8a43c7dce7', name: 'K22 Al. Niepodległości -Wierzbno' },
+  { listingId: '1114631344050060493', propertyId: '357f034d-a04f-467c-9564-f770fb25a34f', name: 'K22 Pałac Kultury i Nauki /Bagno' },
+];
+
+export const AIRBNB_PILOT_LISTING_IDS: readonly string[] = AIRBNB_PILOT_PAIRS.map((p) => p.listingId);
+
+/** The pilot listing of a RentAI property, or null when the property has none. */
+export function airbnbPilotListingForProperty(propertyId: unknown): string | null {
+  const id = typeof propertyId === 'string' ? propertyId.trim().toLowerCase() : '';
+  return AIRBNB_PILOT_PAIRS.find((p) => p.propertyId === id)?.listingId ?? null;
+}
+
+/**
+ * Refuses unless `listingId` is the pilot listing of exactly this property — a listing of the list must never be
+ * written for another property's calendar.
+ */
+export function assertAirbnbPilotPair(propertyId: unknown, listingId: unknown): string {
+  const s = assertAirbnbPilotListing(listingId);
+  const own = airbnbPilotListingForProperty(propertyId);
+  if (own !== s) {
+    throw new ForbiddenException(`Airbnb: объявление ${s} не принадлежит объекту ${String(propertyId)} — запись запрещена`);
+  }
+  return s;
+}
 
 /** Zodomus channel id of Airbnb. */
 export const AIRBNB_CHANNEL_ID = 3;

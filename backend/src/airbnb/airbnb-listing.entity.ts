@@ -1,7 +1,7 @@
 import { Column, Entity, PrimaryColumn, UpdateDateColumn } from 'typeorm';
 
 /**
- * The Airbnb listing connected to a RentAI property (only the pilot one, see airbnb-pilot.util.ts) and what
+ * The Airbnb listing connected to a RentAI property (only that property's pilot listing, see airbnb-pilot.util.ts) and what
  * its calendar was last sent. Migration 1778900000000-zodomus-airbnb-hosts; read only while
  * ZODOMUS_AIRBNB_ENABLED=true.
  */

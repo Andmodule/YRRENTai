@@ -1,6 +1,7 @@
 import { BadGatewayException, ServiceUnavailableException } from '@nestjs/common';
 import { QueryFailedError } from 'typeorm';
 import { AirbnbConnectService } from './airbnb-connect.service';
+import { AIRBNB_PILOT_LISTING_IDS } from './airbnb-pilot.util';
 import type { ZodomusAirbnbHostEntity } from './airbnb-host.entity';
 
 const OWNER = { sub: 'owner-1', email: 'o@example.test', role: 'OWNER' };
@@ -50,7 +51,7 @@ describe('AirbnbConnectService — flag', () => {
 
 describe('AirbnbConnectService — host', () => {
   it('status without a host: host null; with one not active: the authorization page', async () => {
-    await expect(setup().svc.status(OWNER)).resolves.toMatchObject({ enabled: true, host: null, pilotListingIds: [PILOT] });
+    await expect(setup().svc.status(OWNER)).resolves.toMatchObject({ enabled: true, host: null, pilotListingIds: AIRBNB_PILOT_LISTING_IDS });
     const v = await setup({ row: { statusCode: 1 } }).svc.status(OWNER);
     expect(v.host?.active).toBe(false);
     expect(v.host?.authUrl).toContain('state=tok');
@@ -116,19 +117,29 @@ describe('AirbnbConnectService — listings', () => {
     const s = setup({ row: { statusCode: 5 } });
     s.client.get.mockResolvedValue({ listings: [{ id: '1', name: 'Other A' }, { id: PILOT, name: 'K22 Andersa' }, { id: '2', name: 'Other B' }] });
     const v = await s.svc.listings(OWNER);
-    expect(v).toEqual({ pilot: { id: PILOT, name: 'K22 Andersa' }, others: 2, truncated: false });
+    expect(v).toEqual({ pilot: { id: PILOT, name: 'K22 Andersa' }, pilots: [{ id: PILOT, name: 'K22 Andersa' }], others: 2, truncated: false });
     expect(JSON.stringify(v)).not.toContain('Other');
   });
 
-  it('follows the cursor until the pilot listing is found, then stops', async () => {
+  it('follows the cursor until every pilot listing is found, then stops', async () => {
     const s = setup({ row: { statusCode: 5 } });
+    const [first, ...rest] = AIRBNB_PILOT_LISTING_IDS;
     s.client.get
-      .mockResolvedValueOnce({ listings: [{ id: '1' }], _cursor: 'p2' })
-      .mockResolvedValueOnce({ listings: [{ id: PILOT }], _cursor: 'p3' });
+      .mockResolvedValueOnce({ listings: [{ id: '1' }, { idStr: first }], _cursor: 'p2' })
+      .mockResolvedValueOnce({ listings: rest.map((id) => ({ idStr: id })), _cursor: 'p3' });
     const v = await s.svc.listings(OWNER);
     expect(s.client.get).toHaveBeenCalledTimes(2);
     expect(s.client.get).toHaveBeenLastCalledWith('/airbnb-listings', { token: 'tok', _limit: '50', _cursor: 'p2' });
-    expect(v).toEqual({ pilot: { id: PILOT, name: null }, others: 1, truncated: true });
+    expect(v.pilots.map((p) => p.id)).toEqual([...AIRBNB_PILOT_LISTING_IDS]);
+    expect(v).toMatchObject({ pilot: { id: first }, others: 1, truncated: true });
+  });
+
+  it('keeps reading while some pilot listings are still missing (up to 3 pages)', async () => {
+    const s = setup({ row: { statusCode: 5 } });
+    s.client.get.mockResolvedValueOnce({ listings: [{ idStr: PILOT }], _cursor: 'p2' }).mockResolvedValue({ listings: [{ id: '7' }], _cursor: 'more' });
+    const v = await s.svc.listings(OWNER);
+    expect(s.client.get).toHaveBeenCalledTimes(3);
+    expect(v).toEqual({ pilot: { id: PILOT, name: null }, pilots: [{ id: PILOT, name: null }], others: 2, truncated: true });
   });
 
   it('reads at most 3 pages when the pilot listing is not there', async () => {
@@ -136,6 +147,6 @@ describe('AirbnbConnectService — listings', () => {
     s.client.get.mockResolvedValue({ listings: [{ id: '1' }], _cursor: 'more' });
     const v = await s.svc.listings(OWNER);
     expect(s.client.get).toHaveBeenCalledTimes(3);
-    expect(v).toEqual({ pilot: null, others: 3, truncated: true });
+    expect(v).toEqual({ pilot: null, pilots: [], others: 3, truncated: true });
   });
 });

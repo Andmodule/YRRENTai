@@ -41,11 +41,13 @@ export interface AirbnbHostView {
 }
 
 export interface AirbnbListingsView {
-  /** The pilot listing as Airbnb shows it, or null when the host does not have it. */
+  /** The first pilot listing found (kept for older pages), or null when the host has none of them. */
   pilot: AirbnbListingView | null;
+  /** Every pilot listing the host has, as Airbnb shows it. */
+  pilots: AirbnbListingView[];
   /** Other listings on the pages read: only counted, never shown or touched. */
   others: number;
-  /** The host has more pages than were read (reading stops once the pilot listing is found). */
+  /** The host has more pages than were read (reading stops once every pilot listing is found). */
   truncated: boolean;
 }
 
@@ -167,8 +169,8 @@ export class AirbnbConnectService {
   }
 
   /**
-   * GET /airbnb-listings of the active host → only the pilot listing is returned; the others are counted.
-   * Reads at most MAX_LISTING_PAGES pages and stops as soon as the pilot listing is found.
+   * GET /airbnb-listings of the active host → only the pilot listings are returned; the others are counted.
+   * Reads at most MAX_LISTING_PAGES pages and stops as soon as every pilot listing is found.
    */
   async listings(user: JwtPayload): Promise<AirbnbListingsView> {
     const client = this.assertOn();
@@ -176,7 +178,7 @@ export class AirbnbConnectService {
     if (!row || row.statusCode !== 5) {
       throw new ServiceUnavailableException('Хозяин Airbnb не подключён: сначала «Подключить» и «Проверить статус»');
     }
-    let pilot: AirbnbListingView | null = null;
+    const pilots: AirbnbListingView[] = [];
     let others = 0;
     let cursor: string | null = null;
     let pages = 0;
@@ -186,11 +188,12 @@ export class AirbnbConnectService {
       const page = parseListings(await client.get<unknown>('/airbnb-listings', params));
       pages++;
       for (const l of page.listings) {
-        if (!pilot && isAirbnbPilotListing(l.id)) pilot = l;
-        else others++;
+        if (isAirbnbPilotListing(l.id)) {
+          if (!pilots.some((p) => p.id === l.id)) pilots.push(l);
+        } else others++;
       }
       cursor = page.nextCursor;
-    } while (cursor && !pilot && pages < MAX_LISTING_PAGES);
-    return { pilot, others, truncated: cursor != null };
+    } while (cursor && pilots.length < AIRBNB_PILOT_LISTING_IDS.length && pages < MAX_LISTING_PAGES);
+    return { pilot: pilots[0] ?? null, pilots, others, truncated: cursor != null };
   }
 }
