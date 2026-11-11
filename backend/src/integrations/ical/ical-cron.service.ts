@@ -39,14 +39,15 @@ export class ICalCronService implements OnModuleInit, OnModuleDestroy {
           acc.imported += r.imported;
           acc.updated += r.updated;
           acc.cancelled += r.cancelled;
+          acc.skipped += r.skipped;
           acc.failed += r.failed;
           return acc;
         },
-        { imported: 0, updated: 0, cancelled: 0, failed: 0 },
+        { imported: 0, updated: 0, cancelled: 0, skipped: 0, failed: 0 },
       );
       if (properties > 0) {
         this.logger.log(
-          `iCal cron done: properties=${properties} imported=${totals.imported} updated=${totals.updated} cancelled=${totals.cancelled} failed=${totals.failed}`,
+          `iCal cron done: properties=${properties} imported=${totals.imported} updated=${totals.updated} cancelled=${totals.cancelled} skipped=${totals.skipped} failed=${totals.failed}`,
         );
       }
     } catch (e) {
