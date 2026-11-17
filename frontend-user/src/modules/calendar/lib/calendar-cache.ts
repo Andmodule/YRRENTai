@@ -25,6 +25,8 @@ export interface ApiBooking {
   checkOut: string;
   zodomusReservationId?: string | null;
   zodomusChannelId?: number | null;
+  /** UID of the event an iCal import made the booking from («…@airbnb.com»). */
+  icalUid?: string | null;
   paymentStatus?: 'unpaid' | 'partial' | 'paid';
   overbookingConflict?: boolean;
   overbookingConflictWithBookingId?: string | null;
@@ -46,9 +48,16 @@ function mapApiBookingStatus(status: string): BookingStatus {
   }
 }
 
-function mapApiBookingChannel(b: ApiBooking): BookingChannel {
+/** Same rule as the server's calendar (`calendarChannelFromBooking`). */
+export function mapApiBookingChannel(b: Pick<ApiBooking, 'zodomusChannelId' | 'icalUid'>): BookingChannel {
   const zid = b.zodomusChannelId;
-  if (zid == null) return 'direct';
+  if (zid == null) {
+    // Imported by iCal: the event UID names the platform.
+    const uid = b.icalUid?.trim().toLowerCase() ?? '';
+    if (uid.endsWith('@airbnb.com')) return 'airbnb';
+    if (uid.endsWith('@booking.com')) return 'booking';
+    return 'direct';
+  }
   if (zid === 1) return 'booking';
   if (zid === 3) return 'airbnb';
   return 'other';

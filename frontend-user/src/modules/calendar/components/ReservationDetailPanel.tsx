@@ -16,6 +16,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { apiClient } from '@/lib/api/client';
 import { cn } from '@/lib/utils';
 import { useDateLocale } from '@/hooks/useDateLocale';
+import { useGuestPrice, usePricingAccess } from '@/modules/pricing/hooks';
 import type { Reservation } from '../types';
 import { parseLocalCalendarDay } from '../lib/calendar-api-dates';
 import { countNights } from '../lib/property-meta';
@@ -171,6 +172,30 @@ export function ReservationDetailPanel({
     displayCurrencyFallback,
   );
 
+  // A Booking stay comes from the channel without the cleaning fee (Zgoda 27.11: 245,79 here, 304,79 on Booking =
+  // + 59). With the fee set in «Настройки площадок» the panel shows the total the guest pays as well.
+  const pricingAccess = usePricingAccess();
+  const withCleaning = isOta && reservation.channel === 'booking' && reservation.totalPrice > 0 && pricingAccess.guestPrice;
+  const guestPrice = useGuestPrice(reservation.propertyId, reservation.checkIn, reservation.checkIn, withCleaning);
+  const cleaningFee = withCleaning ? (guestPrice.data?.profiles.booking?.cleaningFee ?? null) : null;
+  const totalWithCleaning =
+    cleaningFee != null && cleaningFee > 0
+      ? formatDisplayTotal(
+          reservation.totalPrice + cleaningFee,
+          reservation.currency,
+          reservation.checkIn,
+          reservation.checkOut,
+          otaNightlyPrices,
+          t('priceUnavailable'),
+          otaNightlyPricesFrom,
+          displayCurrencyFallback,
+        )
+      : null;
+  const cleaningLabel =
+    cleaningFee != null && cleaningFee > 0
+      ? formatDisplayTotal(cleaningFee, reservation.currency, reservation.checkIn, reservation.checkOut, undefined, '', undefined, displayCurrencyFallback)
+      : null;
+
   const [draftNotes, setDraftNotes] = useState(reservation.internalNotes ?? '');
   useEffect(() => {
     setDraftNotes(reservation.internalNotes ?? '');
@@ -236,6 +261,11 @@ export function ReservationDetailPanel({
       </p>
       <div className="space-y-2">
         <p className="text-base font-medium">{displayTotal}</p>
+        {totalWithCleaning ? (
+          <p className="text-sm text-muted-foreground">
+            {t('totalWithCleaning', { total: totalWithCleaning, cleaning: cleaningLabel ?? '' })}
+          </p>
+        ) : null}
         {isOta ? (
           <div className="space-y-1">
             <p className="text-xs text-muted-foreground">

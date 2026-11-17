@@ -4,10 +4,11 @@ import { Brackets, Repository } from 'typeorm';
 import { addDays, format, parseISO } from 'date-fns';
 import { BookingEntity } from '../booking/entities/booking.entity';
 import { formatCalendarDayInTimezone } from '../booking/booking-availability.util';
+import { liveOverbookingIds } from './calendar-overbooking.util';
 import { PropertyService } from '../property/property.service';
 import { ZodomusSyncService } from '../integrations/zodomus/zodomus-sync.service';
 import { resolveOtaChannelCurrency } from '../integrations/zodomus/zodomus-reservation-price.util';
-import type { BookingStatus as SharedBookingStatus } from '@rentai/shared';
+import { BOOKING_STATUSES_BLOCKING_AVAILABILITY, type BookingStatus as SharedBookingStatus } from '@rentai/shared';
 import type {
   OtaCalendarRestrictionHint,
   OtaNightlyPriceMeta,
@@ -150,13 +151,43 @@ export class CalendarService {
       .orderBy('b.checkIn', 'ASC')
       .getMany();
 
+    // The overbooking flag is set once, when the channel booking comes in: show it only while a clash is still there.
+    const stillOverbooked = liveOverbookingIds(bookings);
+    // A stay running past the window may clash with one outside it: those few are asked of the database.
+    const edge = bookings.filter(
+      (b) =>
+        b.overbookingConflict &&
+        !stillOverbooked.has(b.id) &&
+        BOOKING_STATUSES_BLOCKING_AVAILABILITY.includes(b.status as SharedBookingStatus) &&
+        (b.checkIn.getTime() < rangeStart.getTime() || b.checkOut.getTime() > rangeEndExclusive.getTime()),
+    );
+    const edgeClash = await Promise.all(
+      edge.map((b) =>
+        this.bookingRepository
+          .createQueryBuilder('o')
+          .where('o.propertyId = :propertyId', { propertyId: b.propertyId })
+          .andWhere('o.id != :id', { id: b.id })
+          .andWhere('o.status IN (:...blocking)', { blocking: [...BOOKING_STATUSES_BLOCKING_AVAILABILITY] })
+          .andWhere('o.checkIn < :checkOut', { checkOut: b.checkOut })
+          .andWhere('o.checkOut > :checkIn', { checkIn: b.checkIn })
+          .getCount(),
+      ),
+    );
+    edge.forEach((b, i) => {
+      if (edgeClash[i]! > 0) stillOverbooked.add(b.id);
+    });
     const reservations: CalendarReservationDto[] = bookings.map((b) => {
       const prop = properties.find((p) => p.id === b.propertyId);
-      return mapBookingToCalendarDto(
+      const dto = mapBookingToCalendarDto(
         b,
         tzByPropertyId.get(b.propertyId) ?? 'UTC',
         prop,
       );
+      if (dto.overbookingConflict && !stillOverbooked.has(b.id)) {
+        dto.overbookingConflict = false;
+        dto.overbookingConflictWithBookingId = null;
+      }
+      return dto;
     });
 
     const occupiedByProperty = new Map<string, Set<string>>();
@@ -424,9 +455,15 @@ export function mapBookingToCalendarDto(
   };
 }
 
-function calendarChannelFromBooking(b: BookingEntity): CalendarBookingChannel {
+export function calendarChannelFromBooking(b: Pick<BookingEntity, 'zodomusChannelId' | 'icalUid'>): CalendarBookingChannel {
   const zid = b.zodomusChannelId;
-  if (zid == null) return 'direct';
+  if (zid == null) {
+    // Imported by iCal: the event UID names the platform («…@airbnb.com», «…@booking.com»).
+    const uid = b.icalUid?.trim().toLowerCase() ?? '';
+    if (uid.endsWith('@airbnb.com')) return 'airbnb';
+    if (uid.endsWith('@booking.com')) return 'booking';
+    return 'direct';
+  }
   if (zid === 1) return 'booking';
   if (zid === 3) return 'airbnb';
   return 'other';

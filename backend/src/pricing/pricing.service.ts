@@ -399,6 +399,11 @@ export class PricingService {
           from: window.from,
           to: window.to,
           activeWeekdays: p.activeWeekdays,
+          /** Every guest gets it (no targetChannel or «public») — the deals Airbnb prices follow. */
+          publicDeal: (() => {
+            const target = (p.externalMeta as { targetChannel?: unknown } | null)?.targetChannel;
+            return target == null || String(target).toLowerCase() === 'public';
+          })(),
           properties,
         },
       ];
