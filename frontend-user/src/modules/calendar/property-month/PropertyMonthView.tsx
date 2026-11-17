@@ -165,11 +165,12 @@ export function PropertyMonthView({ propertyId }: { propertyId: string }) {
         return { airbnb: own, airbnbFromBooking: false };
       }
       if (airbnbPlanEnd != null && n.ymd >= airbnbPlanEnd) return { airbnb: null, airbnbFromBooking: false };
+      // The server prices only nights open on Booking (`airbnbNights`), the own price too.
+      if (n.kind !== 'open') return { airbnb: null, airbnbFromBooking: false };
       if (airbnbFromBase) {
         const own = airbnbNightPrice(n.ymd, null, g!.nightPrices.airbnb, { base: b!.base, markupPct: b!.channels.airbnb.markupPct });
         if (own != null) return { airbnb: wholeAboveMin(own, minPrice), airbnbFromBooking: false };
       }
-      if (n.kind !== 'open') return { airbnb: null, airbnbFromBooking: false };
       const fromBooking = airbnbFromBooking(n.rack, n.promotions, minPrice);
       return { airbnb: fromBooking, airbnbFromBooking: fromBooking != null };
     }
