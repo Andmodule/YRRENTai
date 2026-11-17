@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { basePrefill, prefillText, samePrice } from './price-prefill';
+import { basePrefill, bookingHint, prefillText, samePrice } from './price-prefill';
 
 describe('samePrice', () => {
   it('one value for every night', () => {
@@ -26,16 +26,29 @@ describe('basePrefill', () => {
   it('the shared base price', () => {
     assert.equal(basePrefill(nights, { '2026-11-16': 220, '2026-11-17': 220 }), 220);
   });
-  it('no base price yet → what Booking has now', () => {
-    assert.equal(basePrefill(nights, {}), 240);
+  it('no base price yet → empty field (Booking\'s price is only a hint)', () => {
+    assert.equal(basePrefill(nights, {}), null);
   });
-  it('base on some nights only → empty (never mixes base and Booking)', () => {
+  it('base on some nights only, or different base prices → empty', () => {
     assert.equal(basePrefill(nights, { '2026-11-16': 220 }), null);
-  });
-  it('different base prices, or Booking prices that differ / are missing → empty', () => {
     assert.equal(basePrefill(nights, { '2026-11-16': 220, '2026-11-17': 230 }), null);
-    assert.equal(basePrefill([{ ymd: 'a', rack: 240 }, { ymd: 'b', rack: 250 }], {}), null);
-    assert.equal(basePrefill([{ ymd: 'a', rack: null }], {}), null);
+  });
+});
+
+describe('bookingHint', () => {
+  const nights = [
+    { ymd: '2026-11-16', rack: 240 },
+    { ymd: '2026-11-17', rack: 240 },
+  ];
+  it('no base price on any night → Booking\'s price now', () => {
+    assert.equal(bookingHint(nights, {}), 240);
+  });
+  it('a base price somewhere → no hint (the field shows the base)', () => {
+    assert.equal(bookingHint(nights, { '2026-11-16': 220 }), null);
+  });
+  it('Booking prices that differ or are missing → no hint', () => {
+    assert.equal(bookingHint([{ ymd: 'a', rack: 240 }, { ymd: 'b', rack: 250 }], {}), null);
+    assert.equal(bookingHint([{ ymd: 'a', rack: null }], {}), null);
   });
 });
 

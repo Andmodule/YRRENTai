@@ -6,15 +6,21 @@
  */
 export function airbnbFromBooking(
   rack: number | null,
-  promotions: readonly { promotionType: string; state: string; discountPct: number }[],
+  promotions: readonly { promotionType: string; state: string; discountPct: number; publicDeal?: boolean }[],
   minPrice: number | null,
 ): number | null {
   if (rack == null || !(rack > 0)) return null;
   let pct = 0;
   for (const p of promotions) {
-    if (p.promotionType !== 'basic' || p.state !== 'on') continue;
+    // A deal for members / the app / a country only is not what a regular guest gets — the server skips it too.
+    if (p.promotionType !== 'basic' || p.state !== 'on' || p.publicDeal === false) continue;
     if (Number.isFinite(p.discountPct) && p.discountPct > pct && p.discountPct < 100) pct = p.discountPct;
   }
-  const price = Math.round(rack * (1 - pct / 100));
-  return minPrice != null && price < minPrice ? Math.ceil(minPrice) : price;
+  return wholeAboveMin(rack * (1 - pct / 100), minPrice);
+}
+
+/** As the server sends an Airbnb price: whole złoty, never below the minimum (`airbnbPrice`, `ownAirbnbPrices`). */
+export function wholeAboveMin(price: number, minPrice: number | null): number {
+  const p = Math.round(price);
+  return minPrice != null && p < minPrice ? Math.ceil(minPrice) : p;
 }

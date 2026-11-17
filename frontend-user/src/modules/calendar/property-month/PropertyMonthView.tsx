@@ -50,7 +50,7 @@ import { cn } from '@/lib/utils';
 import type { CellRows } from './MonthGrid';
 import { airbnbNightPrice, bookingCell, pickedStayBelowMin } from '@/modules/pricing/lib/guest-price';
 import { airbnbApi } from '@/modules/airbnb/api';
-import { airbnbFromBooking } from '../lib/airbnb-from-booking';
+import { airbnbFromBooking, wholeAboveMin } from '../lib/airbnb-from-booking';
 
 /** Calendar of one property by months (Airbnb-like): the month on the left, actions and prices on the right. */
 export function PropertyMonthView({ propertyId }: { propertyId: string }) {
@@ -103,6 +103,10 @@ export function PropertyMonthView({ propertyId }: { propertyId: string }) {
     retry: false,
   });
   const airbnbConnected = airbnbListing.data?.connected === true;
+  /** ZODOMUS_AIRBNB_PRICE_FROM_BASE: own Airbnb prices (typed / base) are sent; off — every night goes by Booking. */
+  const airbnbFromBase = airbnbListing.data?.priceFromBase === true;
+  /** Nights from here on are kept closed on Airbnb (the end of the last full send). */
+  const airbnbPlanEnd = airbnbListing.data?.planEnd ?? null;
 
   const nights = useMemo(
     () =>
@@ -149,18 +153,27 @@ export function PropertyMonthView({ propertyId }: { propertyId: string }) {
     }
     return rows;
 
-    /** Typed or from the base; else, on a connected listing, what RentAI sends: Booking − Basic (open nights). */
+    /**
+     * Not connected: typed, from the base, or the manual price of the settings (as before). Connected: what RentAI
+     * sends — the own price (typed / base, whole złoty, not below the minimum) when that rule is on, else Booking −
+     * Basic; nothing past the end of the last full send (kept closed there).
+     */
     function airbnbCell(n: (typeof nights)[number]): { airbnb: number | null; airbnbFromBooking: boolean } {
-      // A connected listing never gets the manual «Цена Airbnb» of the settings: that one is for listings RentAI does not send to.
-      const own = airbnbNightPrice(n.ymd, airbnbConnected ? null : g!.profiles.airbnb, g!.nightPrices.airbnb, {
-        base: b!.base,
-        markupPct: b!.channels.airbnb.markupPct,
-      });
-      if (own != null || !airbnbConnected || n.kind !== 'open') return { airbnb: own, airbnbFromBooking: false };
-      const fromBooking = airbnbFromBooking(n.rack, n.promotions, pricingRow?.minPrice ?? null);
+      const minPrice = pricingRow?.minPrice ?? null;
+      if (!airbnbConnected) {
+        const own = airbnbNightPrice(n.ymd, g!.profiles.airbnb, g!.nightPrices.airbnb, { base: b!.base, markupPct: b!.channels.airbnb.markupPct });
+        return { airbnb: own, airbnbFromBooking: false };
+      }
+      if (airbnbPlanEnd != null && n.ymd >= airbnbPlanEnd) return { airbnb: null, airbnbFromBooking: false };
+      if (airbnbFromBase) {
+        const own = airbnbNightPrice(n.ymd, null, g!.nightPrices.airbnb, { base: b!.base, markupPct: b!.channels.airbnb.markupPct });
+        if (own != null) return { airbnb: wholeAboveMin(own, minPrice), airbnbFromBooking: false };
+      }
+      if (n.kind !== 'open') return { airbnb: null, airbnbFromBooking: false };
+      const fromBooking = airbnbFromBooking(n.rack, n.promotions, minPrice);
       return { airbnb: fromBooking, airbnbFromBooking: fromBooking != null };
     }
-  }, [basePriceOn, basePrices.data, guestPrices.data, nights, pricingRow, airbnbConnected]);
+  }, [basePriceOn, basePrices.data, guestPrices.data, nights, pricingRow, airbnbConnected, airbnbFromBase, airbnbPlanEnd]);
 
   // The Booking run is watched by the page: the panel remounts with each range and the phone sheet unmounts.
   // The dates tool off: no runs to poll (the server would answer 503). Not tied to the month's data: a month

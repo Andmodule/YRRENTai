@@ -191,6 +191,10 @@ export function ReservationDetailPanel({
           displayCurrencyFallback,
         )
       : null;
+  const cleaningLabel =
+    cleaningFee != null && cleaningFee > 0
+      ? formatDisplayTotal(cleaningFee, reservation.currency, reservation.checkIn, reservation.checkOut, undefined, '', undefined, displayCurrencyFallback)
+      : null;
 
   const [draftNotes, setDraftNotes] = useState(reservation.internalNotes ?? '');
   useEffect(() => {
@@ -259,7 +263,7 @@ export function ReservationDetailPanel({
         <p className="text-base font-medium">{displayTotal}</p>
         {totalWithCleaning ? (
           <p className="text-sm text-muted-foreground">
-            {t('totalWithCleaning', { total: totalWithCleaning, cleaning: String(cleaningFee) })}
+            {t('totalWithCleaning', { total: totalWithCleaning, cleaning: cleaningLabel ?? '' })}
           </p>
         ) : null}
         {isOta ? (

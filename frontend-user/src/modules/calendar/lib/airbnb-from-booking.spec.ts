@@ -29,6 +29,11 @@ describe('airbnbFromBooking', () => {
     assert.equal(airbnbFromBooking(null, [basic(20)], null), null);
     assert.equal(airbnbFromBooking(0, [], null), null);
   });
+  it('a Basic deal for members / the app only does not count (the server skips it)', () => {
+    assert.equal(airbnbFromBooking(300, [{ ...basic(25), publicDeal: false }, basic(10)], null), 270);
+    // older servers say nothing: taken as public
+    assert.equal(airbnbFromBooking(300, [{ ...basic(20), publicDeal: undefined }], null), 240);
+  });
   it('a 100 % or broken deal is ignored', () => {
     assert.equal(airbnbFromBooking(300, [basic(100), basic(Number.NaN)], null), 300);
   });

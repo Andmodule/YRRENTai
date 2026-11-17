@@ -154,19 +154,28 @@ export class CalendarService {
     // The overbooking flag is set once, when the channel booking comes in: show it only while a clash is still there.
     const stillOverbooked = liveOverbookingIds(bookings);
     // A stay running past the window may clash with one outside it: those few are asked of the database.
-    for (const b of bookings) {
-      if (!b.overbookingConflict || stillOverbooked.has(b.id)) continue;
-      if (b.checkIn.getTime() >= rangeStart.getTime() && b.checkOut.getTime() <= rangeEndExclusive.getTime()) continue;
-      const clash = await this.bookingRepository
-        .createQueryBuilder('o')
-        .where('o.propertyId = :propertyId', { propertyId: b.propertyId })
-        .andWhere('o.id != :id', { id: b.id })
-        .andWhere('o.status IN (:...blocking)', { blocking: [...BOOKING_STATUSES_BLOCKING_AVAILABILITY] })
-        .andWhere('o.checkIn < :checkOut', { checkOut: b.checkOut })
-        .andWhere('o.checkOut > :checkIn', { checkIn: b.checkIn })
-        .getCount();
-      if (clash > 0 && BOOKING_STATUSES_BLOCKING_AVAILABILITY.includes(b.status as SharedBookingStatus)) stillOverbooked.add(b.id);
-    }
+    const edge = bookings.filter(
+      (b) =>
+        b.overbookingConflict &&
+        !stillOverbooked.has(b.id) &&
+        BOOKING_STATUSES_BLOCKING_AVAILABILITY.includes(b.status as SharedBookingStatus) &&
+        (b.checkIn.getTime() < rangeStart.getTime() || b.checkOut.getTime() > rangeEndExclusive.getTime()),
+    );
+    const edgeClash = await Promise.all(
+      edge.map((b) =>
+        this.bookingRepository
+          .createQueryBuilder('o')
+          .where('o.propertyId = :propertyId', { propertyId: b.propertyId })
+          .andWhere('o.id != :id', { id: b.id })
+          .andWhere('o.status IN (:...blocking)', { blocking: [...BOOKING_STATUSES_BLOCKING_AVAILABILITY] })
+          .andWhere('o.checkIn < :checkOut', { checkOut: b.checkOut })
+          .andWhere('o.checkOut > :checkIn', { checkIn: b.checkIn })
+          .getCount(),
+      ),
+    );
+    edge.forEach((b, i) => {
+      if (edgeClash[i]! > 0) stillOverbooked.add(b.id);
+    });
     const reservations: CalendarReservationDto[] = bookings.map((b) => {
       const prop = properties.find((p) => p.id === b.propertyId);
       const dto = mapBookingToCalendarDto(

@@ -10,15 +10,23 @@ export function samePrice(values: readonly (number | null | undefined)[]): numbe
 }
 
 /**
- * «Базовая цена на выбранные ночи»: the base price the nights share; without any base price yet — what Booking
- * has now (its main rate), so the field starts from the real price, as «Цена на канале» does.
+ * «Базовая цена на выбранные ночи»: the base price the nights share. Without any base price the field stays empty
+ * and Booking's price is only a hint (`bookingHint`): saving it as the base would change what Booking (+ its %)
+ * and Airbnb get at once.
  */
 export function basePrefill(
+  nights: readonly { ymd: string }[],
+  base: Readonly<Record<string, number>>,
+): number | null {
+  return samePrice(nights.map((n) => base[n.ymd]));
+}
+
+/** Booking's price now on all the picked nights, when none of them has a base price yet. */
+export function bookingHint(
   nights: readonly { ymd: string; rack: number | null }[],
   base: Readonly<Record<string, number>>,
 ): number | null {
-  const own = nights.map((n) => base[n.ymd]);
-  if (own.some((v) => v != null)) return samePrice(own);
+  if (nights.some((n) => base[n.ymd] != null)) return null;
   return samePrice(nights.map((n) => n.rack));
 }
 

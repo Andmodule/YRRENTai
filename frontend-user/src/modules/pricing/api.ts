@@ -364,6 +364,8 @@ export interface CalendarPromotion {
   from: string;
   to: string;
   activeWeekdays: BookingWeekday[] | null;
+  /** Every guest gets it (not limited to members / app / a country). Older servers omit it. */
+  publicDeal?: boolean;
   properties: { propertyId: string; state: PromotionTargetState; confirmed: boolean; errorCode: string | null }[];
 }
 

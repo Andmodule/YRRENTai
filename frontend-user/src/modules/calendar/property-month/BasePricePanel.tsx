@@ -15,7 +15,7 @@ import { ChoiceChip } from '@/modules/pricing/components/shared';
 import { WEEKDAYS, weekdayOf, ymdToDate } from '@/modules/pricing/lib/pricing-ui';
 import type { CalendarDatesPreview } from '../calendar-dates-api';
 import { typedBookingNights, type MonthNight } from '../lib/property-month';
-import { basePrefill, prefillText, samePrice } from '../lib/price-prefill';
+import { basePrefill, bookingHint, prefillText, samePrice } from '../lib/price-prefill';
 import type { BookingSendWatch } from './useBookingSend';
 
 type Preview = CalendarDatesPreview & { fingerprint: string };
@@ -132,6 +132,7 @@ export function BasePricePanel({
   const fail = (e: unknown) => toast.error(getApiErrorMessage(e) ?? t('saveError'));
   /** The field starts from the price there is now (the manager typed it over by hand from the cell). */
   const basePrefillValue = useMemo(() => basePrefill(picked, data.base), [picked, data.base]);
+  const bookingNow = useMemo(() => bookingHint(picked, data.base), [picked, data.base]);
 
   /** Asks the server what a send would change now; `scroll` brings the result into view (after a save). */
   const check = (scroll: boolean) => {
@@ -233,6 +234,8 @@ export function BasePricePanel({
       <PriceForm
         key={`base|${from}|${to}|${basePrefillValue ?? ''}`}
         initial={basePrefillValue}
+        placeholder={bookingNow != null ? prefillText(bookingNow) : undefined}
+        hint={bookingNow != null ? t('bookingNowHint', { price: fmt.format(bookingNow), currency: currency ?? '' }) : undefined}
         label={t('baseLabel')}
         saveLabel={canCheck ? t('saveBaseAndCheck') : t('saveBase')}
         clearLabel={t('clearBase')}
@@ -531,6 +534,8 @@ function SkippedLine({ skipped }: { skipped: CalendarDatesPreview['skipped'] }) 
 
 function PriceForm({
   initial = null,
+  placeholder,
+  hint,
   label,
   saveLabel,
   clearLabel,
@@ -539,6 +544,10 @@ function PriceForm({
 }: {
   /** The price the field starts with (the parent remounts the form with a key when it changes). */
   initial?: number | null;
+  /** Shown greyed in the empty field — a reference, never saved by itself. */
+  placeholder?: string;
+  /** A line under the field (what the price is now elsewhere). */
+  hint?: string;
   label: string;
   saveLabel: string;
   clearLabel: string;
@@ -573,6 +582,7 @@ function PriceForm({
             }}
             aria-label={label}
             aria-invalid={!!error}
+            placeholder={placeholder}
           />
         </div>
         <Button type="submit" size="sm" disabled={pending}>
@@ -583,6 +593,7 @@ function PriceForm({
           {clearLabel}
         </Button>
       </div>
+      {hint ? <p className="text-[11px] text-muted-foreground">{hint}</p> : null}
       {error ? <p className="text-xs text-destructive">{error}</p> : null}
     </form>
   );

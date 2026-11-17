@@ -117,6 +117,8 @@ export type CellPromotion = {
   confirmed: boolean;
   /** Why it did not reach Booking — only for `skipped` / `error`. */
   errorCode: string | null;
+  /** Every guest gets it (see `CalendarPromotion.publicDeal`); undefined from older servers. */
+  publicDeal?: boolean;
 };
 
 /** Saved in RentAI but not on Booking: skipped (pilot list, minimum price…) or failed. */
@@ -149,6 +151,7 @@ export function promotionsForCell(
       state: target.state,
       confirmed: target.confirmed,
       errorCode: target.errorCode,
+      ...(p.publicDeal != null ? { publicDeal: p.publicDeal } : {}),
     });
   }
   // Booking shows only the highest discount; live ones win over pending / dry-run at equal size.
