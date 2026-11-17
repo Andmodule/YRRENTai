@@ -15,6 +15,7 @@ import { ChoiceChip } from '@/modules/pricing/components/shared';
 import { WEEKDAYS, weekdayOf, ymdToDate } from '@/modules/pricing/lib/pricing-ui';
 import type { CalendarDatesPreview } from '../calendar-dates-api';
 import { typedBookingNights, type MonthNight } from '../lib/property-month';
+import { basePrefill, prefillText, samePrice } from '../lib/price-prefill';
 import type { BookingSendWatch } from './useBookingSend';
 
 type Preview = CalendarDatesPreview & { fingerprint: string };
@@ -129,6 +130,8 @@ export function BasePricePanel({
   const [keepTyped, setKeepTyped] = useState(false);
 
   const fail = (e: unknown) => toast.error(getApiErrorMessage(e) ?? t('saveError'));
+  /** The field starts from the price there is now (the manager typed it over by hand from the cell). */
+  const basePrefillValue = useMemo(() => basePrefill(picked, data.base), [picked, data.base]);
 
   /** Asks the server what a send would change now; `scroll` brings the result into view (after a save). */
   const check = (scroll: boolean) => {
@@ -228,7 +231,8 @@ export function BasePricePanel({
       ) : null}
 
       <PriceForm
-        key={`base|${from}|${to}`}
+        key={`base|${from}|${to}|${basePrefillValue ?? ''}`}
+        initial={basePrefillValue}
         label={t('baseLabel')}
         saveLabel={canCheck ? t('saveBaseAndCheck') : t('saveBase')}
         clearLabel={t('clearBase')}
@@ -417,9 +421,12 @@ export function BasePricePanel({
         <h4 className="text-xs font-semibold">{t('typedTitle')}</h4>
         {(['booking', 'airbnb'] as const).map((channel) => {
           const typedHere = picked.filter((n) => typed[channel][n.ymd] != null).length;
+          // The own price the nights share already — the field starts from it.
+          const typedNow = samePrice(picked.map((n) => typed[channel][n.ymd]));
           return (
             <PriceForm
-              key={`${channel}|${from}|${to}`}
+              key={`${channel}|${from}|${to}|${typedNow ?? ''}`}
+              initial={typedNow}
               label={t(channel === 'booking' ? 'typedBooking' : 'typedAirbnb', { count: typedHere })}
               saveLabel={t('saveTyped')}
               clearLabel={t('clearTyped')}
@@ -523,12 +530,15 @@ function SkippedLine({ skipped }: { skipped: CalendarDatesPreview['skipped'] }) 
 }
 
 function PriceForm({
+  initial = null,
   label,
   saveLabel,
   clearLabel,
   pending,
   onSave,
 }: {
+  /** The price the field starts with (the parent remounts the form with a key when it changes). */
+  initial?: number | null;
   label: string;
   saveLabel: string;
   clearLabel: string;
@@ -536,7 +546,7 @@ function PriceForm({
   onSave: (price: number | null) => void;
 }) {
   const t = useTranslations('calendar.propertyMonth.basePrice');
-  const [value, setValue] = useState('');
+  const [value, setValue] = useState(() => prefillText(initial));
   const [error, setError] = useState<string | null>(null);
   const submit = (e: FormEvent) => {
     e.preventDefault();

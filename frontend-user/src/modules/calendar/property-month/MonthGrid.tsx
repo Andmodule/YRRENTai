@@ -41,6 +41,8 @@ export type CellRows = {
   /** Airbnb's price for the night (typed, from the base, or from the settings). */
   airbnb: number | null;
   airbnbTyped: boolean;
+  /** No own Airbnb price or base price: the Airbnb price is the Booking price minus Basic (what RentAI sends). */
+  airbnbFromBooking?: boolean;
 };
 
 export function MonthGrid({
@@ -219,7 +221,7 @@ export function MonthGrid({
                       {/* Phone: the A line only where Airbnb has a price (one listing is connected) — «A —» everywhere was noise. */}
                       <span
                         className={cn('truncate text-rose-700 dark:text-rose-300 sm:overflow-visible sm:whitespace-normal', row.airbnb == null && 'hidden sm:block')}
-                        title={t('rowAirbnbTitle')}
+                        title={t(row.airbnbFromBooking ? 'rowAirbnbFromBookingTitle' : 'rowAirbnbTitle')}
                       >
                         <span className="hidden sm:inline">A </span>
                         {row.airbnb != null ? fmt.format(row.airbnb) : '—'}

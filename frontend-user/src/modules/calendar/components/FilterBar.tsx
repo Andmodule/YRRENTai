@@ -120,6 +120,13 @@ function ChannelStatusRow({
                 : 'border-border bg-background hover:bg-muted',
             )}
           >
+            {value === 'booking' || value === 'airbnb' ? (
+              // The colour the booking bars carry on their left edge — the chips double as the legend.
+              <span
+                className={cn('mr-1 inline-block h-2 w-2 rounded-full align-middle', value === 'booking' ? 'bg-blue-600' : 'bg-rose-500')}
+                aria-hidden
+              />
+            ) : null}
             {t(labelKey)}
           </button>
         ))}

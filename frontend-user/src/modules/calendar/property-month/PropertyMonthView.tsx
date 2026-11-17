@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
@@ -48,6 +49,8 @@ import { useIsMobile } from '@/hooks/useIsMobile';
 import { cn } from '@/lib/utils';
 import type { CellRows } from './MonthGrid';
 import { airbnbNightPrice, bookingCell, pickedStayBelowMin } from '@/modules/pricing/lib/guest-price';
+import { airbnbApi } from '@/modules/airbnb/api';
+import { airbnbFromBooking } from '../lib/airbnb-from-booking';
 
 /** Calendar of one property by months (Airbnb-like): the month on the left, actions and prices on the right. */
 export function PropertyMonthView({ propertyId }: { propertyId: string }) {
@@ -87,6 +90,19 @@ export function PropertyMonthView({ propertyId }: { propertyId: string }) {
   const pricingRows = usePricingProperties(pricingOn);
   const pricingRow = pricingRows.data?.find((r) => r.id === propertyId) ?? null;
   const datesAccess = useCalendarDatesAccess();
+  /**
+   * Connected to Airbnb through RentAI: a night without its own Airbnb price or a base price goes to Airbnb at the
+   * Booking price minus Basic — the A line shows that instead of «A —». Database only; a property outside the
+   * Airbnb pilot (or Airbnb off) answers with an error, which reads as «not connected».
+   */
+  const airbnbListing = useQuery({
+    queryKey: ['airbnb', 'listing', propertyId],
+    queryFn: () => airbnbApi.listing(propertyId),
+    enabled: basePriceOn,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+  const airbnbConnected = airbnbListing.data?.connected === true;
 
   const nights = useMemo(
     () =>
@@ -127,12 +143,24 @@ export function PropertyMonthView({ propertyId }: { propertyId: string }) {
             minPrice: pricingRow?.minPrice ?? null,
           },
         ),
-        airbnb: airbnbNightPrice(n.ymd, g.profiles.airbnb, g.nightPrices.airbnb, { base: b.base, markupPct: b.channels.airbnb.markupPct }),
+        ...airbnbCell(n),
         airbnbTyped: g.nightPrices.airbnb[n.ymd] != null,
       });
     }
     return rows;
-  }, [basePriceOn, basePrices.data, guestPrices.data, nights, pricingRow]);
+
+    /** Typed or from the base; else, on a connected listing, what RentAI sends: Booking − Basic (open nights). */
+    function airbnbCell(n: (typeof nights)[number]): { airbnb: number | null; airbnbFromBooking: boolean } {
+      // A connected listing never gets the manual «Цена Airbnb» of the settings: that one is for listings RentAI does not send to.
+      const own = airbnbNightPrice(n.ymd, airbnbConnected ? null : g!.profiles.airbnb, g!.nightPrices.airbnb, {
+        base: b!.base,
+        markupPct: b!.channels.airbnb.markupPct,
+      });
+      if (own != null || !airbnbConnected || n.kind !== 'open') return { airbnb: own, airbnbFromBooking: false };
+      const fromBooking = airbnbFromBooking(n.rack, n.promotions, pricingRow?.minPrice ?? null);
+      return { airbnb: fromBooking, airbnbFromBooking: fromBooking != null };
+    }
+  }, [basePriceOn, basePrices.data, guestPrices.data, nights, pricingRow, airbnbConnected]);
 
   // The Booking run is watched by the page: the panel remounts with each range and the phone sheet unmounts.
   // The dates tool off: no runs to poll (the server would answer 503). Not tied to the month's data: a month

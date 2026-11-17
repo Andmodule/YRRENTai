@@ -28,6 +28,15 @@ import { formatDisplayTotal } from '../lib/resolve-display-total';
 
 const WIDE_NIGHTS_PX = 120;
 
+/**
+ * The platform of a booking at a glance: a coloured edge on the left of the bar (Booking blue, Airbnb rose), the
+ * same colours as the chips of the channel filter. Own bookings keep the plain bar.
+ */
+export const CHANNEL_EDGE: Partial<Record<Reservation['channel'], string>> = {
+  booking: 'border-l-4 border-l-blue-600 dark:border-l-blue-400',
+  airbnb: 'border-l-4 border-l-rose-500 dark:border-l-rose-400',
+};
+
 const statusLabelKey: Record<BookingStatus, string> = {
   confirmed: 'statusConfirmed',
   pending: 'statusPending',
@@ -127,8 +136,9 @@ export const ProgramBlock = memo(function ProgramBlock({
       displayCurrencyFallback,
     );
     const st = t(statusLabelKey[reservation.status]);
+    const channel = reservation.channel === 'booking' || reservation.channel === 'airbnb' ? t(reservation.channel === 'booking' ? 'channelBooking' : 'channelAirbnb') : null;
     const lines = [
-      reservation.guestName,
+      channel ? `${reservation.guestName} · ${channel}` : reservation.guestName,
       `${format(parseLocalCalendarDay(reservation.checkIn), 'd MMM', { locale })} → ${format(parseLocalCalendarDay(reservation.checkOut), 'd MMM yyyy', { locale })}`,
       st,
       price,
@@ -200,6 +210,7 @@ export const ProgramBlock = memo(function ProgramBlock({
       className={cn(
         'box-border flex h-full min-h-[40px] w-full flex-col overflow-hidden rounded-lg border shadow-sm',
         calendarTimelineCardClasses[status],
+        reservation && !reservation.otaInventoryBlock ? CHANNEL_EDGE[reservation.channel] : null,
         reservation?.overbookingConflict &&
           'ring-2 ring-destructive/80 border-destructive dark:ring-red-500/70',
       )}
