@@ -238,6 +238,15 @@ const zodomusEnvFields = z.object({
     .transform((v) => v === 'true' || v === '1' || v === 'yes'),
   /** UTC hour of the daily auto-extension run (after the 03:00 availability reconcile). Default: 4. */
   ZODOMUS_CALENDAR_AUTO_OPEN_HOUR_UTC: z.coerce.number().int().min(0).max(23).default(4),
+  /**
+   * «Открыть» (manual and auto-extension) also sends rooms for sale (POST /availability-multiple, from RentAI
+   * bookings) for the nights it opened. Opening the rate alone leaves a night closed on Booking while its room
+   * count is 0 / not set. Off by default: the count then waits for the nightly availability reconcile.
+   */
+  ZODOMUS_CALENDAR_OPEN_PUSHES_AVAILABILITY: z
+    .enum(['true', 'false', '1', '0', 'yes', 'no'])
+    .default('false')
+    .transform((v) => v === 'true' || v === '1' || v === 'yes'),
   /** After create: read the promotion back and check rooms/rate were applied. Default: true. */
   ZODOMUS_PROMOTIONS_VERIFY: z
     .enum(['true', 'false', '1', '0', 'yes', 'no'])

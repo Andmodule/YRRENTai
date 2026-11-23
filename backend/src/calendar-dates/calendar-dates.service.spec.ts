@@ -8,6 +8,7 @@ import type { PropertyPricingSettingsEntity } from '../pricing/entities/property
 import type { ZodomusService } from '../integrations/zodomus/zodomus.service';
 import type { ZodomusSyncService } from '../integrations/zodomus/zodomus-sync.service';
 import type { ZodomusRatesPushService } from '../integrations/zodomus/zodomus-rates-push.service';
+import type { ZodomusAvailabilityPushService } from '../integrations/zodomus/zodomus-availability-push.service';
 import { CalendarDatesService, type CalendarDatesJob } from './calendar-dates.service';
 import { addDaysYmd, nightKeys } from './calendar-dates.util';
 
@@ -17,7 +18,8 @@ const ROOM = '1102139801';
 const RATE = '39993723';
 const USER: JwtPayload = { sub: 'u1', email: 'a@b.c', role: 'OWNER' };
 
-type Night = { closed: boolean; price: number; booked: number };
+/** `rooms`: rooms for sale; absent = 1, null = not set on Booking (an empty field). */
+type Night = { closed: boolean; price: number; booked: number; rooms?: number | null };
 
 /** A tiny Booking: GET /availability reads it, POST /rates writes it. */
 function fakeBooking(initial: Record<string, Night>) {
@@ -32,7 +34,7 @@ function fakeBooking(initial: Record<string, Night>) {
             const n = state.get(d)!;
             return {
               date: d,
-              availability: '1',
+              availability: n.rooms === undefined ? '1' : n.rooms === null ? '' : String(n.rooms),
               booked: '',
               rates: [{ rateId: RATE, closed: n.closed ? '1' : '0', price: n.price.toFixed(1), booked: String(n.booked) }],
             };
@@ -90,8 +92,17 @@ function setup(opts: {
   const settingsRepo = {
     findOne: jest.fn().mockResolvedValue(opts.minPriceMinor != null ? { minPriceMinor: opts.minPriceMinor } : null),
   } as unknown as Repository<PropertyPricingSettingsEntity>;
-  const svc = new CalendarDatesService(config, zodomus, ratesPush, sync, propertyService, propertyRepo, settingsRepo);
-  return { svc, booking, sync, ratesPush, propertyService };
+  // The nightly-reconcile push: sets 1 room on every night of the window (no bookings in these tests).
+  const pushAvailabilityNow = jest.fn(async (_id: string, o: { dateFromISO: string; dateToISO: string }) => {
+    for (const d of nightKeys(o.dateFromISO.slice(0, 10), o.dateToISO.slice(0, 10))) {
+      const n = booking.state.get(d);
+      if (n) booking.state.set(d, { ...n, rooms: 1 });
+    }
+    return { pushed: true };
+  });
+  const availabilityPush = { pushAvailabilityNow } as unknown as ZodomusAvailabilityPushService;
+  const svc = new CalendarDatesService(config, zodomus, ratesPush, sync, propertyService, propertyRepo, settingsRepo, availabilityPush);
+  return { svc, booking, sync, ratesPush, propertyService, pushAvailabilityNow };
 }
 
 const OPEN = {
@@ -641,5 +652,152 @@ describe('CalendarDatesService — «Автоцены» run', () => {
   it('answers 503 while the dates tool is off', async () => {
     const { svc } = setup({ env: { ZODOMUS_CALENDAR_DATES_ENABLED: false } });
     await expect(svc.runPricesAuto(PROPERTY_ID, prices({ '2026-11-01': 475 }))).rejects.toBeInstanceOf(ServiceUnavailableException);
+  });
+});
+
+describe('CalendarDatesService — «Открыть» also sends rooms for sale', () => {
+  const ON = { ZODOMUS_CALENDAR_OPEN_PUSHES_AVAILABILITY: true };
+  const notSet = (from: string, to: string): Record<string, Night> =>
+    Object.fromEntries(nightKeys(from, to).map((d) => [d, { closed: true, price: 1180, booked: 0, rooms: null }]));
+  const open = (price: number): Night => ({ closed: false, price, booked: 0 });
+  const windows = (m: jest.Mock) =>
+    m.mock.calls.map((c) => [String(c[1].dateFromISO).slice(0, 10), String(c[1].dateToISO).slice(0, 10)]);
+
+  it('flag off (default): rates only, no rooms sent, as before', async () => {
+    const { svc, pushAvailabilityNow } = setup({ nights: notSet('2026-11-01', '2026-11-08') });
+    await svc.start(USER, OPEN);
+    const job = await finished(svc);
+    expect(job.state).toBe('done');
+    expect(pushAvailabilityNow).not.toHaveBeenCalled();
+    expect(job.availability).toBeNull();
+    expect(job.verify).toEqual({ checked: 7, mismatched: [] });
+  });
+
+  it('flag on: one push for the opened nights, through Zodomus at once, even with auto-push off', async () => {
+    const { svc, booking, pushAvailabilityNow } = setup({ nights: notSet('2026-11-01', '2026-11-08'), env: ON });
+    await svc.start(USER, OPEN);
+    const job = await finished(svc);
+    expect(job.state).toBe('done');
+    expect(pushAvailabilityNow).toHaveBeenCalledTimes(1);
+    expect(pushAvailabilityNow).toHaveBeenCalledWith(PROPERTY_ID, {
+      ignoreAutoPushDisable: true,
+      awaitUpstream: true,
+      dateFromISO: '2026-11-01T12:00:00.000Z',
+      dateToISO: '2026-11-08T12:00:00.000Z',
+    });
+    expect(job.availability).toEqual({ ok: true, nights: 7 });
+    expect(job.verify).toEqual({ checked: 7, mismatched: [], noRooms: [] });
+    expect(booking.state.get('2026-11-07')?.rooms).toBe(1);
+  });
+
+  it('rooms go after the rates were accepted, and before the read-back', async () => {
+    const { svc, booking, pushAvailabilityNow } = setup({ nights: notSet('2026-11-01', '2026-11-03'), env: ON });
+    await svc.start(USER, { ...OPEN, dateToExclusive: '2026-11-03' });
+    await finished(svc);
+    const lastRate = Math.max(...booking.setRates.mock.invocationCallOrder);
+    const push = pushAvailabilityNow.mock.invocationCallOrder[0]!;
+    const reads = booking.getAvailability.mock.invocationCallOrder;
+    expect(push).toBeGreaterThan(lastRate);
+    expect(reads[reads.length - 1]!).toBeGreaterThan(push);
+  });
+
+  it('nights already open in between are not part of the push: one push per run of opened nights', async () => {
+    const nights = notSet('2026-11-01', '2026-11-08');
+    nights['2026-11-03'] = open(1180);
+    nights['2026-11-04'] = open(1180);
+    const { svc, pushAvailabilityNow } = setup({ nights, env: ON });
+    await svc.start(USER, { ...OPEN, price: 1180 });
+    const job = await finished(svc);
+    expect(windows(pushAvailabilityNow)).toEqual([
+      ['2026-11-01', '2026-11-03'],
+      ['2026-11-05', '2026-11-08'],
+    ]);
+    expect(job.availability).toEqual({ ok: true, nights: 5 });
+  });
+
+  it('only the nights Booking took: a failed rates request is not followed by rooms for it', async () => {
+    const { svc, booking, pushAvailabilityNow } = setup({ nights: notSet('2026-11-01', '2026-11-08'), env: ON });
+    // 01–05 weekday price, 06–07 weekend price: two requests, the first fails.
+    booking.setRates.mockRejectedValueOnce(new Error('boom'));
+    await svc.start(USER, { ...OPEN, price: 1000, weekendPrice: 1180 });
+    const job = await finished(svc);
+    expect(job.failed).toHaveLength(1);
+    expect(windows(pushAvailabilityNow)).toEqual([['2026-11-06', '2026-11-08']]);
+    expect(job.availability).toEqual({ ok: true, nights: 2 });
+  });
+
+  it('a failed push is reported, the run still finishes and is read back', async () => {
+    const { svc, pushAvailabilityNow } = setup({ nights: notSet('2026-11-01', '2026-11-03'), env: ON });
+    pushAvailabilityNow.mockRejectedValueOnce(new Error('Zodomus 500'));
+    await svc.start(USER, { ...OPEN, dateToExclusive: '2026-11-03' });
+    const job = await finished(svc);
+    expect(job.state).toBe('done');
+    expect(job.availability).toMatchObject({ ok: false, nights: 2 });
+    expect(job.availability?.error).toContain('Zodomus 500');
+    expect(job.verify?.checked).toBe(2);
+  });
+
+  it('a night still at 0 rooms after the push is listed as «no rooms»', async () => {
+    const { svc, booking, pushAvailabilityNow } = setup({ nights: notSet('2026-11-01', '2026-11-03'), env: ON });
+    pushAvailabilityNow.mockImplementationOnce(async () => {
+      booking.state.set('2026-11-01', { ...booking.state.get('2026-11-01')!, rooms: 1 });
+      booking.state.set('2026-11-02', { ...booking.state.get('2026-11-02')!, rooms: 0 });
+      return { pushed: true };
+    });
+    await svc.start(USER, { ...OPEN, dateToExclusive: '2026-11-03' });
+    const job = await finished(svc);
+    expect(job.verify?.noRooms).toEqual(['2026-11-02']);
+  });
+
+  it('«Закрыть» never sends rooms', async () => {
+    const { svc, pushAvailabilityNow } = setup({
+      nights: { '2026-11-01': open(400), '2026-11-02': open(400) },
+      env: ON,
+    });
+    await svc.start(USER, { ...OPEN, action: 'close', dateToExclusive: '2026-11-03' });
+    const job = await finished(svc);
+    expect(job.applied).toEqual({ open: 0, close: 2, price: 0 });
+    expect(pushAvailabilityNow).not.toHaveBeenCalled();
+    expect(job.availability).toBeNull();
+  });
+
+  it('re-pricing open nights never sends rooms', async () => {
+    const { svc, pushAvailabilityNow } = setup({ nights: { '2026-11-01': open(500), '2026-11-02': open(500) }, env: ON });
+    await svc.startPrices(USER, PROPERTY_ID, new Map([['2026-11-01', 520], ['2026-11-02', 520]]));
+    const job = await finished(svc);
+    expect(job.applied).toEqual({ open: 0, close: 0, price: 2 });
+    expect(pushAvailabilityNow).not.toHaveBeenCalled();
+  });
+
+  it('nothing opened (all open already, only re-priced by «Открыть»): no push', async () => {
+    const { svc, pushAvailabilityNow } = setup({ nights: { '2026-11-01': open(500), '2026-11-02': open(500) }, env: ON });
+    await svc.start(USER, { ...OPEN, dateToExclusive: '2026-11-03', price: 600 });
+    const job = await finished(svc);
+    expect(job.applied).toEqual({ open: 0, close: 0, price: 2 });
+    expect(pushAvailabilityNow).not.toHaveBeenCalled();
+  });
+
+  it('auto-extension opening nights sends rooms too, around the «keep closed» night', async () => {
+    const { svc, pushAvailabilityNow } = setup({ nights: notSet('2026-11-01', '2026-11-08'), env: ON });
+    const res = await svc.runAuto(
+      PROPERTY_ID,
+      { action: 'open', dateFrom: '2026-11-01', dateToExclusive: '2026-11-08', price: 1180, onlyClosed: true },
+      { keepClosed: new Set(['2026-11-04']), dryRun: false },
+    );
+    expect(res?.job?.availability).toEqual({ ok: true, nights: 6 });
+    expect(windows(pushAvailabilityNow)).toEqual([
+      ['2026-11-01', '2026-11-04'],
+      ['2026-11-05', '2026-11-08'],
+    ]);
+  });
+
+  it('auto-extension dry run sends nothing', async () => {
+    const { svc, pushAvailabilityNow } = setup({ nights: notSet('2026-11-01', '2026-11-08'), env: ON });
+    await svc.runAuto(
+      PROPERTY_ID,
+      { action: 'open', dateFrom: '2026-11-01', dateToExclusive: '2026-11-08', price: 1180, onlyClosed: true },
+      { keepClosed: new Set(), dryRun: true },
+    );
+    expect(pushAvailabilityNow).not.toHaveBeenCalled();
   });
 });

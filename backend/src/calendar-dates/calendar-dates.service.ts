@@ -17,6 +17,7 @@ import { PropertyService } from '../property/property.service';
 import { PropertyPricingSettingsEntity } from '../pricing/entities/property-pricing-settings.entity';
 import { ZodomusService } from '../integrations/zodomus/zodomus.service';
 import { ZodomusSyncService } from '../integrations/zodomus/zodomus-sync.service';
+import { ZodomusAvailabilityPushService } from '../integrations/zodomus/zodomus-availability-push.service';
 import { ZodomusRatesPushService, type PushTarget } from '../integrations/zodomus/zodomus-rates-push.service';
 import {
   buildRateNameMapFromRoomRates,
@@ -133,7 +134,13 @@ export type CalendarDatesJob = {
   /** Accepted by Booking (null while sending). */
   applied: { open: number; close: number; price: number } | null;
   /** Read back from Booking after the writes. null = not done (yet) or could not be read. */
-  verify: { checked: number; mismatched: string[]; error?: string } | null;
+  verify: { checked: number; mismatched: string[]; error?: string; noRooms?: string[] } | null;
+  /**
+   * «Открыть» (ZODOMUS_CALENDAR_OPEN_PUSHES_AVAILABILITY): rooms for sale sent for the opened nights.
+   * Opening the rate alone leaves a night closed on Booking while its room count is 0 / not set.
+   * null = not sent (flag off, nothing opened, or another action).
+   */
+  availability: { ok: boolean; nights: number; error?: string } | null;
   startedAt: string;
   finishedAt: string | null;
 };
@@ -177,10 +184,19 @@ export class CalendarDatesService {
     private readonly propertyRepo: Repository<PropertyEntity>,
     @InjectRepository(PropertyPricingSettingsEntity)
     private readonly pricingSettingsRepo: Repository<PropertyPricingSettingsEntity>,
+    private readonly availabilityPush: ZodomusAvailabilityPushService,
   ) {}
 
   get enabled(): boolean {
     return this.zodomus.isEnabled && toBool(this.config.get('ZODOMUS_CALENDAR_DATES_ENABLED'), false);
+  }
+
+  /**
+   * «Открыть» also sends the room count (rooms for sale, from RentAI bookings) for the opened nights.
+   * Off by default: without it the count waits for the nightly availability reconcile.
+   */
+  get openPushesAvailability(): boolean {
+    return toBool(this.config.get('ZODOMUS_CALENDAR_OPEN_PUSHES_AVAILABILITY'), false);
   }
 
   /** The channel runs write to (Booking) — what Airbnb prices follow. */
@@ -663,6 +679,7 @@ export class CalendarDatesService {
       changes: countChanges(plan.changes),
       applied: null,
       verify: null,
+      availability: null,
       startedAt: new Date().toISOString(),
       finishedAt: null,
     };
@@ -714,6 +731,10 @@ export class CalendarDatesService {
     const applied = changes.filter((c) => inSent(c.date));
     job.applied = countChanges(applied);
     this.dropWindowCache(ctx.property.id);
+    const opened = applied.filter((c) => !c.closed && c.fromClosed).sort((a, b) => a.date.localeCompare(b.date));
+    if (opened.length > 0 && job.action !== 'price' && this.openPushesAvailability) {
+      job.availability = await this.pushRoomsForOpened(ctx, opened);
+    }
     if (applied.length > 0) {
       this.zodomusSync.invalidateCalendarOverlay(ctx.property.id);
       job.phase = 'verifying';
@@ -723,6 +744,10 @@ export class CalendarDatesService {
         const after = await this.readNights(ctx, first, addDaysYmd(last, 1), true);
         const mismatched = findMismatches(applied, after, { priceOnly: job.action === 'price' });
         job.verify = { checked: applied.length, mismatched };
+        if (job.availability) {
+          // Rate open but no room for sale: Booking still shows the night closed.
+          job.verify.noRooms = opened.filter((c) => after.get(c.date)?.availability === 0).map((c) => c.date);
+        }
       } catch (e) {
         job.verify = { checked: 0, mismatched: [], error: formatZodomusHttpException(e) };
       }
@@ -741,8 +766,42 @@ export class CalendarDatesService {
     job.finishedAt = new Date().toISOString();
     this.logger.log(
       `calendar dates ${job.source} ${job.action} property=${ctx.property.id} ${job.dateFrom}→${job.dateToExclusive}: ` +
-        `${job.state}, sent ${job.sent}/${job.total}, mismatched ${job.verify?.mismatched.length ?? '—'}`,
+        `${job.state}, sent ${job.sent}/${job.total}, mismatched ${job.verify?.mismatched.length ?? '—'}` +
+        (job.availability ? `, rooms ${job.availability.ok ? 'sent' : 'FAILED'} for ${job.availability.nights}` : ''),
     );
+  }
+
+  /**
+   * Rooms for sale for the nights a run opened, one push per run of consecutive nights (nights in
+   * between were not opened and stay as they are). The count comes from RentAI bookings — the same
+   * computation as the nightly reconcile, so a booked night still gets 0.
+   */
+  private async pushRoomsForOpened(
+    ctx: Ctx,
+    opened: readonly NightChange[],
+  ): Promise<{ ok: boolean; nights: number; error?: string }> {
+    const runs: { from: string; toExclusive: string }[] = [];
+    for (const c of opened) {
+      const last = runs[runs.length - 1];
+      if (last && last.toExclusive === c.date) last.toExclusive = addDaysYmd(c.date, 1);
+      else runs.push({ from: c.date, toExclusive: addDaysYmd(c.date, 1) });
+    }
+    try {
+      for (const r of runs) {
+        // Noon UTC stays on the same calendar day in any European zone.
+        await this.availabilityPush.pushAvailabilityNow(ctx.property.id, {
+          ignoreAutoPushDisable: true,
+          awaitUpstream: true,
+          dateFromISO: `${r.from}T12:00:00.000Z`,
+          dateToISO: `${r.toExclusive}T12:00:00.000Z`,
+        });
+      }
+      return { ok: true, nights: opened.length };
+    } catch (e) {
+      const detail = formatZodomusHttpException(e);
+      this.logger.warn(`calendar dates open property=${ctx.property.id}: rooms for sale not sent: ${detail}`);
+      return { ok: false, nights: opened.length, error: detail };
+    }
   }
 }
 
