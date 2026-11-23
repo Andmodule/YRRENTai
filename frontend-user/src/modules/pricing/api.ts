@@ -51,6 +51,35 @@ export interface BasePriceOverview {
   bookingSend: BookingSendBlock;
   /** «Автоцены»: yyyy-MM-dd → percent the rule put on the base price of the night (stored only when it really sends). */
   auto?: Record<string, number>;
+  /** «Скидка» on (ZODOMUS_PROMOTIONS_DISCOUNTS_ENABLED); absent on an older server = off. */
+  discountsEnabled?: boolean;
+  /** Discounts touching [from, to]. */
+  discounts?: PriceDiscount[];
+  /** Night → the biggest discount on that channel (the price sent is lowered by it). */
+  discountPct?: Record<GuestPriceChannel, Record<string, number>>;
+}
+
+/** «Скидка» on top of the base price: the base price stays, the channel prices of the nights go down by `pct`. */
+export interface PriceDiscount {
+  id: string;
+  /** yyyy-MM-dd, first and last night (inclusive). */
+  from: string;
+  to: string;
+  pct: number;
+  channels: GuestPriceChannel[];
+  name: string | null;
+}
+
+export type PriceDiscountInput = { from: string; to: string; pct: number; channels: GuestPriceChannel[]; name?: string | null };
+
+export interface PriceDiscountCreated {
+  discount: PriceDiscount;
+  /** Nights without a base price that took Booking's open price as their base. */
+  filledFromBooking: number;
+  /** Nights with no price anywhere: the discount waits there until a base price is set. */
+  noPrice: string[];
+  /** Nights where the discount stops at the minimum price. */
+  atMin: string[];
 }
 
 export type GuestPriceChannel = 'booking' | 'airbnb';
@@ -496,6 +525,10 @@ export const pricingApi = {
       unwrap<CalendarDatesPreview & { fingerprint: string }>(
         apiClient.post(`/pricing/base-prices/${propertyId}/booking/preview`, input),
       ),
+    createDiscount: (propertyId: string, input: PriceDiscountInput) =>
+      unwrap<PriceDiscountCreated>(apiClient.post(`/pricing/base-prices/${propertyId}/discounts`, input)),
+    deleteDiscount: (propertyId: string, id: string) =>
+      unwrap<{ from: string; to: string }>(apiClient.delete(`/pricing/base-prices/${propertyId}/discounts/${id}`)),
     /** `fingerprint` from the preview: the server refuses (409) when the prices changed since. */
     sendBooking: (propertyId: string, input: { from: string; to: string; fingerprint: string }) =>
       unwrap<CalendarDatesJob>(apiClient.post(`/pricing/base-prices/${propertyId}/booking/send`, input)),

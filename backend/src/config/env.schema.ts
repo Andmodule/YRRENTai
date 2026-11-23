@@ -181,6 +181,15 @@ const zodomusEnvFields = z.object({
     .default('false')
     .transform((v) => v === 'true' || v === '1' || v === 'yes'),
   /**
+   * «Скидка» on top of the base price: lowers the Booking / Airbnb price of the chosen nights by N % without
+   * a Booking promotion (Basic stays separate). Needs ZODOMUS_PROMOTIONS_BASE_PRICE_ENABLED=true and the
+   * migration 1779000000000-pricing-discounts. While off the API answers 503 and the table is never read.
+   */
+  ZODOMUS_PROMOTIONS_DISCOUNTS_ENABLED: z
+    .enum(['true', 'false', '1', '0', 'yes', 'no'])
+    .default('false')
+    .transform((v) => v === 'true' || v === '1' || v === 'yes'),
+  /**
    * «Только показывать» for «Автоцены» (default true): runs write the journal of what they would do, nothing
    * reaches Booking and no adjustment is stored. Sending also needs ZODOMUS_PROMOTIONS_DRY_RUN=false.
    */

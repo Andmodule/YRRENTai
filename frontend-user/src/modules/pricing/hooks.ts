@@ -6,6 +6,7 @@ import {
   pricingApi,
   type AutoPriceSettingsInput,
   type BasePriceRangeInput,
+  PriceDiscountInput,
   type ChannelProfileInput,
   type GuestPriceChannel,
   type ObservationInput,
@@ -258,7 +259,15 @@ export function useBasePriceMutations(propertyId: string) {
     mutationFn: (input: { from: string; to: string; fingerprint: string }) => pricingApi.basePrice.sendBooking(propertyId, input),
     onSuccess: (job) => qc.setQueryData(calendarDatesKeys.job(job.propertyId), job),
   });
-  return { setRange, fillFromBooking, saveChannel, previewBooking, sendBooking };
+  const createDiscount = useMutation({
+    mutationFn: (input: PriceDiscountInput) => pricingApi.basePrice.createDiscount(propertyId, input),
+    onSuccess: refresh,
+  });
+  const deleteDiscount = useMutation({
+    mutationFn: (id: string) => pricingApi.basePrice.deleteDiscount(propertyId, id),
+    onSuccess: refresh,
+  });
+  return { setRange, fillFromBooking, saveChannel, previewBooking, sendBooking, createDiscount, deleteDiscount };
 }
 
 export function useRulesMutations() {

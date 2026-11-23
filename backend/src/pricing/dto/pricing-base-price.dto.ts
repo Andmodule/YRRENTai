@@ -3,6 +3,7 @@ import { z } from 'zod';
 // The strict check: «2026-02-30» is refused here, not by the database.
 import { isYmd } from '../../calendar-dates/calendar-dates.util';
 import { MARKUP_MAX, MARKUP_MIN } from '../base-price.util';
+import { DISCOUNT_CHANNELS, DISCOUNT_PCT_MAX, DISCOUNT_PCT_MIN } from '../discount.util';
 
 const ymd = z.string().refine(isYmd, 'Дата в формате yyyy-MM-dd');
 const price = z.coerce.number().positive().max(1_000_000);
@@ -48,3 +49,21 @@ export const bookingSendConfirmSchema = z
   .refine((v) => v.from <= v.to, { message: '«С» позже «по»', path: ['to'] });
 
 export class BookingSendConfirmDto extends createZodDto(bookingSendConfirmSchema) {}
+
+/** «Скидка» on the nights [from, to] (inclusive), on the chosen channels. */
+export const discountCreateSchema = z
+  .object({
+    from: ymd,
+    to: ymd,
+    pct: z.coerce.number().int().min(DISCOUNT_PCT_MIN).max(DISCOUNT_PCT_MAX),
+    channels: z
+      .array(z.enum(DISCOUNT_CHANNELS))
+      .min(1, 'Выберите площадку')
+      .max(DISCOUNT_CHANNELS.length)
+      .refine((a) => new Set(a).size === a.length, 'Площадка указана дважды'),
+    name: z.string().trim().max(80).nullable().optional(),
+  })
+  .strict()
+  .refine((v) => v.from <= v.to, { message: '«С» позже «по»', path: ['to'] });
+
+export class DiscountCreateDto extends createZodDto(discountCreateSchema) {}

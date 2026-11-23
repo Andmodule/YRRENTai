@@ -7,6 +7,7 @@ import { PropertyChannelListingEntity } from '../property/entities/property-chan
 import { OtaPlatformEntity } from '../property/entities/ota-platform.entity';
 import { PricePromotionEntity } from '../pricing/entities/price-promotion.entity';
 import { PropertyBasePriceEntity } from '../pricing/entities/property-base-price.entity';
+import { PropertyPriceDiscountEntity } from '../pricing/entities/property-price-discount.entity';
 import { PropertyChannelPricingEntity } from '../pricing/entities/property-channel-pricing.entity';
 import { PropertyChannelNightPriceEntity } from '../pricing/entities/property-channel-night-price.entity';
 import { ZodomusAirbnbListingEntity } from './airbnb-listing.entity';
@@ -26,6 +27,7 @@ import { AirbnbCalendarController } from './airbnb-calendar.controller';
       OtaPlatformEntity,
       PricePromotionEntity,
       PropertyBasePriceEntity,
+      PropertyPriceDiscountEntity,
       PropertyChannelPricingEntity,
       PropertyChannelNightPriceEntity,
     ]),

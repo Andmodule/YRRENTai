@@ -43,3 +43,34 @@ describe('AirbnbOwnPriceService', () => {
     expect(await setup(true, { fail: true }).svc.prices(PID, '2027-02-01', '2027-02-04', null)).toBeNull();
   });
 });
+
+describe('AirbnbOwnPriceService — «Скидка»', () => {
+  const rows = [{ dateFrom: '2027-02-01', dateTo: '2027-02-01', pct: 10, channels: ['airbnb'] }, { dateFrom: '2027-02-02', dateTo: '2027-02-02', pct: 50, channels: ['booking'] }];
+  function make(env: Record<string, unknown>, discounts?: { find: jest.Mock }) {
+    const config = { get: jest.fn((k: string) => env[k]) };
+    const base = { find: jest.fn(async () => [{ date: '2027-02-01', priceMinor: 38500 }, { date: '2027-02-02', priceMinor: 40000 }]) };
+    const typed = { find: jest.fn(async () => []) };
+    const channels = { findOne: jest.fn(async () => ({ markupPct: -30 })) };
+    return new AirbnbOwnPriceService(config as never, base as never, channels as never, typed as never, discounts as never);
+  }
+  const ON = { ZODOMUS_AIRBNB_PRICE_FROM_BASE: true, ZODOMUS_PROMOTIONS_DISCOUNTS_ENABLED: true };
+
+  it('on: the Airbnb discount lowers the own price; a Booking-only one does not', async () => {
+    const d = { find: jest.fn(async () => rows) };
+    // 385 −30 % = 270 → −10 % = 243; 400 −30 % = 280
+    expect(await make(ON, d).prices(PID, '2027-02-01', '2027-02-03', null)).toEqual(new Map([['2027-02-01', 243], ['2027-02-02', 280]]));
+  });
+
+  it('discount flag off or no table repo: discounts never read', async () => {
+    const d = { find: jest.fn(async () => rows) };
+    expect(await make({ ZODOMUS_AIRBNB_PRICE_FROM_BASE: true }, d).prices(PID, '2027-02-01', '2027-02-02', null)).toEqual(new Map([['2027-02-01', 270]]));
+    expect(d.find).not.toHaveBeenCalled();
+    expect(await make(ON).prices(PID, '2027-02-01', '2027-02-02', null)).toEqual(new Map([['2027-02-01', 270]]));
+  });
+
+  it('discounts unreadable: prices go out without them (logged), not null', async () => {
+    const d = { find: jest.fn(async () => { throw new Error('relation does not exist'); }) };
+    expect(await make(ON, d).prices(PID, '2027-02-01', '2027-02-02', null)).toEqual(new Map([['2027-02-01', 270]]));
+  });
+});
+
