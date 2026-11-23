@@ -15,8 +15,15 @@
 - Ночи без базовой цены: при создании скидки берут цену Booking, если ночь открыта на продажу (как «Заполнить из
   Booking»; на Booking ничего не меняется). Ночи без цены нигде — в ответе списком, скидка начнёт действовать, когда
   у них появится базовая.
-- Airbnb получает цену сам (правило «Airbnb от базовой», `ZODOMUS_AIRBNB_PRICE_FROM_BASE`). Booking — только
-  кнопкой «Отправить в Booking» панели «Базовая цена» (после сохранения скидки панель сразу показывает проверку).
+- Airbnb получает цену сам (правило «Airbnb от базовой», `ZODOMUS_AIRBNB_PRICE_FROM_BASE`). Если правило
+  выключено, Airbnb считается от цены Booking: скидка Airbnb на него не действует, а скидка Booking доходит до
+  Airbnb после отправки в Booking (панель так и пишет и по умолчанию предлагает только Booking).
+- Booking — кнопкой «Отправить в Booking» панели «Базовая цена» (после сохранения скидки панель сразу показывает
+  проверку). Исключение: ночи с «Автоценами» — утренний запуск сам отправляет их цену в Booking, уже со скидкой
+  (и без неё после «Убрать»).
+- Базовая, взятая из Booking при создании скидки, пересчитывается обратно через % Booking — цена Booking ночи до
+  скидки остаётся прежней. Для Airbnb такие ночи дальше считаются от базовой.
+- В клетке базовая не меняется, рядом метка «−10%»; сниженные цены — в строках B и A.
 - Гость не видит зачёркнутой цены и плашки — это не акция Booking. Видимая скидка на Booking — только Basic.
 
 ## Включить
@@ -58,7 +65,7 @@ INSERT INTO "migrations" ("timestamp", "name") VALUES (1779000000000, 'PricingDi
 Код: `backend/src/pricing/discount.util.ts` (формула; фронт — `discountedPrice` в
 `frontend-user/src/modules/pricing/lib/guest-price.ts`), `pricing-base-price.service.ts` (`bookingTargets`,
 `createDiscount`, `deleteDiscount`), `airbnb/airbnb-own-price.service.ts` + `ownAirbnbPrices`. Фронт:
-`calendar/property-month/DiscountSection.tsx`, клетка — `MonthGrid.tsx` («~~300~~ 270 −10%»).
+`calendar/property-month/DiscountSection.tsx`, клетка — `MonthGrid.tsx` (метка «−10%» у базовой).
 
 ## Не сделано
 

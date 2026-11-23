@@ -29,7 +29,7 @@ describe('discount.util', () => {
     const t = new Map([['a', 300], ['b', 250], ['c', 400]]);
     const atMin = applyDiscounts(t, new Map([['a', 10], ['b', 10], ['c', 10], ['z', 10]]), 280);
     expect([...t]).toEqual([['a', 280], ['b', 250], ['c', 360]]);
-    expect(atMin).toEqual(['a', 'b']);
+    expect(atMin).toEqual(['a']); // b was under the minimum before the discount
     const u = new Map([['a', 300]]);
     expect(applyDiscounts(u, new Map([['a', 10]]), null)).toEqual([]);
     expect(u.get('a')).toBe(270);

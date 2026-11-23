@@ -53,7 +53,14 @@ describe('AirbnbOwnPriceService — «Скидка»', () => {
     const channels = { findOne: jest.fn(async () => ({ markupPct: -30 })) };
     return new AirbnbOwnPriceService(config as never, base as never, channels as never, typed as never, discounts as never);
   }
-  const ON = { ZODOMUS_AIRBNB_PRICE_FROM_BASE: true, ZODOMUS_PROMOTIONS_DISCOUNTS_ENABLED: true };
+  const ON = {
+    ZODOMUS_AIRBNB_PRICE_FROM_BASE: true,
+    ZODOMUS_ENABLED: true,
+    ZODOMUS_PROMOTIONS_ENABLED: true,
+    ZODOMUS_PROMOTIONS_GUEST_PRICE_ENABLED: true,
+    ZODOMUS_PROMOTIONS_BASE_PRICE_ENABLED: true,
+    ZODOMUS_PROMOTIONS_DISCOUNTS_ENABLED: true,
+  };
 
   it('on: the Airbnb discount lowers the own price; a Booking-only one does not', async () => {
     const d = { find: jest.fn(async () => rows) };
@@ -66,6 +73,14 @@ describe('AirbnbOwnPriceService — «Скидка»', () => {
     expect(await make({ ZODOMUS_AIRBNB_PRICE_FROM_BASE: true }, d).prices(PID, '2027-02-01', '2027-02-02', null)).toEqual(new Map([['2027-02-01', 270]]));
     expect(d.find).not.toHaveBeenCalled();
     expect(await make(ON).prices(PID, '2027-02-01', '2027-02-02', null)).toEqual(new Map([['2027-02-01', 270]]));
+  });
+
+  it('the discount switch alone is not enough: the base price (or promotions) off → discounts not applied', async () => {
+    for (const off of ['ZODOMUS_PROMOTIONS_BASE_PRICE_ENABLED', 'ZODOMUS_PROMOTIONS_ENABLED', 'ZODOMUS_PROMOTIONS_GUEST_PRICE_ENABLED', 'ZODOMUS_ENABLED']) {
+      const d = { find: jest.fn(async () => rows) };
+      expect(await make({ ...ON, [off]: false }, d).prices(PID, '2027-02-01', '2027-02-02', null)).toEqual(new Map([['2027-02-01', 270]]));
+      expect(d.find).not.toHaveBeenCalled();
+    }
   });
 
   it('discounts unreadable: prices go out without them (logged), not null', async () => {

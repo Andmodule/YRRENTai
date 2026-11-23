@@ -373,7 +373,7 @@ export function discountedPrice(
 ): { price: number; atMin: boolean } {
   if (!pct || !(pct > 0)) return { price, atMin: false };
   const lowered = Math.round((price * (100 - pct)) / 100);
-  if (minPrice != null && minPrice > 0 && lowered < minPrice) return { price: price < minPrice ? price : minPrice, atMin: true };
+  if (minPrice != null && minPrice > 0 && lowered < minPrice) return price < minPrice ? { price, atMin: false } : { price: minPrice, atMin: true };
   return { price: lowered, atMin: false };
 }
 

@@ -32,6 +32,7 @@ import type { BasePriceRangeDto, BookingSendConfirmDto, BookingSendDto, ChannelP
 import { PropertyPriceDiscountEntity } from './entities/property-price-discount.entity';
 import { applyDiscounts, discountPctByNight, type DiscountChannel, type DiscountSpan } from './discount.util';
 import { AIRBNB_OWN_PRICES_CHANGED, type AirbnbOwnPricesChanged } from '../airbnb/airbnb-own-price.service';
+import { ownAirbnbPrices } from '../airbnb/airbnb-calendar.util';
 
 /** Longest range read, set or sent at once (a year, like the availability horizon). */
 export const BASE_PRICE_MAX_RANGE_DAYS = 366;
@@ -523,50 +524,71 @@ export class PricingBasePriceService {
       ),
     );
 
-    // Nights without a base: Booking's open price becomes their base (only what Booking really sells).
+    // Airbnb takes its price by itself: told at once, whatever happens below.
+    if (channels.includes('airbnb')) this.airbnbPricesChanged(property.id, from, to);
+
+    // Nights without a base: Booking's open price becomes their base (only what Booking really sells), turned back
+    // through the Booking markup so the Booking price of the night stays what it is before the discount.
     let filledFromBooking = 0;
-    const existing = await this.tables(() => this.baseRepo.find({ where: { propertyId: property.id, date: Between(from, to) } }));
-    const has = new Set(existing.map((b) => b.date));
+    const has = new Set<string>();
     const nights: string[] = [];
     for (let d = from; d <= to; d = addDaysYmd(d, 1)) nights.push(d);
-    if (nights.some((d) => !has.has(d)) && this.dates.enabled && this.sync.externalIdOf(property)) {
-      try {
-        const open = await this.dates.readOpenRatePrices(user, property.id, from, addDaysYmd(to, 1));
+    try {
+      const existing = await this.baseRepo.find({ where: { propertyId: property.id, date: Between(from, to) } });
+      for (const b of existing) has.add(b.date);
+      if (nights.some((d) => !has.has(d)) && this.dates.enabled && this.sync.externalIdOf(property)) {
+        const [open, markup] = await Promise.all([
+          this.dates.readOpenRatePrices(user, property.id, from, addDaysYmd(to, 1)),
+          this.bookingMarkup(property.id),
+        ]);
         const rows = [...open]
           .filter(([date, price]) => !has.has(date) && price > 0)
           .sort(([a], [b]) => a.localeCompare(b))
-          .map(([date, price]) => ({ propertyId: property.id, date, priceMinor: toMinor(price) }));
+          .map(([date, price]) => ({
+            propertyId: property.id,
+            date,
+            priceMinor: toMinor(markup ? Math.round(((price * 100) / (100 + markup)) * 100) / 100 : price),
+          }));
         if (rows.length > 0) {
-          await this.tables(() =>
-            this.baseRepo.createQueryBuilder().insert().into(PropertyBasePriceEntity).values(rows).orIgnore().execute(),
-          );
+          await this.baseRepo.createQueryBuilder().insert().into(PropertyBasePriceEntity).values(rows).orIgnore().execute();
           for (const r of rows) has.add(r.date);
           filledFromBooking = rows.length;
+          // These nights now go to Airbnb from the base too (own-price rule).
+          if (!channels.includes('airbnb')) this.airbnbPricesChanged(property.id, rows[0]!.date, rows[rows.length - 1]!.date);
         }
-      } catch (e) {
-        // The discount is saved; the nights stay without a base and are listed below.
-        this.logger.warn(`discount ${row.id}: Booking prices unreadable: ${e instanceof Error ? e.message : String(e)}`);
       }
+    } catch (e) {
+      // The discount is saved; nights without a base stay so and are listed below.
+      this.logger.warn(`discount ${row.id}: base prices not filled from Booking: ${e instanceof Error ? e.message : String(e)}`);
     }
 
-    // No base and no typed price on any chosen channel: nothing to lower there yet.
-    const typed = await this.nightPriceRepo.find({ where: { propertyId: property.id, date: Between(from, to) } });
-    const typedOn = new Set(typed.filter((t) => channels.includes(t.channel as DiscountChannel) && t.priceMinor > 0).map((t) => t.date));
-    const noPrice = nights.filter((d) => !has.has(d) && !typedOn.has(d));
-
+    // What to tell the person — best effort: the discount exists whatever fails here (no 5xx → no duplicate on retry).
+    let noPrice: string[] = [];
     const atMin = new Set<string>();
-    if (channels.includes('booking')) {
-      for (const d of (await this.bookingTargetsDetailed(property.id, from, to)).atMin) atMin.add(d);
+    try {
+      // A chosen channel with neither a base nor its own typed price has nothing to lower on that night.
+      const typed = await this.nightPriceRepo.find({ where: { propertyId: property.id, date: Between(from, to) } });
+      const typedBy: Record<DiscountChannel, Set<string>> = { booking: new Set(), airbnb: new Set() };
+      for (const t of typed) {
+        if (t.priceMinor > 0 && (t.channel === 'booking' || t.channel === 'airbnb')) typedBy[t.channel].add(t.date);
+      }
+      noPrice = nights.filter((d) => !has.has(d) && channels.some((c) => !typedBy[c].has(d)));
+      if (channels.includes('booking')) {
+        for (const d of (await this.bookingTargetsDetailed(property.id, from, to)).atMin) atMin.add(d);
+      }
+      if (channels.includes('airbnb')) {
+        for (const d of await this.airbnbAtMin(property.id, from, to)) atMin.add(d);
+      }
+    } catch (e) {
+      this.logger.warn(`discount ${row.id}: report not built: ${e instanceof Error ? e.message : String(e)}`);
     }
-    if (channels.includes('airbnb')) {
-      for (const d of await this.airbnbAtMin(property.id, from, to)) atMin.add(d);
-    }
-
-    if (channels.includes('airbnb') || filledFromBooking > 0) this.airbnbPricesChanged(property.id, from, to);
     return { discount: discountView(row), filledFromBooking, noPrice, atMin: [...atMin].sort() };
   }
 
-  /** Airbnb nights of [from, to] whose discounted own price stops at the minimum (base × Airbnb markup or typed). */
+  /**
+   * Airbnb nights of [from, to] where the discount stops at the minimum — computed as RentAI sends Airbnb
+   * (`ownAirbnbPrices`: whole złoty first, then the discount, the minimum rounded up).
+   */
   private async airbnbAtMin(propertyId: string, from: string, to: string): Promise<string[]> {
     const [base, typed, rule, spans, min] = await Promise.all([
       this.baseRepo.find({ where: { propertyId, date: Between(from, to) } }),
@@ -576,15 +598,23 @@ export class PricingBasePriceService {
       this.dates.minPriceOf(propertyId),
     ]);
     if (min == null || !(min > 0)) return [];
+    const floor = Math.ceil(min);
     const dates: string[] = [];
     for (let d = from; d <= to; d = addDaysYmd(d, 1)) dates.push(d);
-    const targets = channelTargets(
+    const own = ownAirbnbPrices(
       dates,
-      Object.fromEntries(base.map((b) => [b.date, b.priceMinor / 100])),
-      Object.fromEntries(typed.map((t) => [t.date, t.priceMinor / 100])),
+      new Map(base.map((b) => [b.date, b.priceMinor / 100])),
+      new Map(typed.map((t) => [t.date, t.priceMinor / 100])),
       rule?.markupPct ?? 0,
+      null,
     );
-    return applyDiscounts(targets, discountPctByNight(spans, 'airbnb', from, to, addDaysYmd), min);
+    const pcts = discountPctByNight(spans, 'airbnb', from, to, addDaysYmd);
+    const out: string[] = [];
+    for (const [d, p] of own) {
+      const off = pcts.get(d);
+      if (off && p >= floor && Math.round((p * (100 - off)) / 100) < floor) out.push(d);
+    }
+    return out;
   }
 
   /** Removes the discount: its nights go back to the current base price. */

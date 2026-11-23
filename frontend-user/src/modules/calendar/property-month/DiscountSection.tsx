@@ -31,6 +31,7 @@ export function DiscountSection({
   from,
   to,
   data,
+  airbnbMode,
   canCheck,
   disabled,
   onChanged,
@@ -40,6 +41,8 @@ export function DiscountSection({
   from: string;
   to: string;
   data: BasePriceOverview;
+  /** How Airbnb takes its price (see BasePricePanel). */
+  airbnbMode: 'base' | 'booking' | 'off';
   /** «Отправить в Booking» can be checked now (pilot, not dry run, no run going). */
   canCheck: boolean;
   /** A Booking run is going. */
@@ -50,7 +53,8 @@ export function DiscountSection({
   const t = useTranslations('calendar.propertyMonth.basePrice.discount');
   const base = useBasePriceMutations(propertyId);
   const [pct, setPct] = useState('');
-  const [channels, setChannels] = useState<Set<GuestPriceChannel>>(() => new Set(CHANNELS));
+  // Airbnb from Booking: an Airbnb discount would not reach it (the Booking one does, through the Booking price).
+  const [channels, setChannels] = useState<Set<GuestPriceChannel>>(() => new Set(airbnbMode === 'base' ? CHANNELS : ['booking']));
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
 
@@ -97,7 +101,7 @@ export function DiscountSection({
     base.deleteDiscount.mutate(d.id, {
       onSuccess: () => {
         const check = d.channels.includes('booking') && canCheck;
-        toast.success(check ? t('removedChecking') : t('removed'));
+        toast.success(check ? t('removedChecking') : d.channels.includes('booking') ? t('removedRentai') : t('removed'));
         onChanged(check);
       },
       onError: fail,
@@ -178,7 +182,8 @@ export function DiscountSection({
           </div>
         </div>
         <p className="text-[11px] leading-snug text-muted-foreground">{t('hint')}</p>
-        <p className="text-[11px] leading-snug text-muted-foreground">{t('airbnbNote')}</p>
+        <p className="text-[11px] leading-snug text-muted-foreground">{t(`airbnbNote_${airbnbMode}`)}</p>
+        <p className="text-[11px] leading-snug text-muted-foreground">{t('autoNote')}</p>
         {error ? <p className="text-xs text-red-600 dark:text-red-400">{error}</p> : null}
         <Button type="submit" size="sm" variant="outline" disabled={busy}>
           {base.createDiscount.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : null}

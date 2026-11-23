@@ -45,6 +45,7 @@ export function BasePricePanel({
   monthTo,
   today,
   data,
+  airbnbMode,
   typed,
   currency,
   minPrice,
@@ -58,6 +59,8 @@ export function BasePricePanel({
   monthTo: string;
   today: string;
   data: BasePriceOverview;
+  /** How Airbnb takes its price: from the base (a discount reaches it), from Booking, or not connected. */
+  airbnbMode: 'base' | 'booking' | 'off';
   /** Prices typed per night and channel (from «Цена для гостя»). */
   typed: Record<GuestPriceChannel, Record<string, number>>;
   currency: string | null;
@@ -266,6 +269,7 @@ export function BasePricePanel({
           from={from}
           to={to}
           data={data}
+          airbnbMode={airbnbMode}
           canCheck={canCheck}
           disabled={running}
           onChanged={(checkBooking) => (checkBooking ? check(true) : setPreview(null))}

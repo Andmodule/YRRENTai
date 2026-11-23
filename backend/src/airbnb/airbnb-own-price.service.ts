@@ -43,7 +43,14 @@ export class AirbnbOwnPriceService {
 
   /** «Скидка» (ZODOMUS_PROMOTIONS_DISCOUNTS_ENABLED) lowers the own Airbnb price; off — the table is never read. */
   private get discountsOn(): boolean {
-    return Boolean(this.discounts) && toBool(this.config.get('ZODOMUS_PROMOTIONS_DISCOUNTS_ENABLED'));
+    // The same switches as PricingConfig.flags.discounts: a discount the calendar cannot show (and nobody could
+    // remove) must not reach Airbnb either.
+    return (
+      Boolean(this.discounts) &&
+      ['ZODOMUS_ENABLED', 'ZODOMUS_PROMOTIONS_ENABLED', 'ZODOMUS_PROMOTIONS_GUEST_PRICE_ENABLED', 'ZODOMUS_PROMOTIONS_BASE_PRICE_ENABLED', 'ZODOMUS_PROMOTIONS_DISCOUNTS_ENABLED'].every(
+        (k) => toBool(this.config.get(k)),
+      )
+    );
   }
 
   /** Night → biggest Airbnb discount of [from, last]; empty when off or unreadable (logged: prices go undiscounted). */

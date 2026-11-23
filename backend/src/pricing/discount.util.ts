@@ -61,8 +61,10 @@ export function applyDiscounts(
     if (price == null || !(price > 0)) continue;
     const lowered = discountedPrice(price, pct);
     if (minPrice != null && minPrice > 0 && lowered < minPrice) {
-      // Already under the minimum before the discount: left as it was (the send skips such nights anyway).
-      targets.set(date, price < minPrice ? price : minPrice);
+      // Already under the minimum before the discount: left as it was (the send skips such nights anyway) and not
+      // reported — the discount did not stop there, the night was under the minimum already.
+      if (price < minPrice) continue;
+      targets.set(date, minPrice);
       atMin.push(date);
     } else {
       targets.set(date, lowered);

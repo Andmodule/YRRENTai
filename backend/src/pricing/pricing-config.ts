@@ -118,7 +118,7 @@ export class PricingConfig {
     };
     if (this.flags.enabled) {
       this.logger.log(
-        `Booking promotions ENABLED — dryRun=${this.flags.dryRun}, allowlist=${this.flags.allowlist.size || 'all'}, channel=${this.flags.channelId}, autoRules=${this.flags.autoRules}, occupancy=${this.flags.occupancy}, guestPrice=${this.flags.guestPrice}, basePrice=${this.flags.basePrice}, autoPrice=${this.flags.autoPrice} (dryRun=${this.flags.autoPriceDryRun})`,
+        `Booking promotions ENABLED — dryRun=${this.flags.dryRun}, allowlist=${this.flags.allowlist.size || 'all'}, channel=${this.flags.channelId}, autoRules=${this.flags.autoRules}, occupancy=${this.flags.occupancy}, guestPrice=${this.flags.guestPrice}, basePrice=${this.flags.basePrice}, autoPrice=${this.flags.autoPrice} (dryRun=${this.flags.autoPriceDryRun}), discounts=${this.flags.discounts}`,
       );
     }
   }

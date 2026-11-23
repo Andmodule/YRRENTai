@@ -645,9 +645,9 @@ describe('PricingBasePriceService — «Скидка» on top of the base price'
   it('never below the minimum: the night gets the minimum; a price already under it stays as it was', async () => {
     const s = setup({ base, env: ON, minPrice: 280, typed: [{ date: '2027-02-02', priceMinor: 25000 }], discounts: [disc(10, ['booking'])] });
     const r = await s.svc.bookingTargetsDetailed(PROP, '2027-02-01', '2027-02-03');
-    // 300 → 270 < 280 → 280; typed 250 (already < 280) stays 250; 284 → 256 < 280 → 280
+    // 300 → 270 < 280 → 280; typed 250 (already < 280) stays 250, not «stopped by the discount»; 284 → 256 → 280
     expect([...r.targets]).toEqual([['2027-02-01', 280], ['2027-02-02', 250], ['2027-02-03', 280]]);
-    expect(r.atMin).toEqual(['2027-02-01', '2027-02-02', '2027-02-03']);
+    expect(r.atMin).toEqual(['2027-02-01', '2027-02-03']);
   });
 
   it('on top of «Автоцены»: the rule moves the base, the discount lowers the result', async () => {
@@ -703,10 +703,48 @@ describe('PricingBasePriceService — «Скидка» on top of the base price'
     expect(s.events.emit).toHaveBeenCalledWith(EVENT, { propertyId: PROP, from: '2027-02-01', to: '2027-02-05' });
   });
 
-  it('create: a night with a typed price on a chosen channel is not «without a price»', async () => {
+  it('create: «without a price» per chosen channel — a typed Airbnb price does not cover Booking', async () => {
     const s = setup({ base, env: ON, typed: [{ date: '2027-02-05', priceMinor: 30000, channel: 'airbnb' }] });
     const r = await s.svc.createDiscount(OWNER, PROP, { from: '2027-02-04', to: '2027-02-05', pct: 10, channels: ['airbnb'] });
     expect(r.noPrice).toEqual(['2027-02-04']);
+    const both = setup({ base, env: ON, typed: [{ date: '2027-02-05', priceMinor: 30000, channel: 'airbnb' }] });
+    const rb = await both.svc.createDiscount(OWNER, PROP, { from: '2027-02-04', to: '2027-02-05', pct: 10, channels: ['booking', 'airbnb'] });
+    expect(rb.noPrice).toEqual(['2027-02-04', '2027-02-05']);
+  });
+
+  it('create: filled base goes back through the Booking markup — the Booking price of the night stays', async () => {
+    const s = setup({ base, env: ON, open: { '2027-02-04': 330 }, rules: [{ propertyId: PROP, channel: 'booking', markupPct: 10 }] });
+    await s.svc.createDiscount(OWNER, PROP, { from: '2027-02-04', to: '2027-02-04', pct: 10, channels: ['booking'] });
+    expect(s.baseRepo.inserted).toEqual([{ propertyId: PROP, date: '2027-02-04', priceMinor: 30000 }]);
+  });
+
+  it('create: a Booking-only discount that filled bases tells Airbnb about those nights', async () => {
+    const s = setup({ base, env: ON, open: { '2027-02-04': 320 } });
+    await s.svc.createDiscount(OWNER, PROP, { from: '2027-02-01', to: '2027-02-04', pct: 10, channels: ['booking'] });
+    expect(s.events.emit).toHaveBeenCalledWith(EVENT, { propertyId: PROP, from: '2027-02-04', to: '2027-02-04' });
+  });
+
+  it('create: a failure after saving does not fail the request (no duplicate on retry); Airbnb told first', async () => {
+    const s = setup({ base, env: ON });
+    s.nightPriceRepo.find.mockRejectedValueOnce(new Error('db hiccup'));
+    const r = await s.svc.createDiscount(OWNER, PROP, { ...FEB, pct: 10, channels: ['airbnb'] });
+    expect(r.discount.pct).toBe(10);
+    expect(r.noPrice).toEqual([]);
+    expect(s.events.emit).toHaveBeenCalledWith(EVENT, { propertyId: PROP, from: FEB.from, to: FEB.to });
+    const t = setup({ base, env: ON });
+    t.baseRepo.find.mockRejectedValueOnce(new Error('db hiccup'));
+    const rt = await t.svc.createDiscount(OWNER, PROP, { ...FEB, pct: 10, channels: ['booking'] });
+    expect(rt.filledFromBooking).toBe(0);
+  });
+
+  it('create: Airbnb «at minimum» counted as sent — whole złoty first (fractional base), minimum rounded up', async () => {
+    // base 20.5 (markup 0) → Airbnb sends 21 (whole) → −10 % = 19; minimum 18.2 → 19 ≥ 19: not at the minimum
+    const s = setup({ base: [{ date: '2027-02-01', priceMinor: 2050 }], env: ON, minPrice: 18.2 });
+    const r = await s.svc.createDiscount(OWNER, PROP, { from: '2027-02-01', to: '2027-02-01', pct: 10, channels: ['airbnb'] });
+    expect(r.atMin).toEqual([]);
+    const t = setup({ base: [{ date: '2027-02-01', priceMinor: 2050 }], env: ON, minPrice: 19.5 });
+    const rt = await t.svc.createDiscount(OWNER, PROP, { from: '2027-02-01', to: '2027-02-01', pct: 10, channels: ['airbnb'] });
+    expect(rt.atMin).toEqual(['2027-02-01']);
   });
 
   it('create: Booking not readable / not connected / dates off — the discount is saved, nothing filled', async () => {
@@ -727,7 +765,7 @@ describe('PricingBasePriceService — «Скидка» on top of the base price'
   it('create: nights that stop at the minimum are listed (Booking and Airbnb)', async () => {
     const s = setup({ base, env: ON, minPrice: 280, rules: [{ propertyId: PROP, channel: 'airbnb', markupPct: 20 }] });
     const r = await s.svc.createDiscount(OWNER, PROP, { from: '2027-02-01', to: '2027-02-03', pct: 10, channels: ['booking', 'airbnb'] });
-    // Booking: 270, 270, 256 < 280. Airbnb: 360 → 324, 341 → 307 — above.
+    // Booking: 270, 270, 256 < 280 (base 284 ≥ 280). Airbnb: 360 → 324, 341 → 307 — above.
     expect(r.atMin).toEqual(['2027-02-01', '2027-02-02', '2027-02-03']);
     const a = setup({ base, env: ON, minPrice: 280, rules: [{ propertyId: PROP, channel: 'airbnb', markupPct: 20 }] });
     const ra = await a.svc.createDiscount(OWNER, PROP, { from: '2027-02-01', to: '2027-02-03', pct: 10, channels: ['airbnb'] });

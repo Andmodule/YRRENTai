@@ -6,7 +6,7 @@ import {
   pricingApi,
   type AutoPriceSettingsInput,
   type BasePriceRangeInput,
-  PriceDiscountInput,
+  type PriceDiscountInput,
   type ChannelProfileInput,
   type GuestPriceChannel,
   type ObservationInput,

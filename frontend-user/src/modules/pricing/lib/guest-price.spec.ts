@@ -363,7 +363,7 @@ describe('base price helpers (same as backend base-price.util)', () => {
     assert.deepEqual(discountedPrice(300, 0), { price: 300, atMin: false });
     assert.deepEqual(discountedPrice(300, undefined), { price: 300, atMin: false });
     assert.deepEqual(discountedPrice(300, 10, 280), { price: 280, atMin: true });
-    assert.deepEqual(discountedPrice(250, 10, 280), { price: 250, atMin: true });
+    assert.deepEqual(discountedPrice(250, 10, 280), { price: 250, atMin: false });
   });
 
   it('bookingCell with «Скидка»: base × markup, then −pct; typed lowered too; no own price → nothing to lower', () => {
