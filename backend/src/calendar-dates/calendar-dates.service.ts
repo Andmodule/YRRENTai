@@ -9,7 +9,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
-import { formatInTimeZone } from 'date-fns-tz';
+import { formatInTimeZone, fromZonedTime } from 'date-fns-tz';
 import { Repository } from 'typeorm';
 import type { JwtPayload } from '../common/decorators/current-user.decorator';
 import { PropertyEntity } from '../property/entities/property.entity';
@@ -384,7 +384,12 @@ export class CalendarDatesService {
   ): Promise<{ plan: CalendarDatesPlan; ranges: ChangeRange[] }> {
     const nights = await this.readNights(ctx, input.dateFrom, input.dateToExclusive, false);
     const crmBlocked = await this.ratesPush.collectCrmBlockedNightKeys(ctx.property, input.dateFrom, input.dateToExclusive);
-    const plan = planCalendarDates(nights, input, { crmBlocked, keepClosed: opts.keepClosed, minPrice: ctx.minPrice });
+    const plan = planCalendarDates(nights, input, {
+      crmBlocked,
+      keepClosed: opts.keepClosed,
+      minPrice: ctx.minPrice,
+      roomsFromRentai: input.action === 'open' && this.openPushesAvailability,
+    });
     return { plan, ranges: mergeChangesToRanges(plan.changes) };
   }
 
@@ -731,7 +736,9 @@ export class CalendarDatesService {
     const applied = changes.filter((c) => inSent(c.date));
     job.applied = countChanges(applied);
     this.dropWindowCache(ctx.property.id);
-    const opened = applied.filter((c) => !c.closed && c.fromClosed).sort((a, b) => a.date.localeCompare(b.date));
+    const opened = applied
+      .filter((c) => !c.closed && (c.fromClosed || c.fromNoRoom === true))
+      .sort((a, b) => a.date.localeCompare(b.date));
     if (opened.length > 0 && job.action !== 'price' && this.openPushesAvailability) {
       job.availability = await this.pushRoomsForOpened(ctx, opened);
     }
@@ -746,7 +753,12 @@ export class CalendarDatesService {
         job.verify = { checked: applied.length, mismatched };
         if (job.availability) {
           // Rate open but no room for sale: Booking still shows the night closed.
-          job.verify.noRooms = opened.filter((c) => after.get(c.date)?.availability === 0).map((c) => c.date);
+          job.verify.noRooms = opened
+            .filter((c) => {
+              const a = after.get(c.date)?.availability;
+              return a == null || a <= 0;
+            })
+            .map((c) => c.date);
         }
       } catch (e) {
         job.verify = { checked: 0, mismatched: [], error: formatZodomusHttpException(e) };
@@ -772,29 +784,29 @@ export class CalendarDatesService {
   }
 
   /**
-   * Rooms for sale for the nights a run opened, one push per run of consecutive nights (nights in
-   * between were not opened and stay as they are). The count comes from RentAI bookings — the same
-   * computation as the nightly reconcile, so a booked night still gets 0.
+   * Rooms for sale for the nights a run opened: one push from the first to the last opened night. Nights in
+   * between get the count too, as the nightly reconcile gives every night — the count comes from RentAI
+   * bookings (a booked night gets 0) and does not open a closed rate. Not ok when nothing went to Zodomus
+   * (no Booking target or room) — the report then says so instead of «sent».
    */
   private async pushRoomsForOpened(
     ctx: Ctx,
     opened: readonly NightChange[],
   ): Promise<{ ok: boolean; nights: number; error?: string }> {
-    const runs: { from: string; toExclusive: string }[] = [];
-    for (const c of opened) {
-      const last = runs[runs.length - 1];
-      if (last && last.toExclusive === c.date) last.toExclusive = addDaysYmd(c.date, 1);
-      else runs.push({ from: c.date, toExclusive: addDaysYmd(c.date, 1) });
-    }
+    const first = opened[0]!.date;
+    const toExclusive = addDaysYmd(opened[opened.length - 1]!.date, 1);
+    const tz = ctx.tz?.trim() || 'UTC';
+    // Noon of the night in the property's zone: the push turns it back into the same night key.
+    const at = (ymd: string) => fromZonedTime(`${ymd}T12:00:00`, tz).toISOString();
     try {
-      for (const r of runs) {
-        // Noon UTC stays on the same calendar day in any European zone.
-        await this.availabilityPush.pushAvailabilityNow(ctx.property.id, {
-          ignoreAutoPushDisable: true,
-          awaitUpstream: true,
-          dateFromISO: `${r.from}T12:00:00.000Z`,
-          dateToISO: `${r.toExclusive}T12:00:00.000Z`,
-        });
+      const summary = await this.availabilityPush.pushAvailabilityNow(ctx.property.id, {
+        ignoreAutoPushDisable: true,
+        awaitUpstream: true,
+        dateFromISO: at(first),
+        dateToISO: at(toExclusive),
+      });
+      if (!summary?.pushed) {
+        return { ok: false, nights: opened.length, error: 'Zodomus не получил номера: нет номера Booking у объекта' };
       }
       return { ok: true, nights: opened.length };
     } catch (e) {

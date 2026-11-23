@@ -682,8 +682,9 @@ describe('CalendarDatesService — «Открыть» also sends rooms for sale'
     expect(pushAvailabilityNow).toHaveBeenCalledWith(PROPERTY_ID, {
       ignoreAutoPushDisable: true,
       awaitUpstream: true,
-      dateFromISO: '2026-11-01T12:00:00.000Z',
-      dateToISO: '2026-11-08T12:00:00.000Z',
+      // Noon in Warsaw (UTC+1 in November).
+      dateFromISO: '2026-11-01T11:00:00.000Z',
+      dateToISO: '2026-11-08T11:00:00.000Z',
     });
     expect(job.availability).toEqual({ ok: true, nights: 7 });
     expect(job.verify).toEqual({ checked: 7, mismatched: [], noRooms: [] });
@@ -701,17 +702,14 @@ describe('CalendarDatesService — «Открыть» also sends rooms for sale'
     expect(reads[reads.length - 1]!).toBeGreaterThan(push);
   });
 
-  it('nights already open in between are not part of the push: one push per run of opened nights', async () => {
+  it('one push from the first to the last opened night, nights already open in between included', async () => {
     const nights = notSet('2026-11-01', '2026-11-08');
     nights['2026-11-03'] = open(1180);
     nights['2026-11-04'] = open(1180);
     const { svc, pushAvailabilityNow } = setup({ nights, env: ON });
     await svc.start(USER, { ...OPEN, price: 1180 });
     const job = await finished(svc);
-    expect(windows(pushAvailabilityNow)).toEqual([
-      ['2026-11-01', '2026-11-03'],
-      ['2026-11-05', '2026-11-08'],
-    ]);
+    expect(windows(pushAvailabilityNow)).toEqual([['2026-11-01', '2026-11-08']]);
     expect(job.availability).toEqual({ ok: true, nights: 5 });
   });
 
@@ -777,7 +775,7 @@ describe('CalendarDatesService — «Открыть» also sends rooms for sale'
     expect(pushAvailabilityNow).not.toHaveBeenCalled();
   });
 
-  it('auto-extension opening nights sends rooms too, around the «keep closed» night', async () => {
+  it('auto-extension opening nights sends rooms too (one push over the «keep closed» night)', async () => {
     const { svc, pushAvailabilityNow } = setup({ nights: notSet('2026-11-01', '2026-11-08'), env: ON });
     const res = await svc.runAuto(
       PROPERTY_ID,
@@ -785,10 +783,7 @@ describe('CalendarDatesService — «Открыть» also sends rooms for sale'
       { keepClosed: new Set(['2026-11-04']), dryRun: false },
     );
     expect(res?.job?.availability).toEqual({ ok: true, nights: 6 });
-    expect(windows(pushAvailabilityNow)).toEqual([
-      ['2026-11-01', '2026-11-04'],
-      ['2026-11-05', '2026-11-08'],
-    ]);
+    expect(windows(pushAvailabilityNow)).toEqual([['2026-11-01', '2026-11-08']]);
   });
 
   it('auto-extension dry run sends nothing', async () => {
@@ -799,5 +794,76 @@ describe('CalendarDatesService — «Открыть» also sends rooms for sale'
       { keepClosed: new Set(), dryRun: true },
     );
     expect(pushAvailabilityNow).not.toHaveBeenCalled();
+  });
+  it('nothing reached Zodomus (no Booking room / target): not «sent»', async () => {
+    const { svc, pushAvailabilityNow } = setup({ nights: notSet('2026-11-01', '2026-11-03'), env: ON });
+    pushAvailabilityNow.mockResolvedValueOnce({ pushed: false });
+    await svc.start(USER, { ...OPEN, dateToExclusive: '2026-11-03' });
+    const job = await finished(svc);
+    expect(job.availability).toMatchObject({ ok: false, nights: 2 });
+  });
+
+  it('a night still without a room count after the push (empty field) is listed as «no rooms»', async () => {
+    const { svc, pushAvailabilityNow } = setup({ nights: notSet('2026-11-01', '2026-11-03'), env: ON });
+    pushAvailabilityNow.mockResolvedValueOnce({ pushed: true }); // pushed, but Booking reads back nothing
+    await svc.start(USER, { ...OPEN, dateToExclusive: '2026-11-03' });
+    const job = await finished(svc);
+    expect(job.verify?.noRooms).toEqual(['2026-11-01', '2026-11-02']);
+  });
+
+  it('a closed night with 0 rooms, nothing sold: opened only with the flag (the push gives it its room)', async () => {
+    const zero = (): Record<string, Night> => ({ '2026-11-01': { closed: true, price: 1180, booked: 0, rooms: 0 } });
+    const off = setup({ nights: zero() });
+    const pOff = await off.svc.preview(USER, { ...OPEN, dateToExclusive: '2026-11-02' });
+    expect(pOff.changes.open).toBe(0);
+    expect(pOff.skipped.booked).toBe(1);
+
+    const on = setup({ nights: zero(), env: ON });
+    await on.svc.start(USER, { ...OPEN, dateToExclusive: '2026-11-02' });
+    const job = await finished(on.svc);
+    expect(job.applied).toEqual({ open: 1, close: 0, price: 0 });
+    expect(on.pushAvailabilityNow).toHaveBeenCalledTimes(1);
+    expect(on.booking.state.get('2026-11-01')).toMatchObject({ closed: false, rooms: 1 });
+  });
+
+  it('a night sold on Booking (booked > 0) is never opened, flag or not', async () => {
+    const { svc, pushAvailabilityNow } = setup({
+      nights: { '2026-11-01': { closed: true, price: 1180, booked: 1, rooms: 0 } },
+      env: ON,
+    });
+    const p = await svc.preview(USER, { ...OPEN, dateToExclusive: '2026-11-02' });
+    expect(p.changes.open).toBe(0);
+    expect(p.skipped.booked).toBe(1);
+    expect(pushAvailabilityNow).not.toHaveBeenCalled();
+  });
+
+  it('open on the rate but no room (the December case): «Открыть» at the same price re-opens it with the flag', async () => {
+    const nights = (): Record<string, Night> => ({
+      '2026-11-01': { closed: false, price: 1180, booked: 0, rooms: null },
+      '2026-11-02': { closed: false, price: 1180, booked: 0 },
+    });
+    const off = setup({ nights: nights() });
+    const pOff = await off.svc.preview(USER, { ...OPEN, dateToExclusive: '2026-11-03' });
+    expect(pOff.changes).toEqual({ open: 0, close: 0, price: 0 });
+
+    const on = setup({ nights: nights(), env: ON });
+    await on.svc.start(USER, { ...OPEN, dateToExclusive: '2026-11-03' });
+    const job = await finished(on.svc);
+    // Only 01 (no room) changes; 02 has its room and stays untouched.
+    expect(job.applied).toEqual({ open: 1, close: 0, price: 0 });
+    expect(on.booking.setRates.mock.calls.map((c) => [c[0].dateFrom, c[0].dateToExclusive, c[0].price])).toEqual([
+      ['2026-11-01', '2026-11-02', 1180],
+    ]);
+    expect(windows(on.pushAvailabilityNow)).toEqual([['2026-11-01', '2026-11-02']]);
+    expect(job.verify?.noRooms).toEqual([]);
+  });
+
+  it('«Закрыть» never treats a night without rooms as something to open', async () => {
+    const { svc } = setup({
+      nights: { '2026-11-01': { closed: false, price: 400, booked: 0, rooms: null } },
+      env: ON,
+    });
+    const p = await svc.preview(USER, { ...OPEN, action: 'close', dateToExclusive: '2026-11-02' });
+    expect(p.changes).toEqual({ open: 0, close: 1, price: 0 });
   });
 });

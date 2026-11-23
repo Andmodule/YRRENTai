@@ -576,7 +576,7 @@ function RunReport({ job, loading }: { job: CalendarDatesJob | null; loading: bo
       ) : null}
       {job.availability ? (
         !job.availability.ok ? (
-          <p className={WARN_BOX}>{t('roomsFailed', { count: job.availability.nights, error: job.availability.error ?? '' })}</p>
+          <p className={WARN_BOX}>{t('roomsFailed', { count: job.availability.nights, error: job.availability.error || '—' })}</p>
         ) : noRooms.length > 0 ? (
           <p className={WARN_BOX}>
             {t('roomsZero', {

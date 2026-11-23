@@ -489,6 +489,12 @@ export class ZodomusAvailabilityPushService implements OnModuleInit, OnModuleDes
    */
   async pushAvailabilityNow(propertyId: string, options?: PushAvailabilityOptions): Promise<AvailabilityPushSummary> {
     const inFlight = this._inFlightPush.get(propertyId);
+    if (inFlight && options?.awaitUpstream && (options.dateFromISO || options.dateToISO)) {
+      // The caller needs ITS window sent now (e.g. «Открыть»): the push in flight may be another window or only
+      // queued. Wait for it (its outcome is its caller's business), then push our own.
+      await inFlight.catch(() => undefined);
+      return this.pushAvailabilityNow(propertyId, options);
+    }
     if (inFlight) {
       this.logger.debug(
         `Zodomus availability push already in progress for ${propertyId} — coalescing duplicate call`,
@@ -509,7 +515,9 @@ export class ZodomusAvailabilityPushService implements OnModuleInit, OnModuleDes
     try {
       const summary = await this.executePush(propertyId, options);
       // Inline path (no queue, or awaitUpstream) completed upstream POST — clear dirty.
-      if (summary.pushed && (!this.queue || options?.awaitUpstream)) {
+      // A narrow window (dateFrom/dateTo) does not stand for the whole property: a failed full push stays dirty.
+      const wholeProperty = !options?.dateFromISO && !options?.dateToISO;
+      if (summary.pushed && (!this.queue || options?.awaitUpstream) && wholeProperty) {
         await this.clearDirty(propertyId);
       }
       return summary;
