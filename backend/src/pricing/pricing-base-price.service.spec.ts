@@ -721,10 +721,17 @@ describe('PricingBasePriceService — «Скидка» on top of the base price'
   it('create: a Booking-only discount that filled bases tells Airbnb about those nights', async () => {
     const s = setup({ base, env: ON, open: { '2027-02-04': 320 } });
     await s.svc.createDiscount(OWNER, PROP, { from: '2027-02-01', to: '2027-02-04', pct: 10, channels: ['booking'] });
-    expect(s.events.emit).toHaveBeenCalledWith(EVENT, { propertyId: PROP, from: '2027-02-04', to: '2027-02-04' });
+    expect(s.events.emit).toHaveBeenCalledWith(EVENT, { propertyId: PROP, from: '2027-02-01', to: '2027-02-04' });
   });
 
-  it('create: a failure after saving does not fail the request (no duplicate on retry); Airbnb told first', async () => {
+  it('create: Airbnb is told once, after the filled base prices are written (its send reads them)', async () => {
+    const s = setup({ base, env: ON, open: { '2027-02-04': 320 } });
+    await s.svc.createDiscount(OWNER, PROP, { from: '2027-02-01', to: '2027-02-04', pct: 10, channels: ['booking', 'airbnb'] });
+    expect(s.events.emit).toHaveBeenCalledTimes(1);
+    expect(s.events.emit.mock.invocationCallOrder[0]!).toBeGreaterThan(s.qb.execute.mock.invocationCallOrder[0]!);
+  });
+
+  it('create: a failure after saving does not fail the request (no duplicate on retry); Airbnb still told', async () => {
     const s = setup({ base, env: ON });
     s.nightPriceRepo.find.mockRejectedValueOnce(new Error('db hiccup'));
     const r = await s.svc.createDiscount(OWNER, PROP, { ...FEB, pct: 10, channels: ['airbnb'] });

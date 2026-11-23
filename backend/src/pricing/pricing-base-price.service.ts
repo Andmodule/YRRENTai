@@ -524,9 +524,6 @@ export class PricingBasePriceService {
       ),
     );
 
-    // Airbnb takes its price by itself: told at once, whatever happens below.
-    if (channels.includes('airbnb')) this.airbnbPricesChanged(property.id, from, to);
-
     // Nights without a base: Booking's open price becomes their base (only what Booking really sells), turned back
     // through the Booking markup so the Booking price of the night stays what it is before the discount.
     let filledFromBooking = 0;
@@ -553,14 +550,15 @@ export class PricingBasePriceService {
           await this.baseRepo.createQueryBuilder().insert().into(PropertyBasePriceEntity).values(rows).orIgnore().execute();
           for (const r of rows) has.add(r.date);
           filledFromBooking = rows.length;
-          // These nights now go to Airbnb from the base too (own-price rule).
-          if (!channels.includes('airbnb')) this.airbnbPricesChanged(property.id, rows[0]!.date, rows[rows.length - 1]!.date);
         }
       }
     } catch (e) {
       // The discount is saved; nights without a base stay so and are listed below.
       this.logger.warn(`discount ${row.id}: base prices not filled from Booking: ${e instanceof Error ? e.message : String(e)}`);
     }
+    // Airbnb is told once, after the fill (nothing above can throw): its send reads the base prices just written.
+    // A Booking-only discount that filled bases still changes Airbnb (those nights now go from the base).
+    if (channels.includes('airbnb') || filledFromBooking > 0) this.airbnbPricesChanged(property.id, from, to);
 
     // What to tell the person — best effort: the discount exists whatever fails here (no 5xx → no duplicate on retry).
     let noPrice: string[] = [];
