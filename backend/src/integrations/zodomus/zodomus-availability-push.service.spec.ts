@@ -374,6 +374,19 @@ describe('ZodomusAvailabilityPushService', () => {
       expect(mockSetAvailabilityMultiple).toHaveBeenCalledTimes(2);
     });
 
+    it('a whole-property push arriving during a windowed one is not swallowed by it', async () => {
+      const { service, mockSetAvailabilityMultiple } = buildService({ horizonDays: 30 });
+      mockSetAvailabilityMultiple.mockImplementation(() => new Promise<void>((r) => setTimeout(r, 10)));
+      const today = new Date();
+      const [narrow, full] = await Promise.all([
+        service.pushAvailabilityNow(PROPERTY_ID, { dateFromISO: addDays(today, 5).toISOString(), dateToISO: addDays(today, 8).toISOString() }),
+        service.pushAvailabilityNow(PROPERTY_ID),
+      ]);
+      expect(full).not.toBe(narrow);
+      expect(mockSetAvailabilityMultiple).toHaveBeenCalledTimes(2);
+      expect(full.nightsEvaluated).toBeGreaterThan(narrow.nightsEvaluated);
+    });
+
     it('allows sequential pushes — mutex releases after completion', async () => {
       const { service, mockSetAvailabilityMultiple } = buildService();
 

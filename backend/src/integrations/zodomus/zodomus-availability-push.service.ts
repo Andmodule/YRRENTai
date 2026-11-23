@@ -148,6 +148,8 @@ export class ZodomusAvailabilityPushService implements OnModuleInit, OnModuleDes
    * When a push is already in flight, new callers receive the same promise (coalescing).
    */
   private readonly _inFlightPush = new Map<string, Promise<AvailabilityPushSummary>>();
+  /** Properties whose push in flight covers only a date window (not the whole horizon). */
+  private readonly _inFlightWindowed = new Set<string>();
 
   /**
    * Sliding-window call timestamps for the inline (no-Redis) rate limiter.
@@ -489,9 +491,11 @@ export class ZodomusAvailabilityPushService implements OnModuleInit, OnModuleDes
    */
   async pushAvailabilityNow(propertyId: string, options?: PushAvailabilityOptions): Promise<AvailabilityPushSummary> {
     const inFlight = this._inFlightPush.get(propertyId);
-    if (inFlight && options?.awaitUpstream && (options.dateFromISO || options.dateToISO)) {
-      // The caller needs ITS window sent now (e.g. «Открыть»): the push in flight may be another window or only
-      // queued. Wait for it (its outcome is its caller's business), then push our own.
+    const windowed = Boolean(options?.dateFromISO || options?.dateToISO);
+    // Run our own push after the one in flight instead of taking its result when that result would not cover us:
+    // the caller needs ITS window sent now (e.g. «Открыть»), or a whole-property push (nightly, manual) arrives
+    // while only a window is being sent. The outcome of the push in flight is its own caller's business.
+    if (inFlight && ((options?.awaitUpstream && windowed) || (!windowed && this._inFlightWindowed.has(propertyId)))) {
       await inFlight.catch(() => undefined);
       return this.pushAvailabilityNow(propertyId, options);
     }
@@ -504,10 +508,13 @@ export class ZodomusAvailabilityPushService implements OnModuleInit, OnModuleDes
 
     const promise = this._doPush(propertyId, options);
     this._inFlightPush.set(propertyId, promise);
+    if (windowed) this._inFlightWindowed.add(propertyId);
+    else this._inFlightWindowed.delete(propertyId);
     try {
       return await promise;
     } finally {
       this._inFlightPush.delete(propertyId);
+      this._inFlightWindowed.delete(propertyId);
     }
   }
 

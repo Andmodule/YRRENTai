@@ -806,7 +806,7 @@ export class CalendarDatesService {
         dateToISO: at(toExclusive),
       });
       if (!summary?.pushed) {
-        return { ok: false, nights: opened.length, error: 'Zodomus не получил номера: нет номера Booking у объекта' };
+        return { ok: false, nights: opened.length, error: 'Номера в Zodomus не ушли: у объекта не нашлось номера Booking или ночей для отправки' };
       }
       return { ok: true, nights: opened.length };
     } catch (e) {
