@@ -7,6 +7,7 @@ import {
   bookingStayInput,
   countBookedOrClosed,
   bookingCell,
+  discountedPrice,
   channelNightPrice,
   channelPriceFromBase,
   occupancyFactor,
@@ -354,6 +355,32 @@ describe('base price helpers (same as backend base-price.util)', () => {
     assert.equal(stayBelowMin({ room: 10, fees: 0, roomPerNight: [{ date: 'a', amount: 10 }] }, null), null);
     assert.equal(stayBelowMin({ room: 10, fees: 0, roomPerNight: [{ date: 'a', amount: 10 }] }, 0), null);
     assert.equal(stayBelowMin({ room: 0, fees: 59, roomPerNight: [] }, 160), null);
+  });
+
+  it('discountedPrice: −pct in whole units, never below the minimum, a price already under it kept', () => {
+    assert.deepEqual(discountedPrice(300, 10), { price: 270, atMin: false });
+    assert.deepEqual(discountedPrice(284, 10), { price: 256, atMin: false });
+    assert.deepEqual(discountedPrice(300, 0), { price: 300, atMin: false });
+    assert.deepEqual(discountedPrice(300, undefined), { price: 300, atMin: false });
+    assert.deepEqual(discountedPrice(300, 10, 280), { price: 280, atMin: true });
+    assert.deepEqual(discountedPrice(250, 10, 280), { price: 250, atMin: false });
+  });
+
+  it('bookingCell with «Скидка»: base × markup, then −pct; typed lowered too; no own price → nothing to lower', () => {
+    const n = night({ ymd: '2026-11-02', rack: 500, rackFrom: 500 });
+    const c = bookingCell(n, { base: { '2026-11-02': 300 }, typed: {}, markupPct: 10, geniusPct: null, profile: null, discountPct: { '2026-11-02': 10 } })!;
+    // 300 +10 % = 330 → −10 % = 297
+    assert.equal(c.price, 297);
+    assert.equal(c.discountPct, 10);
+    assert.equal(c.atMin, undefined);
+    const typedCell = bookingCell(n, { base: {}, typed: { '2026-11-02': 400 }, markupPct: 0, geniusPct: null, profile: null, discountPct: { '2026-11-02': 25 } })!;
+    assert.equal(typedCell.price, 300);
+    const min = bookingCell(n, { base: { '2026-11-02': 300 }, typed: {}, markupPct: 0, geniusPct: null, profile: null, discountPct: { '2026-11-02': 10 }, minPrice: 280 })!;
+    assert.equal(min.price, 280);
+    assert.equal(min.atMin, true);
+    const none = bookingCell(n, { base: {}, typed: {}, markupPct: 0, geniusPct: null, profile: null, discountPct: { '2026-11-02': 10 } })!;
+    assert.equal(none.price, 500); // Booking's price shown as is, nothing sent
+    assert.equal(none.discountPct, undefined);
   });
 
   it('bookingCell: price, pending against Booking, typed, cheapest guest (room only)', () => {

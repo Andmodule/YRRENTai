@@ -37,6 +37,8 @@ function badgeTone(n: MonthNight): { pct: number; tone: string } | null {
 /** «Базовая цена»: the three price rows of a cell. */
 export type CellRows = {
   base: number | null;
+  /** «Скидка» on the night (the biggest on any channel); the B / A lines carry the lowered prices. */
+  discount?: { pct: number } | null;
   booking: BookingCell | null;
   /** Airbnb's price for the night (typed, from the base, or from the settings). */
   airbnb: number | null;
@@ -171,6 +173,12 @@ export function MonthGrid({
                           title={row.booking?.typed ? t('rowTypedTitle', { price: fmt.format(row.booking.price), base: fmt.format(row.base) }) : undefined}
                         >
                           {fmt.format(row.base)}
+                          {row.discount ? (
+                            // The base price stays; the discount is on the channel prices below (B / A).
+                            <span className="ml-0.5 font-normal text-sky-700 dark:text-sky-300" title={t('rowDiscountTitle', { pct: row.discount.pct })}>
+                              −{row.discount.pct}%
+                            </span>
+                          ) : null}
                         </span>
                       ) : (
                         <span className="font-semibold text-foreground">

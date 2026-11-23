@@ -48,7 +48,7 @@ import { BookingSendStatus } from './BookingSendStatus';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { cn } from '@/lib/utils';
 import type { CellRows } from './MonthGrid';
-import { airbnbNightPrice, bookingCell, pickedStayBelowMin } from '@/modules/pricing/lib/guest-price';
+import { airbnbNightPrice, bookingCell, pickedStayBelowMin, discountedPrice } from '@/modules/pricing/lib/guest-price';
 import { airbnbApi } from '@/modules/airbnb/api';
 import { airbnbFromBooking, wholeAboveMin } from '../lib/airbnb-from-booking';
 
@@ -133,8 +133,12 @@ export function PropertyMonthView({ propertyId }: { propertyId: string }) {
     if (!basePriceOn || !b || !g) return undefined;
     const rows = new Map<string, CellRows>();
     for (const n of nights) {
+      const baseHere = b.base[n.ymd] ?? null;
+      // Only discounts that change a price RentAI sends: an Airbnb one counts only while Airbnb goes from the base.
+      const pctHere = Math.max(b.discountPct?.booking[n.ymd] ?? 0, airbnbConnected && airbnbFromBase ? (b.discountPct?.airbnb[n.ymd] ?? 0) : 0);
       rows.set(n.ymd, {
-        base: b.base[n.ymd] ?? null,
+        base: baseHere,
+        discount: baseHere != null && pctHere > 0 ? { pct: pctHere } : null,
         booking: bookingCell(
           { ymd: n.ymd, rack: n.rack, rackFrom: n.rackFrom, rateName: n.rateName, onSale: n.kind === 'open', promotions: n.promotions, targetingPct: n.targetingPct },
           {
@@ -145,6 +149,7 @@ export function PropertyMonthView({ propertyId }: { propertyId: string }) {
             profile: g.profiles.booking,
             auto: b.auto,
             minPrice: pricingRow?.minPrice ?? null,
+            discountPct: b.discountPct?.booking,
           },
         ),
         ...airbnbCell(n),
@@ -160,19 +165,28 @@ export function PropertyMonthView({ propertyId }: { propertyId: string }) {
      */
     function airbnbCell(n: (typeof nights)[number]): { airbnb: number | null; airbnbFromBooking: boolean } {
       const minPrice = pricingRow?.minPrice ?? null;
+      const airbnbPct = b!.discountPct?.airbnb[n.ymd];
       if (!airbnbConnected) {
         const own = airbnbNightPrice(n.ymd, g!.profiles.airbnb, g!.nightPrices.airbnb, { base: b!.base, markupPct: b!.channels.airbnb.markupPct });
-        return { airbnb: own, airbnbFromBooking: false };
+        return { airbnb: own != null && ownAirbnb(n.ymd) ? discountedPrice(Math.round(own), airbnbPct, minPrice).price : own, airbnbFromBooking: false };
       }
       if (airbnbPlanEnd != null && n.ymd >= airbnbPlanEnd) return { airbnb: null, airbnbFromBooking: false };
       // The server prices only nights open on Booking (`airbnbNights`), the own price too.
       if (n.kind !== 'open') return { airbnb: null, airbnbFromBooking: false };
       if (airbnbFromBase) {
         const own = airbnbNightPrice(n.ymd, null, g!.nightPrices.airbnb, { base: b!.base, markupPct: b!.channels.airbnb.markupPct });
-        if (own != null) return { airbnb: wholeAboveMin(own, minPrice), airbnbFromBooking: false };
+        // As the server: whole złoty, then the discount, then the minimum (rounded up).
+        if (own != null) return { airbnb: wholeAboveMin(discountedPrice(Math.round(own), airbnbPct, null).price, minPrice), airbnbFromBooking: false };
       }
       const fromBooking = airbnbFromBooking(n.rack, n.promotions, minPrice);
       return { airbnb: fromBooking, airbnbFromBooking: fromBooking != null };
+    }
+
+    /** The night has an Airbnb price of RentAI's own (typed or from the base) — the one a discount lowers. */
+    function ownAirbnb(ymd: string): boolean {
+      const typed = g!.nightPrices.airbnb[ymd];
+      const base = b!.base[ymd];
+      return (typed != null && typed > 0) || (base != null && base > 0);
     }
   }, [basePriceOn, basePrices.data, guestPrices.data, nights, pricingRow, airbnbConnected, airbnbFromBase, airbnbPlanEnd]);
 
@@ -250,13 +264,15 @@ export function PropertyMonthView({ propertyId }: { propertyId: string }) {
   const basePriceNode =
     basePriceOn && selection && basePrices.data && guestPrices.data ? (
       <BasePricePanel
-        key={`${selection.from}|${selection.to}`}
+        // The Airbnb mode comes from a query that may land after the pick: remount so the default channels follow.
+        key={`${selection.from}|${selection.to}|${!airbnbConnected ? 'off' : airbnbFromBase ? 'base' : 'booking'}`}
         propertyId={propertyId}
         picked={pickedNights}
         monthFrom={from}
         monthTo={to}
         today={today}
         data={basePrices.data}
+        airbnbMode={!airbnbConnected ? 'off' : airbnbFromBase ? 'base' : 'booking'}
         typed={guestPrices.data.nightPrices}
         currency={currency}
         minPrice={pricingRow?.minPrice ?? null}

@@ -336,6 +336,57 @@ describe('ZodomusAvailabilityPushService', () => {
       expect(mockSetAvailabilityMultiple).toHaveBeenCalledTimes(1);
     });
 
+    it('an awaited push of its own window waits for the one in flight, then sends its own', async () => {
+      const { service, mockSetAvailabilityMultiple } = buildService({ horizonDays: 30 });
+      mockSetAvailabilityMultiple.mockImplementation(() => new Promise<void>((r) => setTimeout(r, 10)));
+      const today = new Date();
+      const from = addDays(today, 5).toISOString();
+      const to = addDays(today, 8).toISOString();
+
+      const [full, own] = await Promise.all([
+        service.pushAvailabilityNow(PROPERTY_ID),
+        service.pushAvailabilityNow(PROPERTY_ID, { awaitUpstream: true, dateFromISO: from, dateToISO: to }),
+      ]);
+
+      expect(own).not.toBe(full);
+      expect(mockSetAvailabilityMultiple).toHaveBeenCalledTimes(2);
+      // The second call carries only the 3 nights asked for.
+      const segs = mockSetAvailabilityMultiple.mock.calls[1]![2] as { dateFrom: string; dateTo: string; availability: number }[];
+      expect(segs).toHaveLength(1);
+      expect(segs[0]!.availability).toBe(1);
+      expect(own.nightsEvaluated).toBe(3);
+    });
+
+    it('an awaited push still gets its own turn when the push in flight fails', async () => {
+      const { service, mockSetAvailabilityMultiple } = buildService({ horizonDays: 30 });
+      mockSetAvailabilityMultiple
+        .mockImplementationOnce(() => new Promise<void>((_, rej) => setTimeout(() => rej(new Error('Zodomus 500')), 10)))
+        .mockResolvedValue(undefined);
+      const today = new Date();
+      const first = service.pushAvailabilityNow(PROPERTY_ID).catch((e: Error) => e);
+      const own = await service.pushAvailabilityNow(PROPERTY_ID, {
+        awaitUpstream: true,
+        dateFromISO: addDays(today, 5).toISOString(),
+        dateToISO: addDays(today, 8).toISOString(),
+      });
+      expect(await first).toBeInstanceOf(Error);
+      expect(own.pushed).toBe(true);
+      expect(mockSetAvailabilityMultiple).toHaveBeenCalledTimes(2);
+    });
+
+    it('a whole-property push arriving during a windowed one is not swallowed by it', async () => {
+      const { service, mockSetAvailabilityMultiple } = buildService({ horizonDays: 30 });
+      mockSetAvailabilityMultiple.mockImplementation(() => new Promise<void>((r) => setTimeout(r, 10)));
+      const today = new Date();
+      const [narrow, full] = await Promise.all([
+        service.pushAvailabilityNow(PROPERTY_ID, { dateFromISO: addDays(today, 5).toISOString(), dateToISO: addDays(today, 8).toISOString() }),
+        service.pushAvailabilityNow(PROPERTY_ID),
+      ]);
+      expect(full).not.toBe(narrow);
+      expect(mockSetAvailabilityMultiple).toHaveBeenCalledTimes(2);
+      expect(full.nightsEvaluated).toBeGreaterThan(narrow.nightsEvaluated);
+    });
+
     it('allows sequential pushes — mutex releases after completion', async () => {
       const { service, mockSetAvailabilityMultiple } = buildService();
 

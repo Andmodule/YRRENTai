@@ -23,6 +23,8 @@ export type PricingFlags = {
   basePrice: boolean;
   /** «Автоцены»: needs `basePrice` plus ZODOMUS_PROMOTIONS_AUTOPRICE_ENABLED. */
   autoPrice: boolean;
+  /** «Скидка» on top of the base price: needs `basePrice` plus ZODOMUS_PROMOTIONS_DISCOUNTS_ENABLED. */
+  discounts: boolean;
   /** «Только показывать» of «Автоцены» (ZODOMUS_PROMOTIONS_AUTOPRICE_DRY_RUN, default true). */
   autoPriceDryRun: boolean;
   /** Local hour of the daily «Автоцены» run, in `autoPriceTimeZone`. */
@@ -97,6 +99,11 @@ export class PricingConfig {
         toBool(config.get('ZODOMUS_PROMOTIONS_GUEST_PRICE_ENABLED'), false) &&
         toBool(config.get('ZODOMUS_PROMOTIONS_BASE_PRICE_ENABLED'), false) &&
         toBool(config.get('ZODOMUS_PROMOTIONS_AUTOPRICE_ENABLED'), false),
+      discounts:
+        enabled &&
+        toBool(config.get('ZODOMUS_PROMOTIONS_GUEST_PRICE_ENABLED'), false) &&
+        toBool(config.get('ZODOMUS_PROMOTIONS_BASE_PRICE_ENABLED'), false) &&
+        toBool(config.get('ZODOMUS_PROMOTIONS_DISCOUNTS_ENABLED'), false),
       autoPriceDryRun: toBool(config.get('ZODOMUS_PROMOTIONS_AUTOPRICE_DRY_RUN'), true),
       autoPriceHour: toHour(config.get('ZODOMUS_PROMOTIONS_AUTOPRICE_HOUR'), 6),
       autoPriceTimeZone: toTimeZone(config.get('ZODOMUS_PROMOTIONS_AUTOPRICE_TZ'), 'Europe/Warsaw'),
@@ -111,7 +118,7 @@ export class PricingConfig {
     };
     if (this.flags.enabled) {
       this.logger.log(
-        `Booking promotions ENABLED — dryRun=${this.flags.dryRun}, allowlist=${this.flags.allowlist.size || 'all'}, channel=${this.flags.channelId}, autoRules=${this.flags.autoRules}, occupancy=${this.flags.occupancy}, guestPrice=${this.flags.guestPrice}, basePrice=${this.flags.basePrice}, autoPrice=${this.flags.autoPrice} (dryRun=${this.flags.autoPriceDryRun})`,
+        `Booking promotions ENABLED — dryRun=${this.flags.dryRun}, allowlist=${this.flags.allowlist.size || 'all'}, channel=${this.flags.channelId}, autoRules=${this.flags.autoRules}, occupancy=${this.flags.occupancy}, guestPrice=${this.flags.guestPrice}, basePrice=${this.flags.basePrice}, autoPrice=${this.flags.autoPrice} (dryRun=${this.flags.autoPriceDryRun}), discounts=${this.flags.discounts}`,
       );
     }
   }

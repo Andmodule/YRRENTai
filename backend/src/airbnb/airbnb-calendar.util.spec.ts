@@ -246,3 +246,17 @@ describe('dateChangeOperations with own prices', () => {
   });
 });
 
+describe('ownAirbnbPrices — «Скидка» on Airbnb', () => {
+  const D = ['2027-02-01', '2027-02-02', '2027-02-03'];
+  const base = new Map([['2027-02-01', 300], ['2027-02-02', 300], ['2027-02-03', 300]]);
+  it('base × markup, then −pct (whole), then the minimum; a typed price is lowered too', () => {
+    const typed = new Map([['2027-02-03', 400]]);
+    const off = new Map([['2027-02-01', 10], ['2027-02-02', 50], ['2027-02-03', 25]]);
+    // 300 −20 % = 240 → −10 % = 216; 240 → −50 % = 120 < 200 → 200; typed 400 → −25 % = 300
+    expect(ownAirbnbPrices(D, base, typed, -20, 200, off)).toEqual(new Map([['2027-02-01', 216], ['2027-02-02', 200], ['2027-02-03', 300]]));
+  });
+  it('no discounts → as before', () => {
+    expect(ownAirbnbPrices(D, base, new Map(), 0, null)).toEqual(ownAirbnbPrices(D, base, new Map(), 0, null, new Map()));
+  });
+});
+

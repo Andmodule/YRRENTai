@@ -17,6 +17,7 @@ import type { CalendarDatesPreview } from '../calendar-dates-api';
 import { typedBookingNights, type MonthNight } from '../lib/property-month';
 import { basePrefill, bookingHint, prefillText, samePrice } from '../lib/price-prefill';
 import type { BookingSendWatch } from './useBookingSend';
+import { DiscountSection } from './DiscountSection';
 
 type Preview = CalendarDatesPreview & { fingerprint: string };
 
@@ -44,6 +45,7 @@ export function BasePricePanel({
   monthTo,
   today,
   data,
+  airbnbMode,
   typed,
   currency,
   minPrice,
@@ -57,6 +59,8 @@ export function BasePricePanel({
   monthTo: string;
   today: string;
   data: BasePriceOverview;
+  /** How Airbnb takes its price: from the base (a discount reaches it), from Booking, or not connected. */
+  airbnbMode: 'base' | 'booking' | 'off';
   /** Prices typed per night and channel (from «Цена для гостя»). */
   typed: Record<GuestPriceChannel, Record<string, number>>;
   currency: string | null;
@@ -258,6 +262,19 @@ export function BasePricePanel({
           )
         }
       />
+
+      {data.discountsEnabled ? (
+        <DiscountSection
+          propertyId={propertyId}
+          from={from}
+          to={to}
+          data={data}
+          airbnbMode={airbnbMode}
+          canCheck={canCheck}
+          disabled={running}
+          onChanged={(checkBooking) => (checkBooking ? check(true) : setPreview(null))}
+        />
+      ) : null}
 
       {typedNights.length > 0 && !keepTyped ? (
         <div

@@ -76,6 +76,8 @@ export function ownAirbnbPrices(
   typed: ReadonlyMap<string, number>,
   markupPct: number | null | undefined,
   min: number | null,
+  /** «Скидка» on Airbnb: night → percent, applied last (before the minimum). */
+  discounts?: ReadonlyMap<string, number>,
 ): Map<string, number> {
   const pct = Number.isFinite(markupPct) ? (markupPct as number) : 0;
   const out = new Map<string, number>();
@@ -86,6 +88,9 @@ export function ownAirbnbPrices(
     if (t != null && t > 0) p = Math.round(t);
     else if (b != null && b > 0) p = Math.round((b * (100 + pct)) / 100);
     if (p == null || !(p > 0)) continue;
+    const off = discounts?.get(d);
+    // A price already under the minimum before the discount keeps the old rule (lifted to the minimum).
+    if (off && off > 0) p = Math.round((p * (100 - off)) / 100);
     out.set(d, min != null && p < min ? Math.ceil(min) : p);
   }
   return out;

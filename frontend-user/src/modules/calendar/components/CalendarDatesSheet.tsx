@@ -487,6 +487,10 @@ function RunReport({ job, loading }: { job: CalendarDatesJob | null; loading: bo
   const running = job.state === 'running';
   const pct = job.total ? Math.round(((job.sent + job.failed.length) / job.total) * 100) : 100;
   const mismatched = job.verify?.mismatched ?? [];
+  const noRooms = job.verify?.noRooms ?? [];
+  /** Rates opened but the room count did not go, or Booking still shows 0 rooms: the nights stay closed there. */
+  const roomsProblem = (job.availability != null && !job.availability.ok) || noRooms.length > 0;
+  const allGood = job.state === 'done' && mismatched.length === 0 && job.failed.length === 0 && !roomsProblem;
   /** What Booking accepted; the plan only while it is still being sent. */
   const counts = job.applied ?? job.changes;
   return (
@@ -508,14 +512,14 @@ function RunReport({ job, loading }: { job: CalendarDatesJob | null; loading: bo
           <span
             className={cn(
               'flex h-11 w-11 shrink-0 items-center justify-center rounded-full',
-              job.state === 'done' && mismatched.length === 0 && job.failed.length === 0
+              allGood
                 ? 'bg-emerald-100 dark:bg-emerald-500/15'
                 : job.state === 'done'
                   ? 'bg-amber-100 dark:bg-amber-500/15'
                   : 'bg-red-100 dark:bg-red-500/15',
             )}
           >
-            {job.state === 'done' && mismatched.length === 0 && job.failed.length === 0 ? (
+            {allGood ? (
               <Check className="h-5 w-5 text-emerald-700 dark:text-emerald-400" aria-hidden />
             ) : (
               <AlertTriangle className={cn('h-5 w-5', job.state === 'done' ? 'text-amber-700' : 'text-red-700')} aria-hidden />
@@ -568,6 +572,20 @@ function RunReport({ job, loading }: { job: CalendarDatesJob | null; loading: bo
           </p>
         ) : (
           <p className="text-sm text-emerald-700 dark:text-emerald-400">{t('verifyOk', { count: job.verify.checked })}</p>
+        )
+      ) : null}
+      {job.availability ? (
+        !job.availability.ok ? (
+          <p className={WARN_BOX}>{t('roomsFailed', { count: job.availability.nights, error: job.availability.error || '—' })}</p>
+        ) : noRooms.length > 0 ? (
+          <p className={WARN_BOX}>
+            {t('roomsZero', {
+              count: noRooms.length,
+              dates: noRooms.slice(0, 8).map((d) => fmtRange(d, d)).join(', ') + (noRooms.length > 8 ? '…' : ''),
+            })}
+          </p>
+        ) : (
+          <p className="text-sm text-emerald-700 dark:text-emerald-400">{t('roomsOk', { count: job.availability.nights })}</p>
         )
       ) : null}
     </div>

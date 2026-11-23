@@ -27,6 +27,7 @@ import { PriceObservationEntity } from './entities/price-observation.entity';
 import { PricingBasePriceController } from './pricing-base-price.controller';
 import { PricingBasePriceService } from './pricing-base-price.service';
 import { PropertyBasePriceEntity } from './entities/property-base-price.entity';
+import { PropertyPriceDiscountEntity } from './entities/property-price-discount.entity';
 import { PropertyChannelPricingEntity } from './entities/property-channel-pricing.entity';
 import { PricingAutoPriceController } from './pricing-autoprice.controller';
 import { PricingAutoPriceService } from './pricing-autoprice.service';
@@ -53,6 +54,7 @@ import { CalendarDatesModule } from '../calendar-dates/calendar-dates.module';
       PropertyChannelNightPriceEntity,
       PriceObservationEntity,
       PropertyBasePriceEntity,
+      PropertyPriceDiscountEntity,
       PropertyChannelPricingEntity,
       PricingAutoPriceSettingsEntity,
       PropertyAutoPriceEntity,

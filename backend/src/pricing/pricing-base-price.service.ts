@@ -1,8 +1,16 @@
 import { createHash } from 'crypto';
-import { BadRequestException, ConflictException, Injectable, Logger, Optional, ServiceUnavailableException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  Optional,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Between, DataSource, In, QueryFailedError, Repository } from 'typeorm';
+import { Between, DataSource, In, LessThanOrEqual, MoreThanOrEqual, QueryFailedError, Repository } from 'typeorm';
 import type { JwtPayload } from '../common/decorators/current-user.decorator';
 import { PropertyService } from '../property/property.service';
 import type { PropertyEntity } from '../property/entities/property.entity';
@@ -20,8 +28,11 @@ import { PropertyBasePriceEntity } from './entities/property-base-price.entity';
 import { PropertyChannelPricingEntity } from './entities/property-channel-pricing.entity';
 import { PropertyChannelNightPriceEntity } from './entities/property-channel-night-price.entity';
 import { GUEST_PRICE_CHANNELS, type GuestPriceChannel } from './entities/property-channel-profile.entity';
-import type { BasePriceRangeDto, BookingSendConfirmDto, BookingSendDto, ChannelPricingDto } from './dto/pricing-base-price.dto';
+import type { BasePriceRangeDto, BookingSendConfirmDto, BookingSendDto, ChannelPricingDto, DiscountCreateDto } from './dto/pricing-base-price.dto';
+import { PropertyPriceDiscountEntity } from './entities/property-price-discount.entity';
+import { applyDiscounts, discountPctByNight, type DiscountChannel, type DiscountSpan } from './discount.util';
 import { AIRBNB_OWN_PRICES_CHANGED, type AirbnbOwnPricesChanged } from '../airbnb/airbnb-own-price.service';
+import { ownAirbnbPrices } from '../airbnb/airbnb-calendar.util';
 
 /** Longest range read, set or sent at once (a year, like the availability horizon). */
 export const BASE_PRICE_MAX_RANGE_DAYS = 366;
@@ -56,6 +67,38 @@ export function targetsFingerprint(targets: ReadonlyMap<string, number>): string
   return createHash('sha1').update(JSON.stringify(entries)).digest('hex');
 }
 
+/** «Скидка» as the calendar shows it. */
+export type DiscountView = {
+  id: string;
+  /** First and last night, inclusive. */
+  from: string;
+  to: string;
+  pct: number;
+  channels: DiscountChannel[];
+  name: string | null;
+};
+
+export type DiscountCreated = {
+  discount: DiscountView;
+  /** Nights without a base price that took Booking's open price as their base. */
+  filledFromBooking: number;
+  /** Nights with no price anywhere (no base, nothing typed): the discount waits there for a base price. */
+  noPrice: string[];
+  /** Nights where the discount stops at the minimum price (Booking or Airbnb). */
+  atMin: string[];
+};
+
+function discountView(r: PropertyPriceDiscountEntity): DiscountView {
+  return {
+    id: r.id,
+    from: r.dateFrom,
+    to: r.dateTo,
+    pct: r.pct,
+    channels: (r.channels ?? []).filter((c): c is DiscountChannel => c === 'booking' || c === 'airbnb'),
+    name: r.name,
+  };
+}
+
 export type BasePriceOverview = {
   /** yyyy-MM-dd → base price, inside [from, to]. */
   base: Record<string, number>;
@@ -63,6 +106,12 @@ export type BasePriceOverview = {
   bookingSend: BookingSendBlock;
   /** «Автоцены»: yyyy-MM-dd → signed percent the rule put on the night (empty while the rule is off). */
   auto: Record<string, number>;
+  /** «Скидка» on (ZODOMUS_PROMOTIONS_DISCOUNTS_ENABLED). */
+  discountsEnabled: boolean;
+  /** Discounts touching [from, to] (empty while off). */
+  discounts: DiscountView[];
+  /** Night → the biggest discount per channel, inside [from, to]. */
+  discountPct: Record<DiscountChannel, Record<string, number>>;
 };
 
 function defaultChannel(channel: GuestPriceChannel): ChannelPricingView {
@@ -106,7 +155,34 @@ export class PricingBasePriceService {
     @InjectRepository(PropertyAutoPriceEntity)
     private readonly autoRepo: Repository<PropertyAutoPriceEntity>,
     @Optional() private readonly events?: EventEmitter2,
+    @Optional()
+    @InjectRepository(PropertyPriceDiscountEntity)
+    private readonly discountRepo?: Repository<PropertyPriceDiscountEntity>,
   ) {}
+
+  /**
+   * «Скидка» rows touching [from, to]. Nothing is read while the flag is off; a missing table (flag on before the
+   * migration) must not break prices or «Отправить в Booking» — logged and treated as none.
+   */
+  async discountSpans(propertyId: string, from: string, to: string): Promise<PropertyPriceDiscountEntity[]> {
+    if (!this.cfg.flags.discounts || !this.discountRepo) return [];
+    try {
+      return await this.discountRepo.find({
+        where: { propertyId, dateFrom: LessThanOrEqual(to), dateTo: MoreThanOrEqual(from) },
+        order: { dateFrom: 'ASC', createdAt: 'ASC' },
+      });
+    } catch (e) {
+      this.logger.warn(`discounts unreadable (migration 1779000000000 not run?): ${e instanceof Error ? e.message : String(e)}`);
+      return [];
+    }
+  }
+
+  private discountMaps(spans: readonly DiscountSpan[], from: string, to: string): Record<DiscountChannel, Map<string, number>> {
+    return {
+      booking: discountPctByNight(spans, 'booking', from, to, addDaysYmd),
+      airbnb: discountPctByNight(spans, 'airbnb', from, to, addDaysYmd),
+    };
+  }
 
   /** The Airbnb price is made of the base price and the Airbnb markup: tell Airbnb (it decides by its own flag). */
   private airbnbPricesChanged(propertyId: string, from: string, to: string): void {
@@ -183,11 +259,13 @@ export class PricingBasePriceService {
     this.assertRange(from, to);
     const property = await this.owned(user, propertyId);
     return this.tables(async () => {
-      const [base, channels, auto] = await Promise.all([
+      const [base, channels, auto, spans] = await Promise.all([
         this.baseRepo.find({ where: { propertyId: property.id, date: Between(from, to) } }),
         this.channelRepo.find({ where: { propertyId: property.id } }),
         this.autoAdjustments(property.id, from, to),
+        this.discountSpans(property.id, from, to),
       ]);
+      const pcts = this.discountMaps(spans, from, to);
       const byChannel = new Map(channels.map((c) => [c.channel, c]));
       return {
         base: Object.fromEntries(base.map((b) => [b.date, b.priceMinor / 100])),
@@ -197,6 +275,9 @@ export class PricingBasePriceService {
         },
         bookingSend: this.bookingSendBlock(property),
         auto: Object.fromEntries(auto),
+        discountsEnabled: this.cfg.flags.discounts,
+        discounts: spans.map(discountView),
+        discountPct: { booking: Object.fromEntries(pcts.booking), airbnb: Object.fromEntries(pcts.airbnb) },
       };
     });
   }
@@ -305,11 +386,22 @@ export class PricingBasePriceService {
     to: string,
     auto?: ReadonlyMap<string, number>,
   ): Promise<Map<string, number>> {
-    const [base, typed, rule, stored] = await Promise.all([
+    return (await this.bookingTargetsDetailed(propertyId, from, to, auto)).targets;
+  }
+
+  /** `bookingTargets` + the nights where a discount stopped at the minimum price. */
+  async bookingTargetsDetailed(
+    propertyId: string,
+    from: string,
+    to: string,
+    auto?: ReadonlyMap<string, number>,
+  ): Promise<{ targets: Map<string, number>; atMin: string[] }> {
+    const [base, typed, rule, stored, spans] = await Promise.all([
       this.baseRepo.find({ where: { propertyId, date: Between(from, to) } }),
       this.nightPriceRepo.find({ where: { propertyId, channel: 'booking', date: Between(from, to) } }),
       this.channelRepo.findOne({ where: { propertyId, channel: 'booking' } }),
       auto ? Promise.resolve(auto) : this.autoAdjustments(propertyId, from, to),
+      this.discountSpans(propertyId, from, to),
     ]);
     const adjustments = [...stored].filter(([d]) => d >= from && d <= to);
     const dates: string[] = [];
@@ -325,7 +417,11 @@ export class PricingBasePriceService {
         targets.set(date, autoChannelPrice(b, pct, rule?.markupPct ?? 0, min));
       }
     }
-    return targets;
+    // «Скидка» last: on the price the night would carry (typed, base × markup, «Автоцены»), never below the minimum.
+    const pcts = discountPctByNight(spans, 'booking', from, to, addDaysYmd);
+    let atMin: string[] = [];
+    if (pcts.size > 0) atMin = applyDiscounts(targets, pcts, await this.dates.minPriceOf(propertyId));
+    return { targets, atMin };
   }
 
   /** Markup of the Booking channel (0 when not set). */
@@ -378,5 +474,155 @@ export class PricingBasePriceService {
       throw new ConflictException('Цены изменились после проверки — нажмите «Проверить» ещё раз');
     }
     return this.dates.startPrices(user, property.id, targets);
+  }
+
+  private assertDiscountsOn(): void {
+    this.assertOn();
+    if (!this.cfg.flags.discounts || !this.discountRepo) {
+      throw new ServiceUnavailableException('Скидки выключены (ZODOMUS_PROMOTIONS_DISCOUNTS_ENABLED=false)');
+    }
+  }
+
+  /** The flag was switched on before the migration: say so instead of a bare 500. */
+  private async discountTable<T>(work: () => Promise<T>): Promise<T> {
+    try {
+      return await work();
+    } catch (e) {
+      if (e instanceof QueryFailedError && (e as { driverError?: { code?: string } }).driverError?.code === '42P01') {
+        throw new ServiceUnavailableException('Таблица скидок не создана: запустите миграцию 1779000000000-pricing-discounts');
+      }
+      throw e;
+    }
+  }
+
+  /**
+   * «Скидка»: −pct on the nights [from, to] (from today on) of the chosen channels, kept apart from the base price.
+   * Nights without a base price first take the price Booking has open (reads Booking, writes only RentAI — like
+   * «Заполнить из Booking»); nights with no price anywhere are listed: the discount applies once a base is set.
+   * Airbnb follows by itself (own-price rule); Booking only through «Отправить в Booking».
+   */
+  async createDiscount(user: JwtPayload, propertyId: string, dto: DiscountCreateDto): Promise<DiscountCreated> {
+    this.assertDiscountsOn();
+    this.assertRange(dto.from, dto.to);
+    const property = await this.owned(user, propertyId);
+    const today = todayInTz(property.timezone);
+    if (dto.to < today) throw new BadRequestException('Скидку нельзя поставить на прошедшие ночи');
+    const from = dto.from < today ? today : dto.from;
+    const to = dto.to;
+    const channels = [...new Set(dto.channels)] as DiscountChannel[];
+
+    const row = await this.discountTable(() =>
+      this.discountRepo!.save(
+        this.discountRepo!.create({
+          propertyId: property.id,
+          dateFrom: from,
+          dateTo: to,
+          pct: dto.pct,
+          channels,
+          name: dto.name?.trim() || null,
+        }),
+      ),
+    );
+
+    // Nights without a base: Booking's open price becomes their base (only what Booking really sells), turned back
+    // through the Booking markup so the Booking price of the night stays what it is before the discount.
+    let filledFromBooking = 0;
+    const has = new Set<string>();
+    const nights: string[] = [];
+    for (let d = from; d <= to; d = addDaysYmd(d, 1)) nights.push(d);
+    try {
+      const existing = await this.baseRepo.find({ where: { propertyId: property.id, date: Between(from, to) } });
+      for (const b of existing) has.add(b.date);
+      if (nights.some((d) => !has.has(d)) && this.dates.enabled && this.sync.externalIdOf(property)) {
+        const [open, markup] = await Promise.all([
+          this.dates.readOpenRatePrices(user, property.id, from, addDaysYmd(to, 1)),
+          this.bookingMarkup(property.id),
+        ]);
+        const rows = [...open]
+          .filter(([date, price]) => !has.has(date) && price > 0)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([date, price]) => ({
+            propertyId: property.id,
+            date,
+            priceMinor: toMinor(markup ? Math.round(((price * 100) / (100 + markup)) * 100) / 100 : price),
+          }));
+        if (rows.length > 0) {
+          await this.baseRepo.createQueryBuilder().insert().into(PropertyBasePriceEntity).values(rows).orIgnore().execute();
+          for (const r of rows) has.add(r.date);
+          filledFromBooking = rows.length;
+        }
+      }
+    } catch (e) {
+      // The discount is saved; nights without a base stay so and are listed below.
+      this.logger.warn(`discount ${row.id}: base prices not filled from Booking: ${e instanceof Error ? e.message : String(e)}`);
+    }
+    // Airbnb is told once, after the fill (nothing above can throw): its send reads the base prices just written.
+    // A Booking-only discount that filled bases still changes Airbnb (those nights now go from the base).
+    if (channels.includes('airbnb') || filledFromBooking > 0) this.airbnbPricesChanged(property.id, from, to);
+
+    // What to tell the person — best effort: the discount exists whatever fails here (no 5xx → no duplicate on retry).
+    let noPrice: string[] = [];
+    const atMin = new Set<string>();
+    try {
+      // A chosen channel with neither a base nor its own typed price has nothing to lower on that night.
+      const typed = await this.nightPriceRepo.find({ where: { propertyId: property.id, date: Between(from, to) } });
+      const typedBy: Record<DiscountChannel, Set<string>> = { booking: new Set(), airbnb: new Set() };
+      for (const t of typed) {
+        if (t.priceMinor > 0 && (t.channel === 'booking' || t.channel === 'airbnb')) typedBy[t.channel].add(t.date);
+      }
+      noPrice = nights.filter((d) => !has.has(d) && channels.some((c) => !typedBy[c].has(d)));
+      if (channels.includes('booking')) {
+        for (const d of (await this.bookingTargetsDetailed(property.id, from, to)).atMin) atMin.add(d);
+      }
+      if (channels.includes('airbnb')) {
+        for (const d of await this.airbnbAtMin(property.id, from, to)) atMin.add(d);
+      }
+    } catch (e) {
+      this.logger.warn(`discount ${row.id}: report not built: ${e instanceof Error ? e.message : String(e)}`);
+    }
+    return { discount: discountView(row), filledFromBooking, noPrice, atMin: [...atMin].sort() };
+  }
+
+  /**
+   * Airbnb nights of [from, to] where the discount stops at the minimum — computed as RentAI sends Airbnb
+   * (`ownAirbnbPrices`: whole złoty first, then the discount, the minimum rounded up).
+   */
+  private async airbnbAtMin(propertyId: string, from: string, to: string): Promise<string[]> {
+    const [base, typed, rule, spans, min] = await Promise.all([
+      this.baseRepo.find({ where: { propertyId, date: Between(from, to) } }),
+      this.nightPriceRepo.find({ where: { propertyId, channel: 'airbnb', date: Between(from, to) } }),
+      this.channelRepo.findOne({ where: { propertyId, channel: 'airbnb' } }),
+      this.discountSpans(propertyId, from, to),
+      this.dates.minPriceOf(propertyId),
+    ]);
+    if (min == null || !(min > 0)) return [];
+    const floor = Math.ceil(min);
+    const dates: string[] = [];
+    for (let d = from; d <= to; d = addDaysYmd(d, 1)) dates.push(d);
+    const own = ownAirbnbPrices(
+      dates,
+      new Map(base.map((b) => [b.date, b.priceMinor / 100])),
+      new Map(typed.map((t) => [t.date, t.priceMinor / 100])),
+      rule?.markupPct ?? 0,
+      null,
+    );
+    const pcts = discountPctByNight(spans, 'airbnb', from, to, addDaysYmd);
+    const out: string[] = [];
+    for (const [d, p] of own) {
+      const off = pcts.get(d);
+      if (off && p >= floor && Math.round((p * (100 - off)) / 100) < floor) out.push(d);
+    }
+    return out;
+  }
+
+  /** Removes the discount: its nights go back to the current base price. */
+  async deleteDiscount(user: JwtPayload, propertyId: string, id: string): Promise<{ from: string; to: string }> {
+    this.assertDiscountsOn();
+    const property = await this.owned(user, propertyId);
+    const row = await this.discountTable(() => this.discountRepo!.findOne({ where: { id, propertyId: property.id } }));
+    if (!row) throw new NotFoundException('Скидка не найдена');
+    await this.discountRepo!.delete({ id: row.id, propertyId: property.id });
+    if ((row.channels ?? []).includes('airbnb')) this.airbnbPricesChanged(property.id, row.dateFrom, row.dateTo);
+    return { from: row.dateFrom, to: row.dateTo };
   }
 }

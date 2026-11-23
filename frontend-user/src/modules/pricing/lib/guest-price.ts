@@ -356,7 +356,26 @@ export type BookingCell = {
   minGuest: number;
   /** «Автоцены» moved the price of the night by this percent (only when it did). */
   autoPct?: number;
+  /** «Скидка» lowered the price by this percent (only when it did). */
+  discountPct?: number;
+  /** The discount stopped at the minimum price. */
+  atMin?: boolean;
 };
+
+/**
+ * «Скидка» — same as backend discount.util.ts: the price lowered by `pct` in whole units, never below the
+ * minimum (a price already under it is left as it was).
+ */
+export function discountedPrice(
+  price: number,
+  pct: number | null | undefined,
+  minPrice?: number | null,
+): { price: number; atMin: boolean } {
+  if (!pct || !(pct > 0)) return { price, atMin: false };
+  const lowered = Math.round((price * (100 - pct)) / 100);
+  if (minPrice != null && minPrice > 0 && lowered < minPrice) return price < minPrice ? { price, atMin: false } : { price: minPrice, atMin: true };
+  return { price: lowered, atMin: false };
+}
 
 /**
  * One calendar cell, Booking row: the price RentAI sets and what the cheapest guest pays for it. A cheaper
@@ -373,15 +392,21 @@ export function bookingCell(
     /** «Автоцены»: night → percent the rule put on the base price; a typed price still wins. */
     auto?: Readonly<Record<string, number>>;
     minPrice?: number | null;
+    /** «Скидка» on Booking: night → percent; lowers the price RentAI makes (typed or from the base). */
+    discountPct?: Readonly<Record<string, number>>;
   },
 ): BookingCell | null {
   const autoPct = p.auto?.[n.ymd];
   const b = p.base[n.ymd];
   const typedHere = p.typed[n.ymd] != null && p.typed[n.ymd]! > 0;
-  const own =
+  const made =
     autoPct && !typedHere && b != null && b > 0
       ? autoChannelPrice(b, autoPct, p.markupPct, p.minPrice)
       : channelNightPrice(n.ymd, p.base, p.typed, p.markupPct);
+  // A night with no price of RentAI's own has nothing to lower: the discount waits for a base price.
+  const discountPct = made != null ? p.discountPct?.[n.ymd] : undefined;
+  const lowered = made != null && discountPct ? discountedPrice(made, discountPct, p.minPrice) : null;
+  const own = lowered ? lowered.price : made;
   // No base and no typed price for the night: the row shows what Booking has now, nothing to send.
   const price = own ?? (n.rack != null && n.rack > 0 ? n.rack : null);
   if (price == null) return null;
@@ -405,6 +430,7 @@ export function bookingCell(
     current: pending ? n.rack : null,
     minGuest,
     ...(autoPct && !typedHere && b != null && b > 0 ? { autoPct } : {}),
+    ...(lowered ? { discountPct, ...(lowered.atMin ? { atMin: true } : {}) } : {}),
   };
 }
 

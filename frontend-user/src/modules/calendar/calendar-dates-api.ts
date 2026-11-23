@@ -63,7 +63,10 @@ export interface CalendarDatesJob {
   changes: { open: number; close: number; price: number };
   /** Accepted by Booking; null while sending. */
   applied: { open: number; close: number; price: number } | null;
-  verify: { checked: number; mismatched: string[]; error?: string } | null;
+  /** noRooms: opened nights Booking still shows with 0 rooms for sale. */
+  verify: { checked: number; mismatched: string[]; error?: string; noRooms?: string[] } | null;
+  /** «Открыть»: rooms for sale sent for the opened nights (null = not sent, flag off). */
+  availability?: { ok: boolean; nights: number; error?: string } | null;
   startedAt: string;
   finishedAt: string | null;
 }

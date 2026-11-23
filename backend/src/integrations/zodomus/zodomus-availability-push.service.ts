@@ -148,6 +148,8 @@ export class ZodomusAvailabilityPushService implements OnModuleInit, OnModuleDes
    * When a push is already in flight, new callers receive the same promise (coalescing).
    */
   private readonly _inFlightPush = new Map<string, Promise<AvailabilityPushSummary>>();
+  /** Properties whose push in flight covers only a date window (not the whole horizon). */
+  private readonly _inFlightWindowed = new Set<string>();
 
   /**
    * Sliding-window call timestamps for the inline (no-Redis) rate limiter.
@@ -489,6 +491,14 @@ export class ZodomusAvailabilityPushService implements OnModuleInit, OnModuleDes
    */
   async pushAvailabilityNow(propertyId: string, options?: PushAvailabilityOptions): Promise<AvailabilityPushSummary> {
     const inFlight = this._inFlightPush.get(propertyId);
+    const windowed = Boolean(options?.dateFromISO || options?.dateToISO);
+    // Run our own push after the one in flight instead of taking its result when that result would not cover us:
+    // the caller needs ITS window sent now (e.g. «Открыть»), or a whole-property push (nightly, manual) arrives
+    // while only a window is being sent. The outcome of the push in flight is its own caller's business.
+    if (inFlight && ((options?.awaitUpstream && windowed) || (!windowed && this._inFlightWindowed.has(propertyId)))) {
+      await inFlight.catch(() => undefined);
+      return this.pushAvailabilityNow(propertyId, options);
+    }
     if (inFlight) {
       this.logger.debug(
         `Zodomus availability push already in progress for ${propertyId} — coalescing duplicate call`,
@@ -498,10 +508,13 @@ export class ZodomusAvailabilityPushService implements OnModuleInit, OnModuleDes
 
     const promise = this._doPush(propertyId, options);
     this._inFlightPush.set(propertyId, promise);
+    if (windowed) this._inFlightWindowed.add(propertyId);
+    else this._inFlightWindowed.delete(propertyId);
     try {
       return await promise;
     } finally {
       this._inFlightPush.delete(propertyId);
+      this._inFlightWindowed.delete(propertyId);
     }
   }
 
@@ -509,7 +522,9 @@ export class ZodomusAvailabilityPushService implements OnModuleInit, OnModuleDes
     try {
       const summary = await this.executePush(propertyId, options);
       // Inline path (no queue, or awaitUpstream) completed upstream POST — clear dirty.
-      if (summary.pushed && (!this.queue || options?.awaitUpstream)) {
+      // A narrow window (dateFrom/dateTo) does not stand for the whole property: a failed full push stays dirty.
+      const wholeProperty = !options?.dateFromISO && !options?.dateToISO;
+      if (summary.pushed && (!this.queue || options?.awaitUpstream) && wholeProperty) {
         await this.clearDirty(propertyId);
       }
       return summary;

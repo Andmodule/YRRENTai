@@ -31,6 +31,11 @@ export type NightChange = {
   closed: boolean;
   fromPrice: number | null;
   fromClosed: boolean;
+  /**
+   * Open on the rate but no room for sale on Booking (0 or not set) — the night is closed there all the same.
+   * «Открыть» with the room count from RentAI opens it (counted as opened).
+   */
+  fromNoRoom?: boolean;
 };
 
 export type SkipReason =
@@ -259,7 +264,17 @@ export function emptySkipped(): Record<SkipReason, number> {
 export function planCalendarDates(
   nights: ReadonlyMap<string, RateNight>,
   input: CalendarDatesPlanInput,
-  opts: { crmBlocked?: ReadonlySet<string>; keepClosed?: ReadonlySet<string>; minPrice?: number | null } = {},
+  opts: {
+    crmBlocked?: ReadonlySet<string>;
+    keepClosed?: ReadonlySet<string>;
+    minPrice?: number | null;
+    /**
+     * «Открыть» sends the room count from RentAI bookings right after (ZODOMUS_CALENDAR_OPEN_PUSHES_AVAILABILITY):
+     * a night with 0 rooms but nothing sold on Booking and nothing booked in RentAI can be opened — the push gives
+     * it its room. Without it such a night stays out, as before (opening the rate alone would not sell it).
+     */
+    roomsFromRentai?: boolean;
+  } = {},
 ): CalendarDatesPlan {
   const skipped = emptySkipped();
   const days = input.weekdays && input.weekdays.length > 0 ? new Set(input.weekdays) : null;
@@ -282,7 +297,8 @@ export function planCalendarDates(
       skipped.missing++;
       continue;
     }
-    if (night.booked > 0 || night.availability === 0) {
+    const noRoomButFree = night.availability === 0 && night.booked === 0 && !wantClosed && opts.roomsFromRentai === true;
+    if (night.booked > 0 || (night.availability === 0 && !noRoomButFree)) {
       skipped.booked++;
       continue;
     }
@@ -302,7 +318,9 @@ export function planCalendarDates(
       skipped.noPrice++;
       continue;
     }
-    if (night.closed === wantClosed && samePrice(night.price, price)) {
+    // No room for sale (0 or not set), nothing sold on Booking: closed there whatever the rate says.
+    const noRoom = !wantClosed && opts.roomsFromRentai === true && night.booked === 0 && !(night.availability != null && night.availability > 0);
+    if (night.closed === wantClosed && samePrice(night.price, price) && !(noRoom && !night.closed)) {
       if (wantClosed) alreadyClosed.push(date);
       skipped.unchanged++;
       continue;
@@ -317,6 +335,7 @@ export function planCalendarDates(
       closed: wantClosed,
       fromPrice: night.price,
       fromClosed: night.closed,
+      ...(noRoom ? { fromNoRoom: true } : {}),
     });
   }
   return { nights: keys.length, changes, skipped, alreadyClosed };
@@ -420,7 +439,7 @@ export function countChanges(changes: readonly NightChange[]): { open: number; c
   let price = 0;
   for (const c of changes) {
     if (c.closed && !c.fromClosed) close++;
-    else if (!c.closed && c.fromClosed) open++;
+    else if (!c.closed && (c.fromClosed || c.fromNoRoom === true)) open++;
     else price++;
   }
   return { open, close, price };

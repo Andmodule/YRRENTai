@@ -1,10 +1,10 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { CurrentUser, JwtPayload } from '../common/decorators/current-user.decorator';
 import { PricingBasePriceService } from './pricing-base-price.service';
-import { BasePriceRangeDto, BookingSendConfirmDto, BookingSendDto, ChannelPricingDto } from './dto/pricing-base-price.dto';
+import { BasePriceRangeDto, BookingSendConfirmDto, BookingSendDto, ChannelPricingDto, DiscountCreateDto } from './dto/pricing-base-price.dto';
 
 /**
  * «Цены → базовая цена» in the calendar of one property. Every route answers 503 while
@@ -73,5 +73,29 @@ export class PricingBasePriceController {
     @Body() body: BookingSendConfirmDto,
   ) {
     return { data: await this.basePrice.sendBooking(user, propertyId, body) };
+  }
+
+  /**
+   * «Скидка» (ZODOMUS_PROMOTIONS_DISCOUNTS_ENABLED): saved on top of the base price. Nights without a base
+   * price take Booking's open price first. Airbnb follows by itself (own-price rule); Booking only through
+   * «Отправить в Booking», as for the base price.
+   */
+  @Post(':propertyId/discounts')
+  async createDiscount(
+    @CurrentUser() user: JwtPayload,
+    @Param('propertyId', ParseUUIDPipe) propertyId: string,
+    @Body() body: DiscountCreateDto,
+  ) {
+    return { data: await this.basePrice.createDiscount(user, propertyId, body) };
+  }
+
+  /** Removes the discount: its nights go back to the current base price. */
+  @Delete(':propertyId/discounts/:id')
+  async deleteDiscount(
+    @CurrentUser() user: JwtPayload,
+    @Param('propertyId', ParseUUIDPipe) propertyId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return { data: await this.basePrice.deleteDiscount(user, propertyId, id) };
   }
 }
