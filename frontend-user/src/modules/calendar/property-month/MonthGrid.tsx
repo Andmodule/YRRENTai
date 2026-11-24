@@ -45,6 +45,8 @@ export type CellRows = {
   airbnbTyped: boolean;
   /** No own Airbnb price or base price: the Airbnb price is the Booking price minus Basic (what RentAI sends). */
   airbnbFromBooking?: boolean;
+  /** Airbnb's own last-minute / early-bird discount on a stay from this night booked today: what the guest pays. */
+  airbnbGuest?: { price: number; label: string; pct: number } | null;
 };
 
 export function MonthGrid({
@@ -234,6 +236,15 @@ export function MonthGrid({
                         <span className="hidden sm:inline">A </span>
                         {row.airbnb != null ? fmt.format(row.airbnb) : '—'}
                         {row.airbnbTyped ? '✎' : ''}
+                        {row.airbnbGuest ? (
+                          // What the guest pays after Airbnb's own discount (Airbnb takes it off; RentAI sends the price before).
+                          <span
+                            className="hidden text-muted-foreground sm:inline"
+                            title={t('rowAirbnbGuestTitle', { label: row.airbnbGuest.label, pct: row.airbnbGuest.pct })}
+                          >
+                            {` → ${fmt.format(row.airbnbGuest.price)}`}
+                          </span>
+                        ) : null}
                       </span>
                     </span>
                   ) : (

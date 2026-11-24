@@ -4,7 +4,7 @@ import type { ConfigService } from '@nestjs/config';
 import type { DataSource, Repository } from 'typeorm';
 import { PricingConfig } from './pricing-config';
 import { GUEST_PRICE_MAX_RANGE_DAYS, PricingGuestPriceService } from './pricing-guest-price.service';
-import { channelProfileSchema, nightPricesSchema, observationSchema } from './dto/pricing-guest-price.dto';
+import { airbnbDealsSchema, channelProfileSchema, nightPricesSchema, observationSchema } from './dto/pricing-guest-price.dto';
 import { addDaysYmd } from './pricing-math.util';
 import { bookingNightDiscounts, type GuestPriceInput } from './guest-price.util';
 import type { PricingService } from './pricing.service';
@@ -39,7 +39,7 @@ function missingTable() {
   );
 }
 
-function setup(opts: { env?: Record<string, unknown>; profiles?: Partial<PropertyChannelProfileEntity>[] } = {}) {
+function setup(opts: { env?: Record<string, unknown>; profiles?: Partial<PropertyChannelProfileEntity>[]; deals?: Record<string, unknown> | null } = {}) {
   const values: Record<string, unknown> = {
     ZODOMUS_ENABLED: true,
     ZODOMUS_PROMOTIONS_ENABLED: true,
@@ -81,6 +81,13 @@ function setup(opts: { env?: Record<string, unknown>; profiles?: Partial<Propert
     ),
   };
   const events = { emit: jest.fn() };
+  let dealsRow: Record<string, unknown> | null = opts.deals ?? null;
+  const dealsRepo = {
+    findOne: jest.fn(async () => dealsRow),
+    upsert: jest.fn(async (r: Record<string, unknown>) => {
+      dealsRow = { ...r };
+    }),
+  };
   const svc = new PricingGuestPriceService(
     cfg,
     pricing as unknown as PricingService,
@@ -90,8 +97,9 @@ function setup(opts: { env?: Record<string, unknown>; profiles?: Partial<Propert
     nightPriceRepo as unknown as Repository<PropertyChannelNightPriceEntity>,
     observationRepo as unknown as Repository<PriceObservationEntity>,
     events as never,
+    dealsRepo as never,
   );
-  return { svc, events, profileRepo, nightPriceRepo, observationRepo, tx, dataSource, propertyService, get profiles() { return profiles; } };
+  return { svc, dealsRepo, events, profileRepo, nightPriceRepo, observationRepo, tx, dataSource, propertyService, get profiles() { return profiles; } };
 }
 
 function observation(over: Partial<Omit<ObservationDto, 'input'>> & { input?: GuestPriceInput } = {}): ObservationDto {
@@ -398,3 +406,75 @@ describe('PricingGuestPriceService — «Airbnb — своя цена» tells Ai
     await expect(s.svc.setNightPrices(OWNER, PROP, { channel: 'airbnb', from: '2026-11-06', to: '2026-11-06', price: 290 })).resolves.toEqual({ '2026-11-06': 290 });
   });
 });
+
+describe('PricingGuestPriceService — Airbnb own discounts (display only)', () => {
+  const ON = { ZODOMUS_PROMOTIONS_AIRBNB_DEALS_ENABLED: true };
+  const NOV = ['2026-11-01', '2026-11-04'] as const;
+  const PM = { lastMinutePct: 10, lastMinuteDays: 5, earlyBirdPct: 5, earlyBirdMonths: 1 };
+
+  it('switch off (default): not read, overview says off, saving answers 503', async () => {
+    const s = setup({ deals: PM });
+    const o = await s.svc.overview(OWNER, PROP, ...NOV);
+    expect(o).toMatchObject({ airbnbDealsEnabled: false, airbnbDeals: null });
+    expect(s.dealsRepo.findOne).not.toHaveBeenCalled();
+    await expect(s.svc.saveAirbnbDeals(OWNER, PROP, { ...PM })).rejects.toBeInstanceOf(ServiceUnavailableException);
+  });
+
+  it('needs «Цена для гостя» on as well', async () => {
+    const s = setup({ env: { ...ON, ZODOMUS_PROMOTIONS_GUEST_PRICE_ENABLED: false } });
+    await expect(s.svc.saveAirbnbDeals(OWNER, PROP, { ...PM })).rejects.toBeInstanceOf(ServiceUnavailableException);
+  });
+
+  it('on: overview carries what is saved; nothing saved → null', async () => {
+    const s = setup({ env: ON, deals: PM });
+    expect((await s.svc.overview(OWNER, PROP, ...NOV)).airbnbDeals).toEqual(PM);
+    const e = setup({ env: ON });
+    expect((await e.svc.overview(OWNER, PROP, ...NOV))).toMatchObject({ airbnbDealsEnabled: true, airbnbDeals: null });
+  });
+
+  it('save: upsert by property; a percent cleared clears its days / months', async () => {
+    const s = setup({ env: ON });
+    expect(await s.svc.saveAirbnbDeals(OWNER, PROP, { lastMinutePct: 10, lastMinuteDays: 5, earlyBirdPct: null, earlyBirdMonths: 3 })).toEqual({
+      lastMinutePct: 10,
+      lastMinuteDays: 5,
+      earlyBirdPct: null,
+      earlyBirdMonths: null,
+    });
+    expect(s.dealsRepo.upsert).toHaveBeenCalledWith(expect.objectContaining({ propertyId: PROP, earlyBirdMonths: null }), ['propertyId']);
+  });
+
+  it('save: someone else’s property → 404, nothing written', async () => {
+    const s = setup({ env: ON });
+    await expect(s.svc.saveAirbnbDeals(OWNER, 'p2', { ...PM })).rejects.toBeInstanceOf(NotFoundException);
+    expect(s.dealsRepo.upsert).not.toHaveBeenCalled();
+  });
+
+  it('table missing: overview still works (deals null), saving names the migration', async () => {
+    const s = setup({ env: ON });
+    s.dealsRepo.findOne.mockRejectedValueOnce(missingTable());
+    expect((await s.svc.overview(OWNER, PROP, ...NOV)).airbnbDeals).toBeNull();
+    s.dealsRepo.upsert.mockRejectedValueOnce(missingTable());
+    await expect(s.svc.saveAirbnbDeals(OWNER, PROP, { ...PM })).rejects.toThrow('1779100000000');
+  });
+
+  it('DTO: percents 1–99 whole, days 0–28, months 1–36, a percent needs its days / months, nothing extra', () => {
+    expect(airbnbDealsSchema.safeParse(PM).success).toBe(true);
+    expect(airbnbDealsSchema.safeParse({ lastMinutePct: null, lastMinuteDays: null, earlyBirdPct: null, earlyBirdMonths: null }).success).toBe(true);
+    expect(airbnbDealsSchema.safeParse({ ...PM, lastMinuteDays: 0 }).success).toBe(true);
+    for (const bad of [
+      { ...PM, lastMinutePct: 0 },
+      { ...PM, lastMinutePct: 100 },
+      { ...PM, lastMinutePct: 9.5 },
+      { ...PM, lastMinuteDays: 29 },
+      { ...PM, lastMinuteDays: null },
+      { ...PM, earlyBirdMonths: 0 },
+      { ...PM, earlyBirdMonths: 37 },
+      { ...PM, earlyBirdMonths: null },
+      { ...PM, extra: 1 },
+      { lastMinutePct: 10, lastMinuteDays: 5 },
+    ]) {
+      expect(airbnbDealsSchema.safeParse(bad).success).toBe(false);
+    }
+  });
+});
+

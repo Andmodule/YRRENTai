@@ -5,7 +5,8 @@ import { useAuth } from '@/hooks/use-auth';
 import {
   pricingApi,
   type AutoPriceSettingsInput,
-  type BasePriceRangeInput,
+  type AirbnbDeals,
+  BasePriceRangeInput,
   type PriceDiscountInput,
   type ChannelProfileInput,
   type GuestPriceChannel,
@@ -222,7 +223,11 @@ export function useGuestPriceMutations(propertyId: string) {
     mutationFn: (input: ObservationInput) => pricingApi.guestPrice.addObservation(propertyId, input),
     onSuccess: refresh,
   });
-  return { saveProfile, setNightPrices, addObservation };
+  const saveAirbnbDeals = useMutation({
+    mutationFn: (input: AirbnbDeals) => pricingApi.guestPrice.saveAirbnbDeals(propertyId, input),
+    onSuccess: refresh,
+  });
+  return { saveProfile, setNightPrices, addObservation, saveAirbnbDeals };
 }
 
 /** «Базовая цена» for [from, to] + channel markups. Database only. */

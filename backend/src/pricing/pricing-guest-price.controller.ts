@@ -4,7 +4,7 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { CurrentUser, JwtPayload } from '../common/decorators/current-user.decorator';
 import { PricingGuestPriceService } from './pricing-guest-price.service';
-import { ChannelProfileDto, NightPricesDto, ObservationDto } from './dto/pricing-guest-price.dto';
+import { AirbnbDealsDto, ChannelProfileDto, NightPricesDto, ObservationDto } from './dto/pricing-guest-price.dto';
 
 /**
  * «Цена для гостя» in the calendar of one property. Every route answers 503 while
@@ -53,5 +53,15 @@ export class PricingGuestPriceController {
     @Body() body: ObservationDto,
   ) {
     return { data: await this.guestPrice.addObservation(user, propertyId, body) };
+  }
+
+  /** Airbnb's own «последняя минута» / «раннее бронирование», typed in by hand (ZODOMUS_PROMOTIONS_AIRBNB_DEALS_ENABLED). */
+  @Put(':propertyId/airbnb-deals')
+  async saveAirbnbDeals(
+    @CurrentUser() user: JwtPayload,
+    @Param('propertyId', ParseUUIDPipe) propertyId: string,
+    @Body() body: AirbnbDealsDto,
+  ) {
+    return { data: await this.guestPrice.saveAirbnbDeals(user, propertyId, body) };
   }
 }

@@ -7,6 +7,8 @@ import {
   bookingStayInput,
   countBookedOrClosed,
   bookingCell,
+  airbnbLeadDeal,
+  airbnbGuestNight,
   discountedPrice,
   channelNightPrice,
   channelPriceFromBase,
@@ -431,3 +433,72 @@ describe('base price helpers (same as backend base-price.util)', () => {
     assert.equal(c.minGuest, 340);
   });
 });
+
+describe('Airbnb own lead-time discounts (display only)', () => {
+  const PM = { lastMinutePct: 10, lastMinuteDays: 5, earlyBirdPct: 5, earlyBirdMonths: 1 };
+  const T = '2026-11-24';
+
+  it('last minute: check-in 0…N days ahead, not N + 1, never in the past', () => {
+    assert.equal(airbnbLeadDeal('2026-11-24', T, PM)?.kind, 'last_minute');
+    assert.equal(airbnbLeadDeal('2026-11-29', T, PM)?.pct, 10);
+    assert.equal(airbnbLeadDeal('2026-11-30', T, PM), null);
+    assert.equal(airbnbLeadDeal('2026-11-23', T, PM), null);
+    // «за 0–0 дней» (Bagno): only the same day
+    const same = { lastMinutePct: 10, lastMinuteDays: 0, earlyBirdPct: null, earlyBirdMonths: null };
+    assert.equal(airbnbLeadDeal('2026-11-24', T, same)?.kind, 'last_minute');
+    assert.equal(airbnbLeadDeal('2026-11-25', T, same), null);
+  });
+
+  it('early bird: check-in N months or more ahead; month end clamped', () => {
+    assert.equal(airbnbLeadDeal('2026-12-23', T, PM), null);
+    assert.equal(airbnbLeadDeal('2026-12-24', T, PM)?.kind, 'early_bird');
+    assert.equal(airbnbLeadDeal('2027-06-01', T, PM)?.pct, 5);
+    const eb = { lastMinutePct: null, lastMinuteDays: null, earlyBirdPct: 10, earlyBirdMonths: 1 };
+    assert.equal(airbnbLeadDeal('2027-02-27', '2027-01-31', eb), null);
+    assert.equal(airbnbLeadDeal('2027-02-28', '2027-01-31', eb)?.kind, 'early_bird');
+    assert.equal(airbnbLeadDeal('2028-01-01', '2026-11-24', { ...eb, earlyBirdMonths: 12 })?.kind, 'early_bird');
+  });
+
+  it('nothing set / no deals → none; percent without its days is ignored', () => {
+    assert.equal(airbnbLeadDeal('2026-11-25', T, null), null);
+    assert.equal(airbnbLeadDeal('2026-11-25', T, { lastMinutePct: null, lastMinuteDays: 5, earlyBirdPct: null, earlyBirdMonths: null }), null);
+    assert.equal(airbnbLeadDeal('2026-11-25', T, { lastMinutePct: 10, lastMinuteDays: null, earlyBirdPct: null, earlyBirdMonths: null }), null);
+  });
+
+  it('guest night: whole złoty after the deal; no deal → as is', () => {
+    assert.equal(airbnbGuestNight(280, { kind: 'last_minute', label: '', pct: 10 }), 252);
+    assert.equal(airbnbGuestNight(345, { kind: 'last_minute', label: '', pct: 10 }), 311); // 310.5
+    assert.equal(airbnbGuestNight(280, null), 280);
+  });
+
+  it('stay: weekly wins over last minute; short stay gets last minute on every night', () => {
+    const base: Record<string, number> = {};
+    for (let d = 24; d <= 30; d++) base[`2026-11-${d}`] = 300;
+    const labels = { cleaning: 'c', cityTax: 'x', weekly: 'w', monthly: 'm' };
+    const profile = { weeklyPct: 18 } as unknown as ChannelProfile;
+    const week = airbnbStayInput({ dates: Object.keys(base), profile, nightPrices: {}, guests: 2, labels, fromBase: { base, markupPct: 0 }, deals: PM, today: T });
+    assert.deepEqual(week.input.nights[0]!.discounts.map((x) => x.kind), ['length_of_stay']);
+    const two = airbnbStayInput({ dates: ['2026-11-25', '2026-11-26'], profile, nightPrices: {}, guests: 2, labels, fromBase: { base, markupPct: 0 }, deals: PM, today: T });
+    assert.deepEqual(two.input.nights.map((n) => n.discounts.map((x) => x.kind)), [['last_minute'], ['last_minute']]);
+    const noToday = airbnbStayInput({ dates: ['2026-11-25'], profile, nightPrices: {}, guests: 2, labels, fromBase: { base, markupPct: 0 }, deals: PM });
+    assert.deepEqual(noToday.input.nights[0]!.discounts, []);
+  });
+
+  it('stay: RentAI «Скидка» on Airbnb lowers the night before Airbnb’s own deal', () => {
+    const labels = { cleaning: 'c', cityTax: 'x', weekly: 'w', monthly: 'm' };
+    const q = airbnbStayInput({
+      dates: ['2026-11-25'],
+      profile: null,
+      nightPrices: {},
+      guests: 2,
+      labels,
+      fromBase: { base: { '2026-11-25': 300 }, markupPct: 0 },
+      deals: PM,
+      today: T,
+      rentaiDiscountPct: { '2026-11-25': 10 },
+    });
+    assert.equal(q.input.nights[0]!.rack, 270);
+    assert.equal(q.input.nights[0]!.discounts[0]!.kind, 'last_minute');
+  });
+});
+

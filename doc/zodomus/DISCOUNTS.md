@@ -74,3 +74,33 @@ INSERT INTO "migrations" ("timestamp", "name") VALUES (1779000000000, 'PricingDi
 - Скидки самого Airbnb («последняя минута», «раннее бронирование») в строке «A» — следующий шаг (пункт 7):
   нужны поля в «Настройках площадок».
 - Проверено только тестами; на проде и в браузере не открывалось.
+
+# Скидки самого Airbnb в строке «A» (пункт 7, 2026-11-24)
+
+Только показ: RentAI отправляет в Airbnb ту же цену, Airbnb сам вычитает свои скидки. RentAI их не читает —
+менеджер переписывает из Airbnb (Настройки → Скидки) в «Цена для гостя» → «Настройки площадок» → «Скидки самого
+Airbnb»: последняя минута (% и за 0–28 дней до заезда), раннее бронирование (% и за 1–36 месяцев).
+
+- Правило Airbnb: одна скидка на ночь; недельная/месячная важнее последней минуты и раннего бронирования.
+- Клетка: `A 300 → 270` — после стрелки цена ночи для гостя при брони сегодня (подсказка называет скидку).
+- «Цена для гостя» Airbnb: на 1–6 ночей — скидка по дню заезда; от 7 ночей — недельная/месячная. Учитывает и
+  «Скидку» RentAI на Airbnb.
+- Скидки у объявлений пилота на 2026-11-24 — вики `rentai/wiki/sources/2026-11-24-skidki-airbnb-pilot.md`.
+
+Включить: SQL в Neon, затем `ZODOMUS_PROMOTIONS_AIRBNB_DEALS_ENABLED=true` (нужна «Цена для гостя»).
+
+```sql
+CREATE TABLE IF NOT EXISTS "property_airbnb_deals" (
+  "propertyId" uuid NOT NULL,
+  "lastMinutePct" smallint,
+  "lastMinuteDays" smallint,
+  "earlyBirdPct" smallint,
+  "earlyBirdMonths" smallint,
+  "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+  CONSTRAINT "PK_property_airbnb_deals" PRIMARY KEY ("propertyId"),
+  CONSTRAINT "CHK_property_airbnb_deals_last_minute" CHECK ("lastMinutePct" IS NULL OR ("lastMinutePct" BETWEEN 1 AND 99 AND "lastMinuteDays" BETWEEN 0 AND 28)),
+  CONSTRAINT "CHK_property_airbnb_deals_early_bird" CHECK ("earlyBirdPct" IS NULL OR ("earlyBirdPct" BETWEEN 1 AND 99 AND "earlyBirdMonths" BETWEEN 1 AND 36)),
+  CONSTRAINT "FK_property_airbnb_deals_property" FOREIGN KEY ("propertyId") REFERENCES "properties"("id") ON DELETE CASCADE
+);
+INSERT INTO "migrations" ("timestamp", "name") VALUES (1779100000000, 'PricingAirbnbDeals1779100000000');
+```
