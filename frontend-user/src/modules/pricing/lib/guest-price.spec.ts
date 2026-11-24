@@ -500,5 +500,19 @@ describe('Airbnb own lead-time discounts (display only)', () => {
     assert.equal(q.input.nights[0]!.rack, 270);
     assert.equal(q.input.nights[0]!.discounts[0]!.kind, 'last_minute');
   });
+
+  it('overlapping windows (28 days and 1 month in February): last minute is taken', () => {
+    const both = { lastMinutePct: 10, lastMinuteDays: 28, earlyBirdPct: 5, earlyBirdMonths: 1 };
+    assert.equal(airbnbLeadDeal('2027-02-28', '2027-01-31', both)?.kind, 'last_minute');
+  });
+
+  it('stay: RentAI «Скидка» never takes the night under the minimum; not passed → not applied', () => {
+    const labels = { cleaning: 'c', cityTax: 'x', weekly: 'w', monthly: 'm' };
+    const base = { base: { '2026-11-25': 300 }, markupPct: 0 };
+    const low = airbnbStayInput({ dates: ['2026-11-25'], profile: null, nightPrices: {}, guests: 2, labels, fromBase: base, rentaiDiscountPct: { '2026-11-25': 50 }, minPrice: 199.5 });
+    assert.equal(low.input.nights[0]!.rack, 200);
+    const off = airbnbStayInput({ dates: ['2026-11-25'], profile: null, nightPrices: {}, guests: 2, labels, fromBase: base });
+    assert.equal(off.input.nights[0]!.rack, 300);
+  });
 });
 

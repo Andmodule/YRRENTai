@@ -242,7 +242,8 @@ export function MonthGrid({
                             className="hidden text-muted-foreground sm:inline"
                             title={t('rowAirbnbGuestTitle', { label: row.airbnbGuest.label, pct: row.airbnbGuest.pct })}
                           >
-                            {` → ${fmt.format(row.airbnbGuest.price)}`}
+                            {/* Not «→»: in the B line that means «now → not sent yet». */}
+                            {` · ${fmt.format(row.airbnbGuest.price)}`}
                           </span>
                         ) : null}
                       </span>

@@ -153,7 +153,7 @@ export function PropertyMonthView({ propertyId }: { propertyId: string }) {
             discountPct: b.discountPct?.booking,
           },
         ),
-        ...withGuest(n.ymd, airbnbCell(n)),
+        ...withGuest(n, airbnbCell(n)),
         airbnbTyped: g.nightPrices.airbnb[n.ymd] != null,
       });
     }
@@ -184,9 +184,10 @@ export function PropertyMonthView({ propertyId }: { propertyId: string }) {
     }
 
     /** Airbnb's own lead-time discount on a one-night stay from this night, booked today: what the guest pays. */
-    function withGuest(ymd: string, cell: { airbnb: number | null; airbnbFromBooking: boolean }) {
-      if (!g!.airbnbDealsEnabled || cell.airbnb == null) return cell;
-      const deal = airbnbLeadDeal(ymd, today, g!.airbnbDeals, { lastMinute: tDeals('lastMinute'), earlyBird: tDeals('earlyBird') });
+    function withGuest(n: (typeof nights)[number], cell: { airbnb: number | null; airbnbFromBooking: boolean }) {
+      // Only a night a guest can book now.
+      if (!g!.airbnbDealsEnabled || cell.airbnb == null || n.kind !== 'open') return cell;
+      const deal = airbnbLeadDeal(n.ymd, today, g!.airbnbDeals, { lastMinute: tDeals('lastMinute'), earlyBird: tDeals('earlyBird') });
       return deal ? { ...cell, airbnbGuest: { price: airbnbGuestNight(cell.airbnb, deal), label: deal.label, pct: deal.pct } } : cell;
     }
 
@@ -310,6 +311,7 @@ export function PropertyMonthView({ propertyId }: { propertyId: string }) {
         currency={currency}
         basePrices={basePriceOn ? (basePrices.data ?? null) : null}
         today={today}
+        airbnbOwnPrice={!airbnbConnected || airbnbFromBase}
       />
     ) : null;
   const nightActions = {

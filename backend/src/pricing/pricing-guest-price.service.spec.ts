@@ -472,9 +472,31 @@ describe('PricingGuestPriceService — Airbnb own discounts (display only)', () 
       { ...PM, earlyBirdMonths: null },
       { ...PM, extra: 1 },
       { lastMinutePct: 10, lastMinuteDays: 5 },
+      { ...PM, lastMinuteDays: '' },
+      { ...PM, lastMinutePct: '10' },
     ]) {
       expect(airbnbDealsSchema.safeParse(bad).success).toBe(false);
     }
+  });
+});
+
+describe('observations with Airbnb lead-time discounts', () => {
+  it('a calibration whose nights carry «last_minute» / «early_bird» parses and is quoted', async () => {
+    const input = {
+      nights: [
+        { date: '2026-11-25', rack: 300, discounts: [{ kind: 'last_minute', label: 'Последняя минута', pct: 10 }] },
+        { date: '2026-11-26', rack: 300, discounts: [{ kind: 'early_bird', label: 'Раннее бронирование', pct: 5 }] },
+      ],
+      fees: [],
+    };
+    const dto = { channel: 'airbnb', scenario: 'regular', guests: 2, observedTotal: 555, clientTotal: 555, input };
+    const parsed = observationSchema.safeParse(dto);
+    expect(parsed.success).toBe(true);
+    const s = setup();
+    const o = await s.svc.addObservation(OWNER, PROP, parsed.success ? (parsed.data as unknown as ObservationDto) : (dto as unknown as ObservationDto));
+    // 270 + 285 = 555
+    expect(o.calculatedTotal).toBe(555);
+    expect(o.withinTolerance).toBe(true);
   });
 });
 

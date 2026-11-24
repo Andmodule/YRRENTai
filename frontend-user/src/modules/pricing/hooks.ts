@@ -6,7 +6,7 @@ import {
   pricingApi,
   type AutoPriceSettingsInput,
   type AirbnbDeals,
-  BasePriceRangeInput,
+  type BasePriceRangeInput,
   type PriceDiscountInput,
   type ChannelProfileInput,
   type GuestPriceChannel,

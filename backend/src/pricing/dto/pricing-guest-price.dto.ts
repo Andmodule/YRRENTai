@@ -51,7 +51,7 @@ export class NightPricesDto extends createZodDto(nightPricesSchema) {}
 
 const guestDiscountSchema = z
   .object({
-    kind: z.enum(['rate_plan', 'genius', 'extra', 'deal', 'targeting', 'length_of_stay']),
+    kind: z.enum(['rate_plan', 'genius', 'extra', 'deal', 'targeting', 'length_of_stay', 'last_minute', 'early_bird']),
     label: lineLabel,
     pct: z.coerce.number().min(0).max(100),
   })
@@ -103,10 +103,10 @@ export class ObservationDto extends createZodDto(observationSchema) {}
  */
 export const airbnbDealsSchema = z
   .object({
-    lastMinutePct: z.coerce.number().int().min(1).max(99).nullable(),
-    lastMinuteDays: z.coerce.number().int().min(0).max(28).nullable(),
-    earlyBirdPct: z.coerce.number().int().min(1).max(99).nullable(),
-    earlyBirdMonths: z.coerce.number().int().min(1).max(36).nullable(),
+    lastMinutePct: z.number().int().min(1).max(99).nullable(),
+    lastMinuteDays: z.number().int().min(0).max(28).nullable(),
+    earlyBirdPct: z.number().int().min(1).max(99).nullable(),
+    earlyBirdMonths: z.number().int().min(1).max(36).nullable(),
   })
   .strict()
   .refine((v) => v.lastMinutePct == null || v.lastMinuteDays != null, { message: 'Укажите, за сколько дней', path: ['lastMinuteDays'] })

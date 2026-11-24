@@ -133,7 +133,9 @@ function addMonthsYmd(ymd: string, months: number): string {
 /**
  * Airbnb's own lead-time discount for a stay checking in on `checkIn`, booked `today`: «последняя минута» when the
  * check-in is 0…N days away, «раннее бронирование» when it is N months or more away. One at a time (Airbnb applies
- * one promotion per night; a weekly / monthly discount wins over both — see `airbnbStayInput`).
+ * one promotion per night; a weekly / monthly discount wins over both — see `airbnbStayInput`). Where both windows
+ * cover a check-in (e.g. 28 days and 1 month in February) the last-minute one is taken — Airbnb's own tie rule is
+ * not documented. Months are calendar months (day clamped to the month's end).
  */
 export function airbnbLeadDeal(
   checkIn: string,
@@ -151,6 +153,12 @@ export function airbnbLeadDeal(
     return { kind: 'early_bird', label: labels.earlyBird, pct: deals.earlyBirdPct };
   }
   return null;
+}
+
+/** Whole units, never under the minimum (rounded up) — `wholeAboveMin` of the calendar. */
+function wholeAtLeast(price: number, minPrice: number | null | undefined): number {
+  const p = Math.round(price);
+  return minPrice != null && minPrice > 0 && p < minPrice ? Math.ceil(minPrice) : p;
 }
 
 /** One night on Airbnb: what the guest pays for the room after Airbnb's own lead-time discount (whole złoty). */
@@ -320,8 +328,13 @@ export function airbnbStayInput(p: {
   deals?: AirbnbDeals | null;
   today?: string;
   dealLabels?: { lastMinute: string; earlyBird: string };
-  /** «Скидка» of RentAI on Airbnb: night → percent; lowers the price RentAI sends (RentAI's own prices only). */
+  /**
+   * «Скидка» of RentAI on Airbnb: night → percent; lowers the price RentAI sends (RentAI's own prices only). Pass it
+   * only where Airbnb takes RentAI's own price (not connected, or the rule «Airbnb from the base» on).
+   */
   rentaiDiscountPct?: Readonly<Record<string, number>>;
+  /** The property's minimum price: the discounted night never goes under it (as RentAI sends Airbnb). */
+  minPrice?: number | null;
 }): StayQuoteInput {
   const factor = p.occupancy ?? 1;
   const los = airbnbLengthOfStayDiscount(p.dates.length, p.profile ?? {});
@@ -335,7 +348,8 @@ export function airbnbStayInput(p: {
     const made = airbnbNightPrice(ymd, p.profile, p.nightPrices, p.fromBase);
     const own = (p.nightPrices[ymd] ?? 0) > 0 || (p.fromBase?.base[ymd] ?? 0) > 0;
     const off = own ? p.rentaiDiscountPct?.[ymd] : undefined;
-    const price = made != null && off ? discountedPrice(Math.round(made), off).price : made;
+    // As RentAI sends Airbnb: whole złoty, the discount, then the minimum (rounded up).
+    const price = made != null && off ? wholeAtLeast(discountedPrice(Math.round(made), off).price, p.minPrice) : made;
     const rack = price != null ? round2(price * factor) : null;
     if (rack == null) {
       missing.push(ymd);

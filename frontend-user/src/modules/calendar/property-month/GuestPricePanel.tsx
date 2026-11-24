@@ -77,6 +77,7 @@ export function GuestPricePanel({
   currency,
   basePrices,
   today,
+  airbnbOwnPrice = true,
 }: {
   propertyId: string;
   /** Window of the month on screen — profiles and typed prices are loaded for it. */
@@ -88,8 +89,10 @@ export function GuestPricePanel({
   currency: string | null;
   /** «Базовая цена» when on: Airbnb nights without a typed price come from it; guest-count rules. */
   basePrices?: BasePriceOverview | null;
-  /** Today in the property's time zone (Airbnb's last-minute / early-bird discounts depend on it). */
+  /** Today (the calendar's day, browser date) — Airbnb's last-minute / early-bird discounts depend on it. */
   today?: string;
+  /** Airbnb takes RentAI's own price (not connected, or «Airbnb from the base» on): RentAI's «Скидка» applies. */
+  airbnbOwnPrice?: boolean;
 }) {
   const t = useTranslations('calendar.propertyMonth.guestPrice');
   const { money, pct } = useNumbers();
@@ -149,10 +152,11 @@ export function GuestPricePanel({
           deals: data.data?.airbnbDealsEnabled ? data.data.airbnbDeals : null,
           today,
           dealLabels: { lastMinute: t('deals.lastMinute'), earlyBird: t('deals.earlyBird') },
-          rentaiDiscountPct: basePrices?.discountPct?.airbnb,
+          rentaiDiscountPct: airbnbOwnPrice ? basePrices?.discountPct?.airbnb : undefined,
+          minPrice,
         }),
       ),
-    [picked, profiles, airbnbPrices, guests, labels, basePrices, data.data, today, t],
+    [picked, profiles, airbnbPrices, guests, labels, basePrices, data.data, today, t, airbnbOwnPrice, minPrice],
   );
 
   // Totals over different sets of nights cannot be compared.
