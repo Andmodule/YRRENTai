@@ -513,6 +513,9 @@ describe('Airbnb own lead-time discounts (display only)', () => {
     assert.equal(low.input.nights[0]!.rack, 200);
     const off = airbnbStayInput({ dates: ['2026-11-25'], profile: null, nightPrices: {}, guests: 2, labels, fromBase: base });
     assert.equal(off.input.nights[0]!.rack, 300);
+    // No discount, own price under the minimum: lifted to it, as RentAI sends Airbnb.
+    const under = airbnbStayInput({ dates: ['2026-11-25'], profile: null, nightPrices: {}, guests: 2, labels, fromBase: { base: { '2026-11-25': 150 }, markupPct: 0 }, minPrice: 199.5 });
+    assert.equal(under.input.nights[0]!.rack, 200);
   });
 });
 

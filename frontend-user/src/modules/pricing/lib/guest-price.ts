@@ -349,7 +349,10 @@ export function airbnbStayInput(p: {
     const own = (p.nightPrices[ymd] ?? 0) > 0 || (p.fromBase?.base[ymd] ?? 0) > 0;
     const off = own ? p.rentaiDiscountPct?.[ymd] : undefined;
     // As RentAI sends Airbnb: whole złoty, the discount, then the minimum (rounded up).
-    const price = made != null && off ? wholeAtLeast(discountedPrice(Math.round(made), off).price, p.minPrice) : made;
+    const price =
+      made != null && own && (off || p.minPrice)
+        ? wholeAtLeast(off ? discountedPrice(Math.round(made), off).price : made, p.minPrice)
+        : made;
     const rack = price != null ? round2(price * factor) : null;
     if (rack == null) {
       missing.push(ymd);

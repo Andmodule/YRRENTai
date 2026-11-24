@@ -489,7 +489,7 @@ describe('observations with Airbnb lead-time discounts', () => {
       ],
       fees: [],
     };
-    const dto = { channel: 'airbnb', scenario: 'regular', guests: 2, observedTotal: 555, clientTotal: 555, input };
+    const dto = { channel: 'airbnb', scenario: 'min', guests: 2, observedTotal: 555, clientTotal: 555, input };
     const parsed = observationSchema.safeParse(dto);
     expect(parsed.success).toBe(true);
     const s = setup();
