@@ -9,10 +9,10 @@
  * one after another; cleaning is not discounted; VAT sits inside the room price only.
  */
 
-import type { ChannelProfile } from '../api';
+import type { AirbnbDeals, ChannelProfile } from '../api';
 import { liveDeal, weekdayOf, type CellPromotion } from './pricing-ui';
 
-export type GuestDiscountKind = 'rate_plan' | 'genius' | 'extra' | 'deal' | 'targeting' | 'length_of_stay';
+export type GuestDiscountKind = 'rate_plan' | 'genius' | 'extra' | 'deal' | 'targeting' | 'length_of_stay' | 'last_minute' | 'early_bird';
 
 export type GuestDiscount = { kind: GuestDiscountKind; label: string; pct: number };
 
@@ -111,6 +111,59 @@ export function airbnbLengthOfStayDiscount(
   if (nights >= 28 && p.monthlyPct) return { kind: 'length_of_stay', label: 'Скидка за месяц', pct: p.monthlyPct };
   if (nights >= 7 && p.weeklyPct) return { kind: 'length_of_stay', label: 'Скидка за неделю', pct: p.weeklyPct };
   return null;
+}
+
+/** Whole days from `fromYmd` to `toYmd` (calendar dates, no time zone involved). */
+function daysBetween(fromYmd: string, toYmd: string): number {
+  const [a, b] = [fromYmd, toYmd].map((d) => Date.UTC(Number(d.slice(0, 4)), Number(d.slice(5, 7)) - 1, Number(d.slice(8, 10))));
+  return Math.round((b! - a!) / 86_400_000);
+}
+
+/** `ymd` + `months` calendar months; the day is clamped to the month's end (31.01 + 1 → 28/29.02). */
+function addMonthsYmd(ymd: string, months: number): string {
+  const y = Number(ymd.slice(0, 4));
+  const m = Number(ymd.slice(5, 7)) - 1 + months;
+  const ty = y + Math.floor(m / 12);
+  const tm = ((m % 12) + 12) % 12;
+  const last = new Date(Date.UTC(ty, tm + 1, 0)).getUTCDate();
+  const d = Math.min(Number(ymd.slice(8, 10)), last);
+  return `${ty}-${String(tm + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+
+/**
+ * Airbnb's own lead-time discount for a stay checking in on `checkIn`, booked `today`: «последняя минута» when the
+ * check-in is 0…N days away, «раннее бронирование» when it is N months or more away. One at a time (Airbnb applies
+ * one promotion per night; a weekly / monthly discount wins over both — see `airbnbStayInput`). Where both windows
+ * cover a check-in (e.g. 28 days and 1 month in February) the last-minute one is taken — Airbnb's own tie rule is
+ * not documented. Months are calendar months (day clamped to the month's end).
+ */
+export function airbnbLeadDeal(
+  checkIn: string,
+  today: string,
+  deals: AirbnbDeals | null | undefined,
+  labels: { lastMinute: string; earlyBird: string } = { lastMinute: 'Последняя минута', earlyBird: 'Раннее бронирование' },
+): GuestDiscount | null {
+  if (!deals) return null;
+  const ahead = daysBetween(today, checkIn);
+  if (ahead < 0) return null;
+  if (deals.lastMinutePct && deals.lastMinuteDays != null && ahead <= deals.lastMinuteDays) {
+    return { kind: 'last_minute', label: labels.lastMinute, pct: deals.lastMinutePct };
+  }
+  if (deals.earlyBirdPct && deals.earlyBirdMonths && checkIn >= addMonthsYmd(today, deals.earlyBirdMonths)) {
+    return { kind: 'early_bird', label: labels.earlyBird, pct: deals.earlyBirdPct };
+  }
+  return null;
+}
+
+/** Whole units, never under the minimum (rounded up) — `wholeAboveMin` of the calendar. */
+function wholeAtLeast(price: number, minPrice: number | null | undefined): number {
+  const p = Math.round(price);
+  return minPrice != null && minPrice > 0 && p < minPrice ? Math.ceil(minPrice) : p;
+}
+
+/** One night on Airbnb: what the guest pays for the room after Airbnb's own lead-time discount (whole złoty). */
+export function airbnbGuestNight(price: number, deal: GuestDiscount | null): number {
+  return deal ? Math.round((price * (100 - deal.pct)) / 100) : price;
 }
 
 export function nightsBelowMinPrice(
@@ -271,20 +324,41 @@ export function airbnbStayInput(p: {
   fromBase?: { base: Readonly<Record<string, number>>; markupPct: number } | null;
   /** Price for this many guests vs the standard two (`occupancyFactor`). */
   occupancy?: number;
+  /** Airbnb's own lead-time discounts and today (property time zone): applied when no weekly / monthly one is. */
+  deals?: AirbnbDeals | null;
+  today?: string;
+  dealLabels?: { lastMinute: string; earlyBird: string };
+  /**
+   * «Скидка» of RentAI on Airbnb: night → percent; lowers the price RentAI sends (RentAI's own prices only). Pass it
+   * only where Airbnb takes RentAI's own price (not connected, or the rule «Airbnb from the base» on).
+   */
+  rentaiDiscountPct?: Readonly<Record<string, number>>;
+  /** The property's minimum price: the discounted night never goes under it (as RentAI sends Airbnb). */
+  minPrice?: number | null;
 }): StayQuoteInput {
   const factor = p.occupancy ?? 1;
   const los = airbnbLengthOfStayDiscount(p.dates.length, p.profile ?? {});
   const losLabelled = los ? { ...los, label: los.label === 'Скидка за месяц' ? p.labels.monthly : p.labels.weekly } : null;
+  // One promotion per night: length of stay first, else the lead-time one (by the check-in day).
+  const lead = !losLabelled && p.today && p.dates.length > 0 ? airbnbLeadDeal(p.dates[0]!, p.today, p.deals, p.dealLabels) : null;
+  const stayDiscount = losLabelled ?? lead;
   const nights: StayNightInput[] = [];
   const missing: string[] = [];
   for (const ymd of p.dates) {
-    const price = airbnbNightPrice(ymd, p.profile, p.nightPrices, p.fromBase);
+    const made = airbnbNightPrice(ymd, p.profile, p.nightPrices, p.fromBase);
+    const own = (p.nightPrices[ymd] ?? 0) > 0 || (p.fromBase?.base[ymd] ?? 0) > 0;
+    const off = own ? p.rentaiDiscountPct?.[ymd] : undefined;
+    // As RentAI sends Airbnb: whole złoty, the discount, then the minimum (rounded up).
+    const price =
+      made != null && own && (off || p.minPrice)
+        ? wholeAtLeast(off ? discountedPrice(Math.round(made), off).price : made, p.minPrice)
+        : made;
     const rack = price != null ? round2(price * factor) : null;
     if (rack == null) {
       missing.push(ymd);
       continue;
     }
-    nights.push({ date: ymd, rack, discounts: losLabelled ? [losLabelled] : [] });
+    nights.push({ date: ymd, rack, discounts: stayDiscount ? [stayDiscount] : [] });
   }
   return { input: { nights, ...feesAndTaxes(p.profile, nights.length, p.guests, p.labels) }, missing };
 }

@@ -19,7 +19,7 @@
  */
 
 /** `extra` — a discount RentAI cannot read from the channel, typed in by hand after a calibration. */
-export type GuestDiscountKind = 'rate_plan' | 'genius' | 'extra' | 'deal' | 'targeting' | 'length_of_stay';
+export type GuestDiscountKind = 'rate_plan' | 'genius' | 'extra' | 'deal' | 'targeting' | 'length_of_stay' | 'last_minute' | 'early_bird';
 
 export type GuestDiscount = { kind: GuestDiscountKind; label: string; pct: number };
 

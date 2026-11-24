@@ -22,7 +22,8 @@ import {
 } from './entities/property-channel-profile.entity';
 import { PropertyChannelNightPriceEntity } from './entities/property-channel-night-price.entity';
 import { PriceObservationEntity, type GuestPriceScenario } from './entities/price-observation.entity';
-import type { ChannelProfileDto, NightPricesDto, ObservationDto } from './dto/pricing-guest-price.dto';
+import type { AirbnbDealsDto, ChannelProfileDto, NightPricesDto, ObservationDto } from './dto/pricing-guest-price.dto';
+import { PropertyAirbnbDealsEntity } from './entities/property-airbnb-deals.entity';
 import { AIRBNB_OWN_PRICES_CHANGED, type AirbnbOwnPricesChanged } from '../airbnb/airbnb-own-price.service';
 
 /** Longest window the panel asks for / a hand-typed price range may cover. */
@@ -62,11 +63,33 @@ export type ObservationView = {
   createdAt: string;
 };
 
+/** Airbnb's own discounts typed in by hand (display only). */
+export type AirbnbDealsView = {
+  lastMinutePct: number | null;
+  lastMinuteDays: number | null;
+  earlyBirdPct: number | null;
+  earlyBirdMonths: number | null;
+};
+
+function dealsView(row: PropertyAirbnbDealsEntity | null): AirbnbDealsView | null {
+  if (!row) return null;
+  return {
+    lastMinutePct: row.lastMinutePct,
+    lastMinuteDays: row.lastMinutePct != null ? row.lastMinuteDays : null,
+    earlyBirdPct: row.earlyBirdPct,
+    earlyBirdMonths: row.earlyBirdPct != null ? row.earlyBirdMonths : null,
+  };
+}
+
 export type GuestPriceOverview = {
   profiles: Record<GuestPriceChannel, ChannelProfileView>;
   /** Hand-typed nightly prices in [from, to], per channel: yyyy-MM-dd → price. */
   nightPrices: Record<GuestPriceChannel, Record<string, number>>;
   observations: ObservationView[];
+  /** ZODOMUS_PROMOTIONS_AIRBNB_DEALS_ENABLED. */
+  airbnbDealsEnabled: boolean;
+  /** null = nothing typed in (or the switch off). */
+  airbnbDeals: AirbnbDealsView | null;
 };
 
 function emptyProfile(channel: GuestPriceChannel): ChannelProfileView {
@@ -145,7 +168,46 @@ export class PricingGuestPriceService {
     @InjectRepository(PriceObservationEntity)
     private readonly observationRepo: Repository<PriceObservationEntity>,
     @Optional() private readonly events?: EventEmitter2,
+    @Optional()
+    @InjectRepository(PropertyAirbnbDealsEntity)
+    private readonly dealsRepo?: Repository<PropertyAirbnbDealsEntity>,
   ) {}
+
+  /** Read only while the switch is on; a missing table (switch on before the migration) → none, logged. */
+  private async airbnbDeals(propertyId: string): Promise<AirbnbDealsView | null> {
+    if (!this.cfg.flags.airbnbDeals || !this.dealsRepo) return null;
+    try {
+      return dealsView(await this.dealsRepo.findOne({ where: { propertyId } }));
+    } catch (e) {
+      this.logger.warn(`Airbnb deals unreadable (migration 1779100000000 not run?): ${e instanceof Error ? e.message : String(e)}`);
+      return null;
+    }
+  }
+
+  /** Saves Airbnb's own discounts (typed in from Airbnb). Display only: nothing goes to Airbnb. */
+  async saveAirbnbDeals(user: JwtPayload, propertyId: string, dto: AirbnbDealsDto): Promise<AirbnbDealsView | null> {
+    this.assertOn();
+    if (!this.cfg.flags.airbnbDeals || !this.dealsRepo) {
+      throw new ServiceUnavailableException('Скидки Airbnb выключены (ZODOMUS_PROMOTIONS_AIRBNB_DEALS_ENABLED=false)');
+    }
+    const id = await this.ownedPropertyId(user, propertyId);
+    const row = {
+      propertyId: id,
+      lastMinutePct: dto.lastMinutePct ?? null,
+      lastMinuteDays: dto.lastMinutePct != null ? dto.lastMinuteDays : null,
+      earlyBirdPct: dto.earlyBirdPct ?? null,
+      earlyBirdMonths: dto.earlyBirdPct != null ? dto.earlyBirdMonths : null,
+    };
+    try {
+      await this.dealsRepo.upsert(row, ['propertyId']);
+    } catch (e) {
+      if (e instanceof QueryFailedError && (e as { driverError?: { code?: string } }).driverError?.code === '42P01') {
+        throw new ServiceUnavailableException('Таблица скидок Airbnb не создана: запустите миграцию 1779100000000-pricing-airbnb-deals');
+      }
+      throw e;
+    }
+    return dealsView(row as PropertyAirbnbDealsEntity);
+  }
 
   private assertOn(): void {
     this.pricing.assertEnabled();
@@ -191,10 +253,11 @@ export class PricingGuestPriceService {
   }
 
   private async load(propertyId: string, from: string, to: string): Promise<GuestPriceOverview> {
-    const [profiles, prices, observations] = await Promise.all([
+    const [profiles, prices, observations, deals] = await Promise.all([
       this.profileRepo.find({ where: { propertyId } }),
       this.nightPriceRepo.find({ where: { propertyId, date: Between(from, to) } }),
       this.observationRepo.find({ where: { propertyId }, order: { createdAt: 'DESC' }, take: OBSERVATIONS_SHOWN }),
+      this.airbnbDeals(propertyId),
     ]);
     const byChannel = new Map(profiles.map((p) => [p.channel, p]));
     const nightPrices = { booking: {}, airbnb: {} } as GuestPriceOverview['nightPrices'];
@@ -206,6 +269,8 @@ export class PricingGuestPriceService {
       },
       nightPrices,
       observations: observations.map(observationView),
+      airbnbDealsEnabled: this.cfg.flags.airbnbDeals,
+      airbnbDeals: deals,
     };
   }
 

@@ -48,7 +48,7 @@ import { BookingSendStatus } from './BookingSendStatus';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { cn } from '@/lib/utils';
 import type { CellRows } from './MonthGrid';
-import { airbnbNightPrice, bookingCell, pickedStayBelowMin, discountedPrice } from '@/modules/pricing/lib/guest-price';
+import { airbnbGuestNight, airbnbLeadDeal, airbnbNightPrice, bookingCell, pickedStayBelowMin, discountedPrice } from '@/modules/pricing/lib/guest-price';
 import { airbnbApi } from '@/modules/airbnb/api';
 import { airbnbFromBooking, wholeAboveMin } from '../lib/airbnb-from-booking';
 
@@ -126,6 +126,7 @@ export function PropertyMonthView({ propertyId }: { propertyId: string }) {
   );
   const summary = useMemo(() => summarizeNights(nights), [nights]);
 
+  const tDeals = useTranslations('calendar.propertyMonth.guestPrice.deals');
   /** «Базовая цена»: base / Booking / Airbnb of every night of the month. */
   const cellRows = useMemo(() => {
     const b = basePrices.data;
@@ -152,7 +153,7 @@ export function PropertyMonthView({ propertyId }: { propertyId: string }) {
             discountPct: b.discountPct?.booking,
           },
         ),
-        ...airbnbCell(n),
+        ...withGuest(n, airbnbCell(n)),
         airbnbTyped: g.nightPrices.airbnb[n.ymd] != null,
       });
     }
@@ -182,13 +183,21 @@ export function PropertyMonthView({ propertyId }: { propertyId: string }) {
       return { airbnb: fromBooking, airbnbFromBooking: fromBooking != null };
     }
 
+    /** Airbnb's own lead-time discount on a one-night stay from this night, booked today: what the guest pays. */
+    function withGuest(n: (typeof nights)[number], cell: { airbnb: number | null; airbnbFromBooking: boolean }) {
+      // Only a night a guest can book now.
+      if (!g!.airbnbDealsEnabled || cell.airbnb == null || n.kind !== 'open') return cell;
+      const deal = airbnbLeadDeal(n.ymd, today, g!.airbnbDeals, { lastMinute: tDeals('lastMinute'), earlyBird: tDeals('earlyBird') });
+      return deal ? { ...cell, airbnbGuest: { price: airbnbGuestNight(cell.airbnb, deal), label: deal.label, pct: deal.pct } } : cell;
+    }
+
     /** The night has an Airbnb price of RentAI's own (typed or from the base) — the one a discount lowers. */
     function ownAirbnb(ymd: string): boolean {
       const typed = g!.nightPrices.airbnb[ymd];
       const base = b!.base[ymd];
       return (typed != null && typed > 0) || (base != null && base > 0);
     }
-  }, [basePriceOn, basePrices.data, guestPrices.data, nights, pricingRow, airbnbConnected, airbnbFromBase, airbnbPlanEnd]);
+  }, [basePriceOn, basePrices.data, guestPrices.data, nights, pricingRow, airbnbConnected, airbnbFromBase, airbnbPlanEnd, today, tDeals]);
 
   // The Booking run is watched by the page: the panel remounts with each range and the phone sheet unmounts.
   // The dates tool off: no runs to poll (the server would answer 503). Not tied to the month's data: a month
@@ -301,6 +310,8 @@ export function PropertyMonthView({ propertyId }: { propertyId: string }) {
         minPrice={pricingRow?.minPrice ?? null}
         currency={currency}
         basePrices={basePriceOn ? (basePrices.data ?? null) : null}
+        today={today}
+        airbnbOwnPrice={!airbnbConnected || airbnbFromBase}
       />
     ) : null;
   const nightActions = {

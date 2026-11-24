@@ -190,6 +190,15 @@ const zodomusEnvFields = z.object({
     .default('false')
     .transform((v) => v === 'true' || v === '1' || v === 'yes'),
   /**
+   * Airbnb's own «последняя минута» / «раннее бронирование», typed in by hand in «Настройки площадок», shown in the A line
+   * and «Цена для гостя» (display only — nothing sent). Needs ZODOMUS_PROMOTIONS_GUEST_PRICE_ENABLED=true and the
+   * migration 1779100000000-pricing-airbnb-deals. Off: the table is never read.
+   */
+  ZODOMUS_PROMOTIONS_AIRBNB_DEALS_ENABLED: z
+    .enum(['true', 'false', '1', '0', 'yes', 'no'])
+    .default('false')
+    .transform((v) => v === 'true' || v === '1' || v === 'yes'),
+  /**
    * «Только показывать» for «Автоцены» (default true): runs write the journal of what they would do, nothing
    * reaches Booking and no adjustment is stored. Sending also needs ZODOMUS_PROMOTIONS_DRY_RUN=false.
    */

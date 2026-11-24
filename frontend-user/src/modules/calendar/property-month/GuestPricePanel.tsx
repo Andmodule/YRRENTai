@@ -11,7 +11,7 @@ import { Select } from '@/components/ui/select';
 import { getApiErrorMessage } from '@/lib/api/error-message';
 import { cn } from '@/lib/utils';
 import { useGuestPrice, useGuestPriceMutations } from '@/modules/pricing/hooks';
-import type { BasePriceOverview, ChannelProfile, ChannelProfileInput, GuestPriceChannel } from '@/modules/pricing/api';
+import type { BasePriceOverview, ChannelProfile, ChannelProfileInput, GuestPriceChannel, AirbnbDeals } from '@/modules/pricing/api';
 import {
   airbnbStayInput,
   bookingStayInput,
@@ -76,6 +76,8 @@ export function GuestPricePanel({
   minPrice,
   currency,
   basePrices,
+  today,
+  airbnbOwnPrice = true,
 }: {
   propertyId: string;
   /** Window of the month on screen — profiles and typed prices are loaded for it. */
@@ -87,6 +89,10 @@ export function GuestPricePanel({
   currency: string | null;
   /** «Базовая цена» when on: Airbnb nights without a typed price come from it; guest-count rules. */
   basePrices?: BasePriceOverview | null;
+  /** Today (the calendar's day, browser date) — Airbnb's last-minute / early-bird discounts depend on it. */
+  today?: string;
+  /** Airbnb takes RentAI's own price (not connected, or «Airbnb from the base» on): RentAI's «Скидка» applies. */
+  airbnbOwnPrice?: boolean;
 }) {
   const t = useTranslations('calendar.propertyMonth.guestPrice');
   const { money, pct } = useNumbers();
@@ -143,9 +149,14 @@ export function GuestPricePanel({
           labels,
           fromBase: basePrices ? { base: basePrices.base, markupPct: basePrices.channels.airbnb.markupPct } : null,
           occupancy: occupancyFactor(guests, basePrices?.channels.airbnb),
+          deals: data.data?.airbnbDealsEnabled ? data.data.airbnbDeals : null,
+          today,
+          dealLabels: { lastMinute: t('deals.lastMinute'), earlyBird: t('deals.earlyBird') },
+          rentaiDiscountPct: airbnbOwnPrice ? basePrices?.discountPct?.airbnb : undefined,
+          minPrice,
         }),
       ),
-    [picked, profiles, airbnbPrices, guests, labels, basePrices],
+    [picked, profiles, airbnbPrices, guests, labels, basePrices, data.data, today, t, airbnbOwnPrice, minPrice],
   );
 
   // Totals over different sets of nights cannot be compared.
@@ -401,6 +412,19 @@ export function GuestPricePanel({
               }
             />
           ))}
+          {data.data?.airbnbDealsEnabled ? (
+            <AirbnbDealsForm
+              key={JSON.stringify(data.data.airbnbDeals ?? null)}
+              deals={data.data.airbnbDeals ?? null}
+              pending={mutations.saveAirbnbDeals.isPending}
+              onSave={(input) =>
+                mutations.saveAirbnbDeals.mutate(input, {
+                  onSuccess: () => toast.success(t('settingsSaved')),
+                  onError: (e) => toast.error(getApiErrorMessage(e) ?? t('saveError')),
+                })
+              }
+            />
+          ) : null}
         </div>
       ) : null}
     </section>
@@ -653,6 +677,84 @@ function ProfileForm({
       <Button type="submit" size="sm" disabled={pending}>
         {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : null}
         {t('settingsSave')}
+      </Button>
+    </form>
+  );
+}
+
+/**
+ * Airbnb's own «последняя минута» / «раннее бронирование», copied by hand from Airbnb (RentAI cannot read them).
+ * Only for the guest price shown here and in the A line — RentAI sends Airbnb the same price either way.
+ */
+function AirbnbDealsForm({
+  deals,
+  pending,
+  onSave,
+}: {
+  deals: AirbnbDeals | null;
+  pending: boolean;
+  onSave: (input: AirbnbDeals) => void;
+}) {
+  const t = useTranslations('calendar.propertyMonth.guestPrice.deals');
+  const [draft, setDraft] = useState({
+    lastMinutePct: str(deals?.lastMinutePct ?? null),
+    lastMinuteDays: str(deals?.lastMinuteDays ?? null),
+    earlyBirdPct: str(deals?.earlyBirdPct ?? null),
+    earlyBirdMonths: str(deals?.earlyBirdMonths ?? null),
+  });
+  const [error, setError] = useState<string | null>(null);
+  const fields: { key: keyof typeof draft; label: string; min: number; max: number }[] = [
+    { key: 'lastMinutePct', label: t('lastMinutePct'), min: 1, max: 99 },
+    { key: 'lastMinuteDays', label: t('lastMinuteDays'), min: 0, max: 28 },
+    { key: 'earlyBirdPct', label: t('earlyBirdPct'), min: 1, max: 99 },
+    { key: 'earlyBirdMonths', label: t('earlyBirdMonths'), min: 1, max: 36 },
+  ];
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    const out: Record<string, number | null> = {};
+    for (const f of fields) {
+      const n = parseNumber(draft[f.key]);
+      if (n != null && (Number.isNaN(n) || !Number.isInteger(n) || n < f.min || n > f.max)) {
+        setError(t('fieldError', { field: f.label, min: f.min, max: f.max }));
+        return;
+      }
+      out[f.key] = n;
+    }
+    if (out.lastMinutePct != null && out.lastMinuteDays == null) return setError(t('needDays'));
+    if (out.earlyBirdPct != null && out.earlyBirdMonths == null) return setError(t('needMonths'));
+    setError(null);
+    onSave({
+      lastMinutePct: out.lastMinutePct ?? null,
+      lastMinuteDays: out.lastMinutePct != null ? (out.lastMinuteDays ?? null) : null,
+      earlyBirdPct: out.earlyBirdPct ?? null,
+      earlyBirdMonths: out.earlyBirdPct != null ? (out.earlyBirdMonths ?? null) : null,
+    });
+  };
+
+  return (
+    <form onSubmit={submit} className="space-y-2 border-t border-border pt-3" noValidate>
+      <h4 className="text-sm font-semibold">{t('title')}</h4>
+      <p className="text-xs text-muted-foreground">{t('hint')}</p>
+      <div className="grid grid-cols-2 gap-2">
+        {fields.map((f) => (
+          <label key={f.key} className="space-y-1 text-xs">
+            <span className="text-muted-foreground">{f.label}</span>
+            <Input
+              className="h-9"
+              inputMode="numeric"
+              value={draft[f.key]}
+              onChange={(e) => {
+                setDraft((d) => ({ ...d, [f.key]: e.target.value }));
+                setError(null);
+              }}
+            />
+          </label>
+        ))}
+      </div>
+      {error ? <p className="text-xs text-destructive">{error}</p> : null}
+      <Button type="submit" size="sm" disabled={pending}>
+        {t('save')}
       </Button>
     </form>
   );

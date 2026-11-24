@@ -51,7 +51,7 @@ export class NightPricesDto extends createZodDto(nightPricesSchema) {}
 
 const guestDiscountSchema = z
   .object({
-    kind: z.enum(['rate_plan', 'genius', 'extra', 'deal', 'targeting', 'length_of_stay']),
+    kind: z.enum(['rate_plan', 'genius', 'extra', 'deal', 'targeting', 'length_of_stay', 'last_minute', 'early_bird']),
     label: lineLabel,
     pct: z.coerce.number().min(0).max(100),
   })
@@ -96,3 +96,20 @@ export const observationSchema = z
   .strict();
 
 export class ObservationDto extends createZodDto(observationSchema) {}
+
+/**
+ * Airbnb's own discounts, as set up in Airbnb (typed in by hand). Each pair goes together: a percent needs its
+ * days / months; null percent clears it.
+ */
+export const airbnbDealsSchema = z
+  .object({
+    lastMinutePct: z.number().int().min(1).max(99).nullable(),
+    lastMinuteDays: z.number().int().min(0).max(28).nullable(),
+    earlyBirdPct: z.number().int().min(1).max(99).nullable(),
+    earlyBirdMonths: z.number().int().min(1).max(36).nullable(),
+  })
+  .strict()
+  .refine((v) => v.lastMinutePct == null || v.lastMinuteDays != null, { message: 'Укажите, за сколько дней', path: ['lastMinuteDays'] })
+  .refine((v) => v.earlyBirdPct == null || v.earlyBirdMonths != null, { message: 'Укажите, за сколько месяцев', path: ['earlyBirdMonths'] });
+
+export class AirbnbDealsDto extends createZodDto(airbnbDealsSchema) {}

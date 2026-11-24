@@ -122,6 +122,20 @@ export interface GuestPriceOverview {
   nightPrices: Record<GuestPriceChannel, Record<string, number>>;
   /** Newest first. */
   observations: PriceObservation[];
+  /** ZODOMUS_PROMOTIONS_AIRBNB_DEALS_ENABLED; absent on an older server = off. */
+  airbnbDealsEnabled?: boolean;
+  /** Airbnb's own discounts typed in by hand; null = none. */
+  airbnbDeals?: AirbnbDeals | null;
+}
+
+/** «Последняя минута» / «раннее бронирование» as set up in Airbnb (display only — nothing is sent). */
+export interface AirbnbDeals {
+  lastMinutePct: number | null;
+  /** Bookings made 0…N days before arrival. */
+  lastMinuteDays: number | null;
+  earlyBirdPct: number | null;
+  /** Bookings made N months or more before arrival. */
+  earlyBirdMonths: number | null;
 }
 
 export interface ObservationInput {
@@ -540,6 +554,8 @@ export const pricingApi = {
       unwrap<ChannelProfile>(apiClient.put(`/pricing/guest-price/${propertyId}/profiles/${channel}`, input)),
     setNightPrices: (propertyId: string, input: { channel: GuestPriceChannel; from: string; to: string; price: number | null }) =>
       unwrap<Record<string, number>>(apiClient.put(`/pricing/guest-price/${propertyId}/night-prices`, input)),
+    saveAirbnbDeals: (propertyId: string, input: AirbnbDeals) =>
+      unwrap<AirbnbDeals | null>(apiClient.put(`/pricing/guest-price/${propertyId}/airbnb-deals`, input)),
     addObservation: (propertyId: string, input: ObservationInput) =>
       unwrap<PriceObservation>(apiClient.post(`/pricing/guest-price/${propertyId}/observations`, input)),
   },
